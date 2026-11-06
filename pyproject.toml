@@ -4,7 +4,15 @@ version = "0.1.0"
 description = "네이버 클라우드 기반 소상공인 AI 비서"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = [
+    "langgraph==1.2.20",
+    "langsmith==0.14.17",
+    "pypdf==6.21.4",
+    "requests==2.34.2",
+]
+
+[project.scripts]
+agenthan = "agenthan.assistant:main"
 
 [dependency-groups]
 dev = ["pytest", "ruff"]

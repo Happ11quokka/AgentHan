@@ -21,3 +21,7 @@ faiss_index/
 # 팀 내부에서 따로 전달하는 문서와 개인 지침
 docs/sdk.md
 CLAUDE.local.md
+
+# 로컬 인덱스
+.clova/
+*.sqlite3
