@@ -18,6 +18,8 @@ packages = ["src/agenthan"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = '-m "not network"'
+markers = ["network: live CLOVA API tests (requires CLOVASTUDIO_API_KEY)"]
 
 [tool.ruff]
 line-length = 100

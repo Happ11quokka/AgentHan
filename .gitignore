@@ -21,3 +21,8 @@ faiss_index/
 # 팀 내부에서 따로 전달하는 문서와 개인 지침
 docs/sdk.md
 CLAUDE.local.md
+
+# 공개용으로 새로 작성한 기능 매칭 평가 문장
+!tests/data/
+tests/data/*
+!tests/data/place_request_cases.jsonl
