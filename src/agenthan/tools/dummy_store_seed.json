@@ -1,5 +1,23 @@
 {
-  "shop": {"id": "dummy-shop", "name": "가상 연습 가게"},
+  "shop": {
+    "id": "dummy-shop",
+    "name": "가상 연습 가게",
+    "address": "서울시 연습구 연습로 1",
+    "phone": "02-000-0000",
+    "introduction": "연습용 가상 가게입니다.",
+    "hours": {
+      "mon": {"closed": false, "open_time": "09:00", "close_time": "21:00"},
+      "tue": {"closed": false, "open_time": "09:00", "close_time": "21:00"},
+      "wed": {"closed": false, "open_time": "09:00", "close_time": "21:00"},
+      "thu": {"closed": false, "open_time": "09:00", "close_time": "21:00"},
+      "fri": {"closed": false, "open_time": "09:00", "close_time": "22:00"},
+      "sat": {"closed": false, "open_time": "10:00", "close_time": "22:00"},
+      "sun": {"closed": true}
+    },
+    "keywords": ["연습 카페"],
+    "onsite_payment": false,
+    "new_opening": null
+  },
   "menus": [
     {"id": "menu-1", "name": "연습 라떼", "price": 4000},
     {"id": "menu-2", "name": "연습 샌드위치", "price": 6000}
@@ -8,5 +26,32 @@
     {"id": "review-1", "review_text": "음료가 맛있어요.", "reply_text": "", "status": "unanswered"},
     {"id": "review-2", "review_text": "가게가 편안해요.", "reply_text": "", "status": "unanswered"},
     {"id": "review-3", "review_text": "음식이 조금 늦게 나왔어요.", "reply_text": "", "status": "unanswered"}
-  ]
+  ],
+  "talktalk": [
+    {"id": "talk-1", "message": "주차할 곳이 있나요?", "reply_text": "", "status": "unanswered"},
+    {"id": "talk-2", "message": "단체 손님도 받으시나요?", "reply_text": "", "status": "unanswered"}
+  ],
+  "orders": [
+    {"id": "order-1", "items": "연습 라떼 2잔", "type": "pickup", "status": "new"},
+    {"id": "order-2", "items": "연습 샌드위치 1개", "type": "pickup", "status": "new"}
+  ],
+  "reservations": [
+    {"id": "resv-1", "date": "2026-11-10", "time": "18:00", "people": 2, "status": "requested"},
+    {"id": "resv-2", "date": "2026-11-11", "time": "12:30", "people": 4, "status": "requested"}
+  ],
+  "calls": [
+    {"id": "call-1", "time": "2026-11-06 11:20", "missed": true},
+    {"id": "call-2", "time": "2026-11-06 14:05", "missed": false},
+    {"id": "call-3", "time": "2026-11-07 09:40", "missed": true}
+  ],
+  "coupons": [],
+  "settlements": {
+    "this_week": {"sales": 120000, "fee": 3600, "payout": 116400, "payout_date": "2026-11-13"},
+    "this_month": {"sales": 480000, "fee": 14400, "payout": 465600, "payout_date": "2026-12-05"},
+    "last_month": {"sales": 1350000, "fee": 40500, "payout": 1309500, "payout_date": "2026-11-05"}
+  },
+  "statistics": {
+    "7d": {"place_views": 340, "calls": 12, "reservations": 5, "orders": 9},
+    "30d": {"place_views": 1480, "calls": 51, "reservations": 22, "orders": 37}
+  }
 }
