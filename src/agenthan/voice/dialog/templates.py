@@ -68,6 +68,16 @@ def _join(phrases: Iterable[str]) -> str:
     return ", ".join(phrases)
 
 
+def _has_batchim(word: str) -> bool:
+    last = word[-1:] if word else ""
+    return "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
+
+
+def i_ga(word: str) -> str:
+    """주격 조사를 붙인다. 블린 → 블린이, 아메리카노 → 아메리카노가."""
+    return f"{word}{'이' if _has_batchim(word) else '가'}"
+
+
 # ---------------------------------------------------------------- 대사
 
 def greeting(store_name: str) -> str:
@@ -89,7 +99,7 @@ def item_accepted(phrases: Sequence[str]) -> str:
 
 
 def not_on_menu(menu_names: Sequence[str]) -> str:
-    return f"죄송해요, 그 메뉴는 없어요. 저희는 {_join(menu_names)}가 있어요."
+    return f"죄송해요, 그 메뉴는 없어요. 저희는 {i_ga(_join(menu_names))} 있어요."
 
 
 def ask_pickup() -> str:
