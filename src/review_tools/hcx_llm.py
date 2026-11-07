@@ -153,10 +153,12 @@ REPLY_SYSTEM = (
     "(2) 부정·혼합 리뷰는 변명 없이 사과하고, 지적한 점을 어떻게 개선할지 구체적으로 말합니다. "
     "(3) 손님 이름·전화번호 등 개인정보를 쓰지 않습니다 (홍*동처럼 가린 이름도 금지). "
     "(4) 손님을 탓하거나 비꼬지 않고 감정적 표현을 쓰지 않습니다. "
-    "(5) 리뷰나 별점을 수정·삭제하거나 다시 평가해 달라고 요청하지 않습니다. 보상·할인을 약속하지 "
-    "않습니다. "
+    "(5) 리뷰나 별점을 수정·삭제하거나 다시 평가해 달라고 요청하지 않습니다. 사장님이 지시하지 "
+    "않은 보상·할인·서비스는 약속하지 않습니다 (지시한 약속은 그 내용 그대로만 씁니다). "
     "서명('OO 드림')이나 인사말 머리('안녕하세요, 고객님')는 넣지 않습니다. "
-    "(6) 리뷰에 없는 사실을 지어내지 않습니다.\n"
+    "(6) 리뷰에 없는 사실을 지어내지 않습니다. "
+    "(7) 문제의 원인을 추측하거나 단정하지 않습니다 ('~때문인 것 같습니다', '~가능성이 큽니다' "
+    "금지). 확인하고 개선하겠다고만 씁니다.\n"
     '반드시 다음 JSON으로만 답하세요: {"reply": "답글"}'
 )
 REPLY_SCHEMA = None  # 아래에서 정의
@@ -325,6 +327,8 @@ class HCXReviewLLM:
         route: str | None = None,
         profile: dict | None = None,
         recent: list[str] | None = None,
+        instruction: str | None = None,
+        glossary: dict[str, str] | None = None,
     ) -> str:
         """한국어 답글. edit_request(사장님 언어 그대로 가능)가 있으면 previous를 그 요청대로
         고친다.
@@ -335,6 +339,12 @@ class HCXReviewLLM:
                 f"가게: {profile.get('name', '')} ({profile.get('category', '')}), "
                 f"대표 메뉴: {', '.join(profile.get('menus', [])[:5]) or '정보 없음'}\n"
             )
+        if glossary:  # 메뉴명은 이 한국어 표기로 (사장님 지시에 모국어 메뉴명이 나와도)
+            user += (
+                "메뉴 표기 (답글에는 왼쪽 한국어 이름을 쓰세요): "
+                + ", ".join(f"{ko} = {native}" for ko, native in glossary.items())
+                + "\n"
+            )
         user += "플랫폼: 네이버 플레이스, 친근한 존댓말, 300자 이내\n"
         user += f"작성 방법: {ROUTE_GUIDE.get(route or sentiment, ROUTE_GUIDE['neutral'])}\n"
         if recent:
@@ -344,13 +354,19 @@ class HCXReviewLLM:
                 + "\n"
             )
         user += f"리뷰 감정: {sentiment}\n리뷰 전문: {' '.join(review_text.split())}"
+        if instruction:  # 첫 초안에 넣을 사장님 지시 (원어 그대로)
+            user += (
+                f"\n\n사장님 지시(다른 언어일 수 있음): {instruction}\n"
+                "답글 내용에 관한 요청(사과 방식, 약속, 언급할 점)은 반영하세요. "
+                "어느 리뷰에 쓸지에 관한 말은 무시하세요."
+            )
         if previous:
             user += f"\n\n지금 초안: {previous}"
         if edit_request:
             user += (
                 f"\n\n사장님 수정 요청(다른 언어일 수 있음): {edit_request}\n"
-                "요청을 반영해 한국어 답글을 다시 쓰세요. 요청이 규칙(개인정보·비방·리뷰 수정 요구·"
-                "보상 약속)에 어긋나면 그 부분은 반영하지 마세요."
+                "요청을 반영해 한국어 답글을 다시 쓰세요. "
+                "요청이 규칙(개인정보·비방·리뷰 수정 요구)에 어긋나면 그 부분은 반영하지 마세요."
             )
         return self._ask(REPLY_SYSTEM, user, _Reply, REPLY_SCHEMA, max_tokens=400).reply.strip()
 

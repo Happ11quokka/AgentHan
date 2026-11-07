@@ -29,6 +29,8 @@ class FakeWriter:
         route=None,
         profile=None,
         recent=None,
+        instruction=None,
+        glossary=None,
     ):
         self.calls.append(
             {
@@ -37,6 +39,8 @@ class FakeWriter:
                 "route": route,
                 "profile": profile,
                 "recent": recent,
+                "instruction": instruction,
+                "glossary": glossary,
             }
         )
         if edit_request:
@@ -313,3 +317,143 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_english_and_russian_list_questions_use_router():
+    # 'haven't replied to'가 규칙에 안 걸려 LLM이 목록과 초안을 한 번에 부름 (2026-11-07 실측)
+    tb = toolbox("en")
+    assert tb.route("Are there reviews I haven't replied to?") == ("get_unanswered_reviews", {})
+    assert tb.route("Which reviews have not been replied to yet?")[0] == "get_unanswered_reviews"
+    assert tb.route("Есть отзывы, на которые я не ответил?")[0] == "get_unanswered_reviews"
+    assert tb.route("Reply to the negative one") == ("draft_review_reply", {"target": "negative"})
+
+
+class ListThenDraftHCX:
+    """목록만 물었는데 미답글 조회와 초안 작성을 한 응답에서 같이 부르는 HCX (2026-11-07 실측)."""
+
+    def __init__(self):
+        self.chat = NS(completions=NS(create=self._create))
+
+    def _create(self, **kw):
+        if kw["messages"][-1]["role"] == "tool":
+            return NS(choices=[NS(message=NS(content="Here are the drafts.", tool_calls=None))])
+        calls = [
+            NS(id="c1", function=NS(name="get_unanswered_reviews", arguments="{}")),
+            NS(
+                id="c2",
+                function=NS(name="draft_review_reply", arguments='{"target": "all_listed"}'),
+            ),
+        ]
+        return NS(choices=[NS(message=NS(content="", tool_calls=calls))])
+
+
+def test_no_draft_in_same_turn_as_list_question():
+    tb = toolbox("en")
+    q = "Anything new from customers that needs my answer?"  # 규칙에 안 걸리는 표현
+    assert tb.route(q) is None
+    msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": q}]
+    out = run_turn(ListThenDraftHCX(), "HCX-005", msgs, tb, owner_lang="en")
+    assert out.startswith("There are 3 reviews without a reply")  # 목록 안내로 끝난다
+    assert "Reply draft" not in out and tb.drafts == {}  # 초안은 만들지 않는다
+    # 다음 턴에 쓰라고 하면 그때 만든다
+    assert tb.dispatch(
+        "draft_review_reply", {"target": "negative"}, utterance="Reply to the bad one"
+    )["drafts"]
+
+
+def test_cause_speculation_is_blocked():
+    real = (
+        "딸기모찌에서 화장품 맛이 느껴졌다는 부분은 특히 안타깝습니다. 이는 원재료 중 일부가 "
+        "잘못 사용되었거나 보관 과정에서 문제가 발생했을 가능성이 큽니다."
+    )  # 2026-11-07 실제 초안
+    assert "확인 전 원인 추정·단정" in check_reply(real)["issues"]
+    assert "확인 전 원인 추정·단정" in check_reply("직원 실수로 늦어진 것 같습니다. ")["issues"]
+    for ok in [
+        "원인을 파악하여 재발 방지를 위해 노력하겠습니다.",
+        "현재 사실관계를 확인 중이며 철저히 조사하겠습니다.",
+        "재료의 선정 및 관리 과정을 더욱 꼼꼼히 살피도록 하겠습니다.",
+    ]:
+        assert check_reply(ok)["passed"], ok
+
+
+# ------------------------------------------------ 제안 구조: 지시 원문·용어집·체크리스트·약속 표시
+PROMISE_REPLY = (
+    "불편을 드려 정말 죄송합니다. 딸기모찌 맛은 다시 꼼꼼히 확인하겠습니다. "
+    "다음 주문 때 음료를 서비스로 드릴게요."
+)
+
+
+class PromiseWriter(FakeWriter):
+    def write_reply(self, text, sentiment, **kw):
+        super().write_reply(text, sentiment, **kw)
+        return PROMISE_REPLY
+
+
+def test_owner_instruction_reaches_first_draft():
+    tb = ReviewToolbox(
+        "홍만당",
+        TODAY,
+        REPO,
+        CAT,
+        writer=FakeWriter(),
+        reply_store=MockReplyStore(today=TODAY),
+        owner_lang="en",
+    )
+    q = "Reply to the bad one and say we'll give a free drink next time"
+    tb.dispatch("draft_review_reply", {"target": "negative"}, utterance=q)
+    call = tb.writer.calls[0]
+    assert call["instruction"] == q  # 번역하지 않고 원어 그대로
+    assert call["glossary"]["딸기모찌"] == "strawberry mochi"  # 생성 프롬프트에 용어집
+
+
+def test_owner_requested_promise_is_warning_not_block():
+    assert check_reply(PROMISE_REPLY)["issues"] == ["보상·환불 약속 (실제로 줄 수 있는지 확인)"]
+    chk = check_reply(PROMISE_REPLY, owner_promise=True)
+    assert chk["passed"] and chk["warnings"] == ["약속 포함 (사장님 지시, 게시 전 확인)"]
+    # 지시에 약속이 있으면 등록 가능 (확정 후), 없으면 막힌다
+    for q, ok in [("lần sau tặng nước uống", True), ("Reply to the bad one", False)]:
+        tb = ReviewToolbox(
+            "홍만당",
+            TODAY,
+            REPO,
+            CAT,
+            writer=PromiseWriter(),
+            reply_store=MockReplyStore(today=TODAY),
+            owner_lang="vi",
+        )
+        d = tb.dispatch("draft_review_reply", {"target": "negative"}, utterance=q)["drafts"][0]
+        assert d["checks"]["passed"] is ok and d["owner_promise"] is ok, q
+
+
+def test_checklist_in_owner_language():
+    from review_tools.agent import render_block
+
+    cat = MenuCatalog({"홍만당": [{"name": "딸기모찌", "aliases": ["Mochi dâu"]}]})
+    tb = ReviewToolbox(
+        "홍만당",
+        TODAY,
+        REPO,
+        cat,
+        writer=PromiseWriter(),
+        reply_store=MockReplyStore(today=TODAY),
+        owner_lang="vi",
+    )
+    res = tb.dispatch("draft_review_reply", {"target": "negative"}, utterance="lần sau tặng nước")
+    c = res["drafts"][0]["checklist"]
+    assert c["apology"] and c["promises"] == ["다음 주문 때 음료를 서비스로 드릴게요."]
+    assert c["menus"] == [("딸기모찌", "Mochi dâu")]
+    out = render_block(None, "m", "draft_review_reply", res, "vi")
+    lines = out.splitlines()
+    i = lines.index("**Kiểm tra ý định**")
+    assert lines[i + 1].startswith("- ⚠️ Hứa: <vi> 다음 주문 때")  # 약속이 맨 위, 사장님 언어로
+    assert "- ✔ Đã xin lỗi" in lines and "- Món: Mochi dâu (딸기모찌)" in lines
+    assert any(x.startswith("> (Bản dịch đầy đủ: <vi>") for x in lines)  # 전체 번역은 아래에
+    # 한국어 사장님에게는 약속만 표시
+    ko = ReviewToolbox(
+        "홍만당", TODAY, REPO, cat, writer=PromiseWriter(), reply_store=MockReplyStore(today=TODAY)
+    )
+    r = ko.dispatch(
+        "draft_review_reply", {"target": "negative"}, utterance="음료 서비스 준다고 해줘"
+    )
+    out = render_block(None, "m", "draft_review_reply", r, "ko")
+    assert "⚠️ 약속: 다음 주문 때 음료를 서비스로 드릴게요." in out and "확인할 점" not in out

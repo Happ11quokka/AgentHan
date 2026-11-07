@@ -161,13 +161,54 @@ _REVIEW_EDIT = re.compile(
     r"(리뷰|후기|별점|평점).{0,12}(수정|삭제|지워|내려|올려\s?주|바꿔)|"
     r"(다시|재).{0,10}(평가|리뷰|별점|후기)|평가해\s?주"
 )  # '다시 평가해 주실 수 있을까요?'(실제 발생)
+# 사실 확인 전에 원인을 추정·단정하는 표현. '원재료가 잘못 사용되었거나 보관 과정에서 문제가
+# 발생했을 가능성이 큽니다'(2026-11-07 실제 발생)
+_CAUSE = re.compile(
+    r"가능성이\s?(크|높|있)|(때문인|때문일|탓인|탓일)\s?(것|수|듯)|원인은|"
+    r"잘못\s?(사용|보관|조리|들어가|섞|만들)|(실수|착오)로\s|문제가\s?(있었던|생긴|발생한)\s?것\s?같"
+)
+
+
+# 사장님이 지시에서 약속을 요청했는지 (원어 그대로: 한·영·러·베·중)
+PROMISE_INTENT = re.compile(
+    r"서비스|쿠폰|할인|환불|무료|증정|사은품|보상|"
+    r"free|discount|coupon|refund|on the house|complimentary|"
+    r"бесплатн|скидк|купон|возврат|в подарок|"
+    r"tặng|miễn phí|giảm giá|hoàn tiền|phiếu|"
+    r"免费|赠送|优惠|折扣|退款|送",
+    re.I,
+)
+# 답글 속 약속 문장 (체크리스트 맨 위에 ⚠로 보여 준다)
+_PROMISE = re.compile(
+    r"(서비스|증정|무료|쿠폰|할인|환불|보상|사은품|음료|디저트).{0,25}(드리|드릴|해\s?드|챙겨)"
+)
+_APOLOGY = re.compile(r"죄송|사과\s?(드|의)|송구|면목")
+# 제안 구조 C-3(허용할 약속 범위)이 정해지기 전 기본값: 사장님이 직접 지시한 약속만 허용하고,
+# 게시 전에 ⚠로 확인받는다. 지시하지 않은 약속은 지금처럼 등록을 막는다.
+OWNER_PROMISES_ALLOWED = True
+
+
+def _sentences(t: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?。])\s+", t.strip()) if s.strip()]
+
+
+def build_checklist(reply: str, glossary: dict[str, str] | None = None) -> dict:
+    """답글에서 사장님이 책임질 사실만 뽑는다: 사과 여부, 약속 문장, 언급한 메뉴(용어집 표기)."""
+    promises = [s for s in _sentences(reply) if _PROMISE.search(s) or _COMPENSATION.search(s)]
+    menus = [(ko, native) for ko, native in (glossary or {}).items() if ko in reply]
+    return {"apology": bool(_APOLOGY.search(reply)), "promises": promises, "menus": menus}
 
 
 def _first_sentence(t: str) -> str:
     return re.split(r"(?<=[.!?])\s", t.strip(), maxsplit=1)[0]
 
 
-def check_reply(reply: str, recent: list[str] | None = None, limit: int = NAVER_LIMIT) -> dict:
+def check_reply(
+    reply: str,
+    recent: list[str] | None = None,
+    limit: int = NAVER_LIMIT,
+    owner_promise: bool = False,
+) -> dict:
     """→ {"passed": bool, "issues": [...], "warnings": [...]}. issues가 있으면 등록할 수 없고,
     warnings는 알리기만 한다."""
     issues, warnings = [], []
@@ -175,8 +216,11 @@ def check_reply(reply: str, recent: list[str] | None = None, limit: int = NAVER_
         issues.append("전화번호 등 개인정보")
     if _BLAME.search(reply):
         issues.append("손님 탓 표현")
-    if _COMPENSATION.search(reply):
-        issues.append("보상·환불 약속 (실제로 줄 수 있는지 확인)")
+    if _COMPENSATION.search(reply) or _PROMISE.search(reply):
+        if owner_promise and OWNER_PROMISES_ALLOWED:
+            warnings.append("약속 포함 (사장님 지시, 게시 전 확인)")
+        else:
+            issues.append("보상·환불 약속 (실제로 줄 수 있는지 확인)")
     if _PLACEHOLDER.search(reply):
         issues.append("채우지 않은 자리표시")
     if len(reply) > limit * 1.3:
@@ -189,6 +233,8 @@ def check_reply(reply: str, recent: list[str] | None = None, limit: int = NAVER_
         issues.append("비방·감정적 표현")
     if _REVIEW_EDIT.search(reply):
         issues.append("리뷰·별점 수정이나 삭제 요구")
+    if _CAUSE.search(reply):
+        issues.append("확인 전 원인 추정·단정")
     if not reply.strip():
         issues.append("빈 답글")
     return {"passed": not issues, "issues": issues, "warnings": warnings}
@@ -230,6 +276,8 @@ def draft_review_reply(
     previous: dict | None = None,
     profile: dict | None = None,
     recent: list[str] | None = None,
+    instruction: str | None = None,
+    owner_promise: bool = False,
     **_,
 ) -> dict:
     """review_ids(시스템 값)의 리뷰마다 한국어 답글 초안을 만든다. edit_request가 있으면 previous
@@ -241,6 +289,10 @@ def draft_review_reply(
             "message": "어느 리뷰에 답글을 쓸지 모릅니다. 먼저 미답글 목록을 보여주세요.",
         }
     sentiment = sentiment or RuleSentiment()
+    # 사장님이 지시(원어)에서 약속을 요청했으면 그 약속은 허용하고 ⚠로 확인받는다
+    owner_promise = owner_promise or bool(
+        PROMISE_INTENT.search(f"{instruction or ''} {edit_request or ''}")
+    )
     by_id = {r["review_id"]: r for r in repo.get_reviews(store_id, None, today)}
     drafts = []
     for rid in review_ids:
@@ -256,27 +308,31 @@ def draft_review_reply(
             d["reply_ko"] for d in drafts if "reply_ko" in d
         ]  # 같은 묶음 안 반복도 방지
         if writer is not None:
-            kw = dict(route=route, profile=profile, recent=recent_all[-3:])
+            kw = dict(route=route, profile=profile, recent=recent_all[-3:], glossary=glossary)
+            if instruction and not edit_request:
+                kw["instruction"] = instruction
             reply = writer.write_reply(
                 r["text"], senti, edit_request=edit_request, previous=prev, **kw
             )
-            chk = check_reply(reply, recent_all)
-            if chk["issues"] or chk["warnings"]:  # 한 번 고쳐 쓰게 한다
+            chk = check_reply(reply, recent_all, owner_promise=owner_promise)
+            fixable = chk["issues"] + [w for w in chk["warnings"] if not w.startswith("약속 포함")]
+            if fixable:  # 한 번 고쳐 쓰게 한다
                 reply = writer.write_reply(
                     r["text"],
                     senti,
                     previous=reply,
-                    edit_request=(
-                        f"다음 문제를 고치세요: {', '.join(chk['issues'] + chk['warnings'])}"
-                    ),
+                    edit_request=(f"다음 문제를 고치세요: {', '.join(fixable)}"),
                     **kw,
                 )
         else:
             reply = prev if (prev and not edit_request) else _TEMPLATE[route]
-        chk = check_reply(reply, recent_all)
-        translated = None
-        if owner_lang != "ko" and writer is not None:
-            translated = writer.translate([reply], owner_lang, glossary)[0]
+        chk = check_reply(reply, recent_all, owner_promise=owner_promise)
+        checklist = build_checklist(reply, glossary)
+        translated, promises_tr = None, []
+        if owner_lang != "ko" and writer is not None:  # 전체 번역 + 약속 문장 번역을 한 번에
+            out = writer.translate([reply, *checklist["promises"]], owner_lang, glossary)
+            translated, promises_tr = out[0], list(out[1:])
+        checklist["promises_translated"] = promises_tr
         drafts.append(
             {
                 "draft_id": f"d-{rid}",
@@ -289,6 +345,8 @@ def draft_review_reply(
                 "reply_ko": reply,
                 "reply_translated": translated,
                 "checks": chk,
+                "checklist": checklist,
+                "owner_promise": owner_promise,
                 "revised": bool(edit_request),
             }
         )

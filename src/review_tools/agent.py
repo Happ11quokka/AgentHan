@@ -81,7 +81,10 @@ REPORT_TOOLS = {"set_review_report", "run_review_report"}
 # '안 좋은 리뷰에 답글 써줘'에 분석 도구를 부르고 초안을 직접 지어냄, '이대로 올려줘'에 등록 없이
 # '게시하겠습니다')
 LIST_INTENT = re.compile(
-    r"답글\s?(안|없|못)|답장\s?(안|없|못)|미답글|without (a )?repl|no repl|unanswered|без ответа",
+    r"답글\s?(안|없|못)|답장\s?(안|없|못)|미답글|without (a )?repl|no repl|unanswered|"
+    # 'haven't replied to'가 규칙에 안 걸려 LLM이 목록과 초안을 한 번에 부름 (2026-11-07 실측)
+    r"(haven'?t|have not|didn'?t|did not|not yet|not) (yet )?(been )?repl|"
+    r"без ответа|не ответил|не ответила",
     re.I,
 )
 WRITE_INTENT = re.compile(
@@ -95,7 +98,13 @@ TARGET_NEG = re.compile(
 )
 TARGET_ALL = re.compile(r"전부|다\s?(써|달아|작성)|모두|all|все", re.I)
 
-LANG_NAMES = {"ko": "한국어", "en": "English", "ru": "русский"}
+LANG_NAMES = {
+    "ko": "한국어",
+    "en": "English",
+    "ru": "русский",
+    "vi": "Tiếng Việt",
+    "zh": "中文",
+}
 
 
 def system_prompt(store_name: str, today: date, owner_lang: str) -> str:
@@ -167,6 +176,7 @@ class ReviewToolbox:
         )
         self.writer, self.owner_lang = writer, owner_lang
         self.listed: list[dict] = []  # 직전 미답글 목록 (draft의 대상)
+        self.listed_for: str | None = None  # 그 목록을 만든 사장님 발화
         self.drafts: dict[str, dict] = {}  # review_id → 직전 초안 (수정·등록의 대상)
         self.specs = [
             ANALYZE_REVIEWS,
@@ -276,9 +286,23 @@ class ReviewToolbox:
             if name == "get_unanswered_reviews":
                 res = get_unanswered_reviews(**self.ctx, **clean)
                 self.listed = res["reviews"]
+                self.listed_for = utterance
                 return res
             if name == "draft_review_reply":
-                return self._draft(clean)
+                if (
+                    utterance is not None
+                    and utterance == self.listed_for
+                    and not WRITE_INTENT.search(utterance)
+                    and not clean.get("edit_request")
+                ):
+                    # 목록만 물었는데 같은 턴에 초안까지 쓰지 않는다. 어느 리뷰에 쓸지 먼저 묻는다
+                    return {
+                        "error": "not_requested",
+                        "detail": (
+                            "사장님은 목록만 물었습니다. 어느 리뷰에 답글을 쓸지 먼저 물으세요."
+                        ),
+                    }
+                return self._draft(clean, utterance)
             if name == "post_review_reply":
                 res = post_review_reply(
                     drafts=self.drafts, store=self.reply_store, utterance=utterance
@@ -292,7 +316,7 @@ class ReviewToolbox:
         except (KeyError, ValueError) as e:  # 잘못된 기간 값 등
             return {"error": "bad_arguments", "detail": str(e)[:200], "arguments": clean}
 
-    def _draft(self, args: dict) -> dict:
+    def _draft(self, args: dict, utterance: str | None = None) -> dict:
         edit = args.get("edit_request")
         if edit and self.drafts:  # 고치기: 직전 초안들이 대상
             ids = list(self.drafts)
@@ -307,6 +331,9 @@ class ReviewToolbox:
                 pool = [x for x in pool if x["sentiment"] in ("negative", "mixed")] or pool
             ids = [x["review_id"] for x in (pool if target == "all_listed" else pool[:1])]
         prev = {rid: d["reply_ko"] for rid, d in self.drafts.items()}
+        # 첫 초안에도 사장님 지시를 원어 그대로 넣는다 ('답글 써줘, 다음에 음료 서비스 준다고')
+        instruction = None if edit else utterance
+        owner_promise = any(self.drafts[r].get("owner_promise") for r in ids if r in self.drafts)
         res = draft_review_reply(
             **self.ctx,
             review_ids=ids,
@@ -317,6 +344,8 @@ class ReviewToolbox:
             previous=prev,
             profile=self.profile(),
             recent=self.reply_store.recent_replies(),
+            instruction=instruction,
+            owner_promise=owner_promise,
         )
         for d in res.get("drafts", []):
             if "reply_ko" in d:
@@ -332,11 +361,25 @@ class _SyntheticCall:
         self.function = type("F", (), {"name": name, "arguments": arguments})()
 
 
-LANG_EN = {"ru": "Russian", "en": "English", "ko": "Korean"}
+LANG_EN = {
+    "ru": "Russian",
+    "en": "English",
+    "ko": "Korean",
+    "vi": "Vietnamese",
+    "zh": "Chinese",
+}
 QUOTE_HEADER = {"ko": "대표 리뷰", "en": "Sample reviews", "ru": "Примеры отзывов"}
 
 
-SCRIPT = {"ru": re.compile(r"[А-Яа-яЁё]"), "en": re.compile(r"^[A-Za-z][A-Za-z\s'-]*$")}
+SCRIPT = {
+    "ru": re.compile(r"[А-Яа-яЁё]"),
+    "en": re.compile(r"^[A-Za-z][A-Za-z\s'-]*$"),
+    # 베트남어: 성조·특수 모음이 하나라도 있는 라틴 표기 (Bún chả)
+    "vi": re.compile(
+        r"[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]", re.I
+    ),
+    "zh": re.compile(r"[\u4e00-\u9fff]"),
+}
 
 
 def menu_glossary(catalog, store_id: str, owner_lang: str) -> dict[str, str]:
@@ -641,6 +684,66 @@ def reply_message(tool, result, owner_lang) -> str | None:
 
 
 DRAFT_HEADER = {"ko": "답글 초안", "en": "Reply draft", "ru": "Черновик ответа"}
+# 의도 체크리스트 (제안 구조 D1-b): 사장님이 책임질 사실만 사장님 언어로. 전체 번역은 그 아래
+CHECK_LABEL = {
+    "ko": {
+        "title": "확인할 점",
+        "apology": "사과함",
+        "no_apology": "사과 없음",
+        "promise": "약속",
+        "menu": "메뉴",
+        "full": "전체 번역",
+    },
+    "en": {
+        "title": "Check before posting",
+        "apology": "Apologizes",
+        "no_apology": "No apology",
+        "promise": "Promise",
+        "menu": "Menu",
+        "full": "Full translation",
+    },
+    "ru": {
+        "title": "Проверьте перед публикацией",
+        "apology": "Есть извинение",
+        "no_apology": "Без извинения",
+        "promise": "Обещание",
+        "menu": "Меню",
+        "full": "Полный перевод",
+    },
+    "vi": {
+        "title": "Kiểm tra ý định",
+        "apology": "Đã xin lỗi",
+        "no_apology": "Chưa xin lỗi",
+        "promise": "Hứa",
+        "menu": "Món",
+        "full": "Bản dịch đầy đủ",
+    },
+    "zh": {
+        "title": "发布前确认",
+        "apology": "已道歉",
+        "no_apology": "未道歉",
+        "promise": "承诺",
+        "menu": "菜单",
+        "full": "完整翻译",
+    },
+}
+
+
+def checklist_lines(d: dict, owner_lang: str) -> list[str]:
+    """⚠ 약속을 맨 위에, 그다음 사과 여부·메뉴. 한국어 사장님은 약속만 표시한다."""
+    c = d.get("checklist") or {}
+    lab = CHECK_LABEL.get(owner_lang, CHECK_LABEL["en"])
+    promises = c.get("promises") or []
+    shown = c.get("promises_translated") or promises
+    lines = [f"⚠️ {lab['promise']}: {p}" for p in shown]
+    if owner_lang == "ko":
+        return lines
+    lines.append(("✔ " + lab["apology"]) if c.get("apology") else ("✖ " + lab["no_apology"]))
+    for ko, native in c.get("menus") or []:
+        lines.append(f"{lab['menu']}: {native} ({ko})")
+    return [f"**{lab['title']}**", *[f"- {x}" for x in lines]]
+
+
 LIST_HEADER = {"ko": "답글 안 단 리뷰", "en": "Reviews without a reply", "ru": "Отзывы без ответа"}
 SENT_MARK = {"negative": "🔴", "mixed": "🟠", "positive": "🟢", "neutral": "⚪"}
 
@@ -676,13 +779,18 @@ def render_block(client, model, tool, result, owner_lang, glossary=None) -> str:
                 f"\n\n**{DRAFT_HEADER.get(owner_lang, DRAFT_HEADER['en'])}** · 리뷰: "
                 f'"{d["review_quote"]}"'
             )
+            lines.extend(checklist_lines(d, owner_lang))
             lines.append(f"> {d['reply_ko']}")
             if d.get("reply_translated"):
-                lines.append(f"> ({d['reply_translated']})")
+                lab = CHECK_LABEL.get(owner_lang, CHECK_LABEL["en"])
+                lines.append(f"> ({lab['full']}: {d['reply_translated']})")
             if not d["checks"]["passed"]:
                 lines.append(f"⛔ {', '.join(d['checks']['issues'])}")
-            if d["checks"].get("warnings"):
-                lines.append(f"⚠️ {', '.join(d['checks']['warnings'])}")
+            warns = [  # 약속은 체크리스트 맨 위에 이미 보여 준다
+                w for w in d["checks"].get("warnings", []) if not w.startswith("약속 포함")
+            ]
+            if warns:
+                lines.append(f"⚠️ {', '.join(warns)}")
             if d.get("owner_check"):
                 lines.append(f"🚨 사장님 확인 필요: {', '.join(d['risk']['words'])}")
         return "\n".join(lines)
@@ -1021,7 +1129,8 @@ def run_turn(
         for c in calls:
             args = _args(c.function.arguments)
             result = toolbox.dispatch(c.function.name, args, utterance=utter)
-            last_result, last_tool = result, c.function.name
+            if result.get("error") != "not_requested":  # 막힌 초안 호출은 직전 목록 안내를 유지
+                last_result, last_tool = result, c.function.name
             if log:
                 log(c.function.name, args, result)
             messages.append(
