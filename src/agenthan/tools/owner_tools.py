@@ -18,6 +18,8 @@ def tool_schema(feature_id: str) -> dict:
         spec = {"type": "string", "description": field["name_ko"]}
         if field["id"] == "price":
             spec.update(type="integer", minimum=1)
+        if field["id"] == "review_text":
+            spec["description"] += " (가게 데이터의 리뷰 id 또는 리뷰 원문 일부)"
         if not field["required"]:
             spec["description"] += " (현재 입력 미지원: 보내지 마세요)"
         properties[field["id"]] = spec

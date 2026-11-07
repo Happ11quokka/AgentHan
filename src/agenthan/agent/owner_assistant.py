@@ -26,6 +26,8 @@ SYSTEM = (
     "필수 입력을 추측하거나 예시 값으로 채우지 말고 빠진 항목을 사장님께 되물으세요. "
     "메뉴 가격은 양의 정수(원)입니다. description, photo, tone 입력은 아직 지원하지 않습니다. "
     "답글 초안 생성과 말투 변환은 하지 말고 사장님이 준 답글만 저장하세요. "
+    "답글을 달 리뷰는 가게 데이터의 리뷰 id로 지정하세요. "
+    "candidates가 오면 어느 리뷰인지 되물으세요. "
     "tool 결과의 missing_fields는 사장님께 질문하세요. 도구 성공 전에는 저장됐다고 하지 마세요. "
     "성공 후에는 record의 저장된 이름과 가격 또는 리뷰와 답글을 보여주세요. "
     "실제 네이버 연동/발송은 없고 saved_not_sent는 저장만 했다는 뜻입니다. "
@@ -49,7 +51,7 @@ class OwnerAssistant:
         self.embed = embed
         self.max_tool_calls = max_tool_calls
         self.history: list[dict] = []
-        self.pending_query: str | None = None
+        self.pending_feature: str | None = None
 
     def _finish(self, answer: str, saved: list[dict], missing: list[str]) -> str:
         if missing:
@@ -57,35 +59,37 @@ class OwnerAssistant:
         if saved:
             # Always show the actual reread records even if the model omits them.
             answer += "\n더미 저장 확인 (실제 발송 없음): " + json.dumps(saved, ensure_ascii=False)
-            self.pending_query = None
+            self.pending_feature = None
         self.history.append({"role": "assistant", "content": answer})
         return answer
 
     def ask(self, text: str) -> str:
         text = text.strip()
-        matches = match_features(text, embed=self.embed)
-        direct_match = bool(matches)
         if not text:
             return HELP
+        matches = match_features(text, embed=self.embed)
         self.history.append({"role": "user", "content": text})
-        if not matches and self.pending_query:
-            # Short answers such as "5000원" need the question's feature context.
-            matches = match_features(self.pending_query + "\n" + text, embed=self.embed)
-        feature = get_feature(matches[0].feature_id) if matches else None
+        candidates = [m.feature_id for m in matches]
+        if self.pending_feature and (not candidates or self.pending_feature in candidates):
+            # While asking for missing input, answers such as "5000원" or a reply
+            # mentioning "예약" stay in the same feature unless the owner clearly
+            # switches to another one.
+            feature = get_feature(self.pending_feature)
+        else:
+            feature = get_feature(candidates[0]) if candidates else None
         if not feature:
-            self.pending_query = None
+            self.pending_feature = None
             return self._finish(HELP, [], [])
         if not feature["input_supported"]:
-            self.pending_query = None
+            self.pending_feature = None
             return self._finish(
                 f"{feature['name_ko']}: {feature['summary_ko']} 직접 입력은 아직 지원하지 않아요.",
                 [],
                 [],
             )
 
-        if direct_match:
-            self.pending_query = text
         feature_id = feature["id"]
+        self.pending_feature = feature_id
         tool = tool_schema(feature_id)
         system = {
             "role": "system",
@@ -133,7 +137,7 @@ class OwnerAssistant:
                 elif result.get("missing_fields"):
                     missing = result["missing_fields"]
             if over_limit:
-                self.pending_query = None
+                self.pending_feature = None
                 return self._finish(TOOL_LIMIT_MESSAGE, saved, missing)
             count += len(calls)
 

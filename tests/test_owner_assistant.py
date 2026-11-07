@@ -122,7 +122,6 @@ def test_missing_price_then_followup_saves(tmp_path, mock_index):
     saved = read_file(path)["menus"]
     assert next(m for m in saved if m["name"] == "연습 차")["price"] == 5000
     assert "5000원" in embedded
-    assert any("신메뉴" in text and "5000원" in text for text in embedded)
     assert any(m["role"] == "user" and "신메뉴" in m["content"] for m in fake.requests[2][0])
     assert fake.requests[0][1] == [tool_schema("menu")]
     assert fake.requests[-1][1:] == ([], "none")
@@ -194,6 +193,73 @@ def test_review_reply_saved_without_sending(tmp_path, mock_index):
     assert "감사합니다!" in response and "saved_not_sent" in response
     assert fake.requests[0][1] == [tool_schema("review_reply")]
     assert SEED_PATH.read_bytes() == seed
+
+
+def keyword_only(_):
+    raise ValueError("force keyword-only matching")
+
+
+def test_pending_reply_stays_on_review_when_reply_mentions_other_feature(tmp_path):
+    path = tmp_path / "store.json"
+    fake = FakeChat(
+        answer("어떤 답글을 달까요?"),
+        call(
+            "save_review_reply",
+            {"review_text": "review-3", "reply_text": "예약 많이 해주세요 감사합니다"},
+        ),
+        answer("답글을 저장했어요."),
+    )
+    assistant = owner.OwnerAssistant(path, chat=fake, embed=keyword_only)
+    assistant.ask("늦게 나왔다는 리뷰에 답글 달고 싶어요")
+    # Keyword scores tie reservation and review_reply here; the pending feature wins.
+    assert {m.feature_id for m in matcher.match_features("예약 많이 해주세요 감사합니다")} >= {
+        "reservation",
+        "review_reply",
+    }
+    response = assistant.ask("예약 많이 해주세요 감사합니다")
+    assert fake.requests[1][1] == [tool_schema("review_reply")]
+    review = next(r for r in read_file(path)["reviews"] if r["id"] == "review-3")
+    assert review["reply_text"] == "예약 많이 해주세요 감사합니다"
+    assert "saved_not_sent" in response
+    assert assistant.pending_feature is None
+
+
+def test_pending_menu_switches_when_owner_clearly_asks_other_feature(tmp_path):
+    fake = FakeChat(answer("가격을 알려주세요."))
+    assistant = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=keyword_only)
+    assistant.ask("신메뉴 등록하고 싶어요")
+    assert assistant.pending_feature == "menu"
+    response = assistant.ask("예약 받고 싶어요")
+    assert len(fake.requests) == 1
+    assert matcher.get_feature("reservation")["name_ko"] in response
+    assert assistant.pending_feature is None
+
+
+@pytest.mark.parametrize(
+    ("query", "review_id"),
+    [
+        ("review-2", "review-2"),
+        ("REVIEW-2", "review-2"),
+        ("음식이 조금 늦게 나왔어요.", "review-3"),
+        ("늦게 나왔어요", "review-3"),
+    ],
+)
+def test_review_found_by_id_or_unique_quote(tmp_path, query, review_id):
+    store = DummyStore(tmp_path / "store.json")
+    result = store.save_review_reply(query, "감사합니다")
+    assert result["ok"] and result["record"]["id"] == review_id
+
+
+@pytest.mark.parametrize(
+    ("query", "error", "count"),
+    [("요", "review_ambiguous", 3), ("없는 리뷰", "review_not_found", 3)],
+)
+def test_unclear_review_returns_candidates_without_write(tmp_path, query, error, count):
+    path = tmp_path / "store.json"
+    result = DummyStore(path).save_review_reply(query, "감사합니다")
+    assert result["error"] == error
+    assert len(result["candidates"]) == count
+    assert not path.exists()
 
 
 @pytest.mark.parametrize("existing", [True, False])

@@ -23,6 +23,19 @@ def valid_price(value: object) -> bool:
     return type(value) is int and value > 0
 
 
+def find_reviews(reviews: list[dict], query: str) -> list[dict]:
+    """Find a review by id, exact text, then a unique partial quote of the text."""
+    key = normalize(query)
+    for exact in (
+        [r for r in reviews if normalize(r["id"]) == key],
+        [r for r in reviews if normalize(r["review_text"]) == key],
+    ):
+        if exact:
+            return exact
+    # Owners and the model often quote only part of a review ("늦게 나왔어요").
+    return [r for r in reviews if key in normalize(r["review_text"])]
+
+
 class DummyStore:
     def __init__(self, path: str | Path = DEFAULT_STORE):
         self.path = Path(path).expanduser()
@@ -103,14 +116,16 @@ class DummyStore:
         if any(not isinstance(x, str) or not normalize(x) for x in (review_text, reply_text)):
             raise DummyStoreError("손님 리뷰 내용과 답글 내용이 필요합니다.")
         data = self.read()
-        matches = [
-            r for r in data["reviews"] if normalize(r["review_text"]) == normalize(review_text)
-        ]
+        matches = find_reviews(data["reviews"], review_text)
         if len(matches) != 1:
             return {
                 "ok": False,
-                "error": "review_not_found",
-                "message": "저장된 리뷰를 확인해 주세요.",
+                "error": "review_not_found" if not matches else "review_ambiguous",
+                "message": "답글을 달 리뷰를 확인해 주세요.",
+                "candidates": [
+                    {"id": r["id"], "review_text": r["review_text"]}
+                    for r in (matches or data["reviews"])
+                ],
             }
         record = matches[0]
         record.update(reply_text=reply_text.strip(), status="saved_not_sent")
