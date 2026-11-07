@@ -1,0 +1,497 @@
+/* =====================================================================
+   AgentHan PRD · prd.css (sgr-report 양식 기반, 네이버 그린)
+
+   개념: 「회람되는 보고서」
+     화면용 슬라이드가 아니라 인쇄해서 돌려 읽는 문서다. 밝은 바탕, 검정 본문,
+     코발트 블루 한 색으로만 강조한다. 선은 적게, 표는 촘촘하게, 근거는 본문과
+     구분되는 판에 얹는다. 레퍼런스: 감사보고서 · 기업 KPI 리포트.
+
+   sgr-deck-clear 의 토큰(색·서체)을 그대로 상속하되 크기 체계만 문서용이다.
+   슬라이드는 강의장 뒷자리(최소 26px), 문서는 손에 든 A4(본문 10.5pt).
+
+   규칙 세 가지
+     1. 색은 종이·잉크·블루 셋뿐. 범주는 잉크 명도나 블루 명도로 가른다.
+        상태색(ok/warn/hold)은 조치 상태 배지에만 쓴다.
+     2. 값은 전부 var(--…). 본문 마크업에 색·크기를 직접 쓰지 않는다.
+     3. 인쇄가 정본이다. 화면에서 예뻐도 A4 에서 깨지면 틀린 것이다.
+   ===================================================================== */
+
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+:root {
+  /* ---- 색 (sgr-deck-clear 상속) ---------------------------------- */
+  --paper:      #FFFFFF;   /* 지면. 인쇄 정본이라 흰색이다 */
+  --canvas:     #ECEFED;   /* 화면에서 지면 밖 배경 */
+  --panel:      #F6F9F7;   /* 인셋 판(증거·질문 블록) */
+  --panel-2:    #EEF4F0;
+  --ink:        #14171C;
+  --ink-2:      #4B5563;   /* 부연·표 머리 */
+  --ink-3:      #8A94A3;   /* 캡션 라벨·쪽번호 */
+  --line:       #D8E0DB;
+  --line-soft:  #EBF1ED;
+
+  --blue:       #03C75A;
+  --blue-deep:  #00873C;
+  --sky-wash:   #EAF9F0;   /* 강조 배경면 */
+  --sky-line:   #A9E8C2;
+
+  --ok:         #1E7A4C;   /* 적용 완료 */
+  --ok-wash:    #E7F3EC;
+  --warn:       #B4261A;   /* 내부 확인 필요 */
+  --warn-wash:  #FBEBE9;
+  --hold:       #8A6100;   /* SGR(경환실) 결정 후 적용 */
+  --hold-wash:  #FBF3E0;
+
+  /* ---- 글자 ------------------------------------------------------ */
+  --font:      "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "D2Coding", "Menlo", monospace;
+
+  --fs-doc-title: 26pt; --fs-h1: 17pt; --fs-h2: 13pt; --fs-h3: 11pt;
+  --fs-body: 10.5pt; --fs-small: 9.5pt; --fs-micro: 8.5pt; --fs-code: 8.8pt;
+  --lh-body: 1.72; --lh-tight: 1.3; --lh-table: 1.5;
+
+  /* ---- 간격 ------------------------------------------------------ */
+  --sp-1: 3pt; --sp-2: 6pt; --sp-3: 10pt; --sp-4: 15pt; --sp-5: 22pt; --sp-6: 32pt;
+  --r-sm: 3pt; --r-md: 6pt; --r-pill: 999px;
+
+  /* ---- 지면 ------------------------------------------------------ */
+  --page-w: 210mm; --page-h: 297mm;
+  --margin-x: 20mm; --margin-top: 18mm; --margin-bot: 18mm;
+}
+
+/* =====================================================================
+   지면
+   ===================================================================== */
+/* @page 안에서는 var() 가 먹지 않는다. 값을 바꾸면 pdf_report.py 의 MARGIN 도 같이 바꾼다.
+   브라우저에서 바로 인쇄(⌘P → PDF로 저장)해도 같은 여백이 나오도록 숫자로 적는다. */
+@page {
+  size: A4 portrait;
+  margin: 14mm 14mm 13mm;
+}
+/* 첨부 그림용 가로 쪽 (h1.attach 뒤의 그림) */
+@page land { size: A4 landscape; margin: 12mm 14mm 12mm; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--canvas); }
+body {
+  margin: 0; background: var(--canvas);
+  font-family: var(--font); font-size: var(--fs-body); line-height: var(--lh-body);
+  color: var(--ink);
+  word-break: keep-all; overflow-wrap: anywhere;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  font-feature-settings: "ss05", "cv11"; font-variant-numeric: tabular-nums;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;   /* 브라우저 인쇄에서도 판·배지 배경 유지 */
+}
+
+/* 화면에서는 A4 폭의 종이 한 장이 이어져 보인다. 인쇄하면 @page 가 자른다. */
+.sheet {
+  width: var(--page-w); min-height: var(--page-h);
+  margin: 12mm auto; padding: var(--margin-top) var(--margin-x) var(--margin-bot);
+  background: var(--paper);
+  box-shadow: 0 2px 14px rgba(20, 23, 28, .10);
+}
+
+/* =====================================================================
+   표지
+   ===================================================================== */
+.cover { break-after: page; padding-top: 8mm; }
+.cover .kicker {
+  font-family: var(--font-mono); font-size: var(--fs-micro); letter-spacing: .08em;
+  text-transform: lowercase; color: var(--blue); margin: 0 0 var(--sp-4);
+}
+.cover h1.doc-title {
+  font-size: var(--fs-doc-title); font-weight: 700; line-height: 1.25;
+  letter-spacing: -0.02em; margin: 0 0 var(--sp-3); text-wrap: balance;
+  break-before: auto; padding: 0; border: 0;
+}
+.cover h1.doc-title::before { content: none; }
+.cover .doc-sub {
+  font-size: 12pt; color: var(--ink-2); line-height: 1.5; margin: 0 0 var(--sp-6);
+  max-width: 130mm; text-wrap: pretty;
+}
+.cover .doc-rule { height: 3pt; width: 44mm; background: var(--blue); margin-bottom: var(--sp-5); }
+
+.docmeta { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+.docmeta th, .docmeta td {
+  text-align: left; vertical-align: top; padding: var(--sp-2) var(--sp-3);
+  border-bottom: 0.6pt solid var(--line-soft);
+}
+.docmeta th { width: 30mm; color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+.cover .cover-foot {
+  margin-top: var(--sp-6); padding-top: var(--sp-3); border-top: 0.6pt solid var(--line);
+  font-size: var(--fs-micro); color: var(--ink-3);
+}
+
+/* =====================================================================
+   목차
+   ===================================================================== */
+.toc { break-after: page; }
+.body .toc { break-before: page; }   /* toc: after-summary — 요약 다음 쪽에서 시작 */
+.toc h2 {
+  font-size: var(--fs-h2); font-weight: 700; margin: 0 0 var(--sp-4);
+  padding-bottom: var(--sp-2); border-bottom: 1.2pt solid var(--ink);
+}
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0; }
+.toc a { color: var(--ink); text-decoration: none; display: block; padding: var(--sp-1) 0; }
+.toc .lv1 > a { font-weight: 700; margin-top: var(--sp-3); border-top: 0.6pt solid var(--line-soft); padding-top: var(--sp-2); }
+.toc .lv2 > a { padding-left: 7mm; color: var(--ink-2); font-size: var(--fs-small); }
+.toc .lv3 > a { padding-left: 14mm; color: var(--ink-3); font-size: var(--fs-micro); }
+.toc .num { font-family: var(--font-mono); color: var(--blue); margin-right: var(--sp-2); }
+@media screen {
+  .toc { margin: var(--sp-6) 0; padding: var(--sp-4) 0; border-top: 0.6pt solid var(--line); border-bottom: 0.6pt solid var(--line); }
+  .body > h1 { margin-top: var(--sp-6); }
+}
+
+/* =====================================================================
+   제목
+   ===================================================================== */
+h1, h2, h3, h4 { line-height: var(--lh-tight); letter-spacing: -0.01em; text-wrap: balance; break-after: avoid; }
+
+h1 {
+  font-size: var(--fs-h1); font-weight: 700; margin: 0 0 var(--sp-4);
+  padding-bottom: var(--sp-2); border-bottom: 1.6pt solid var(--ink);
+  break-before: page;
+}
+h1:first-of-type { break-before: auto; }
+h1#기술-부록 { break-before: page; }
+h2 { font-size: var(--fs-h2); font-weight: 700; margin: var(--sp-5) 0 var(--sp-3); color: var(--ink); }
+h3 { font-size: var(--fs-h3); font-weight: 700; margin: var(--sp-4) 0 var(--sp-2); }
+h4 {
+  font-size: var(--fs-body); font-weight: 700; margin: var(--sp-3) 0 var(--sp-1); color: var(--blue-deep);
+}
+/* 상세 분석의 6단 소제목(현상·영향·원인과 근거·개선안·적용 조건·검증 기준) */
+h4.step::before {
+  content: attr(data-step) "  ";
+  font-family: var(--font-mono); color: var(--ink-3); font-weight: 500;
+}
+
+p { margin: 0 0 var(--sp-3); text-wrap: pretty; }
+ul, ol { margin: 0 0 var(--sp-3); padding-left: 6mm; }
+li { margin-bottom: var(--sp-1); }
+li > ul, li > ol { margin-top: var(--sp-1); }
+a { color: var(--blue-deep); }
+strong, b { font-weight: 700; }
+mark { background: var(--sky-wash); color: inherit; padding: 0 2pt; border-radius: 2pt; }
+hr { border: 0; border-top: 0.6pt solid var(--line); margin: var(--sp-5) 0; }
+
+/* 절 번호 (build 가 h1·h2 에 data-num 을 채운다) */
+h1[data-num]::before, h2[data-num]::before {
+  content: attr(data-num) "  ";
+  font-family: var(--font-mono); color: var(--blue); font-weight: 500;
+}
+
+/* =====================================================================
+   표
+   ===================================================================== */
+table {
+  width: 100%; border-collapse: collapse; margin: var(--sp-3) 0 var(--sp-4);
+  font-size: var(--fs-small); line-height: var(--lh-table);
+  break-inside: avoid;
+}
+thead th {
+  text-align: left; font-weight: 700; color: var(--ink);
+  background: var(--panel); border-top: 1pt solid var(--ink);
+  border-bottom: 0.8pt solid var(--line);
+  padding: var(--sp-2) var(--sp-2);
+}
+tbody td { padding: var(--sp-2); border-bottom: 0.6pt solid var(--line-soft); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0.8pt solid var(--line); }
+td code, th code { font-size: var(--fs-micro); }
+.table-wide { font-size: var(--fs-micro); }
+table caption {
+  caption-side: top; text-align: left; font-size: var(--fs-micro);
+  color: var(--ink-3); padding-bottom: var(--sp-1);
+}
+/* 길어서 쪽을 넘는 표는 avoid 를 풀고 머리를 반복한다 */
+table.long { break-inside: auto; }
+table.long thead { display: table-header-group; }
+
+/* =====================================================================
+   증거 블록 — 발송일·지표·관측값·수집 시각·출처 + 이 자료가 뒷받침하는 결론
+   ===================================================================== */
+.evidence {
+  break-inside: avoid;
+  margin: var(--sp-3) 0 var(--sp-4);
+  border: 0.6pt solid var(--line); border-left: 2.5pt solid var(--blue);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--panel); padding: var(--sp-3);
+}
+.evidence > .ev-head {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--blue-deep); letter-spacing: .04em; margin-bottom: var(--sp-2);
+}
+.evidence > .ev-head .ev-id { font-weight: 700; }
+.evidence > .ev-head .ev-kind { color: var(--ink-3); }
+.ev-meta {
+  display: grid; grid-template-columns: 22mm 1fr 22mm 1fr; gap: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-micro); margin-bottom: var(--sp-2);
+  padding-bottom: var(--sp-2); border-bottom: 0.6pt solid var(--line-soft);
+}
+.ev-meta dt { color: var(--ink-3); margin: 0; }
+.ev-meta dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.evidence > p:last-child, .evidence > .ev-body > p:last-child { margin-bottom: 0; }
+.evidence .ev-body { font-size: var(--fs-small); }
+.evidence pre { margin: var(--sp-2) 0 0; }
+
+/* 수치 비교 (기준값 · 관측값 · 차이 · 계산 방식) */
+.delta { font-family: var(--font-mono); font-size: var(--fs-micro); }
+.delta .up { color: var(--warn); }
+.delta .down { color: var(--blue-deep); }
+
+/* =====================================================================
+   그림 — 번호 + 바로 아래 한두 문장
+   ===================================================================== */
+figure.figure { margin: var(--sp-4) 0; break-inside: avoid; text-align: center; }
+figure.figure img { max-width: 100%; border: 0.6pt solid var(--line); border-radius: var(--r-sm); }
+figure.figure figcaption {
+  margin-top: var(--sp-2); font-size: var(--fs-micro); color: var(--ink-2);
+  text-align: left; line-height: 1.55;
+}
+figure.figure figcaption .fig-num {
+  font-family: var(--font-mono); font-weight: 700; color: var(--blue-deep); margin-right: var(--sp-1);
+}
+figure.figure figcaption .fig-reading {
+  display: block; margin-top: var(--sp-1); color: var(--ink);
+}
+figure.figure figcaption .fig-reading strong { color: var(--blue-deep); margin-right: var(--sp-1); }
+
+/* =====================================================================
+   상태 배지 — 분석을 마친 것과 운영에 적용한 것을 구분한다
+   ===================================================================== */
+.status {
+  display: inline-block; font-family: var(--font-mono); font-size: var(--fs-micro);
+  font-weight: 500; padding: 1pt 5pt; border-radius: var(--r-pill);
+  border: 0.6pt solid currentColor; vertical-align: middle; margin-left: var(--sp-2);
+  white-space: nowrap;
+}
+.status[data-status="제안"]          { color: var(--ink-2); background: var(--panel-2); }
+.status[data-status="검증 완료"]      { color: var(--blue-deep); background: var(--sky-wash); }
+.status[data-status="적용 완료"]      { color: var(--ok); background: var(--ok-wash); }
+.status[data-status="내부 확인 필요"]  { color: var(--warn); background: var(--warn-wash); }
+/* 개발 가이드 분류 */
+.status[data-status="바로 적용 가능"]  { color: var(--ok); background: var(--ok-wash); }
+.status[data-status="경환실 결정 후 적용"],
+.status[data-status="SGR 결정 후 적용"] { color: var(--hold); background: var(--hold-wash); }
+.status[data-status="추가 검증 필요"]   { color: var(--ink-2); background: var(--panel-2); }
+
+/* 항목 제목 옆 ID */
+h3 .item-id, h2 .item-id {
+  font-family: var(--font-mono); color: var(--blue); font-weight: 500; margin-right: var(--sp-2);
+}
+
+/* =====================================================================
+   결정 블록 — 선택지와 권고안, 선택에 따른 영향
+   ===================================================================== */
+.decision {
+  break-inside: avoid; margin: var(--sp-3) 0 var(--sp-4);
+  border: 0.8pt solid var(--sky-line); border-radius: var(--r-md);
+  background: var(--sky-wash); padding: var(--sp-3);
+}
+.decision > .dc-head {
+  font-weight: 700; font-size: var(--fs-small); color: var(--blue-deep);
+  margin-bottom: var(--sp-2);
+}
+.decision > .dc-head .dc-id { font-family: var(--font-mono); margin-right: var(--sp-2); }
+.decision table { background: var(--paper); margin-bottom: var(--sp-2); }
+.decision .recommend {
+  font-size: var(--fs-small); border-top: 0.6pt solid var(--sky-line);
+  padding-top: var(--sp-2); margin-bottom: 0;
+}
+.decision .recommend::before {
+  content: "권고"; font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--blue-deep); border: 0.6pt solid var(--sky-line); border-radius: var(--r-pill);
+  padding: 1pt 5pt; margin-right: var(--sp-2); background: var(--paper);
+}
+
+/* =====================================================================
+   내부 확인 필요 — 답을 받기 전까지 초안에 남겨 두는 질문
+   ===================================================================== */
+.question {
+  break-inside: avoid; margin: var(--sp-3) 0 var(--sp-4);
+  border: 0.8pt dashed var(--warn); border-radius: var(--r-md);
+  background: var(--warn-wash); padding: var(--sp-3); font-size: var(--fs-small);
+}
+.question > .q-head {
+  font-weight: 700; color: var(--warn); margin-bottom: var(--sp-2);
+}
+.question > .q-head .q-id { font-family: var(--font-mono); margin-right: var(--sp-2); }
+.question dl { display: grid; grid-template-columns: 24mm 1fr; gap: var(--sp-1) var(--sp-2); margin: 0; }
+.question dt { color: var(--ink-2); font-weight: 600; }
+.question dd { margin: 0; }
+
+/* =====================================================================
+   덧붙임 — 핵심 요약 상자, 옆 메모, 코드
+   ===================================================================== */
+.keybox {
+  break-inside: avoid; margin: var(--sp-3) 0 var(--sp-4);
+  border: 0.8pt solid var(--ink); border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4); background: var(--paper);
+}
+.keybox > .kb-head {
+  font-family: var(--font-mono); font-size: var(--fs-micro); letter-spacing: .06em;
+  color: var(--blue); margin-bottom: var(--sp-2);
+}
+.keybox p:last-child, .keybox ul:last-child, .keybox ol:last-child { margin-bottom: 0; }
+
+.note {
+  margin: var(--sp-3) 0; padding-left: var(--sp-3);
+  border-left: 2pt solid var(--line); color: var(--ink-2); font-size: var(--fs-small);
+}
+
+pre, code, kbd { font-family: var(--font-mono); }
+code { font-size: var(--fs-code); background: var(--panel-2); padding: 0.5pt 3pt; border-radius: 2pt; }
+pre {
+  background: var(--panel); border: 0.6pt solid var(--line); border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3); overflow-x: auto; font-size: var(--fs-code);
+  line-height: 1.5; break-inside: avoid;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+pre.long { break-inside: auto; }
+/* 인쇄에는 가로 스크롤이 없으므로 긴 코드 줄은 접는다(잘리지 않게) */
+@media print { pre, pre code { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; } }
+
+blockquote {
+  margin: var(--sp-3) 0; padding: var(--sp-2) var(--sp-3);
+  border-left: 2pt solid var(--sky-line); background: var(--panel);
+  color: var(--ink-2); font-size: var(--fs-small);
+}
+blockquote p:last-child { margin-bottom: 0; }
+
+/* 각주 (pandoc) */
+.footnotes { margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 0.6pt solid var(--line); font-size: var(--fs-micro); color: var(--ink-2); }
+.footnotes hr { display: none; }
+a.footnote-ref sup { color: var(--blue); font-weight: 700; }
+
+/* 변경 이력 */
+.changelog table { font-size: var(--fs-micro); }
+
+/* =====================================================================
+   머리말·꼬리말 — 화면에서는 숨기고 인쇄에서만 쓴다
+   (Chrome --print-to-pdf 는 @page 마진박스를 지원하지 않으므로
+    pdf_report.py 가 --header-template/--footer-template 로 넣는다)
+   ===================================================================== */
+.runhead { display: none; }
+
+/* 화면 오른쪽 위 「PDF로 저장」 — 브라우저 인쇄 창을 연다. 인쇄물에는 나오지 않는다 */
+.print-bar {
+  position: fixed; top: 12px; right: 16px; z-index: 10; display: flex; gap: 6px;
+}
+.print-bar button {
+  font: 600 10pt var(--font); color: var(--paper); background: var(--blue);
+  border: 0; border-radius: var(--r-pill); padding: 7px 14px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(3, 199, 90, .25);
+}
+.print-bar button:hover { background: var(--blue-deep); }
+.print-bar small { display: block; font-size: 8pt; color: var(--ink-3); text-align: right; margin-top: 4px; }
+
+/* =====================================================================
+   compact — 프런트매터 layout: compact. 표지 쪽 없이 1쪽 머리에 문서 정보를 붙이고
+   절마다 쪽을 넘기지 않는다. 요약 보고서(본문 2~3쪽)용
+   ===================================================================== */
+.cover.compact { break-after: auto; padding-top: 0; margin-bottom: var(--sp-4); }
+.cover.compact .kicker { margin-bottom: var(--sp-1); }
+.cover.compact h1.doc-title { font-size: 18pt; margin-bottom: var(--sp-1); }
+.cover.compact .doc-rule { height: 2pt; margin-bottom: var(--sp-2); }
+.cover.compact .doc-sub { font-size: 10.5pt; margin-bottom: var(--sp-2); max-width: none; }
+.cover.compact .docmeta th { width: 16mm; }
+.cover.compact .docmeta th, .cover.compact .docmeta td { padding: 1.5pt var(--sp-2); font-size: var(--fs-micro); }
+.compact-doc .body h1 { break-before: auto; margin-top: var(--sp-5); }
+.compact-doc .body h1:first-child { margin-top: 0; }
+
+/* 첨부 그림: 가로 A4 한 쪽에 하나씩 */
+h1.attach { page: land; break-before: page; }
+h1.attach ~ figure.figure { page: land; break-before: page; margin: 0; }
+h1.attach + figure.figure { break-before: auto; }
+
+/* =====================================================================
+   인쇄
+   ===================================================================== */
+@media print {
+  /* 인쇄는 촘촘하게. 화면(10.5pt)보다 한 단계 작게, 줄간격·여백을 줄여 한 쪽에 더 담는다 */
+  :root {
+    --fs-doc-title: 22pt; --fs-h1: 13pt; --fs-h2: 11pt; --fs-h3: 10pt;
+    --fs-body: 9.3pt; --fs-small: 8.6pt; --fs-micro: 7.6pt; --fs-code: 7.8pt;
+    --lh-body: 1.52; --lh-table: 1.38;
+    --sp-1: 2pt; --sp-2: 4pt; --sp-3: 6.5pt; --sp-4: 10pt; --sp-5: 14pt; --sp-6: 22pt;
+  }
+  html, body { background: var(--paper); }
+  .print-bar { display: none; }
+  h1 { padding-bottom: var(--sp-1); border-bottom-width: 1.2pt; }
+  h4.step { margin-top: 4pt; margin-bottom: 1pt; }
+  li { margin-bottom: 1pt; }
+  thead th, tbody td { padding: 2.2pt 4pt; }
+  table { margin: var(--sp-2) 0 var(--sp-3); }
+  .keybox, .decision, .question, .evidence { padding: var(--sp-2) var(--sp-3); }
+  h1.attach ~ figure.figure img { max-height: 158mm; width: auto; }
+  .sheet {
+    width: auto; min-height: 0; margin: 0; padding: 0;
+    box-shadow: none; background: var(--paper);
+  }
+  a { color: var(--ink); text-decoration: none; }
+  .toc a { color: var(--ink); }
+  .toc { line-height: 1.3; }
+  .toc a { padding: 0.5pt 0; }
+  .toc .lv1 > a { margin-top: 3pt; padding-top: 2pt; }
+  .toc .lv2 > a { font-size: var(--fs-micro); }
+  /* 본문 링크는 인쇄물에서 클릭할 수 없으므로 주소를 함께 보인다.
+     내부 앵커(#)와 각주는 제외한다 */
+  .body a[href^="http"]::after {
+    content: " (" attr(href) ")"; font-size: var(--fs-micro); color: var(--ink-3);
+    word-break: break-all;
+  }
+  h1, h2, h3, h4 { break-after: avoid; }
+  p, li { orphans: 3; widows: 3; }
+  .evidence, .decision, .question, .keybox, figure.figure, table { break-inside: avoid; }
+}
+
+/* =====================================================================
+   AgentHan 추가분 — 화면에서는 도식이 크게 보이도록 지면을 넓히고, 다크 모드와 좁은 화면을 받는다
+   ===================================================================== */
+:root { --fig-paper: #FFFFFF; --part-a: #03C75A; --part-b: #0091D5; --part-c: #F08C00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper:#121715; --canvas:#0B0F0D; --panel:#18201C; --panel-2:#1D2622; --ink:#E6ECE8; --ink-2:#A8B3AD; --ink-3:#77837D;
+  --line:#2B3631; --line-soft:#212B27; --blue:#2FD679; --blue-deep:#5BE39A; --sky-wash:#10301F; --sky-line:#1F5C39;
+  --ok:#5BD69A; --ok-wash:#123222; --warn:#FF8F80; --warn-wash:#3A1915; --hold:#E5B85A; --hold-wash:#33270F; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --paper:#121715; --canvas:#0B0F0D; --panel:#18201C; --panel-2:#1D2622; --ink:#E6ECE8; --ink-2:#A8B3AD; --ink-3:#77837D;
+  --line:#2B3631; --line-soft:#212B27; --blue:#2FD679; --blue-deep:#5BE39A; --sky-wash:#10301F; --sky-line:#1F5C39;
+  --ok:#5BD69A; --ok-wash:#123222; --warn:#FF8F80; --warn-wash:#3A1915; --hold:#E5B85A; --hold-wash:#33270F; color-scheme: dark; }
+@media screen {
+  .sheet { width: min(1060px, calc(100% - 24px)); min-height: 0; }
+  .body h1 { break-before: auto; margin-top: var(--sp-6); }
+}
+.fig-wrap { background: var(--fig-paper); border: 0.6pt solid var(--line); border-radius: var(--r-md); padding: 10px; overflow-x: auto; }
+.fig-wrap svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.fig-wrap.narrow svg { max-width: 820px; }
+figure.figure figcaption a { font-size: var(--fs-micro); margin-left: var(--sp-2); }
+.milestones { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+.ms { border: 0.6pt solid var(--line); border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3); display: grid; gap: 2pt; background: var(--panel); }
+.ms-d { font-family: var(--font-mono); font-weight: 700; color: var(--blue-deep); font-size: 13pt; }
+.ms-t { font-size: var(--fs-small); }
+.ms-s { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--ink-3); }
+.ms-s.ok { color: var(--ok); }
+.parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-4); }
+.part { border: 0.8pt solid var(--line); border-top: 3pt solid var(--part-a); border-radius: var(--r-md); padding: var(--sp-3); background: var(--paper); }
+.part.pb { border-top-color: var(--part-b); } .part.pc { border-top-color: var(--part-c); }
+.part p { margin: var(--sp-1) 0 0; font-size: var(--fs-small); }
+.part-h { font-weight: 700; font-size: var(--fs-h3); display: flex; align-items: center; gap: var(--sp-2); }
+.part-tag { font-family: var(--font-mono); color: #fff; background: var(--part-a); border-radius: var(--r-sm); padding: 0 6pt; font-size: var(--fs-small); }
+.pb .part-tag { background: var(--part-b); } .pc .part-tag { background: var(--part-c); }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--sp-4); align-items: start; }
+pre.tree { margin: var(--sp-3) 0; }
+h1 .status { font-size: var(--fs-micro); }
+.table-scroll { overflow-x: auto; }
+@media (max-width: 720px) {
+  .sheet { width: 100%; margin: 0; box-shadow: none; padding-block: 16px 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .parts, .two { grid-template-columns: minmax(0, 1fr); }
+  .milestones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fig-wrap svg { min-width: 640px; }
+  .docmeta th { width: auto; }
+  .ev-meta, .question dl { grid-template-columns: minmax(0, 1fr); }
+  table { display: block; overflow-x: auto; }
+}
+@media print { .fig-wrap { border: 0; padding: 0; } .milestones { grid-template-columns: repeat(4, 1fr); } }
