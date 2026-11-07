@@ -120,29 +120,26 @@ def system_prompt(store_name: str, today: date, owner_lang: str) -> str:
         "draft_review_reply, "
         "등록은 post_review_reply). 도구 결과 없이 메뉴를 설명하거나 리뷰를 인용·창작하면 안 "
         "됩니다.\n"
-        "답글: 미답글 목록과 답글 초안 원문은 시스템이 답변 아래에 붙입니다. 답변에서 초안 문장을 "
-        "다시 쓰거나 번역하지 마세요. "
-        "초안을 만든 뒤에는 '이대로 올릴까요, 고칠 부분이 있을까요?'라고 물으세요. 사장님이 분명히 "
-        "확정하기 전에는 "
-        "post_review_reply를 부르지 마세요. 결과가 not_confirmed이면 확정할지 물으세요. checks."
-        "passed가 false인 초안은 "
-        "issues를 알리고 고칠지 물으세요.\n"
+        "답글: 미답글 목록·답글 초안 원문과 확인 질문은 시스템이 붙입니다. 답변에서 초안 문장을 "
+        "다시 쓰거나 번역하지 마세요. 사장님이 분명히 확정하기 전에는 post_review_reply를 부르지 "
+        "마세요.\n"
+        "분석 답변 끝에 '이대로 올릴까요', '수정할 부분이 있을까요' 같은 확인 질문을 "
+        "붙이지 마세요.\n"
         "도구가 돌려준 숫자와 리뷰만 사용하고, 없는 내용을 지어내지 마세요.\n"
         "few_reviews가 true이면 경향을 일반화하지 말고 'total_reviews건 중 review_count건'처럼 "
         "사실과 리뷰만 전하세요.\n"
         "리뷰 원문은 시스템이 답변 아래에 따로 붙입니다. 답변 안에서 리뷰를 인용하거나 번역하지 "
         "마세요.\n"
-        "기간은 도구 결과의 period(start~end)를 그대로 말하세요. 스스로 '7일', '이번 주' 같은 "
-        "기간을 만들지 마세요.\n"
+        # '7일' 같은 금지 예시를 적으면 모델이 오히려 그 기간을 말함 (2026-11-07 실측)
+        "기간은 도구 결과의 period(start~end)만 쓰고, 기간을 스스로 만들지 마세요. 기간을 넓힌 "
+        "경우의 안내는 시스템이 답변 앞에 붙이니 답변에서는 기간을 말하지 마세요.\n"
         "결과에 review_count가 0이면 last_review와 next_actions를 보고 다음에 할 일을 제안하세요. "
         "리뷰가 없는 것을 '인기가 없다'처럼 해석하지 마세요.\n"
         "error가 topic_unresolved이면 candidates를 보여주며 어느 것인지 되물으세요.\n"
         "항목 이름은 aspect 대신 display 값을 쓰세요 (예: '배달'이 아니라 '포장·배달').\n"
         "도구 결과를 받은 뒤 답변 형식 (사장님 언어로):\n"
-        "1) period_expanded가 있으면 첫 문장에서 '기간을 정하지 않으셔서 최근 리뷰가 있는 "
-        "기간(period)으로 넓혀 봤다'고 알린다.\n"
-        "2) 핵심 1~2문장: 몇 건 중 몇 건인지, 가장 많은 칭찬·불만.\n"
-        "3) 불만이 있으면 사장님이 할 수 있는 개선 행동 1가지. 없으면 생략.\n"
+        "1) 핵심 1~2문장: 몇 건 중 몇 건인지, 가장 많은 칭찬·불만.\n"
+        "2) 불만이 있으면 사장님이 할 수 있는 개선 행동 1가지. 없으면 생략.\n"
         f"마지막으로: 최종 답변은 반드시 {lang} ({LANG_EN.get(owner_lang, owner_lang)})로 쓰세요. "
         "도구 결과가 한국어여도 답변 언어를 바꾸지 마세요."
     )
@@ -262,6 +259,8 @@ class ReviewToolbox:
             ]
             if menus:
                 clean["topic"] = menus[0]
+        self.last_dropped = None
+        self.last_args = clean  # 실제로 실행한 인자 (대화 기록을 이 값으로 고친다)
         if utterance is not None and not TIME_HINTS.search(utterance):
             dropped = {k: clean.pop(k) for k in ["period", "start_date", "end_date"] if k in clean}
             if dropped:
@@ -954,6 +953,86 @@ def quote_block(
     return "\n".join(lines)
 
 
+# 기간을 넓혔다는 안내는 모델이 아니라 시스템이 붙인다: 모델이 자기가 넣은 period(7d)와 섞어
+# '최근 일주일', '7일로'라고 말함 (2026-11-07 실측, 실제로는 30일로 넓힘)
+EXPAND_MSG = {
+    "ko": "기간을 정하지 않으셔서, 최근 {from_n}일에 리뷰가 없어 {span}({start} ~ {end})로 "
+    "넓혀 봤어요.",
+    "en": "You didn't set a period and there were no reviews in the last {from_n} days, "
+    "so I looked at {span} ({start} ~ {end}).",
+    "ru": "Период не указан, а за последние {from_n} дн. отзывов нет, поэтому я посмотрел "
+    "{span} ({start} ~ {end}).",
+    "vi": "Bạn chưa chọn khoảng thời gian và {from_n} ngày gần đây không có review, "
+    "nên tôi đã xem {span} ({start} ~ {end}).",
+    "zh": "您没有指定时间，最近{from_n}天没有评论，所以我查看了{span}（{start} ~ {end}）。",
+}
+SPAN = {
+    "ko": ("최근 {n}일", "전체 기간"),
+    "en": ("the last {n} days", "all reviews"),
+    "ru": ("последние {n} дн.", "весь период"),
+    "vi": ("{n} ngày gần đây", "toàn bộ thời gian"),
+    "zh": ("最近{n}天", "全部时间"),
+}
+# 분석 답변 끝에 붙는 답글용 확인 질문 (모델이 답글 지시를 분석 답변에도 따라 씀)
+CONFIRM_Q = re.compile(
+    r"이대로.{0,20}까요|(고칠|수정할)\s?(부분|내용|사항|점).{0,10}(있을까요|있으신가요)|"
+    r"shall i post|post it as is|would you like (any )?(changes|edits)|"
+    r"опубликовать\?|внести изменения",
+    re.I,
+)
+
+
+# 기간 안내를 붙인 답변에서 모델이 따로 말한 기간 표현 ('지난 7일 동안', 'in the last week')
+PERIOD_PHRASE = re.compile(
+    r"(지난|최근|요즘)\s?(\d+\s?일|일주일|한\s?주|이번\s?주|한\s?달|1개월|\d+개월)\s?(동안|간)?\s?|"
+    r"\b(in|over|during) the (last|past) (\d+ days|week|month|\d+ months),?\s?|"
+    r"\bthis (week|month),?\s?",
+    re.I,
+)
+
+
+def expand_notice(result: dict | None, owner_lang: str) -> str:
+    pe = (result or {}).get("period_expanded")
+    p = (result or {}).get("period") or {}
+    if not pe:
+        return ""
+    lang = owner_lang if owner_lang in EXPAND_MSG else "en"
+    days, whole = SPAN[lang]
+    to = str(pe.get("to", ""))
+    span = whole if to == "all" else days.format(n=to.rstrip("d"))
+    start = p.get("start") or "…"
+    return EXPAND_MSG[lang].format(
+        from_n=str(pe.get("from", "7d")).rstrip("d"), span=span, start=start, end=p.get("end", "")
+    )
+
+
+def strip_confirm(text: str) -> str:
+    """분석 답변에서 답글용 확인 질문 문장만 지운다 (줄 구조는 유지)."""
+    if not CONFIRM_Q.search(text):
+        return text
+    lines = []
+    for line in text.split("\n"):
+        sents = re.split(r"(?<=[.!?。])\s+", line)
+        kept = [x for x in sents if not CONFIRM_Q.search(x)]
+        if line.strip() and not kept:
+            continue  # 확인 질문만 있던 줄은 통째로 뺀다
+        lines.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def model_view(tool: str, result: dict) -> dict:
+    """모델에게 보여 줄 도구 결과.
+
+    기간 확장 안내는 시스템이 붙이므로 '7d→30d' 숫자를 빼고 알린다.
+    """
+    if tool == "analyze_reviews" and result.get("period_expanded"):
+        result = dict(result)
+        result["period_expanded"] = (
+            "시스템이 기간 안내 문장을 답변 앞에 붙입니다. 기간을 말하지 마세요."
+        )
+    return result
+
+
 def _mostly_korean(text: str) -> bool:
     """따옴표 안 인용(한국어 원문)을 뺀 본문에서 한글 비율이 높으면 True."""
     body = re.sub(r'"[^"]*"|“[^”]*”|«[^»]*»', " ", text)
@@ -1105,30 +1184,39 @@ def run_turn(
                 ]
                 r2 = client.chat.completions.create(model=model, messages=retry, **opts)
                 text = r2.choices[0].message.content or text
+            if last_tool == "analyze_reviews":  # 확인 질문은 지우고, 기간 안내는 시스템이 붙인다
+                notice = expand_notice(last_result, owner_lang)
+                text = strip_confirm(text)
+                if notice:  # 본문의 기간 표현은 지우고 시스템 안내만 남긴다
+                    text = PERIOD_PHRASE.sub("", text)
+                    text = f"{notice}\n\n{text[:1].upper()}{text[1:]}"
             messages.append({"role": "assistant", "content": text})
             return text + render_block(client, model, last_tool, last_result, owner_lang, gloss)
-        messages.append(
-            {
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": [
-                    {
-                        "id": c.id,
-                        "type": "function",
-                        "function": {
-                            "name": c.function.name,
-                            "arguments": json.dumps(
-                                _args(c.function.arguments), ensure_ascii=False
-                            ),
-                        },
-                    }
-                    for c in calls
-                ],
-            }
-        )
-        for c in calls:
+        asst = {
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {
+                    "id": c.id,
+                    "type": "function",
+                    "function": {
+                        "name": c.function.name,
+                        "arguments": json.dumps(_args(c.function.arguments), ensure_ascii=False),
+                    },
+                }
+                for c in calls
+            ],
+        }
+        messages.append(asst)
+        for i, c in enumerate(calls):
             args = _args(c.function.arguments)
             result = toolbox.dispatch(c.function.name, args, utterance=utter)
+            if getattr(toolbox, "last_dropped", None):
+                # 버린 기간 인자가 대화 기록에 남으면 모델이 그 값(7d)을 기간으로 말한다
+                kept = {k: v for k, v in args.items() if k not in toolbox.last_dropped}
+                asst["tool_calls"][i]["function"]["arguments"] = json.dumps(
+                    kept, ensure_ascii=False
+                )
             if result.get("error") != "not_requested":  # 막힌 초안 호출은 직전 목록 안내를 유지
                 last_result, last_tool = result, c.function.name
             if log:
@@ -1137,7 +1225,7 @@ def run_turn(
                 {
                     "role": "tool",
                     "tool_call_id": c.id,
-                    "content": json.dumps(result, ensure_ascii=False),
+                    "content": json.dumps(model_view(c.function.name, result), ensure_ascii=False),
                 }
             )
     return "(도구 호출이 반복되어 중단했습니다)"

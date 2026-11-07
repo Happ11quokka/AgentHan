@@ -457,3 +457,14 @@ def test_checklist_in_owner_language():
     )
     out = render_block(None, "m", "draft_review_reply", r, "ko")
     assert "⚠️ 약속: 다음 주문 때 음료를 서비스로 드릴게요." in out and "확인할 점" not in out
+
+
+def test_apology_is_not_a_promise():
+    # 사과 문장을 약속으로 오탐해 일반 답글이 막힘 (2026-11-07 실측, 시나리오 4)
+    for ok in [
+        "저희가 제공한 디저트의 맛에 만족을 드리지 못해 진심으로 죄송합니다.",
+        "좋은 서비스를 드리지 못해 죄송합니다.",
+        "소중한 의견을 남겨 주시면 더 나은 서비스로 보답드리겠습니다.",
+    ]:
+        assert check_reply(ok)["passed"], ok
+    assert not check_reply("사과의 의미로 음료를 무료로 드리겠습니다.")["passed"]

@@ -62,7 +62,12 @@ def test_full_turn():
     out = run_turn(fake, "HCX-DASH-002", msgs, tb, log=lambda *x: logs.append(x))
     name, args, result = logs[0]
     assert name == "analyze_reviews" and result["filters"]["focus"] == "complaint"
-    assert out.startswith(f"불만 리뷰는 {result['review_count']}건입니다.")
+    notice, body = out.split("\n\n", 1)  # 기간 안내는 시스템이 맨 앞에 붙인다
+    assert (
+        notice.startswith("기간을 정하지 않으셔서")
+        and "최근 30일(2026-10-08 ~ 2026-11-07)" in notice
+    )
+    assert body.startswith(f"불만 리뷰는 {result['review_count']}건입니다.")
     assert (
         "**대표 리뷰**" in out and f'"{result["examples"][0]["quote"]}"' in out
     )  # 원문 인용은 시스템이 붙임
@@ -112,7 +117,8 @@ def test_nudge_then_tool_call():
         {"role": "user", "content": "Что говорят о клубничном моти?"},
     ]
     out = run_turn(fake, "HCX-DASH-002", msgs, tb)
-    assert out.startswith("불만 리뷰는") and any(m["role"] == "tool" for m in msgs)
+    body = out.split("\n\n", 1)[1]
+    assert body.startswith("불만 리뷰는") and any(m["role"] == "tool" for m in msgs)
 
 
 def test_system_runs_tool_when_model_never_calls():
@@ -202,7 +208,9 @@ def test_answer_rewritten_in_owner_language():
         {"role": "user", "content": "Что говорят о клубничном моти?"},
     ]
     out = run_turn(KoreanAnswerHCX({"topic": "моти"}), "HCX-005", msgs, tb, owner_lang="ru")
-    assert out.startswith("Найдено")
+    notice, body = out.split("\n", 1)
+    assert notice.startswith("Период не указан") and "последние 30 дн." in notice
+    assert body.strip().startswith("Найдено")
     assert "**Примеры отзывов**" in out and "(T0)" in out  # 한국어 원문 + 전용 호출 번역
 
 
@@ -211,3 +219,52 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_analysis_answer_cleanup():
+    from review_tools.agent import expand_notice, model_view, strip_confirm
+
+    # 답글용 확인 질문이 분석 답변에 섞이던 문제 (2026-11-07 실측, 시나리오 1·2·3)
+    text = (
+        "총 4건의 리뷰 중 3건이 긍정적이었습니다.\n\n"
+        "리뷰가 적어 경향을 말하기 어렵습니다. "
+        "이대로 올려도 괜찮을까요, 아니면 수정할 사항이 있을까요?"
+    )
+    assert strip_confirm(text) == (
+        "총 4건의 리뷰 중 3건이 긍정적이었습니다.\n\n리뷰가 적어 경향을 말하기 어렵습니다."
+    )
+    assert (
+        strip_confirm("Three reviews mention it. Shall I post it as is?")
+        == "Three reviews mention it."
+    )
+    assert strip_confirm("확인 질문 없는 답변입니다.") == "확인 질문 없는 답변입니다."
+    # 넓힌 기간은 시스템이 정확히 말하고, 모델에게는 7d→30d 숫자를 보여 주지 않는다
+    res = {
+        "period": {"start": "2026-10-08", "end": "2026-11-07"},
+        "period_expanded": {"from": "7d", "to": "30d"},
+    }
+    assert "최근 30일(2026-10-08 ~ 2026-11-07)" in expand_notice(res, "ko")
+    assert "all reviews" in expand_notice(
+        {**res, "period_expanded": {"from": "7d", "to": "all"}}, "en"
+    )
+    assert "7d" not in json.dumps(model_view("analyze_reviews", res), ensure_ascii=False)
+    assert expand_notice({"period": res["period"]}, "ko") == ""
+
+
+def test_dropped_period_removed_from_history():
+    # 모델이 넣었다가 시스템이 버린 period가 대화 기록에 남으면 모델이 그 값을 기간으로 말한다
+    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "최근 리뷰 어때?"}]
+    run_turn(FakeHCX({"period": "7d"}), "HCX-005", msgs, tb)
+    call = next(m for m in msgs if m.get("tool_calls"))["tool_calls"][0]
+    assert "period" not in json.loads(call["function"]["arguments"])
+
+
+def test_period_phrases_removed_when_notice_added():
+    from review_tools.agent import PERIOD_PHRASE
+
+    # 기간을 30일로 넓혔는데 본문이 '지난 7일 동안'이라고 말함 (2026-11-07 실측, 시나리오 2)
+    body = "지난 7일 동안 총 4건의 리뷰 중 3건이 딸기모찌에 대한 내용입니다."
+    assert PERIOD_PHRASE.sub("", body) == "총 4건의 리뷰 중 3건이 딸기모찌에 대한 내용입니다."
+    assert PERIOD_PHRASE.sub("", "최근 한 달간 총 4건") == "총 4건"
+    assert PERIOD_PHRASE.sub("", "In the last week, three reviews") == "three reviews"
