@@ -10,7 +10,7 @@ import json
 import re
 from datetime import date, datetime
 
-from naver_review_clf.backends.hcx import request_options
+from hcx import tool_call_options
 
 from .analyze import analyze_reviews
 from .replies import (
@@ -1065,8 +1065,8 @@ def run_turn(
     """messages에 사장님 발화가 들어 있는 상태로 호출. 도구 호출을 처리하고 최종 답변 문자열을
     돌려준다.
     messages는 제자리에서 갱신되므로 다음 턴에 그대로 이어 쓰면 된다."""
-    opts = request_options(model, 1024)  # 도구 호출은 최대 토큰 1024 이상 (CLOVA Studio 문서)
-    opts.pop("response_format", None)  # 도구 호출과 JSON 스키마는 함께 쓰지 않는다
+    # 도구 호출은 최대 토큰 1024 이상 (CLOVA Studio 문서), JSON 스키마는 함께 쓰지 않는다
+    opts = tool_call_options(model)
     # CLOVA Studio는 도구를 지정하는 tool_choice 객체를 400(Unsupported function)으로 거절한다
     # (2026-11-07 실측).
     # 그래서 리뷰 질문에 도구 없이 답하면 (1) 한 번 더 요청하고, (2) 그래도 안 부르면 시스템이 직접

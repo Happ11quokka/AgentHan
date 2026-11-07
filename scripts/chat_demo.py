@@ -21,13 +21,10 @@ CLOVA Studio에 접속할 수 있는 환경에서 실행한다.
 
 import argparse
 import json
-import os
 from datetime import date, datetime
 from pathlib import Path
 
-from openai import OpenAI
-
-from naver_review_clf.backends.hcx import DEFAULT_BASE_URL
+from hcx import make_client
 from review_tools import MenuCatalog, SnapshotRepo
 from review_tools.agent import ReviewToolbox, run_turn, system_prompt
 from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
@@ -65,15 +62,23 @@ ap.add_argument(
     help="방문일이 이 일수보다 최근인 리뷰를 '답글 없음'으로 가정 (데모용)",
 )
 ap.add_argument("--quiet", action="store_true", help="도구 호출 로그 숨기기")
+ap.add_argument(
+    "--snapshot",
+    type=Path,
+    default=ROOT / "data" / "snapshots" / "test_baseline.jsonl",
+    help="리뷰 스냅샷 (실제 데이터 없이: tests/fixtures/review_snapshot.jsonl)",
+)
+ap.add_argument(
+    "--menus",
+    type=Path,
+    default=ROOT / "data" / "menus_sample.json",
+    help="메뉴 별칭 (실제 데이터 없이: tests/fixtures/menus.json)",
+)
 a = ap.parse_args()
 chat_model = a.chat_model or a.model
 
-client = OpenAI(
-    api_key=os.environ["CLOVASTUDIO_API_KEY"],
-    base_url=os.getenv("CLOVASTUDIO_BASE_URL", DEFAULT_BASE_URL),
-    max_retries=int(os.getenv("HCX_MAX_RETRIES", "8")),
-)
-repo = SnapshotRepo(ROOT / "data" / "snapshots" / "test_baseline.jsonl")
+client = make_client()
+repo = SnapshotRepo(a.snapshot)
 store_name = repo._match_store(a.store)
 today = date.fromisoformat(a.today)
 extra = {}
@@ -95,7 +100,7 @@ toolbox = ReviewToolbox(
     a.store,
     today,
     repo,
-    MenuCatalog.load(ROOT / "data" / "menus_sample.json"),
+    MenuCatalog.load(a.menus),
     **extra,
     writer=writer,
     reply_store=MockReplyStore(reply_path, today=today, seed_days=a.seed_days),

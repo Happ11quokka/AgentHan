@@ -1,22 +1,15 @@
-"""HCX chat over CLOVA Studio's OpenAI-compatible API, shared with review_tools.
+"""Owner-assistant chat turn over the shared HCX client (see the hcx package).
 
-The owner assistant and review_tools use the same client: the openai SDK pointed at
-CLOVA Studio's /v1/openai endpoint, with model options from
-naver_review_clf.backends.hcx.request_options(). Messages use the OpenAI format
-(tool_calls, tool_call_id).
-
-CLOVA constraints measured by review_tools (2026-11-07): one system message per
-request, a tool_choice object is rejected with 400, tool calling needs max_tokens >=
-1024, and consecutive calls hit 429 (the SDK retries; HCX_MAX_RETRIES, default 8).
+Messages use the OpenAI format (tool_calls, tool_call_id). tool_choice is never sent
+and errors are sanitized so a server body or key is never shown.
 """
 
 import json
 import os
 
-from naver_review_clf.backends.hcx import DEFAULT_BASE_URL, request_options
+import hcx
 
 CHAT_MODEL = "HCX-005"
-MAX_TOKENS = 1024
 REQUEST_TIMEOUT = 45
 TEMPERATURE = 0.2
 
@@ -26,25 +19,10 @@ class ClovaChatError(Exception):
 
 
 def make_client():
-    """OpenAI-compatible CLOVA Studio client. Reads only CLOVASTUDIO_* / HCX_* env vars."""
-    key = os.environ.get("CLOVASTUDIO_API_KEY")
-    if not key:
+    """hcx.make_client() with a sanitized error when the key is missing."""
+    if not os.environ.get("CLOVASTUDIO_API_KEY"):
         raise ClovaChatError("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
-    from openai import OpenAI
-
-    return OpenAI(
-        api_key=key,
-        base_url=os.getenv("CLOVASTUDIO_BASE_URL", DEFAULT_BASE_URL),
-        max_retries=int(os.getenv("HCX_MAX_RETRIES", "8")),
-        timeout=REQUEST_TIMEOUT,
-    )
-
-
-def chat_options(model: str = CHAT_MODEL) -> dict:
-    """Request options for a tool-calling turn (same rule as review_tools.agent.run_turn)."""
-    opts = request_options(model, MAX_TOKENS)
-    opts.pop("response_format", None)  # tool calls and JSON schema are not used together
-    return opts
+    return hcx.make_client(timeout=REQUEST_TIMEOUT)
 
 
 def _get(value: object, key: str):
@@ -92,7 +70,7 @@ def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = C
     """One chat completion. Tools are sent only when non-empty; tool_choice is never sent."""
     client = client or make_client()
     kwargs = {"model": model, "messages": messages, "temperature": TEMPERATURE}
-    kwargs.update(chat_options(model))
+    kwargs.update(hcx.tool_call_options(model))
     if tools:
         kwargs["tools"] = tools
     failure = None

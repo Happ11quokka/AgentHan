@@ -21,11 +21,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError, field_validator
 
+from hcx import DEFAULT_BASE_URL, make_client
+from hcx import request_options as _hcx_request_options
+
 from ..schema import FEATURE_GUIDE, FEATURES, ClassifyResult, FeatureResult, Span
 from ..segment import merge_adjacent, split_clauses
 from .base import Backend
 
-DEFAULT_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
+__all__ = ["DEFAULT_BASE_URL", "HCXBackend", "request_options"]
 
 
 class _Item(BaseModel):
@@ -68,19 +71,8 @@ JSON_SCHEMA = {
 
 
 def request_options(model: str, max_tokens: int = 1024) -> dict:
-    """모델별 요청 옵션 (2026-11-07 scripts/hcx_check.py로 실측).
-    - HCX-005, HCX-DASH-002: response_format을 보내면 400 → 보내지 않고 프롬프트 + pydantic
-    검증으로 JSON을 받는다
-    - HCX-007: Structured Outputs 지원(문서). 추론 모델이라 max_tokens 대신 max_completion_tokens,
-      JSON 스키마와 추론은 함께 쓸 수 없어 reasoning_effort=none
-    """
-    if model.startswith("HCX-007"):
-        return {
-            "max_completion_tokens": max_tokens,
-            "response_format": {"type": "json_schema", "json_schema": JSON_SCHEMA},
-            "extra_body": {"reasoning_effort": "none"},
-        }
-    return {"max_tokens": max_tokens}
+    """분류기 요청 옵션: hcx.request_options + 분류기 JSON 스키마 (HCX-007만 사용)."""
+    return _hcx_request_options(model, max_tokens, JSON_SCHEMA)
 
 
 def build_system_prompt() -> str:
@@ -116,16 +108,7 @@ class HCXBackend(Backend):
         min_interval: float | None = None,
     ):
         self.model = model or os.getenv("HCX_MODEL", "HCX-005")
-        if client is None:
-            from openai import OpenAI  # 테스트에서 가짜 client를 넣을 수 있도록 지연 import
-
-            # 429(호출 한도)·일시 오류는 SDK가 retry-after를 보고 기다렸다 재시도한다
-            client = OpenAI(
-                api_key=os.environ["CLOVASTUDIO_API_KEY"],
-                base_url=os.getenv("CLOVASTUDIO_BASE_URL", DEFAULT_BASE_URL),
-                max_retries=int(os.getenv("HCX_MAX_RETRIES", "8")),
-            )
-        self.client = client
+        self.client = client or make_client()
         # 호출 간 최소 간격(초). 테스트 키는 한도가 낮아 기본 1초
         self.min_interval = (
             float(os.getenv("HCX_MIN_INTERVAL", "1.0")) if min_interval is None else min_interval

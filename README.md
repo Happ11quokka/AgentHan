@@ -17,12 +17,15 @@
 | --- | --- |
 | `src/agenthan` | 기능 매칭, 사장님 비서 대화, 더미 가게 저장소, 메뉴·기능 도구, 리뷰 위임 |
 | `src/review_tools` | 리뷰 분석·답글 흐름·정기 보고 (`docs/review-clf.md`) |
-| `src/naver_review_clf` | 리뷰 [특징] 분류기 (`models/baseline.joblib`), HCX 요청 옵션 `request_options()` |
+| `src/naver_review_clf` | 리뷰 [특징] 분류기 (`models/baseline.joblib`) |
+| `src/hcx` | 세 패키지가 같이 쓰는 HCX 설정: `make_client()`, `request_options()`, `tool_call_options()` |
 
-- **HCX 클라이언트 하나**: 양쪽 모두 openai SDK로 CLOVA Studio OpenAI 호환 엔드포인트
-  (`https://clovastudio.stream.ntruss.com/v1/openai`)를 부릅니다. `agenthan.agent.clova_chat`의
-  `make_client()`와 `naver_review_clf.backends.hcx.request_options()`를 같이 씁니다. 메시지는
-  OpenAI 형식(`tool_calls`, `tool_call_id`)이고 `tool_choice`는 보내지 않습니다(CLOVA가 객체를 400으로 거절).
+- **HCX 설정 한 곳**: 모든 HCX 호출은 `hcx.make_client()`로 만든 openai SDK 클라이언트로
+  CLOVA Studio OpenAI 호환 엔드포인트(`https://clovastudio.stream.ntruss.com/v1/openai`)를 부릅니다.
+  모델별 옵션은 `hcx.request_options()`(HCX-007이면 `max_completion_tokens`·JSON 스키마),
+  도구 호출 턴은 `hcx.tool_call_options()`(max_tokens 1024 이상)입니다. 메시지는 OpenAI 형식
+  (`tool_calls`, `tool_call_id`)이고 `tool_choice`는 보내지 않습니다(CLOVA가 객체를 400으로 거절).
+  실측 제약은 `src/hcx/__init__.py` 맨 위에 모아 두었습니다.
 - **가게 데이터 하나**: 리뷰 도구도 `DummyStore`를 읽습니다(`agenthan.tools.review_adapters`).
   메뉴는 `{id, name, price, aliases}`, 리뷰는 review_tools 스냅샷과 같은
   `{review_id, visit_date, rating, text, features, has_owner_reply[, owner_reply]}`입니다.
@@ -159,9 +162,13 @@ uv run --env-file .env python -m agenthan.eval.tool_selection --repeat 3 --only 
 
 ## 리뷰 도구 데모 (review_tools)
 
-실제 스냅샷이 있는 환경에서 `scripts/chat_demo.py`로 리뷰 도구만 따로 실행할 수 있습니다.
-분류기·스냅샷·평가 스크립트는 `docs/review-clf.md`를 참고합니다.
+`scripts/chat_demo.py`로 리뷰 도구만 따로 실행할 수 있습니다. 기본은 실제 스냅샷(`data/`)이고,
+없으면 합성 fixture를 넘깁니다. 분류기·스냅샷·평가 스크립트는 `docs/review-clf.md`를 참고합니다.
 
 ```sh
 uv run --env-file .env python scripts/chat_demo.py --store <매장명> --ask "요즘 손님들 불만 뭐야?"
+# 실제 데이터 없이
+uv run --env-file .env python scripts/chat_demo.py --store 연습떡집 \
+  --snapshot tests/fixtures/review_snapshot.jsonl --menus tests/fixtures/menus.json \
+  --ask "딸기모찌 반응 어때?"
 ```

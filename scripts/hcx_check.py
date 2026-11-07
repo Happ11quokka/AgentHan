@@ -13,20 +13,15 @@
 """
 
 import json
-import os
 import time
 from pathlib import Path
 
-from openai import OpenAI
-
+from hcx import make_client
 from review_tools.specs import ANALYZE_REVIEWS, GET_SALES_STATS
 
 ROOT = Path(__file__).resolve().parents[1]
 
-client = OpenAI(
-    api_key=os.environ["CLOVASTUDIO_API_KEY"],
-    base_url=os.getenv("CLOVASTUDIO_BASE_URL", "https://clovastudio.stream.ntruss.com/v1/openai"),
-)
+client = make_client(max_retries=2)  # 실측용: SDK 기본 재시도 횟수 유지
 out = {"checked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
 
 

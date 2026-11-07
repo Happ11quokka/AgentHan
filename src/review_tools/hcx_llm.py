@@ -16,7 +16,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from naver_review_clf.backends.hcx import DEFAULT_BASE_URL, _extract_json, request_options
+from hcx import make_client, request_options
+from naver_review_clf.backends.hcx import _extract_json
 from naver_review_clf.schema import FEATURE_GUIDE
 
 from .sentiment import RuleSentiment
@@ -226,15 +227,7 @@ class HCXReviewLLM:
         min_interval: float | None = None,
     ):
         self.model = model or os.getenv("HCX_MODEL", "HCX-DASH-002")
-        if client is None:
-            from openai import OpenAI
-
-            client = OpenAI(
-                api_key=os.environ["CLOVASTUDIO_API_KEY"],
-                base_url=os.getenv("CLOVASTUDIO_BASE_URL", DEFAULT_BASE_URL),
-                max_retries=int(os.getenv("HCX_MAX_RETRIES", "8")),
-            )
-        self.client = client
+        self.client = client or make_client()
         self.min_interval = (
             float(os.getenv("HCX_MIN_INTERVAL", "1.0")) if min_interval is None else min_interval
         )
@@ -251,14 +244,8 @@ class HCXReviewLLM:
         key = hashlib.sha1(f"{self.model}\n{system}\n{user}".encode()).hexdigest()
         if key in self.cache:
             return model_cls.model_validate(self.cache[key])
-        opts = request_options(self.model, max_tokens)
-        if (
-            "response_format" in opts
-        ):  # HCX-007: 이 호출의 스키마로 바꿔 끼운다 (스키마가 없으면 프롬프트만)
-            if schema:
-                opts["response_format"] = {"type": "json_schema", "json_schema": schema}
-            else:
-                opts.pop("response_format")
+        # HCX-007이면 이 호출의 스키마로 Structured Outputs (스키마가 없으면 프롬프트만)
+        opts = request_options(self.model, max_tokens, schema or None)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         err = None
         for _ in range(2):  # JSON이 틀리면 1회 재시도

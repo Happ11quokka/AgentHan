@@ -8,16 +8,12 @@ import copy
 import os
 from pathlib import Path
 
-from openai import OpenAI
-
+from hcx import make_client
 from review_tools.specs import ANALYZE_REVIEWS
 
 ROOT = Path(__file__).resolve().parents[1]
 
-client = OpenAI(
-    api_key=os.environ["CLOVASTUDIO_API_KEY"],
-    base_url="https://clovastudio.stream.ntruss.com/v1/openai",
-)
+client = make_client(max_retries=2)  # 실측용: SDK 기본 재시도 횟수 유지
 
 
 def variant(extra: str):
