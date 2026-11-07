@@ -1,0 +1,12 @@
+{
+  "shop": {"id": "dummy-shop", "name": "가상 연습 가게"},
+  "menus": [
+    {"id": "menu-1", "name": "연습 라떼", "price": 4000},
+    {"id": "menu-2", "name": "연습 샌드위치", "price": 6000}
+  ],
+  "reviews": [
+    {"id": "review-1", "review_text": "음료가 맛있어요.", "reply_text": "", "status": "unanswered"},
+    {"id": "review-2", "review_text": "가게가 편안해요.", "reply_text": "", "status": "unanswered"},
+    {"id": "review-3", "review_text": "음식이 조금 늦게 나왔어요.", "reply_text": "", "status": "unanswered"}
+  ]
+}
