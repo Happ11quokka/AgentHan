@@ -27,3 +27,4 @@ CLAUDE.local.md
 !tests/data/
 tests/data/*
 !tests/data/place_request_cases.jsonl
+!tests/data/tool_selection_cases.jsonl

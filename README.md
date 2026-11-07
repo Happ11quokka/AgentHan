@@ -101,3 +101,23 @@ API 평가는 호출 제한을 고려해 요청 사이에 약 1초를 두며, �
 실제 매장명·사람 이름·인터뷰 원문은 사용하지 않습니다. 테스트 실패 메시지에는
 오분류 문장을 표시합니다. 정확도는 이 고정 세트에 대한 검증이며 사용자 요청 전체의
 정확도를 보장하지는 않습니다.
+
+## 18개 기능 도구와 도구 선택 평가
+
+`src/agenthan/tools/feature_tools.py`에 메뉴·리뷰 답글 외 16개 기능의 도구를 정의합니다
+(`all_tool_schemas()`로 18개 전체). 모두 로컬 더미 저장소나 고정 더미 자료만 다루며 실제 네이버
+연동·발송은 없습니다. 인자는 저장 전에 검증하고, 잘못되면 `needs_input`으로 되묻습니다.
+아직 사장님 비서 대화(`owner_assistant`)에는 연결하지 않았습니다.
+
+`tests/data/tool_selection_cases.jsonl`(정보가 다 있는 요청 54개, 정보가 빠진 요청 8개,
+관계없는 요청 6개)로 18개 도구를 모두 노출했을 때 HCX-005가 맞는 도구를 고르는지 측정합니다.
+
+```sh
+uv run --env-file .env python -m agenthan.eval.tool_selection --out tool_eval.jsonl
+# 반복 측정, 일부 사례만
+uv run --env-file .env python -m agenthan.eval.tool_selection --repeat 3 --only create_coupon-1,missing-coupon
+```
+
+지표: `selection_accuracy`(기대 도구를 첫 호출로 고른 비율), `wrong_tool`, `no_call_when_expected`,
+`false_call_rate`(호출하면 안 되는 사례에서 호출한 비율), `args_valid_rate`(맞게 고른 호출 중 인자가
+검증을 통과한 비율), 도구별·언어별 정확도와 틀린 사례 목록.

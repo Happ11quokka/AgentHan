@@ -23,17 +23,34 @@ def valid_price(value: object) -> bool:
     return type(value) is int and value > 0
 
 
-def find_reviews(reviews: list[dict], query: str) -> list[dict]:
-    """Find a review by id, exact text, then a unique partial quote of the text."""
+# Collections added after the first seed; older store files get these defaults.
+OPTIONAL_COLLECTIONS = {
+    "talktalk": list,
+    "orders": list,
+    "reservations": list,
+    "calls": list,
+    "coupons": list,
+    "settlements": dict,
+    "statistics": dict,
+}
+
+
+def find_records(records: list[dict], query: str, text_key: str) -> list[dict]:
+    """Find records by id, exact text, then a partial quote of the text."""
     key = normalize(query)
     for exact in (
-        [r for r in reviews if normalize(r["id"]) == key],
-        [r for r in reviews if normalize(r["review_text"]) == key],
+        [r for r in records if normalize(r["id"]) == key],
+        [r for r in records if normalize(str(r.get(text_key, ""))) == key],
     ):
         if exact:
             return exact
-    # Owners and the model often quote only part of a review ("늦게 나왔어요").
-    return [r for r in reviews if key in normalize(r["review_text"])]
+    # Owners and the model often quote only part of a text ("늦게 나왔어요").
+    return [r for r in records if key and key in normalize(str(r.get(text_key, "")))]
+
+
+def find_reviews(reviews: list[dict], query: str) -> list[dict]:
+    """Find a review by id, exact text, then a unique partial quote of the text."""
+    return find_records(reviews, query, "review_text")
 
 
 class DummyStore:
@@ -65,10 +82,22 @@ class DummyStore:
             for record in data["reviews"]:
                 if any(not isinstance(record[key], str) for key in ("id", "review_text")):
                     raise ValueError
+            for key, kind in OPTIONAL_COLLECTIONS.items():
+                data.setdefault(key, kind())
+                if not isinstance(data[key], kind):
+                    raise ValueError
+                if kind is list and any(
+                    not isinstance(r, dict) or not isinstance(r.get("id"), str) for r in data[key]
+                ):
+                    raise ValueError
             return data
         except (OSError, ValueError, TypeError, KeyError):
             pass
         raise DummyStoreError("더미 저장소를 읽을 수 없습니다.")
+
+    def write(self, data: dict) -> None:
+        """Atomically replace the store; callers pass data obtained from read()."""
+        self._write(data)
 
     def _write(self, data: dict) -> None:
         temporary = None
