@@ -1,6 +1,8 @@
 # 새 worktree에는 .venv가 없으므로 --no-sync 대신 잠금 파일·로컬 캐시로 설치한다(--frozen --offline).
 # 구현자(Codex)의 네트워크를 연다. CLOVA 임베딩을 직접 호출해 확인하기 위해서다.
 network = true
+# 아래 [[command]]의 env 값(CLOVASTUDIO_API_KEY)을 구현자에게도 넘긴다. geass#18부터 network와 별도 설정이다.
+implement_env = true
 
 [[command]]
 name = "pytest"
