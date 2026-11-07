@@ -1,9 +1,6 @@
 {"id": "upsert_menu-1", "kind": "full", "lang": "ko", "text": "신메뉴 '유자 에이드'를 5500원으로 등록해 주세요.", "expected_tool": "upsert_menu"}
 {"id": "upsert_menu-2", "kind": "full", "lang": "en", "text": "Please add a new menu item called Mango Smoothie for 6000 won.", "expected_tool": "upsert_menu"}
 {"id": "upsert_menu-3", "kind": "full", "lang": "ko_simple", "text": "연습 라떼 가격 4500원 으로 바꿔 주세요", "expected_tool": "upsert_menu"}
-{"id": "save_review_reply-1", "kind": "full", "lang": "ko", "text": "review-3 리뷰에 '늦어져서 죄송합니다. 더 빨리 준비하겠습니다.'라고 답글 달아 주세요.", "expected_tool": "save_review_reply"}
-{"id": "save_review_reply-2", "kind": "full", "lang": "en", "text": "Reply to the review 'The drinks are tasty' with: Thank you so much, see you again!", "expected_tool": "save_review_reply"}
-{"id": "save_review_reply-3", "kind": "full", "lang": "ko_simple", "text": "가게가 편안해요 리뷰 답글: 감사합니다 또 오세요", "expected_tool": "save_review_reply"}
 {"id": "update_business_info-1", "kind": "full", "lang": "ko", "text": "가게 전화번호를 02-123-4567로 바꿔 주세요.", "expected_tool": "update_business_info"}
 {"id": "update_business_info-2", "kind": "full", "lang": "en", "text": "Change my store address to 12 Sample-ro, Mapo-gu, Seoul.", "expected_tool": "update_business_info"}
 {"id": "update_business_info-3", "kind": "full", "lang": "ko_simple", "text": "가게 소개 바꿔요. 직접 만든 빵을 파는 작은 가게예요", "expected_tool": "update_business_info"}
@@ -31,9 +28,6 @@
 {"id": "register_new_opening-1", "kind": "full", "lang": "ko", "text": "저희 가게 2026-11-01에 새로 오픈했어요. 새로 오픈 소식 등록해 주세요.", "expected_tool": "register_new_opening"}
 {"id": "register_new_opening-2", "kind": "full", "lang": "en", "text": "We just opened on 2026-10-25. Please register us as a newly opened store.", "expected_tool": "register_new_opening"}
 {"id": "register_new_opening-3", "kind": "full", "lang": "ko_simple", "text": "가게 새로 열었어요 2026-11-03 오픈", "expected_tool": "register_new_opening"}
-{"id": "analyze_reviews-1", "kind": "full", "lang": "ko", "text": "AI로 우리 가게 전체 리뷰를 분석해 주세요.", "expected_tool": "analyze_reviews"}
-{"id": "analyze_reviews-2", "kind": "full", "lang": "en", "text": "Use AI to analyze the reviews I haven't answered yet.", "expected_tool": "analyze_reviews"}
-{"id": "analyze_reviews-3", "kind": "full", "lang": "ko_simple", "text": "AI 리뷰 분석 해 주세요 전부", "expected_tool": "analyze_reviews"}
 {"id": "get_naverpay_signup_guide-1", "kind": "full", "lang": "ko", "text": "개인사업자인데 네이버페이 가입하려면 뭐가 필요해요?", "expected_tool": "get_naverpay_signup_guide"}
 {"id": "get_naverpay_signup_guide-2", "kind": "full", "lang": "en", "text": "I run a corporation. What do I need to sign up for Naver Pay?", "expected_tool": "get_naverpay_signup_guide"}
 {"id": "get_naverpay_signup_guide-3", "kind": "full", "lang": "ko_simple", "text": "네이버페이 가입 하고 싶어요 개인 사업자예요", "expected_tool": "get_naverpay_signup_guide"}
@@ -53,7 +47,6 @@
 {"id": "search_help_articles-2", "kind": "full", "lang": "en", "text": "How do I contact the SmartPlace customer center?", "expected_tool": "search_help_articles"}
 {"id": "search_help_articles-3", "kind": "full", "lang": "ko_simple", "text": "리뷰 답글 쓰는 거 배우고 싶어요", "expected_tool": "search_help_articles"}
 {"id": "missing-menu", "kind": "missing", "lang": "ko", "text": "신메뉴를 등록하고 싶어요.", "expected_tool": null, "near_tool": "upsert_menu"}
-{"id": "missing-reply", "kind": "missing", "lang": "ko", "text": "리뷰에 답글을 달고 싶어요.", "expected_tool": null, "near_tool": "save_review_reply"}
 {"id": "missing-hours", "kind": "missing", "lang": "en", "text": "I want to change my opening hours.", "expected_tool": null, "near_tool": "update_business_hours"}
 {"id": "missing-coupon", "kind": "missing", "lang": "ko", "text": "할인 쿠폰을 만들고 싶어요.", "expected_tool": null, "near_tool": "create_coupon"}
 {"id": "missing-keywords", "kind": "missing", "lang": "ko_simple", "text": "대표 키워드 바꾸고 싶어요", "expected_tool": null, "near_tool": "set_representative_keywords"}

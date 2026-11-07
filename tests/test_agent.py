@@ -10,8 +10,8 @@ from review_tools.agent import ReviewToolbox, run_turn, system_prompt
 
 ROOT = Path(__file__).resolve().parents[1]
 
-REPO = SnapshotRepo(ROOT / "data" / "snapshots" / "test_baseline.jsonl")
-CAT = MenuCatalog.load(ROOT / "data" / "menus_sample.json")
+REPO = SnapshotRepo(ROOT / "tests" / "fixtures" / "review_snapshot.jsonl")
+CAT = MenuCatalog.load(ROOT / "tests" / "fixtures" / "menus.json")
 
 
 class FakeHCX:
@@ -50,13 +50,13 @@ class FakeHCX:
 
 
 def test_full_turn():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     fake = FakeHCX(
         {"period": "all", "focus": "complaint", "store_id": "다른가게"}
     )  # 명세 밖 인자는 무시돼야 함
     logs = []
     msgs = [
-        {"role": "system", "content": system_prompt("홍만당 명동본점", date(2026, 11, 7), "ko")},
+        {"role": "system", "content": system_prompt("연습떡집 본점", date(2026, 11, 7), "ko")},
         {"role": "user", "content": "손님들 불만 뭐야?"},
     ]
     out = run_turn(fake, "HCX-DASH-002", msgs, tb, log=lambda *x: logs.append(x))
@@ -77,13 +77,13 @@ def test_full_turn():
 
 
 def test_bad_period_is_reported_not_crashed():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     assert tb.dispatch("analyze_reviews", {"period": "2주"})["error"] == "bad_arguments"
     assert tb.dispatch("delete_reviews", {})["error"] == "unknown_tool"
 
 
 def test_owner_language_in_prompt():
-    assert "русский" in system_prompt("홍만당", date(2026, 11, 7), "ru")
+    assert "русский" in system_prompt("연습떡집", date(2026, 11, 7), "ru")
 
 
 class NoToolHCX(FakeHCX):
@@ -110,7 +110,7 @@ class NoToolHCX(FakeHCX):
 
 
 def test_nudge_then_tool_call():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     fake = NoToolHCX({"period": "all"}, nudge_works=True)
     msgs = [
         {"role": "system", "content": "s"},
@@ -122,7 +122,7 @@ def test_nudge_then_tool_call():
 
 
 def test_system_runs_tool_when_model_never_calls():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     fake = NoToolHCX({"period": "all"}, nudge_works=False)
     msgs = [
         {"role": "system", "content": "s"},
@@ -138,7 +138,7 @@ def test_system_runs_tool_when_model_never_calls():
 
 
 def test_no_force_for_unrelated_question():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     fake = NoToolHCX({"period": "all"})
     out = run_turn(
         fake,
@@ -150,7 +150,7 @@ def test_no_force_for_unrelated_question():
 
 
 def test_vague_period_is_ignored():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     r = tb.dispatch(
         "analyze_reviews",
         {"period": "7d", "focus": "complaint"},
@@ -164,7 +164,7 @@ def test_vague_period_is_ignored():
 
 
 def test_missing_topic_filled_from_utterance():
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     r = tb.dispatch(
         "analyze_reviews", {"period": "all"}, utterance="Что говорят о клубничном моти?"
     )
@@ -202,7 +202,7 @@ def test_answer_rewritten_in_owner_language():
     assert not _mostly_korean(
         'Найдено 3 отзыва. "맛이 없어요..." (невкусно)'
     )  # 인용은 한국어여도 됨
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     msgs = [
         {"role": "system", "content": "s"},
         {"role": "user", "content": "Что говорят о клубничном моти?"},
@@ -253,7 +253,7 @@ def test_analysis_answer_cleanup():
 
 def test_dropped_period_removed_from_history():
     # 모델이 넣었다가 시스템이 버린 period가 대화 기록에 남으면 모델이 그 값을 기간으로 말한다
-    tb = ReviewToolbox("홍만당", date(2026, 11, 7), REPO, CAT)
+    tb = ReviewToolbox("연습떡집", date(2026, 11, 7), REPO, CAT)
     msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "최근 리뷰 어때?"}]
     run_turn(FakeHCX({"period": "7d"}), "HCX-005", msgs, tb)
     call = next(m for m in msgs if m.get("tool_calls"))["tool_calls"][0]

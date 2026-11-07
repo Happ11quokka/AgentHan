@@ -1,4 +1,6 @@
-"""Tools for the 16 catalog features beyond menu and review replies.
+"""Tools for the catalog features handled by agenthan (menu + 15 features).
+
+Review features (review_reply, ai_review) are delegated to review_tools.
 
 Every tool works only on the local dummy store or on fixed dummy reference data.
 Nothing is sent to Naver. Invalid arguments never reach storage.
@@ -249,19 +251,6 @@ def _new_opening(store, args):
     return {"ok": True, "action": "saved", "record": store.read()["shop"]["new_opening"]}
 
 
-def _analyze_reviews(store, args):
-    reviews = store.read()["reviews"]
-    if args["scope"] == "unanswered":
-        reviews = [r for r in reviews if not r.get("reply_text")]
-    return {
-        "ok": True,
-        "action": "read",
-        "total": len(reviews),
-        "unanswered": sum(1 for r in reviews if not r.get("reply_text")),
-        "records": reviews,
-    }
-
-
 def _naverpay(store, args):
     return {
         "ok": True,
@@ -426,19 +415,6 @@ _TOOL_LIST = [
         _new_opening,
     ),
     FeatureTool(
-        "ai_review",
-        "analyze_reviews",
-        (
-            Param(
-                "scope",
-                "분석할 리뷰 범위",
-                enum=("all", "unanswered"),
-                hint="all=전체, unanswered=답글 없는 리뷰",
-            ),
-        ),
-        _analyze_reviews,
-    ),
-    FeatureTool(
         "naverpay_signup",
         "get_naverpay_signup_guide",
         (
@@ -490,12 +466,14 @@ _TOOL_LIST = [
     ),
 ]
 TOOLS = {t.feature_id: t for t in _TOOL_LIST}
-# Every catalog feature has exactly one tool name.
+# Handled by review_tools (ReviewToolbox + run_turn), not by a tool in this module.
+DELEGATED_FEATURES = frozenset({"review_reply", "ai_review"})
+# Every other catalog feature has exactly one tool name.
 TOOL_FEATURES = {**{v: k for k, v in TOOL_NAMES.items()}, **{t.name: k for k, t in TOOLS.items()}}
 
 
 def feature_tool_schema(feature_id: str) -> dict:
-    """Schema for any of the 18 features; menu/review_reply come from owner_tools."""
+    """Schema for any non-delegated feature; menu comes from owner_tools."""
     if feature_id in TOOL_NAMES:
         return tool_schema(feature_id)
     tool = TOOLS.get(feature_id)
@@ -518,12 +496,14 @@ def feature_tool_schema(feature_id: str) -> dict:
 
 
 def all_tool_schemas() -> list[dict]:
-    """All 18 tools in catalog order."""
-    return [feature_tool_schema(f["id"]) for f in load_features()]
+    """All 16 agenthan tools in catalog order (review features are delegated)."""
+    return [
+        feature_tool_schema(f["id"]) for f in load_features() if f["id"] not in DELEGATED_FEATURES
+    ]
 
 
 def execute_feature_tool(store: DummyStore, name: str, arguments: object) -> dict:
-    """Run any of the 18 tools by name after validating its arguments."""
+    """Run any of the 16 tools by name after validating its arguments."""
     feature_id = TOOL_FEATURES.get(name)
     if feature_id is None:
         return {"ok": False, "error": "tool_not_allowed", "message": "허용되지 않은 도구입니다."}

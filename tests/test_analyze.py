@@ -8,16 +8,16 @@ from review_tools import MenuCatalog, RuleSentiment, SnapshotRepo, analyze_revie
 ROOT = Path(__file__).resolve().parents[1]
 
 TODAY = date(2026, 11, 7)
-REPO = SnapshotRepo(ROOT / "data" / "snapshots" / "test_baseline.jsonl")
-CAT = MenuCatalog.load(ROOT / "data" / "menus_sample.json")
+REPO = SnapshotRepo(ROOT / "tests" / "fixtures" / "review_snapshot.jsonl")
+CAT = MenuCatalog.load(ROOT / "tests" / "fixtures" / "menus.json")
 
 
 def run(**kw):
-    return analyze_reviews(store_id="홍만당", today=TODAY, repo=REPO, catalog=CAT, **kw)
+    return analyze_reviews(store_id="연습떡집", today=TODAY, repo=REPO, catalog=CAT, **kw)
 
 
 def test_zero_reviews_in_window():
-    # 홍만당 스냅샷의 마지막 리뷰는 10-30 → 최근 7일을 '직접 지정'하면 0건 + 마지막 리뷰 안내
+    # 연습떡집 스냅샷의 마지막 리뷰는 10-30 → 최근 7일을 '직접 지정'하면 0건 + 마지막 리뷰 안내
     r = run(period="7d")
     assert r["review_count"] == 0
     assert r["last_review"]["visit_date"] == "2026-10-30" and r["last_review"]["days_ago"] == 8
@@ -40,12 +40,12 @@ def test_period_and_focus():
 
 
 def test_topic_menu_and_aspect():
-    assert resolve_topic("메도빅 가격", "홍만당", CAT)["unresolved"] == ["메도빅"]  # 없는 메뉴
-    t = resolve_topic("딸기모찌 가격", "홍만당", CAT)
+    assert resolve_topic("메도빅 가격", "연습떡집", CAT)["unresolved"] == ["메도빅"]  # 없는 메뉴
+    t = resolve_topic("딸기모찌 가격", "연습떡집", CAT)
     assert t["menus"] == ["딸기모찌"] and t["aspects"] == ["가격"]
-    assert resolve_topic("웨이팅", "홍만당", CAT)["aspects"] == ["대기시간"]
-    assert resolve_topic("очередь", "홍만당", CAT)["aspects"] == ["대기시간"]
-    amb = resolve_topic("딸기", "홍만당", CAT)  # 여러 메뉴에 걸림
+    assert resolve_topic("웨이팅", "연습떡집", CAT)["aspects"] == ["대기시간"]
+    assert resolve_topic("очередь", "연습떡집", CAT)["aspects"] == ["대기시간"]
+    amb = resolve_topic("딸기", "연습떡집", CAT)  # 여러 메뉴에 걸림
     assert amb["unresolved"] and len(amb["candidates"]) >= 2
     r = run(period="all", topic="딸기모찌")
     assert r["review_count"] > 0 and r["filters"]["menus"] == ["딸기모찌"]
@@ -70,7 +70,7 @@ def test_few_reviews_not_generalized():
 def test_topic_recovered_from_utterance():
     from review_tools.topic import resolve_from_utterance
 
-    assert resolve_from_utterance("Что говорят о клубничном моти?", "홍만당", CAT)["menus"] == [
+    assert resolve_from_utterance("Что говорят о клубничном моти?", "연습떡집", CAT)["menus"] == [
         "딸기모찌"
     ]
     # LLM이 topic을 로마자로 망가뜨려도 사장님 원문에서 찾는다 (2026-11-07 실제 발생)
@@ -149,7 +149,7 @@ def test_hcx_wiring_with_fake_client():
     n_calls = len(fc.calls)
     sent_calls = sum("감정 판단기" in c["messages"][0]["content"] for c in fc.calls)
     with_spans = sum(
-        1 for x in REPO.get_reviews("홍만당") if any(f["highlights"] for f in x["features"])
+        1 for x in REPO.get_reviews("연습떡집") if any(f["highlights"] for f in x["features"])
     )
     assert (
         sent_calls <= math.ceil(with_spans / 10) + 2

@@ -1,113 +1,110 @@
-"""HCX-005 function calling with a standard-library HTTP client."""
+"""HCX chat over CLOVA Studio's OpenAI-compatible API, shared with review_tools.
 
-import http.client
+The owner assistant and review_tools use the same client: the openai SDK pointed at
+CLOVA Studio's /v1/openai endpoint, with model options from
+naver_review_clf.backends.hcx.request_options(). Messages use the OpenAI format
+(tool_calls, tool_call_id).
+
+CLOVA constraints measured by review_tools (2026-11-07): one system message per
+request, a tool_choice object is rejected with 400, tool calling needs max_tokens >=
+1024, and consecutive calls hit 429 (the SDK retries; HCX_MAX_RETRIES, default 8).
+"""
+
 import json
 import os
-import time
-import urllib.error
-import urllib.request
-import uuid
 
-ENDPOINT = "https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-005"
-MAX_RETRIES = 2
+from naver_review_clf.backends.hcx import DEFAULT_BASE_URL, request_options
+
+CHAT_MODEL = "HCX-005"
+MAX_TOKENS = 1024
 REQUEST_TIMEOUT = 45
-RETRY_DELAY = 0.25
+TEMPERATURE = 0.2
 
 
 class ClovaChatError(Exception):
     """An error safe to display without a server body or credentials."""
 
 
+def make_client():
+    """OpenAI-compatible CLOVA Studio client. Reads only CLOVASTUDIO_* / HCX_* env vars."""
+    key = os.environ.get("CLOVASTUDIO_API_KEY")
+    if not key:
+        raise ClovaChatError("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
+    from openai import OpenAI
+
+    return OpenAI(
+        api_key=key,
+        base_url=os.getenv("CLOVASTUDIO_BASE_URL", DEFAULT_BASE_URL),
+        max_retries=int(os.getenv("HCX_MAX_RETRIES", "8")),
+        timeout=REQUEST_TIMEOUT,
+    )
+
+
+def chat_options(model: str = CHAT_MODEL) -> dict:
+    """Request options for a tool-calling turn (same rule as review_tools.agent.run_turn)."""
+    opts = request_options(model, MAX_TOKENS)
+    opts.pop("response_format", None)  # tool calls and JSON schema are not used together
+    return opts
+
+
+def _get(value: object, key: str):
+    return value.get(key) if isinstance(value, dict) else getattr(value, key, None)
+
+
 def parse_message(value: object) -> dict:
-    """Keep only the HCX assistant message fields needed for the next request."""
-    if not isinstance(value, dict) or value.get("role") != "assistant":
+    """Normalize an SDK message or dict to {"role", "content"[, "tool_calls"]}."""
+    if value is None or isinstance(value, list | str):
         raise ClovaChatError("CLOVA 대화 응답 형식이 올바르지 않습니다.")
-    content = value.get("content") or ""
-    calls = value.get("toolCalls", [])
-    if not isinstance(content, str) or not isinstance(calls, list):
+    role = _get(value, "role") or "assistant"
+    content = _get(value, "content") or ""
+    calls = _get(value, "tool_calls") or []
+    if role != "assistant" or not isinstance(content, str) or not isinstance(calls, list):
         raise ClovaChatError("CLOVA 대화 응답 형식이 올바르지 않습니다.")
     parsed = {"role": "assistant", "content": content}
-    ids = set()
+    out, ids = [], set()
     for call in calls:
+        call_id = _get(call, "id")
+        fn = _get(call, "function")
+        name = _get(fn, "name") if fn is not None else None
         if (
-            not isinstance(call, dict)
-            or call.get("type") != "function"
-            or not isinstance(call.get("id"), str)
-            or not call["id"].strip()
-            or call["id"] in ids
-            or not isinstance(call.get("function"), dict)
-            or not isinstance(call["function"].get("name"), str)
+            not isinstance(call_id, str)
+            or not call_id.strip()
+            or call_id in ids
+            or (_get(call, "type") or "function") != "function"
+            or not isinstance(name, str)
         ):
             raise ClovaChatError("CLOVA 도구 호출 형식이 올바르지 않습니다.")
-        ids.add(call["id"])
-    if calls:
-        parsed["toolCalls"] = calls
+        ids.add(call_id)
+        arguments = _get(fn, "arguments")
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments or {}, ensure_ascii=False)
+        out.append(
+            {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+        )
+    if out:
+        parsed["tool_calls"] = out
     elif not content.strip():
         raise ClovaChatError("CLOVA 대화 응답이 비어 있습니다.")
     return parsed
 
 
-def _retryable(code: int) -> bool:
-    return code == 429 or 500 <= code <= 599
-
-
-def chat(messages: list[dict], *, tools: list[dict], tool_choice: str = "auto") -> dict:
-    """Return result.message; retry HTTP/API 429 and 5xx at most twice."""
-    key = os.environ.get("CLOVASTUDIO_API_KEY")
-    if not key:
-        raise ClovaChatError("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
-    body = json.dumps(
-        {
-            "messages": messages,
-            "tools": tools,
-            "toolChoice": tool_choice,
-            "maxTokens": 1024,
-            "temperature": 0.2,
-        },
-        ensure_ascii=False,
-    ).encode("utf-8")
-    for attempt in range(MAX_RETRIES + 1):
-        request = urllib.request.Request(
-            ENDPOINT,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {key}",
-                "X-NCP-CLOVASTUDIO-REQUEST-ID": str(uuid.uuid4()),
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        retry = False
+def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = CHAT_MODEL) -> dict:
+    """One chat completion. Tools are sent only when non-empty; tool_choice is never sent."""
+    client = client or make_client()
+    kwargs = {"model": model, "messages": messages, "temperature": TEMPERATURE}
+    kwargs.update(chat_options(model))
+    if tools:
+        kwargs["tools"] = tools
+    failure = None
+    try:
+        choice = client.chat.completions.create(**kwargs).choices[0]
+        if getattr(choice, "finish_reason", None) == "length":
+            failure = "CLOVA 대화 응답이 길이 제한으로 중단됐습니다."
+        else:
+            return parse_message(choice.message)
+    except ClovaChatError as error:
+        failure = str(error)
+    except Exception:  # noqa: BLE001 - SDK/transport errors may carry a body or key
         failure = "CLOVA 대화 요청에 실패했습니다."
-        try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-                payload = json.load(response)
-            code = payload["status"]["code"]
-            if code == "20000":
-                result = payload["result"]
-                if result.get("finishReason") == "length":
-                    raise ClovaChatError("CLOVA 대화 응답이 길이 제한으로 중단됐습니다.")
-                return parse_message(result["message"])
-            retry = isinstance(code, str) and code[:3].isdigit() and _retryable(int(code[:3]))
-            failure = "CLOVA 대화 API가 오류를 반환했습니다."
-        except urllib.error.HTTPError as error:
-            retry = _retryable(error.code)
-            error.close()
-            failure = "CLOVA 대화 HTTP 요청에 실패했습니다."
-        except (
-            OSError,
-            http.client.HTTPException,
-            ValueError,
-            KeyError,
-            TypeError,
-            AttributeError,
-            ClovaChatError,
-        ):
-            failure = "CLOVA 대화 응답 또는 연결을 확인해 주세요."
-        if retry and attempt < MAX_RETRIES:
-            time.sleep(RETRY_DELAY * (attempt + 1))
-            continue
-        # Outside except: even the exception context must not expose a body/key.
-        raise ClovaChatError(failure)
-    raise ClovaChatError("CLOVA 대화 요청에 실패했습니다.")  # pragma: no cover
+    # Outside except: even the exception context must not expose a body/key.
+    raise ClovaChatError(failure)

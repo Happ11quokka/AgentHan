@@ -6,6 +6,7 @@ from agenthan.eval import tool_selection as ev
 from agenthan.rag import place_matcher as matcher
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore
 from agenthan.tools.feature_tools import (
+    DELEGATED_FEATURES,
     TOOL_FEATURES,
     TOOLS,
     all_tool_schemas,
@@ -49,7 +50,6 @@ VALID = {
         "end_date": "2026-11-30",
     },
     "register_new_opening": {"opening_date": "2026-11-01"},
-    "analyze_reviews": {"scope": "unanswered"},
     "get_naverpay_signup_guide": {"business_type": "individual"},
     "set_onsite_payment": {"enabled": True},
     "get_settlement_summary": {"period": "this_month"},
@@ -62,8 +62,10 @@ VALID = {
 def test_every_catalog_feature_has_one_tool():
     schemas = all_tool_schemas()
     names = [s["function"]["name"] for s in schemas]
-    assert len(names) == len(set(names)) == 18
-    assert {TOOL_FEATURES[n] for n in names} == {f["id"] for f in matcher.load_features()}
+    assert len(names) == len(set(names)) == 16
+    features = {f["id"] for f in matcher.load_features()}
+    assert {TOOL_FEATURES[n] for n in names} == features - DELEGATED_FEATURES
+    assert DELEGATED_FEATURES < features  # review features go to review_tools
     for schema in schemas:
         params = schema["function"]["parameters"]
         assert params["additionalProperties"] is False
@@ -143,10 +145,10 @@ def test_old_store_without_new_collections(store):
     assert execute_feature_tool(store, "upsert_menu", {"name": "차", "price": 3000})["ok"]
 
 
-def test_menu_and_review_tools_delegate(store):
+def test_menu_tool_delegates_and_review_tools_are_gone(store):
     assert execute_feature_tool(store, "upsert_menu", {"name": "차"})["error"] == "needs_input"
-    reply = {"review_text": "review-1", "reply_text": "감사합니다"}
-    assert execute_feature_tool(store, "save_review_reply", reply)["ok"]
+    for name in ("save_review_reply", "analyze_reviews"):
+        assert execute_feature_tool(store, name, {})["error"] == "tool_not_allowed"
 
 
 # --- tool selection evaluation ------------------------------------------------------
@@ -168,7 +170,7 @@ def fake_call(name, arguments):
     return {
         "role": "assistant",
         "content": "",
-        "toolCalls": [
+        "tool_calls": [
             {"id": "c1", "type": "function", "function": {"name": name, "arguments": arguments}}
         ],
     }
@@ -200,12 +202,12 @@ def test_eval_metrics_with_fake_chat():
     )
     seen = []
 
-    def chat(messages, *, tools, tool_choice):
-        seen.append((len(tools), tool_choice, messages[-1]["content"]))
+    def chat(messages, *, tools):
+        seen.append((len(tools), messages[-1]["content"]))
         return next(replies)
 
     rows, summary = ev.evaluate(cases, chat)
-    assert seen[0][:2] == (18, "auto")
+    assert seen[0][0] == 16
     assert summary["selection_accuracy"] == round(2 / 3, 3)
     assert summary["wrong_tool"] == 1
     assert summary["args_valid_rate"] == 0.5

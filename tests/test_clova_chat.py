@@ -1,9 +1,6 @@
-import http.client
-import io
 import json
 import traceback
-import urllib.error
-import uuid
+from types import SimpleNamespace as NS
 
 import pytest
 
@@ -15,124 +12,82 @@ from agenthan.tools.owner_tools import tool_schema
 def offline(monkeypatch):
     monkeypatch.delenv("CLOVASTUDIO_API_KEY", raising=False)
 
-    def no_network(*args, **kwargs):
-        pytest.fail("Chat unit tests must not use the network")
 
-    monkeypatch.setattr(clova.urllib.request, "urlopen", no_network)
+class FakeClient:
+    """OpenAI SDK shape: client.chat.completions.create(**kw) -> resp.choices[0].message."""
+
+    def __init__(self, *replies):
+        self.replies, self.requests = list(replies), []
+        self.chat = NS(completions=NS(create=self._create))
+
+    def _create(self, **kw):
+        self.requests.append(json.loads(json.dumps(kw, ensure_ascii=False)))
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        if hasattr(reply, "choices"):
+            return reply
+        return NS(choices=[NS(message=reply, finish_reason="stop")])
 
 
-def response(code="20000", message=None, finish_reason="stop"):
-    return io.BytesIO(
-        json.dumps(
-            {
-                "status": {"code": code},
-                "result": {
-                    "message": message or {"role": "assistant", "content": "안녕하세요."},
-                    "finishReason": finish_reason,
-                },
-            }
-        ).encode()
+def sdk_call(id_, name, arguments):
+    return NS(id=id_, type="function", function=NS(name=name, arguments=arguments))
+
+
+def test_request_and_tool_result_roundtrip():
+    args = json.dumps({"name": "연습 차", "price": 5000}, ensure_ascii=False)
+    client = FakeClient(
+        NS(role="assistant", content=None, tool_calls=[sdk_call("call-1", "upsert_menu", args)]),
+        NS(role="assistant", content="등록했어요.", tool_calls=None),
     )
-
-
-def test_request_and_tool_result_roundtrip(monkeypatch):
-    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-chat-key")
-    requests = []
-    tool_call = {
-        "id": "call-1",
-        "type": "function",
-        "function": {"name": "upsert_menu", "arguments": {"name": "연습 차", "price": 5000}},
-    }
-
-    def urlopen(request, timeout):
-        requests.append(request)
-        assert timeout == 45
-        if len(requests) == 1:
-            return response(message={"role": "assistant", "toolCalls": [tool_call]})
-        return response()
-
-    monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
     tools = [tool_schema("menu")]
     messages = [{"role": "user", "content": "연습 차 5000원 메뉴 등록"}]
-    message = clova.chat(messages, tools=tools)
-    assert message == {"role": "assistant", "content": "", "toolCalls": [tool_call]}
-    messages += [message, {"role": "tool", "toolCallId": "call-1", "content": '{"ok":true}'}]
-    clova.chat(messages, tools=[], tool_choice="none")
-    assert requests[0].full_url == clova.ENDPOINT
-    assert requests[0].get_method() == "POST"
-    payload = json.loads(requests[0].data)
-    assert payload["tools"] == tools
-    assert payload["toolChoice"] == "auto"
-    assert payload["maxTokens"] >= 1024
-    second = json.loads(requests[1].data)
-    assert second["messages"][-1]["toolCallId"] == "call-1"
-    assert second["tools"] == [] and second["toolChoice"] == "none"
-    ids = []
-    for request in requests:
-        headers = {k.lower(): v for k, v in request.header_items()}
-        assert headers["authorization"] == "Bearer fake-chat-key"
-        assert headers["content-type"] == "application/json"
-        ids.append(headers["x-ncp-clovastudio-request-id"])
-        assert uuid.UUID(ids[-1]).version == 4
-    assert len(set(ids)) == 2
+    message = clova.chat(messages, tools=tools, client=client)
+    assert message == {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "upsert_menu", "arguments": args},
+            }
+        ],
+    }
+    messages += [message, {"role": "tool", "tool_call_id": "call-1", "content": '{"ok":true}'}]
+    assert clova.chat(messages, tools=[], client=client)["content"] == "등록했어요."
+    first, second = client.requests
+    assert first["model"] == "HCX-005" and first["tools"] == tools
+    assert first["max_tokens"] >= 1024 and "response_format" not in first
+    # CLOVA rejects tool_choice objects; never send it, and omit empty tools.
+    assert "tool_choice" not in first and "tool_choice" not in second
+    assert "tools" not in second
+    assert second["messages"][-1]["tool_call_id"] == "call-1"
 
 
-@pytest.mark.parametrize("code", [429, 500, 503, 599, 400, 401, 403])
-@pytest.mark.parametrize("api_status", [True, False])
-def test_retry_policy(monkeypatch, code, api_status):
-    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-chat-key")
-    requests, sleeps = [], []
-
-    def urlopen(request, timeout):
-        requests.append(request)
-        if api_status:
-            return response(str(code) + "01")
-        raise urllib.error.HTTPError(clova.ENDPOINT, code, "hidden body", {}, io.BytesIO())
-
-    monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(clova.time, "sleep", sleeps.append)
-    with pytest.raises(clova.ClovaChatError):
-        clova.chat([], tools=[])
-    retryable = code == 429 or code >= 500
-    assert len(requests) == (3 if retryable else 1)
-    assert sleeps == ([0.25, 0.5] if retryable else [])
+def test_dict_arguments_are_serialized():
+    msg = clova.parse_message(
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"id": "c", "type": "function", "function": {"name": "f", "arguments": {"a": 1}}}
+            ],
+        }
+    )
+    assert msg["tool_calls"][0]["function"]["arguments"] == '{"a": 1}'
 
 
-def test_retry_then_success(monkeypatch):
-    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-chat-key")
-    replies = iter([response("42900"), response("50300"), response()])
-    monkeypatch.setattr(clova.urllib.request, "urlopen", lambda *a, **kw: next(replies))
-    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
-    assert clova.chat([], tools=[])["content"] == "안녕하세요."
-
-
-@pytest.mark.parametrize(
-    "failure", ["http", "protocol", "transport", "json", "schema", "status", "message", "length"]
-)
-def test_sanitized_errors(monkeypatch, failure):
+@pytest.mark.parametrize("failure", ["sdk", "length", "message"])
+def test_sanitized_errors(failure):
     secret = "fake-sensitive-test-chat-token"
-    monkeypatch.setenv("CLOVASTUDIO_API_KEY", secret)
-
-    def urlopen(*args, **kwargs):
-        if failure == "http":
-            raise urllib.error.HTTPError(secret, 401, secret, {}, io.BytesIO(secret.encode()))
-        if failure == "protocol":
-            raise http.client.IncompleteRead(secret.encode())
-        if failure == "transport":
-            raise urllib.error.URLError(secret)
-        if failure == "json":
-            return io.BytesIO(secret.encode())
-        if failure == "schema":
-            return io.BytesIO(json.dumps({secret: secret}).encode())
-        if failure == "status":
-            return response(code=secret)
-        if failure == "message":
-            return response(message={"role": secret, "content": secret})
-        return response(finish_reason="length")
-
-    monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    if failure == "sdk":
+        reply = RuntimeError(secret)
+    elif failure == "length":
+        reply = NS(choices=[NS(message=NS(content=secret), finish_reason="length")])
+    else:
+        reply = NS(role=secret, content=secret)
     with pytest.raises(clova.ClovaChatError) as error:
-        clova.chat([], tools=[])
+        clova.chat([], tools=[], client=FakeClient(reply))
     assert secret not in "".join(traceback.format_exception(error.value))
 
 
@@ -141,14 +96,22 @@ def test_missing_key():
         clova.chat([], tools=[])
 
 
+def test_client_uses_openai_compatible_endpoint(monkeypatch):
+    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-chat-key")
+    monkeypatch.delenv("CLOVASTUDIO_BASE_URL", raising=False)
+    client = clova.make_client()
+    assert str(client.base_url).rstrip("/") == "https://clovastudio.stream.ntruss.com/v1/openai"
+    assert client.max_retries == 8
+
+
 @pytest.mark.parametrize(
     "message",
     [
         [],
         {"role": "user", "content": "bad"},
         {"role": "assistant", "content": ""},
-        {"role": "assistant", "toolCalls": "bad"},
-        {"role": "assistant", "toolCalls": [{"id": "call-1"}]},
+        {"role": "assistant", "tool_calls": "bad"},
+        {"role": "assistant", "tool_calls": [{"id": "call-1"}]},
     ],
 )
 def test_invalid_message(message):

@@ -12,8 +12,8 @@ from review_tools.replies import MockReplyStore, check_reply
 ROOT = Path(__file__).resolve().parents[1]
 
 TODAY = date(2026, 11, 7)
-REPO = SnapshotRepo(ROOT / "data" / "snapshots" / "test_baseline.jsonl")
-CAT = MenuCatalog.load(ROOT / "data" / "menus_sample.json")
+REPO = SnapshotRepo(ROOT / "tests" / "fixtures" / "review_snapshot.jsonl")
+CAT = MenuCatalog.load(ROOT / "tests" / "fixtures" / "menus.json")
 
 
 class FakeWriter:
@@ -53,7 +53,7 @@ class FakeWriter:
 
 def toolbox(lang="ko"):
     return ReviewToolbox(
-        "홍만당",
+        "연습떡집",
         TODAY,
         REPO,
         CAT,
@@ -66,7 +66,7 @@ def toolbox(lang="ko"):
 def test_unanswered_seed_and_priority():
     tb = toolbox()
     r = tb.dispatch("get_unanswered_reviews", {}, utterance="답글 안 단 리뷰 있어?")
-    # 데모 가정: 최근 14일(10-24 이후) 리뷰만 답글 없음 → 홍만당 10-25, 10-29, 10-30
+    # 데모 가정: 최근 14일(10-24 이후) 리뷰만 답글 없음 → 연습떡집 10-25, 10-29, 10-30
     assert r["total"] == 3 and [x["visit_date"] for x in r["reviews"]] == [
         "2026-10-30",
         "2026-10-29",
@@ -265,7 +265,7 @@ def test_high_risk_detection_avoids_false_positives():
 
 def test_escalate_route_for_cockroach_review():
     tb = ReviewToolbox(
-        "원조남산왕돈까스",
+        "연습돈까스",
         TODAY,
         REPO,
         CAT,
@@ -282,7 +282,7 @@ def test_escalate_route_for_cockroach_review():
     )["drafts"][0]
     assert d["route"] == "escalate" and d["owner_check"] and "바퀴" in d["risk"]["words"]
     call = tb.writer.calls[-1]
-    assert call["route"] == "escalate" and call["profile"]["name"].startswith("원조남산왕돈까스")
+    assert call["route"] == "escalate" and call["profile"]["name"].startswith("연습돈까스")
     from review_tools.agent import reply_message
 
     msg = reply_message("draft_review_reply", {"drafts": [d]}, "ko")
@@ -391,7 +391,7 @@ class PromiseWriter(FakeWriter):
 
 def test_owner_instruction_reaches_first_draft():
     tb = ReviewToolbox(
-        "홍만당",
+        "연습떡집",
         TODAY,
         REPO,
         CAT,
@@ -413,7 +413,7 @@ def test_owner_requested_promise_is_warning_not_block():
     # 지시에 약속이 있으면 등록 가능 (확정 후), 없으면 막힌다
     for q, ok in [("lần sau tặng nước uống", True), ("Reply to the bad one", False)]:
         tb = ReviewToolbox(
-            "홍만당",
+            "연습떡집",
             TODAY,
             REPO,
             CAT,
@@ -428,9 +428,9 @@ def test_owner_requested_promise_is_warning_not_block():
 def test_checklist_in_owner_language():
     from review_tools.agent import render_block
 
-    cat = MenuCatalog({"홍만당": [{"name": "딸기모찌", "aliases": ["Mochi dâu"]}]})
+    cat = MenuCatalog({"연습떡집": [{"name": "딸기모찌", "aliases": ["Mochi dâu"]}]})
     tb = ReviewToolbox(
-        "홍만당",
+        "연습떡집",
         TODAY,
         REPO,
         cat,
@@ -450,7 +450,12 @@ def test_checklist_in_owner_language():
     assert any(x.startswith("> (Bản dịch đầy đủ: <vi>") for x in lines)  # 전체 번역은 아래에
     # 한국어 사장님에게는 약속만 표시
     ko = ReviewToolbox(
-        "홍만당", TODAY, REPO, cat, writer=PromiseWriter(), reply_store=MockReplyStore(today=TODAY)
+        "연습떡집",
+        TODAY,
+        REPO,
+        cat,
+        writer=PromiseWriter(),
+        reply_store=MockReplyStore(today=TODAY),
     )
     r = ko.dispatch(
         "draft_review_reply", {"target": "negative"}, utterance="음료 서비스 준다고 해줘"

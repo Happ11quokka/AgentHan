@@ -18,12 +18,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 TODAY = date(2026, 11, 7)  # 토요일
 NOW = datetime(2026, 11, 7, 18, 0)
-REPO = SnapshotRepo(ROOT / "data" / "snapshots" / "test_baseline.jsonl")
+REPO = SnapshotRepo(ROOT / "tests" / "fixtures" / "review_snapshot.jsonl")
 
 
 def test_suggestion_differs_by_store():
-    h = suggest_frequency(REPO, "홍만당", TODAY)
-    b = suggest_frequency(REPO, "보배반점", TODAY)
+    h = suggest_frequency(REPO, "연습떡집", TODAY)
+    b = suggest_frequency(REPO, "연습반점", TODAY)
     assert h["frequency"] == "biweekly" and h["reviews_28d"] == 4  # 최근 4주 4건 → 주 1건
     assert b["frequency"] == "daily"  # 리뷰가 많은 매장
 
@@ -31,7 +31,7 @@ def test_suggestion_differs_by_store():
 def test_set_change_off_and_next_run():
     st = ReportSettingsStore()
     r = set_review_report(
-        store_id="홍만당",
+        store_id="연습떡집",
         today=TODAY,
         repo=REPO,
         settings_store=st,
@@ -42,19 +42,19 @@ def test_set_change_off_and_next_run():
     )
     assert r["settings"]["time"] == "09:00" and r["next_run"] == "2026-11-09T09:00"  # 다음 월요일
     r = set_review_report(
-        store_id="홍만당", today=TODAY, repo=REPO, settings_store=st, time="08:30", now=NOW
+        store_id="연습떡집", today=TODAY, repo=REPO, settings_store=st, time="08:30", now=NOW
     )
     assert (
         r["settings"]["frequency"] == "weekly" and r["settings"]["time"] == "08:30"
     )  # 바꾼 것만 바뀜
     assert (
         set_review_report(
-            store_id="홍만당", today=TODAY, repo=REPO, settings_store=st, action="off"
+            store_id="연습떡집", today=TODAY, repo=REPO, settings_store=st, action="off"
         )["next_run"]
         is None
     )
     first = set_review_report(
-        store_id="보배반점", today=TODAY, repo=REPO, settings_store=st, now=NOW
+        store_id="연습반점", today=TODAY, repo=REPO, settings_store=st, now=NOW
     )
     assert first["changed"]["from_suggestion"] and first["settings"]["frequency"] == "daily"
     assert next_run({"enabled": True, "frequency": "monthly", "time": "09:00"}, NOW) == datetime(
@@ -95,7 +95,7 @@ def test_parse_requests():
 
 def test_run_report_and_alerts():
     r = run_report(
-        store_id="보배반점",
+        store_id="연습반점",
         today=TODAY,
         repo=REPO,
         settings={"frequency": "weekly", "focus": "all"},
@@ -103,7 +103,7 @@ def test_run_report_and_alerts():
     assert r["analysis"]["format"] == "report" and r["analysis"]["period"]["start"] == "2026-10-31"
     assert "previous_period" in r["analysis"] and "unanswered" in r
     a = check_alerts(
-        store_id="홍만당",
+        store_id="연습떡집",
         today=TODAY,
         repo=REPO,
         settings={"alert": "negative"},
@@ -128,7 +128,11 @@ def test_conversation_with_silent_model():
         )
     )
     tb = ReviewToolbox(
-        "홍만당", TODAY, REPO, MenuCatalog.load(ROOT / "data" / "menus_sample.json"), now=NOW
+        "연습떡집",
+        TODAY,
+        REPO,
+        MenuCatalog.load(ROOT / "tests" / "fixtures" / "menus.json"),
+        now=NOW,
     )
     msgs = [{"role": "system", "content": "s"}]
 
@@ -140,13 +144,13 @@ def test_conversation_with_silent_model():
     assert "격주" in out and "4건" in out and "설정할까요" in out
     out = ask("응 그렇게 해줘")
     assert out.startswith("격주 토요일") is False and "격주" in out and "다음 보고" in out
-    assert tb.settings_store.get("홍만당")["frequency"] == "biweekly"
+    assert tb.settings_store.get("연습떡집")["frequency"] == "biweekly"
     out = ask("나쁜 리뷰 올라오면 바로 알려줘")
     assert "바로 알려드려요" in out
     out = ask("지금 리뷰 보고서 보여줘")
     assert out.startswith("리뷰 보고서예요.") and "**기간**" in out and "답글 안 단 리뷰" in out
     out = ask("리뷰 보고 그만 보내")
-    assert out.startswith("정기 보고를 껐어요") and not tb.settings_store.get("홍만당")["enabled"]
+    assert out.startswith("정기 보고를 껐어요") and not tb.settings_store.get("연습떡집")["enabled"]
 
 
 if __name__ == "__main__":

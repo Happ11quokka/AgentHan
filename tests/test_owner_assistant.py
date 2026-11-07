@@ -11,6 +11,7 @@ from agenthan.agent import owner_assistant as owner
 from agenthan.agent.clova_chat import ClovaChatError, chat
 from agenthan.rag import place_matcher as matcher
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore, DummyStoreError
+from agenthan.tools.feature_tools import DELEGATED_FEATURES
 from agenthan.tools.owner_tools import TOOL_NAMES, execute_tool, tool_schema
 
 
@@ -30,7 +31,7 @@ def call(name, arguments, call_id="call-1"):
     return {
         "role": "assistant",
         "content": "",
-        "toolCalls": [
+        "tool_calls": [
             {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
         ],
     }
@@ -45,8 +46,8 @@ class FakeChat:
         self.replies = iter(replies)
         self.requests = []
 
-    def __call__(self, messages, *, tools, tool_choice):
-        self.requests.append(copy.deepcopy((messages, tools, tool_choice)))
+    def __call__(self, messages, *, tools):
+        self.requests.append(copy.deepcopy((messages, tools)))
         return next(self.replies)
 
 
@@ -80,7 +81,7 @@ def tool_results(request):
 
 def test_schemas_follow_catalog():
     for feature in matcher.load_features():
-        if not feature["input_supported"]:
+        if not feature["input_supported"] or feature["id"] in DELEGATED_FEATURES:
             continue
         schema = tool_schema(feature["id"])["function"]["parameters"]
         assert set(schema["properties"]) == {f["id"] for f in feature["input_fields"]}
@@ -88,10 +89,8 @@ def test_schemas_follow_catalog():
         for field in feature["input_fields"]:
             assert field["name_ko"] in schema["properties"][field["id"]]["description"]
     assert tool_schema("menu")["function"]["parameters"]["required"] == ["name", "price"]
-    assert tool_schema("review_reply")["function"]["parameters"]["required"] == [
-        "review_text",
-        "reply_text",
-    ]
+    with pytest.raises(ValueError):
+        tool_schema("review_reply")  # delegated to review_tools
 
 
 def test_missing_price_then_followup_saves(tmp_path, mock_index):
@@ -124,7 +123,7 @@ def test_missing_price_then_followup_saves(tmp_path, mock_index):
     assert "5000원" in embedded
     assert any(m["role"] == "user" and "신메뉴" in m["content"] for m in fake.requests[2][0])
     assert fake.requests[0][1] == [tool_schema("menu")]
-    assert fake.requests[-1][1:] == ([], "none")
+    assert fake.requests[-1][1] == []
     assert SEED_PATH.read_bytes() == original
 
 
@@ -175,53 +174,8 @@ def test_normalized_name_is_upserted(tmp_path):
     assert len(store.read()["menus"]) == 3
 
 
-def test_review_reply_saved_without_sending(tmp_path, mock_index):
-    path = tmp_path / "store.json"
-    seed = SEED_PATH.read_bytes()
-    fake = FakeChat(
-        call("save_review_reply", {"review_text": "음료가 맛있어요.", "reply_text": "감사합니다!"}),
-        answer("답글을 저장했어요. 발송하지 않았어요."),
-    )
-    assistant = owner.OwnerAssistant(
-        path, chat=fake, embed=feature_embed(mock_index, "review_reply")
-    )
-    response = assistant.ask("리뷰 '음료가 맛있어요.'에 '감사합니다!' 답글 저장해 주세요")
-    review = read_file(path)["reviews"][0]
-    assert review["reply_text"] == "감사합니다!"
-    assert review["status"] == "saved_not_sent"
-    assert tool_results(fake.requests[1])[-1]["record"] == review
-    assert "감사합니다!" in response and "saved_not_sent" in response
-    assert fake.requests[0][1] == [tool_schema("review_reply")]
-    assert SEED_PATH.read_bytes() == seed
-
-
 def keyword_only(_):
     raise ValueError("force keyword-only matching")
-
-
-def test_pending_reply_stays_on_review_when_reply_mentions_other_feature(tmp_path):
-    path = tmp_path / "store.json"
-    fake = FakeChat(
-        answer("어떤 답글을 달까요?"),
-        call(
-            "save_review_reply",
-            {"review_text": "review-3", "reply_text": "예약 많이 해주세요 감사합니다"},
-        ),
-        answer("답글을 저장했어요."),
-    )
-    assistant = owner.OwnerAssistant(path, chat=fake, embed=keyword_only)
-    assistant.ask("늦게 나왔다는 리뷰에 답글 달고 싶어요")
-    # Keyword scores tie reservation and review_reply here; the pending feature wins.
-    assert {m.feature_id for m in matcher.match_features("예약 많이 해주세요 감사합니다")} >= {
-        "reservation",
-        "review_reply",
-    }
-    response = assistant.ask("예약 많이 해주세요 감사합니다")
-    assert fake.requests[1][1] == [tool_schema("review_reply")]
-    review = next(r for r in read_file(path)["reviews"] if r["id"] == "review-3")
-    assert review["reply_text"] == "예약 많이 해주세요 감사합니다"
-    assert "saved_not_sent" in response
-    assert assistant.pending_feature is None
 
 
 def test_pending_menu_switches_when_owner_clearly_asks_other_feature(tmp_path):
@@ -233,33 +187,6 @@ def test_pending_menu_switches_when_owner_clearly_asks_other_feature(tmp_path):
     assert len(fake.requests) == 1
     assert matcher.get_feature("reservation")["name_ko"] in response
     assert assistant.pending_feature is None
-
-
-@pytest.mark.parametrize(
-    ("query", "review_id"),
-    [
-        ("review-2", "review-2"),
-        ("REVIEW-2", "review-2"),
-        ("음식이 조금 늦게 나왔어요.", "review-3"),
-        ("늦게 나왔어요", "review-3"),
-    ],
-)
-def test_review_found_by_id_or_unique_quote(tmp_path, query, review_id):
-    store = DummyStore(tmp_path / "store.json")
-    result = store.save_review_reply(query, "감사합니다")
-    assert result["ok"] and result["record"]["id"] == review_id
-
-
-@pytest.mark.parametrize(
-    ("query", "error", "count"),
-    [("요", "review_ambiguous", 3), ("없는 리뷰", "review_not_found", 3)],
-)
-def test_unclear_review_returns_candidates_without_write(tmp_path, query, error, count):
-    path = tmp_path / "store.json"
-    result = DummyStore(path).save_review_reply(query, "감사합니다")
-    assert result["error"] == error
-    assert len(result["candidates"]) == count
-    assert not path.exists()
 
 
 @pytest.mark.parametrize("existing", [True, False])
@@ -274,10 +201,6 @@ def test_unclear_review_returns_candidates_without_write(tmp_path, query, error,
             ("menu", {"name": "차", "price": p}, ["가격 (원)"])
             for p in (None, "", 0, -1, "abc", True, 1.5, "5000", [], {})
         ],
-        ("review_reply", {}, ["손님 리뷰 내용", "답글 내용"]),
-        ("review_reply", {"review_text": "음료가 맛있어요."}, ["답글 내용"]),
-        ("review_reply", {"review_text": " ", "reply_text": "감사합니다"}, ["손님 리뷰 내용"]),
-        ("review_reply", {"review_text": "음료가 맛있어요.", "reply_text": "\t"}, ["답글 내용"]),
     ],
 )
 def test_invalid_arguments_do_not_write(tmp_path, existing, feature_id, arguments, labels):
@@ -302,20 +225,13 @@ def test_malformed_arguments_do_not_write(tmp_path, arguments):
     assert not path.exists()
 
 
-def test_unknown_tool_unknown_review_and_optional_fields_do_not_write(tmp_path):
+def test_unknown_tool_and_optional_fields_do_not_write(tmp_path):
     path = tmp_path / "store.json"
     store = DummyStore(path)
     assert execute_tool(store, "menu", "send_reply", {})["error"] == "tool_not_allowed"
-    result = execute_tool(
-        store,
-        "review_reply",
-        "save_review_reply",
-        {
-            "review_text": "없는 리뷰",
-            "reply_text": "감사합니다",
-        },
+    assert (
+        execute_tool(store, "review_reply", "save_review_reply", {})["error"] == "tool_not_allowed"
     )
-    assert result["error"] == "review_not_found"
     for extra in ({"photo": "photo.png"}, {"description": "설명"}, {"unknown": "value"}):
         assert (
             execute_tool(
@@ -361,7 +277,7 @@ def test_tool_limit_and_next_turn_recovery(tmp_path, mock_index):
     assistant = owner.OwnerAssistant(path, chat=fake, embed=feature_embed(mock_index, "menu"))
     assert "한도" in assistant.ask("메뉴 등록")
     assert len(fake.requests) == 4
-    assert fake.requests[-1][1:] == ([], "none")
+    assert fake.requests[-1][1] == []
     assert not path.exists()
     # Refused calls have matching tool results so later history is well formed.
     assert assistant.history[-2]["role"] == "tool"
@@ -371,7 +287,9 @@ def test_tool_limit_and_next_turn_recovery(tmp_path, mock_index):
 
 def test_batch_exceeding_limit_is_not_partially_executed(tmp_path, mock_index):
     batch = call("upsert_menu", {"name": "차", "price": 1000})
-    batch["toolCalls"] += call("upsert_menu", {"name": "차2", "price": 2000}, "call-2")["toolCalls"]
+    batch["tool_calls"] += call("upsert_menu", {"name": "차2", "price": 2000}, "call-2")[
+        "tool_calls"
+    ]
     fake = FakeChat(batch)
     assistant = owner.OwnerAssistant(
         tmp_path / "store.json",
@@ -389,8 +307,6 @@ def test_store_rejects_seed_and_invalid_direct_input(tmp_path):
     store = DummyStore(tmp_path / "store.json")
     with pytest.raises(DummyStoreError):
         store.upsert_menu("차", 0)
-    with pytest.raises(DummyStoreError):
-        store.save_review_reply("", "")
     assert not store.path.exists()
 
 
@@ -471,8 +387,8 @@ def test_live_hcx_menu_call_and_save(tmp_path):
     before = SEED_PATH.read_bytes()
     responses = []
 
-    def live_chat(messages, *, tools, tool_choice):
-        response = chat(messages, tools=tools, tool_choice=tool_choice)
+    def live_chat(messages, *, tools):
+        response = chat(messages, tools=tools)
         responses.append(response)
         return response
 
@@ -486,7 +402,7 @@ def test_live_hcx_menu_call_and_save(tmp_path):
     result = assistant.ask(
         "메뉴 이름은 '연습 허브차', 가격은 5500원입니다. 신메뉴로 등록해 주세요."
     )
-    calls = [c for response in responses for c in response.get("toolCalls", [])]
+    calls = [c for response in responses for c in response.get("tool_calls", [])]
     assert calls and calls[0]["function"]["name"] == "upsert_menu"
     menu = next(m for m in read_file(path)["menus"] if m["name"] == "연습 허브차")
     assert menu["price"] == 5500

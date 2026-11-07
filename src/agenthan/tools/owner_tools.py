@@ -5,7 +5,8 @@ import json
 from agenthan.rag.place_matcher import get_feature
 from agenthan.tools.dummy_store import DummyStore, normalize, valid_price
 
-TOOL_NAMES = {"menu": "upsert_menu", "review_reply": "save_review_reply"}
+# Review features (review_reply, ai_review) are delegated to review_tools.ReviewToolbox.
+TOOL_NAMES = {"menu": "upsert_menu"}
 
 
 def tool_schema(feature_id: str) -> dict:
@@ -18,8 +19,6 @@ def tool_schema(feature_id: str) -> dict:
         spec = {"type": "string", "description": field["name_ko"]}
         if field["id"] == "price":
             spec.update(type="integer", minimum=1)
-        if field["id"] == "review_text":
-            spec["description"] += " (가게 데이터의 리뷰 id 또는 리뷰 원문 일부)"
         if not field["required"]:
             spec["description"] += " (현재 입력 미지원: 보내지 마세요)"
         properties[field["id"]] = spec
@@ -82,8 +81,6 @@ def execute_tool(store: DummyStore, feature_id: str, name: str, arguments: objec
             "ok": False,
             "error": "unsupported_fields",
             "unsupported_fields": unsupported,
-            "message": "메뉴 이름·가격과 리뷰 내용·답글 내용만 입력할 수 있습니다.",
+            "message": "메뉴 이름과 가격만 입력할 수 있습니다.",
         }
-    if feature_id == "menu":
-        return store.upsert_menu(arguments["name"], arguments["price"])
-    return store.save_review_reply(arguments["review_text"], arguments["reply_text"])
+    return store.upsert_menu(arguments["name"], arguments["price"])

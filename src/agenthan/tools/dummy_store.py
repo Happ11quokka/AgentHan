@@ -48,9 +48,21 @@ def find_records(records: list[dict], query: str, text_key: str) -> list[dict]:
     return [r for r in records if key and key in normalize(str(r.get(text_key, "")))]
 
 
-def find_reviews(reviews: list[dict], query: str) -> list[dict]:
-    """Find a review by id, exact text, then a unique partial quote of the text."""
-    return find_records(reviews, query, "review_text")
+def _migrate_review(record: dict) -> dict:
+    """Convert a pre-integration review {id, review_text, reply_text, status} in place."""
+    if "review_id" in record or "id" not in record:
+        return record
+    reply = record.pop("reply_text", "") or ""
+    status = record.pop("status", None)
+    record["review_id"] = record.pop("id")
+    record["text"] = record.pop("review_text", "")
+    record.setdefault("visit_date", None)
+    record.setdefault("rating", None)
+    record.setdefault("features", [])
+    record["has_owner_reply"] = bool(reply)
+    if reply:
+        record["owner_reply"] = {"reply": reply, "status": status or "saved_not_sent"}
+    return record
 
 
 class DummyStore:
@@ -72,15 +84,23 @@ class DummyStore:
             ):
                 raise ValueError
             for record in data["menus"]:
+                record.setdefault("aliases", [])
                 if (
                     not isinstance(record["id"], str)
                     or not isinstance(record["name"], str)
                     or not normalize(record["name"])
                     or not valid_price(record["price"])
+                    or not isinstance(record["aliases"], list)
+                    or any(not isinstance(a, str) for a in record["aliases"])
                 ):
                     raise ValueError
+            # Reviews use the review_tools row schema:
+            # {review_id, visit_date, rating, text, features, has_owner_reply[, owner_reply]}
             for record in data["reviews"]:
-                if any(not isinstance(record[key], str) for key in ("id", "review_text")):
+                _migrate_review(record)
+                if any(not isinstance(record[key], str) for key in ("review_id", "text")):
+                    raise ValueError
+                if not isinstance(record.setdefault("features", []), list):
                     raise ValueError
             for key, kind in OPTIONAL_COLLECTIONS.items():
                 data.setdefault(key, kind())
@@ -128,7 +148,12 @@ class DummyStore:
         previous_price = None
         action = "created"
         if record is None:
-            record = {"id": str(uuid.uuid4()), "name": " ".join(name.split()), "price": price}
+            record = {
+                "id": str(uuid.uuid4()),
+                "name": " ".join(name.split()),
+                "price": price,
+                "aliases": [],
+            }
             data["menus"].append(record)
         else:
             action = "updated"
@@ -140,24 +165,3 @@ class DummyStore:
         if action == "updated":
             result["previous_price"] = previous_price
         return result
-
-    def save_review_reply(self, review_text: str, reply_text: str) -> dict:
-        if any(not isinstance(x, str) or not normalize(x) for x in (review_text, reply_text)):
-            raise DummyStoreError("손님 리뷰 내용과 답글 내용이 필요합니다.")
-        data = self.read()
-        matches = find_reviews(data["reviews"], review_text)
-        if len(matches) != 1:
-            return {
-                "ok": False,
-                "error": "review_not_found" if not matches else "review_ambiguous",
-                "message": "답글을 달 리뷰를 확인해 주세요.",
-                "candidates": [
-                    {"id": r["id"], "review_text": r["review_text"]}
-                    for r in (matches or data["reviews"])
-                ],
-            }
-        record = matches[0]
-        record.update(reply_text=reply_text.strip(), status="saved_not_sent")
-        self._write(data)
-        saved = next(r for r in self.read()["reviews"] if r["id"] == record["id"])
-        return {"ok": True, "action": "saved_not_sent", "record": saved}
