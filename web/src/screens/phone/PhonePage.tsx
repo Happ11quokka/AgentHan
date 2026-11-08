@@ -2,6 +2,7 @@
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { type CallState, canEndSpeech } from './callState.ts'
+import { pickupLabel } from './format.ts'
 import { PhoneCall } from './phoneCall.ts'
 import './phone.css'
 
@@ -100,8 +101,7 @@ export default function PhonePage() {
           </p>
           {state.order?.order.pickup_time && (
             <p className="phone-pickup">
-              픽업{' '}
-              {new Date(state.order.order.pickup_time).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}
+              픽업 {pickupLabel(state.order.order.pickup_time)}
             </p>
           )}
         </section>
