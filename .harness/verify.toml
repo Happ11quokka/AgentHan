@@ -9,11 +9,11 @@ name = "pytest"
 argv = ["uv", "run", "--frozen", "--offline", "pytest", "-q"]
 timeout_sec = 120
 
-# 실제 CLOVA API 테스트. 이 명령에만 키를 넘긴다(값은 하네스가 로그에서 가린다).
+# 실제 CLOVA·NAVER API HUB(검색) 테스트. 이 명령에만 키를 넘긴다(값은 하네스가 로그에서 가린다).
 [[command]]
 name = "api"
 argv = ["uv", "run", "--frozen", "--offline", "pytest", "-q", "-m", "network"]
-env = ["CLOVASTUDIO_API_KEY"]
+env = ["CLOVASTUDIO_API_KEY", "NAVER_API_HUB_CLIENT_ID", "NAVER_API_HUB_CLIENT_SECRET"]
 timeout_sec = 300
 
 [[command]]
