@@ -186,3 +186,50 @@ def test_a_sentence_that_starts_loud_is_not_cut(tmp_path) -> None:
     assert sum(len(f.pcm) for f in c.out.frames if f.seq == 0) == len(pcm)
     (metrics,) = c.out.of("metrics", 0)
     assert metrics["tts_trim_ms"] == 0
+
+
+# ------------------------------------------------------ 생각 중 효과음 (bot.thinking)
+
+
+def _turn_items(c: Call, turn: int) -> list[str]:
+    return [m["type"] if isinstance(m, dict) else "audio" for m in c.out.sent
+            if (m["turn"] if isinstance(m, dict) else m.turn) == turn]
+
+
+def test_a_slow_answer_sends_bot_thinking_once_at_speech_end_plus_the_delay(tmp_path) -> None:
+    # 말 끝 + `thinking_after_s`까지 봇 목소리가 없으면 효과음 신호를 한 번 보낸다
+    stt = FakeSttStream(replies=["메도빅 하나요"])
+    settings = SessionSettings(thinking_after_s=0.3)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, tts=slow_after_greeting(0.8),
+                        settings=settings) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("bot.done", turn=1)
+            await c.played(1)
+            await c.session.feed_event({"type": "call.end", "turn": 1})
+        return c
+
+    c = run(call())
+    items = _turn_items(c, 1)
+    assert items.count("bot.thinking") == 1
+    assert items.index("bot.thinking") < items.index("bot.say") < items.index("audio")
+    (metrics,) = c.out.of("metrics", 1)
+    marks = metrics["marks"]
+    assert 300 <= marks["thinking"] - marks["speech_end"] < 300 + 250
+    assert marks["thinking"] < marks["audio_first"]
+
+
+def test_a_quick_answer_sends_no_bot_thinking(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.turn(1)
+            await asyncio.sleep(0.05)
+        return c
+
+    c = run(call())
+    assert c.out.of("bot.thinking") == []
