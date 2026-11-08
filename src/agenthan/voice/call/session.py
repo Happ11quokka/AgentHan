@@ -32,7 +32,11 @@
   speaking에 들어갈 때 붙잡아 둔 조각과 "말 끝" 표시를 지운다
 
 조각 붙잡기: 끝 후보 결과가 왔는데 그 끝 뒤에 새 말 구간이 시작됐으면 다음 결과와 합친다.
+epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 epFlag 응답을 기다리는
+중이어도 붙잡는다(티켓 10, `_continues_after`). 그때 턴은 epFlag 응답으로 넘어간다.
 `hold_max_s` 안에 새 결과가 없으면 그대로 턴을 넘긴다(`end_by: hold_timeout`, `_arm_hold` 앞 주석).
+처음 붙잡은 때부터 `hold_cap_s`를 넘겨 붙잡지는 않는다.
+버린 결과(반이중·확정 뒤·통화 끝)는 그 턴 기록의 `dropped`에 남긴다.
 
 엔진 시간 제한(`turn_timeout_s`)을 넘으면 `error`를 내고 통화를 끝낸다. 다음 턴은 시작하지 않는다
 (스레드는 취소되지 않아서, 다음 턴이 같은 엔진을 동시에 건드리게 되기 때문, verify-web D5).
@@ -213,7 +217,8 @@ class CallSession:
         self._forced = False  # "말 끝" 버튼: 다음 말 끝 결과는 붙잡지 않는다
         self._button_at: float | None = None
         self._voice_at: float | None = None
-        self._ep_at: float | None = None
+        self._ep_at: float | None = None  # 마지막 epFlag 프레임을 쓰기 큐에 넣은 때
+        self._ep_reply_at: float | None = None  # 마지막 epFlag 응답을 받은 때
         self._client_start: dict[str, Any] = {}
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer: asyncio.TimerHandle | None = None
@@ -419,6 +424,8 @@ class CallSession:
     # ------------------------------------------------------------ STT 결과 → 턴
 
     def _on_result(self, r: SttResult) -> None:
+        if r.ep_flag:
+            self._ep_reply_at = self._clock.monotonic()
         if self.done or self._terminal or self._phase == "speaking":
             self._log_dropped(r)  # 반이중: 봇 말하는 중 결과는 버린다
             return
@@ -434,8 +441,8 @@ class CallSession:
                 self._forced = False  # 말 없이 누른 버튼
             return
         forced = self._forced
-        if not forced and self._vad.speech_since(r.end_ms):
-            # 결과 끝 뒤에 새 말이 시작됐다. 다음 결과와 합친다. 안 오면 시간 제한으로 푼다
+        if not forced and self._continues_after(r):
+            # 말이 이어진다. 다음 결과(보통 epFlag 응답)와 합친다. 안 오면 시간 제한으로 푼다
             self._held = r
             self._hold_at = self._clock.monotonic()
             if self._hold_since is None:
@@ -443,6 +450,28 @@ class CallSession:
             self._arm_hold(self._settings.hold_max_s)
             return
         self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
+
+    def _continues_after(self, r: SttResult) -> bool:
+        """말 끝 후보 결과 `r` 뒤에 손님 말이 이어지나 (붙잡을지).
+
+        - 결과 끝 뒤에 새로 시작한 말 구간이 있다(spec 조각 합치기). 어느 결과든 본다
+        - (티켓 10) epFlag 응답이 아닌 결과(gap 등)는 다음 둘도 본다. CLOVA는 gapThreshold(700ms)
+          보다 짧은 쉼(실측 90ms)에서도 gap 조각을 내므로, gap이 왔다고 말이 끝난 것이 아니다
+          - 무음 감지가 아직 말하는 중이다(A1: 조각이 손님 말 중간에 왔다)
+          - 써 둔 epFlag의 응답을 아직 못 받았다(C3: 말 끝을 잡은 뒤 앞 조각이 먼저 왔다.
+            남은 글은 epFlag 응답에 온다)
+          이 경우 턴은 epFlag 응답으로 넘긴다. 배경 소리가 임계값 위로 계속돼 "말하는 중"이
+          풀리지 않아도 `hold_cap_s` 안에서 넘긴다(`_on_hold_timer`)
+        """
+        if self._vad.speech_since(r.end_ms):
+            return True
+        return not r.ep_flag and (self._vad.in_speech or self._ep_waiting())
+
+    def _ep_waiting(self) -> bool:
+        """마지막으로 쓴 epFlag 프레임의 응답을 아직 못 받았나."""
+        if self._ep_at is None:
+            return False
+        return self._ep_reply_at is None or self._ep_reply_at < self._ep_at
 
     def _log_dropped(self, r: SttResult) -> None:
         """버린 결과를 지금 턴 기록의 `dropped`에 남긴다 (티켓 10 #1).
@@ -507,8 +536,7 @@ class CallSession:
         now = self._clock.monotonic()
         assert self._hold_since is not None and self._hold_at is not None
         left = self._settings.hold_cap_s - (now - self._hold_since)
-        ep_waiting = self._ep_at is not None and self._ep_at > self._hold_at
-        if left > 0 and (self._vad.in_speech or ep_waiting):
+        if left > 0 and (self._vad.in_speech or self._ep_waiting()):
             self._arm_hold(min(self._settings.hold_max_s, left))
             return
         self._release(held, "hold_timeout")

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 from call_harness import Call, silence, tone
 from test_call_session import GatedNlu
@@ -22,15 +23,78 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def test_noise_that_never_stops_after_speech_does_not_hold_the_turn(tmp_path) -> None:
-    # 말(0~1,000ms) 뒤로 배경 소리가 임계값 위에서 계속된다. CLOVA는 1,000ms에서 gap으로 끊었다
+def test_noise_that_never_stops_after_speech_holds_the_turn_only_up_to_the_cap(tmp_path) -> None:
+    # 말(0~1,000ms) 뒤로 배경 소리가 임계값 위에서 계속된다. CLOVA는 1,000ms에서 gap으로 끊었다.
+    # 무음 감지는 아직 "말하는 중"이라 붙잡는다(티켓 10: CLOVA는 90ms 쉼에서도 gap 조각을 낸다).
+    # 그 말이 끝나지 않아도 처음 붙잡은 때부터 `hold_cap_s` 안에 턴을 넘긴다
     gap = SttResult("메도빅 하나요", 0, 1_000, "gap")
     stt = FakeSttStream(script=[Scripted(1_500, gap)])
+    settings = SessionSettings(hold_max_s=0.1, hold_cap_s=0.4)
+
+    async def call() -> tuple[dict, float]:
+        async with Call(tmp_path, stt=stt, settings=settings) as c:
+            await c.start()
+            await c.feed(tone(1_500))
+            fed = time.monotonic()
+            final = await c.out.wait_for("stt.final", turn=1)
+            return final, time.monotonic() - fed
+
+    final, waited = run(call())
+    assert (final["text"], final["fragments"], final["end_by"]) == (
+        "메도빅 하나요", 1, "hold_timeout"
+    )
+    assert 0.3 <= waited < 0.4 + 0.3
+
+
+def test_a_gap_fragment_while_the_caller_is_still_speaking_waits_for_the_ep_flag_reply(
+    tmp_path,
+) -> None:
+    # 07 실측 A1: "맥도비 두개랑|아이스 아메리카노 하나요"를 CLOVA가 말 중간(90ms 쉼)에서 gap으로
+    # 끊었다. 그 조각이 올 때 손님은 아직 말하는 중이다(같은 말 구간이라 새 구간은 없다)
+    gap = SttResult("맥도비 두개랑", 0, 1_000, "gap")
+    stt = FakeSttStream(replies=["아이스 아메리카노 하나요"], script=[Scripted(1_200, gap)])
+
+    async def call() -> list[dict]:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.feed(tone(2_000) + silence(1_200))
+            await c.out.wait_for("stt.final", turn=1)
+            await asyncio.sleep(0.05)
+            return c.out.of("stt.final")
+
+    (final,) = run(call())
+    assert (final["text"], final["fragments"], final["end_by"]) == (
+        "맥도비 두개랑 아이스 아메리카노 하나요", 2, "vad"
+    )
+
+
+def test_a_gap_fragment_after_the_ep_flag_was_sent_waits_for_its_reply(tmp_path) -> None:
+    # 07 실측 C3: "나폴|레옹도 하나요". 무음 감지가 말 끝을 잡고 epFlag를 쓴 뒤 앞 조각이 왔다.
+    # 그 epFlag 응답(남은 글)을 기다렸다가 합친다
+    gap = SttResult("나폴", 0, 900, "gap")
+    stt = FakeSttStream(replies=["레옹도 하나요"], script=[Scripted(1_500, gap)])
+
+    async def call() -> list[dict]:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.feed(tone(1_000) + silence(1_500))
+            await c.out.wait_for("stt.final", turn=1)
+            await asyncio.sleep(0.05)
+            return c.out.of("stt.final")
+
+    (final,) = run(call())
+    assert (final["text"], final["fragments"], final["end_by"]) == ("나폴 레옹도 하나요", 2, "vad")
+
+
+def test_a_gap_result_after_the_ep_flag_reply_is_not_held(tmp_path) -> None:
+    # 말이 끝났고 epFlag 응답도 이미 왔다(빈 글). 그 뒤 온 gap 결과는 바로 턴이 된다
+    gap = SttResult("메도빅 하나요", 0, 1_000, "gap")
+    stt = FakeSttStream(script=[Scripted(2_100, gap)], lag_ms=300)
 
     async def call() -> dict:
         async with Call(tmp_path, stt=stt) as c:
             await c.start()
-            await c.feed(tone(1_500))
+            await c.feed(tone(1_000) + silence(1_200))
             return await c.out.wait_for("stt.final", turn=1)
 
     final = run(call())
