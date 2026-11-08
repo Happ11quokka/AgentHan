@@ -18,6 +18,7 @@ from typing import Any
 import httpx
 
 from agenthan.voice.call.ports import PortError
+from agenthan.voice.settings import read_env_file
 
 TTS_URL = "https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts"
 SPEAKER = "nara_call"
@@ -51,8 +52,12 @@ class ClovaVoiceTts:
 
     @classmethod
     def from_env(cls, env_file: Path | None = Path(".env"), **kwargs: Any) -> ClovaVoiceTts:
-        """환경 변수 → (없으면) `.env`의 `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`."""
-        file = _read_env(env_file)
+        """환경 변수 → (없으면) `.env`의 `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`.
+
+        live 테스트용이다. 서버는 `adapters`가 `VoiceSettings.env`에서 키를 꺼내 넘긴다.
+        `.env`는 서버와 같은 `settings.read_env_file`로 읽는다 (리뷰 18번).
+        """
+        file = read_env_file(env_file)
         id_, secret = (os.environ.get(k, "").strip() or file.get(k, "") for k in KEY_ENVS)
         if not (id_ and secret):
             raise TtsError(
@@ -108,17 +113,6 @@ def _http_error(response: httpx.Response) -> TtsError:
             f"TTS 오류 {vs} HTTP {status}", code=f"tts_{vs.lower()}", retry=vs in _RETRYABLE_VS
         )
     return TtsError(f"TTS HTTP {status}", code=f"tts_http_{status}", retry=status >= 500)
-
-
-def _read_env(path: Path | None) -> dict[str, str]:
-    if path is None or not path.is_file():
-        return {}
-    out: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        name, sep, value = line.partition("=")
-        if sep and name.strip() in KEY_ENVS:
-            out[name.strip()] = value.strip().strip("'\"")
-    return out
 
 
 def wav_pcm(data: bytes, *, rate: int = SAMPLE_RATE) -> bytes:
