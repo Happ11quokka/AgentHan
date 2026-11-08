@@ -45,7 +45,11 @@
 - 기능 고르기(HCX-DASH-002 `select_feature`)가 없다. 매칭 1위를 그대로 쓴다.
 - 통계 리포트(A-3)는 아직 없다.
 - A-1 승인은 `interrupt()`가 아니라 다음 턴의 "네/취소/고칠 곳"이다. 웹 폼은 `menu_form()` 값으로 채운다.
-- 더미 플레이스 API 시드(`tools/dummy_store_seed.json`)가 `fixtures/sample_store.json`과 다른 가게다. 메뉴·리뷰 읽기를 `StoreKnowledge`로 옮기면 하나로 맞춘다.
+
+더미 플레이스 API 시드(`tools/dummy_store_seed.json`)는 `fixtures/sample_store.json`의
+샘플 러시안 베이커리와 같은 메뉴 4개·리뷰 3개를 쓴다. 메뉴 ID·이름·가격·별칭·원어명·설명과
+리뷰 ID·본문·평점·방문일의 일치는 `tests/test_seed_alignment.py`로 확인한다.
+시드의 미답글 리뷰는 2건(`r02`, `r03`)이며, 주소·전화번호·영업시간·통계는 가상 값이다.
 
 ## 실행
 
@@ -57,7 +61,7 @@ uv run --env-file .env python -m agenthan.eval.tool_selection --out tool_eval.js
 uv run pytest -q -m network                                 # 실제 CLOVA 호출 테스트 (키 필요)
 ```
 
-예: `신메뉴 연습 차를 등록하고 싶어요` → 가격 질문 → `5000원`.
+예: `신메뉴 시르니키를 등록하고 싶어요` → 가격 질문 → `8500원`.
 메뉴판 사진: `/photo ~/menu.jpg 이거 올려 줘` → 초안 확인 → `3번 가격 9500원` → `네`.
 
 ### R3 검색 노출 진단
@@ -103,13 +107,16 @@ uv run --frozen --offline pytest -q -m network tests/test_naver_search.py
 리뷰 예: `답글 안 단 리뷰 있어?` → `안 좋은 리뷰에 답글 써줘` → `더 정중하게 고쳐줘` → `이대로 올려줘`.
 답글은 `owner_reply.status = "saved_not_sent"`로 저장만 하고 보내지 않는다.
 
-리뷰 서브에이전트만 따로 돌리기(합성 fixture):
+샘플 러시안 베이커리로 데모·캡처하기(처음 쓰는 저장 경로 지정):
 
 ```bash
-uv run --env-file .env python scripts/chat_demo.py --store 연습떡집 \
-  --snapshot tests/fixtures/review_snapshot.jsonl --menus tests/fixtures/menus.json \
-  --ask "딸기모찌 반응 어때?"
+uv run --env-file .env python -m agenthan.agent.owner_assistant \
+  --store /tmp/agenthan-bakery-demo/store.json
 ```
+
+메뉴 사진 등록과 위의 리뷰 답글 대화를 같은 저장소에서 시연한다. 기존 저장 파일은 자동으로
+새 시드로 바뀌지 않으므로 새 데모에는 아직 파일이 없는 경로를 쓴다.
+리뷰 서브에이전트만 별도 합성 fixture로 돌리는 방법은 `docs/integrate-review-tools.md`에 있다.
 
 분류기·스냅샷·평가 스크립트는 `docs/review-clf.md`, 리뷰 통합 설계는 `docs/integrate-review-tools.md`.
 

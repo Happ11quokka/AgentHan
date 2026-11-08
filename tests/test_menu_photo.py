@@ -236,7 +236,7 @@ def test_edit_then_approve(tmp_path):
     assert [t["function"]["name"] for t in tools] == ["edit_menu_draft"]
     assert '"number": 3' in messages[0]["content"]
     bot.ask("그대로 올려줘")
-    assert set(menu_names(tmp_path)) == {"연습 라떼", "연습 샌드위치", "메도빅", "펠메니"}
+    assert set(menu_names(tmp_path)) == {"메도빅", "나폴레옹", "아메리카노", "블린", "펠메니"}
 
 
 @pytest.mark.parametrize(

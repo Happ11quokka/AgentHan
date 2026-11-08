@@ -30,14 +30,14 @@ def store(tmp_path):
 
 
 VALID = {
-    "update_business_info": {"field": "phone", "value": "02-123-4567"},
+    "update_business_info": {"field": "phone", "value": "02-000-0001"},
     "update_business_hours": {
         "day": "fri",
         "closed": False,
         "open_time": "10:00",
         "close_time": "23:00",
     },
-    "save_talktalk_reply": {"inquiry": "talk-1", "reply_text": "2대 주차 가능해요."},
+    "save_talktalk_reply": {"inquiry": "talk-1", "reply_text": "메도빅 홀케이크는 예약 가능해요."},
     "update_order_status": {"order_id": "order-1", "status": "accepted"},
     "update_reservation_status": {"reservation_id": "resv-2", "status": "cancelled"},
     "list_call_history": {"missed_only": True},
@@ -128,7 +128,7 @@ def test_unknown_tool_and_fields(store):
 
 def test_lookup_by_quote_and_not_found(store):
     ok = execute_feature_tool(
-        store, "save_talktalk_reply", {"inquiry": "단체 손님", "reply_text": "네"}
+        store, "save_talktalk_reply", {"inquiry": "단체 주문", "reply_text": "네"}
     )
     assert ok["record"]["id"] == "talk-2" and ok["record"]["status"] == "saved_not_sent"
     missing = execute_feature_tool(
