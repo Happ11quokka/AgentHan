@@ -86,6 +86,13 @@ def test_forbidden_catches(utterances: list[str], rule: str) -> None:
     assert any(rule in p for p in problems), problems
 
 
+def test_forbidden_catches_confirm_turn_without_readback() -> None:
+    """리뷰 C1: CONFIRM으로 끝난 턴은 복창(또는 취소 확인)을 말해야 한다."""
+    problems = forbidden(_view(["몇 시쯤 오세요?"], state=State.CONFIRM))
+    assert any("복창 없는 CONFIRM" in p for p in problems), problems
+    assert forbidden(_view(["주문 취소할까요?"], state=State.CONFIRM)) == []
+
+
 def test_forbidden_catches_confirmed_without_readback() -> None:
     problems = forbidden(_view(["감사합니다."], state=State.CLOSING, order_status="confirmed"))
     assert any("확인 전 confirmed" in p for p in problems)

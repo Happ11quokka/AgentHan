@@ -23,7 +23,7 @@
                        # 주문서가 없어야 하면 null (취소)
     }
 
-금지 규칙(매 턴): 확인 전 confirmed, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
+금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
 150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴.
 """
 
@@ -49,6 +49,8 @@ SCENARIO_DIR = Path(__file__).parent / "scenarios"
 MAX_SENTENCE = 150
 
 _TOTAL = re.compile(r"총 ([\d,]+)원")
+# CONFIRM으로 끝나는 턴의 질문: 최종 복창, 또는 그 자리에서 받은 "주문 취소할까요?"
+_CONFIRM_QUESTION = re.compile(r"총 [\d,]+원이에요\..*맞으세요\?|주문 취소할까요\?")
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 # 괄호·마크다운 기호. TTS가 읽지 않거나 이상하게 읽는다 (spec §7)
 _MARKUP = re.compile(r"[()\[\]{}<>（）【】*#_`~|]")
@@ -79,6 +81,8 @@ def forbidden(view: TurnView) -> list[str]:
         problems.append("대답 없는 턴")
     if text.count("?") >= 2:
         problems.append(f"한 턴 두 질문: {text}")
+    if view.result.state is State.CONFIRM and not _CONFIRM_QUESTION.search(text):
+        problems.append(f"복창 없는 CONFIRM: {text}")
     for amount in _TOTAL.findall(text):
         if int(amount.replace(",", "")) != view.result.cart.total():
             problems.append(f"복창 총액 {amount}원 ≠ 장바구니 {view.result.cart.total():,}원")
