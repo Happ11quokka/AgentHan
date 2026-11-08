@@ -33,6 +33,7 @@
 | `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`은 실제 리뷰로 학습해 레포에 없음 · 카톡으로 받기) |
 | `tools/knowledge_adapters.py` | `StoreKnowledge`(Part B 계약) → 리뷰 서브에이전트의 리뷰·메뉴 입력 |
 | `tools/review_adapters.py` | 더미 플레이스 API → 리뷰 서브에이전트 입력 |
+| `tools/image_cutout.py` | M1a 음식 사진 배경 제거 → 흰 배경 정사각형 바이트 (M1b 연결 전) |
 | `eval/tool_selection.py` | 16개 도구를 다 붙였을 때 HCX-005 도구 선택 평가 |
 
 공통 HCX 클라이언트는 `core/llm.py`, 임베딩은 `core/embedding.py`를 쓴다.
@@ -111,3 +112,25 @@ uv run --env-file .env python scripts/chat_demo.py --store 연습떡집 \
 ```
 
 분류기·스냅샷·평가 스크립트는 `docs/review-clf.md`, 리뷰 통합 설계는 `docs/integrate-review-tools.md`.
+
+### M1a 음식 사진 배경 제거
+
+`agenthan.tools.image_cutout.cutout_on_white(data, box=None, size=1024, fmt="JPEG")`는
+OpenCV GrabCut을 5회 사용한다. 학습 모델·외부 API를 쓰지 않는다. EXIF 회전 후 긴 변을
+1024px 이하로 줄여 분리하고, 가장 큰 영역의 구멍을 채우고 경계를 부드럽게 한다. 원본 크기로
+합성한 뒤 음식 주변 8% 여백을 더해 흰 배경 정사각형으로 만든다. 원본을 수정하거나 저장하지
+않고 `CutoutResult(image, mime, ok, reason, fg_ratio)`를 반환한다. JPEG(JPG)·PNG 출력 지원.
+
+`box`는 **EXIF 회전 반영 후** 0~1 좌표 `(x0, y0, x1, y1)`이며, 생략하면 가장자리 8%를
+제외한 중앙을 쓴다. 화면 구석의 음식에는 위치 힌트를 준다. 배경과 음식 색이 비슷하면
+실패할 수 있고, 분리된 여러 음식 중 가장 큰 덩어리만 남는다. 전경이 전체의 3% 미만 또는
+90% 초과이거나 GrabCut이 실패하면 `ok=False`와 한국어 `reason`을 주고 원본에 흰 여백만
+더한 정사각형 사진을 반환한다. 빈 파일·잘못된 이미지·20MB 초과·한 변이라도 64px 미만이면
+`ImageCutoutError`다. 메뉴 초안·저장·비서 연결은 M1b에서 한다.
+
+```bash
+uv run python -m agenthan.tools.image_cutout in.jpg out.jpg --box 0.1,0.1,0.9,0.9
+```
+
+확인용 CLI만 출력 파일을 저장한다. `.png` 출력 경로는 PNG, 그 밖에는 JPEG를 쓰며 입력과
+같은 출력 경로는 거부한다. `ok=False`인 경우에도 대체 사진을 저장하고 실패 이유를 출력한다.
