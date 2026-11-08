@@ -13,7 +13,6 @@ from pathlib import Path
 from types import MappingProxyType
 
 from agenthan.core.contracts import MenuOption
-from agenthan.core.fakes import SAMPLE_STORE
 
 KST = timezone(timedelta(hours=9), "KST")
 
@@ -56,6 +55,15 @@ class StoreConfig:
     tz: timezone = KST
 
     @classmethod
-    def from_fixture(cls, path: Path = SAMPLE_STORE) -> StoreConfig:
+    def from_fixture(cls, path: Path | None = None) -> StoreConfig:
+        """더미 가게 JSON의 `store.name`으로 만든다. 경로가 없으면 `core.fakes`의 샘플 가게.
+
+        개발·테스트용이다. 운영에서는 만드는 쪽이 `StoreConfig(store_name=...)`를 넣는다
+        (1단계 리뷰 S6). 그래서 샘플 경로는 여기서만 늦게 import한다.
+        """
+        if path is None:
+            from agenthan.core.fakes import SAMPLE_STORE
+
+            path = SAMPLE_STORE
         raw = json.loads(path.read_text(encoding="utf-8"))
         return cls(store_name=raw["store"]["name"])

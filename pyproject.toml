@@ -5,8 +5,10 @@ description = "네이버 클라우드 기반 소상공인 AI 비서"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "fastapi>=0.162.2",
     "httpx>=0.28.1",
     "korean-datetime==1.0.0",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]

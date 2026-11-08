@@ -7,6 +7,8 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+# 통화 지연 기록 JSONL (voice)
+logs/
 
 # 프론트엔드 (web/)
 node_modules/

@@ -30,6 +30,23 @@ def test_voice_imports_only_core_from_other_parts() -> None:
     assert bad == []
 
 
+def test_only_dev_entry_points_import_core_fakes_at_module_level() -> None:
+    """1단계 리뷰 S6: 운영 코드가 가짜 가게를 기본값으로 끌고 오지 않는다.
+
+    가게 지식·설정은 라우터를 만들 때 넣는다. `StoreConfig.from_fixture()`만 함수 안에서 쓴다.
+    개발용 진입점(텍스트 CLI, 개발 서버)은 더미 가게로 띄우므로 예외다.
+    """
+    dev_entry_points = {"cli.py", "server.py"}
+    bad = []
+    for path in VOICE_DIR.rglob("*.py"):
+        if str(path.relative_to(VOICE_DIR)) in dev_entry_points:
+            continue
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.ImportFrom) and node.module == "agenthan.core.fakes":
+                bad.append(str(path.relative_to(VOICE_DIR)))
+    assert bad == []
+
+
 def test_call_session_knows_no_web_or_vendor_library() -> None:
     """통화 세션(`voice/call/`)은 FastAPI·gRPC·httpx를 모른다 (spec 모듈).
 

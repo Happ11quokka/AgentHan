@@ -41,3 +41,18 @@
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
 - 테스트: `tests/voice/test_call_session*.py`, 도구는 `tests/voice/call_harness.py`
+
+## 2단계: 통화 서버 (`ws.py`, `server.py`)
+
+- 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`
+  - `http://127.0.0.1:8000`, WS는 `ws://127.0.0.1:8000/api/phone/ws`. 폰(USB `adb reverse tcp:8000 tcp:8000`)에서 열려면 그대로, 같은 망에서 열려면 `--host 0.0.0.0`. 코드 고치며 쓰려면 `--reload`
+  - `web/dist`(`cd web && npm run build`)가 있으면 화면도 같이 낸다. `/phone` 새로고침도 된다. 개발 중에는 Vite(5173)를 띄우고 `/api` 프록시로 이 서버(8000)에 붙인다
+  - 가짜 STT는 `epFlag`(무음 감지나 "말 끝" 버튼)마다 `PHONE_FAKE_STT_REPLIES`의 다음 말을 낸다(기본: 메도빅 하나요 → 그게 다예요 → 6시 반이요 → 네). 가짜 TTS는 무음
+- 설정: 환경 변수 → `.env`(지금 폴더). 변수 표는 `settings.py` 머리 주석
+  - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
+  - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시각 고정, 시연용), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
+  - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)
+  - `clova`를 골랐는데 어댑터 모듈이 없으면 서버가 뜨기 전에 `AdapterMissing`으로 멈춘다. 어댑터 연결은 `adapters.py` 한 곳
+- 통합(`app/`, 11/17): `app.include_router(phone_router(store=..., config=StoreConfig(store_name=...), order_sink=..., settings=VoiceSettings.from_env()))`. 라우터에는 가짜 기본값이 없다(가게 지식·설정·`OrderSink`를 넣는다). `server.py`는 더미 가게로 띄우는 개발용이라 `app/`은 쓰지 않는다
+- 연결 하나 = `CallSession` 하나. 읽기 작업 하나가 받고, 보내기는 세션의 송신 작업 하나만 한다. 끊기거나 세션이 끝나면 STT를 닫고 JSONL을 쓴 뒤 소켓을 닫는다
+- 테스트: `tests/voice/test_phone_ws.py`(TestClient WebSocket), `test_phone_settings.py`, `test_phone_server.py`
