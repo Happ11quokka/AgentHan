@@ -18,8 +18,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
+from agenthan.voice import ws as ws_module
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
+from agenthan.voice.call.session import TURN_THREAD_PREFIX
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
@@ -40,7 +42,8 @@ def _settings(tmp_path, **kw: Any) -> VoiceSettings:
 
 
 def _app(
-    tmp_path, *, sink=None, store=None, stt_factory=None, tts_factory=None, **kw: Any
+    tmp_path, *, sink=None, store=None, stt_factory=None, tts_factory=None, model=None,
+    **kw: Any
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(
@@ -51,6 +54,7 @@ def _app(
             settings=_settings(tmp_path, **kw),
             stt_factory=stt_factory,
             tts_factory=tts_factory,
+            turn_model=model,
         )
     )
     return app
@@ -308,3 +312,66 @@ def test_the_engine_runs_on_the_router_s_own_thread_pool(tmp_path) -> None:
             phone.until("call.ready", 0)
     assert len(threads) == 2
     assert all(name.startswith(ENGINE_THREAD_PREFIX) for name in threads), threads
+
+
+class _ThreadNoting:
+    """턴 모델 가짜: 어느 스레드에서 불렸는지 남기고 끝남 확률 0.9를 낸다."""
+
+    def __init__(self) -> None:
+        self.threads: list[str] = []
+
+    def p_complete(self, pcm16: bytes) -> float:
+        self.threads.append(threading.current_thread().name)
+        return 0.9
+
+
+def _talk(ws: Any, phone: Phone) -> None:
+    """손님이 말하고(무음 감지로 말 끝) 첫 턴 대답이 다 올 때까지."""
+    loud = struct.pack("<1600h", *(int(4_000 * math.sin(2 * math.pi * 440 * i / 16_000))
+                                   for i in range(1_600)))
+    for frame in [loud] * 8 + [SILENT_FRAME] * 12:
+        ws.send_bytes(frame)
+    phone.until("bot.done", 1)
+
+
+def test_the_turn_model_runs_on_its_own_pool_and_its_score_reaches_the_turn_record(
+    tmp_path,
+) -> None:
+    model = _ThreadNoting()
+    client = TestClient(_app(tmp_path, model=model))
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.played(0)
+        _talk(ws, phone)
+        phone.send(type="call.end", turn=1)
+        assert phone.closed_by_server()
+    assert model.threads and all(t.startswith(TURN_THREAD_PREFIX) for t in model.threads)
+    lines = [json.loads(x) for x in (tmp_path / "logs").glob("*.jsonl").__next__().read_text()
+             .splitlines()]
+    turn1 = next(line for line in lines if line["turn"] == 1)
+    assert turn1["turn_end"]["score"] == 0.9
+    assert turn1["turn_model"]["src"] == "model"
+
+
+def test_a_missing_model_file_starts_the_server_on_rules_only(tmp_path, caplog) -> None:
+    client = TestClient(_app(tmp_path, turn_model_path=tmp_path / "없음.onnx"))
+    assert "Smart Turn" in caplog.text
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.played(0)
+        _talk(ws, phone)
+        phone.send(type="call.end", turn=1)
+        assert phone.closed_by_server()
+    lines = (tmp_path / "logs").glob("*.jsonl").__next__().read_text().splitlines()
+    turn1 = next(json.loads(x) for x in lines if json.loads(x)["turn"] == 1)
+    assert turn1["turn_end"]["score"] is None and "turn_model" not in turn1
+
+
+def test_switched_off_the_model_file_is_never_opened(tmp_path, monkeypatch) -> None:
+    def boom(path):
+        raise AssertionError("PHONE_TURN_MODEL=off인데 모델을 열었다")
+
+    monkeypatch.setattr(ws_module, "load_turn_model", boom)
+    _app(tmp_path, turn_model="off")

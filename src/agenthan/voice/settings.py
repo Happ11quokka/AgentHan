@@ -18,6 +18,10 @@
 | `PHONE_MAX_CALLS` | 동시 통화 상한. 넘으면 `error{code: "busy"}` (CLOVA 도메인당 15) | `10` |
 | `PHONE_MAX_CALL_S` | 통화 하나의 최대 길이(초). 넘으면 `call_too_long` | `600` |
 | `PHONE_CONT_WAIT_S` | 이어질 모양("-하고", "음")이면 마지막 말 끝부터 기다리는 초 | `2.0` |
+| `PHONE_TURN_MODEL` | `smart_turn`(오디오 턴 모델) · `off`(끝말 규칙만) | `smart_turn` |
+| `PHONE_TURN_MODEL_PATH` | Smart Turn ONNX. 없거나 체크섬이 틀리면 규칙만 | `/app/models/…` |
+| `PHONE_TURN_LOW` | 끝남 확률이 이 값 이하면 이어짐 쪽 | `0.3` |
+| `PHONE_TURN_HIGH` | 끝남 확률이 이 값 이상이면 끝남 쪽 | `0.7` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -39,6 +43,8 @@ from agenthan.voice.store_config import KST
 
 NluName = Literal["fake", "hcx"]
 AdapterName = Literal["fake", "clova"]
+TurnModelName = Literal["smart_turn", "off"]
+DEFAULT_TURN_MODEL_PATH = Path("/app/models/smart-turn-v3.2-cpu.onnx")  # Dockerfile이 받는 자리
 
 DEFAULT_FAKE_REPLIES = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
 
@@ -62,12 +68,23 @@ class VoiceSettings:
     max_calls: int = 10  # 동시 통화 상한 (리뷰 17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이
     cont_wait_s: float = 2.0  # 이어짐 대기 상한 (3단계 티켓 02, `SessionSettings.cont_wait_s`)
+    # 오디오 턴 모델 (3단계 티켓 03). 기본 켬(사용자 결정 2026-11-08), 끄면 끝말 규칙만
+    turn_model: TurnModelName = "smart_turn"
+    turn_model_path: Path = DEFAULT_TURN_MODEL_PATH
+    turn_low: float = 0.3
+    turn_high: float = 0.7
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         _check("PHONE_NLU", self.nlu, get_args(NluName))
         _check("PHONE_STT", self.stt, get_args(AdapterName))
         _check("PHONE_TTS", self.tts, get_args(AdapterName))
+        _check("PHONE_TURN_MODEL", self.turn_model, get_args(TurnModelName))
+        if not 0 < self.turn_low <= self.turn_high < 1:
+            raise SettingsError(
+                "PHONE_TURN_LOW ≤ PHONE_TURN_HIGH이고 둘 다 0과 1 사이여야 해요: "
+                f"{self.turn_low!r} / {self.turn_high!r}"
+            )
         if self.now is not None and self.now.tzinfo is None:
             raise SettingsError("PHONE_NOW에 시간대를 붙여 주세요. 예: 2026-11-08T16:00:00+09:00")
 
@@ -129,6 +146,10 @@ class VoiceSettings:
             max_calls=int(max_calls),
             max_call_s=_number("PHONE_MAX_CALL_S", get("PHONE_MAX_CALL_S", ""), 600.0),
             cont_wait_s=_number("PHONE_CONT_WAIT_S", get("PHONE_CONT_WAIT_S", ""), 2.0),
+            turn_model=get("PHONE_TURN_MODEL", "smart_turn"),  # type: ignore[arg-type]
+            turn_model_path=Path(get("PHONE_TURN_MODEL_PATH", str(DEFAULT_TURN_MODEL_PATH))),
+            turn_low=_fraction("PHONE_TURN_LOW", get("PHONE_TURN_LOW", ""), 0.3),
+            turn_high=_fraction("PHONE_TURN_HIGH", get("PHONE_TURN_HIGH", ""), 0.7),
             env=env,
         )
 
@@ -164,6 +185,14 @@ def _number(name: str, value: str, default: float, *, minimum: float = 0.0) -> f
     if not (math.isfinite(number) and number > 0 and number >= minimum):
         least = f"{minimum:g} 이상" if minimum else "0보다 큰"
         raise SettingsError(f"{name}는 {least} 숫자여야 해요: {value!r}")
+    return number
+
+
+def _fraction(name: str, value: str, default: float) -> float:
+    """0과 1 사이(둘 다 빼고)의 수."""
+    number = _number(name, value, default)
+    if number >= 1:
+        raise SettingsError(f"{name}는 0과 1 사이 숫자여야 해요: {value!r}")
     return number
 
 

@@ -76,6 +76,19 @@ def test_continuation_wait_defaults_to_two_seconds_and_can_be_changed() -> None:
     assert s.cont_wait_s == 1.5
 
 
+def test_smart_turn_is_on_by_default_and_can_be_switched_off() -> None:
+    # 3단계 티켓 03: 기본 켬(사용자 결정 2026-11-08), 문턱 0.3/0.7, 모델은 이미지 안 고정 경로
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert default.turn_model == "smart_turn"
+    assert default.turn_model_path == Path("/app/models/smart-turn-v3.2-cpu.onnx")
+    assert (default.turn_low, default.turn_high) == (0.3, 0.7)
+    s = VoiceSettings.from_env({"PHONE_TURN_MODEL": "off", "PHONE_TURN_MODEL_PATH": "m.onnx",
+                                "PHONE_TURN_LOW": "0.2", "PHONE_TURN_HIGH": "0.8"},
+                               env_file=None)
+    assert (s.turn_model, s.turn_model_path) == ("off", Path("m.onnx"))
+    assert (s.turn_low, s.turn_high) == (0.2, 0.8)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)
@@ -91,11 +104,18 @@ def test_keys_do_not_show_in_repr(tmp_path) -> None:
      ("PHONE_VAD_START_MS", "0"), ("PHONE_VAD_END_SILENCE_MS", "0"),
      ("PHONE_VAD_END_SILENCE_MS", "50"),
      ("PHONE_MAX_CALLS", "0"), ("PHONE_MAX_CALLS", "많이"), ("PHONE_MAX_CALL_S", "nan"),
-     ("PHONE_CONT_WAIT_S", "nan"), ("PHONE_CONT_WAIT_S", "길게")],
+     ("PHONE_CONT_WAIT_S", "nan"), ("PHONE_CONT_WAIT_S", "길게"),
+     ("PHONE_TURN_MODEL", "whisper"), ("PHONE_TURN_LOW", "1.5"), ("PHONE_TURN_HIGH", "0"),
+     ("PHONE_TURN_HIGH", "nan")],
 )
 def test_wrong_value_names_the_variable(name, value) -> None:
     with pytest.raises(SettingsError, match=name):
         VoiceSettings.from_env({name: value}, env_file=None)
+
+
+def test_the_low_band_must_sit_below_the_high_band() -> None:
+    with pytest.raises(SettingsError, match="PHONE_TURN_LOW"):
+        VoiceSettings.from_env({"PHONE_TURN_LOW": "0.8", "PHONE_TURN_HIGH": "0.6"}, env_file=None)
 
 
 def test_fake_adapters_make_a_fresh_port_per_call() -> None:
