@@ -18,6 +18,8 @@
 | `PHONE_MAX_CALLS` | 동시 통화 상한. 넘으면 `error{code: "busy"}` (CLOVA 도메인당 15) | `10` |
 | `PHONE_MAX_CALL_S` | 통화 하나의 최대 길이(초). 넘으면 `call_too_long` | `600` |
 | `PHONE_CONT_WAIT_S` | 이어질 모양("-하고", "음")이면 마지막 말 끝부터 기다리는 초 | `2.0` |
+| `PHONE_NO_INPUT_S` | 봇 재생 끝부터 이만큼 말이 없으면 "여보세요?" + 직전 질문 (초) | `6.0` |
+| `PHONE_WAIT_REQUEST_S` | "잠깐만요" 뒤 첫 무응답 대기 (초) | `15.0` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -62,6 +64,8 @@ class VoiceSettings:
     max_calls: int = 10  # 동시 통화 상한 (리뷰 17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이
     cont_wait_s: float = 2.0  # 이어짐 대기 상한 (3단계 티켓 02, `SessionSettings.cont_wait_s`)
+    no_input_s: float = 6.0  # 무응답 되묻기 대기 (3단계 티켓 04, `SessionSettings.no_input_s`)
+    wait_request_s: float = 15.0  # "잠깐만요" 뒤 첫 대기 (`SessionSettings.wait_request_s`)
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -129,6 +133,8 @@ class VoiceSettings:
             max_calls=int(max_calls),
             max_call_s=_number("PHONE_MAX_CALL_S", get("PHONE_MAX_CALL_S", ""), 600.0),
             cont_wait_s=_number("PHONE_CONT_WAIT_S", get("PHONE_CONT_WAIT_S", ""), 2.0),
+            no_input_s=_number("PHONE_NO_INPUT_S", get("PHONE_NO_INPUT_S", ""), 6.0),
+            wait_request_s=_number("PHONE_WAIT_REQUEST_S", get("PHONE_WAIT_REQUEST_S", ""), 15.0),
             env=env,
         )
 

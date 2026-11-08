@@ -43,6 +43,13 @@ epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중
 처음 붙잡은 때부터 `hold_cap_s`를 넘겨 붙잡지는 않는다.
 버린 결과(반이중·확정 뒤·통화 끝)는 그 턴 기록의 `dropped`에 남긴다.
 
+무응답 (3단계 티켓 04): 봇 재생이 끝나거나 끊기면(`_after_playback`) 무음 타이머를 건다.
+`no_input_s`(기다림 요청 뒤에는 `wait_request_s`) 동안 말이 없으면 봇이 먼저 말하는 턴
+(`bot_turn`)으로 엔진 `no_input`을 부른다. 엔진이 횟수를 세고 되묻거나 마지막 인사를 정한다.
+말소리는 있었는데 글 없는 epFlag 응답만 오면 엔진 `not_heard`로 다시 말해 달라고 한다.
+대화가 끝나 서버가 통화를 끝낼 때는 `call.end {turn, reason}`을 보낸다
+(reason: confirmed · handoff · cancelled · no_input).
+
 엔진 시간 제한(`turn_timeout_s`)을 넘으면 `error`를 내고 통화를 끝낸다. 다음 턴은 시작하지 않는다
 (스레드는 취소되지 않아서, 다음 턴이 같은 엔진을 동시에 건드리게 되기 때문, verify-web D5).
 """
@@ -150,6 +157,18 @@ class SessionSettings:
     play_done_grace_s: float = 3.0
     # 말 끝 + 이만큼까지 봇 목소리가 없으면 `bot.thinking`(생각 중 효과음). PRD 1.5초 (grilling Q13)
     thinking_after_s: float = 1.5
+    # 무응답 (3단계 티켓 04, grilling Q6). 봇 재생 끝(`playback.done`·말 끊기)부터 이만큼
+    # 말이 없으면 엔진 무응답 진입점이 되묻는다(`PHONE_NO_INPUT_S`). AiCall 5초·Lex 4초보다
+    # 조금 길게: 주문 중에는 메뉴를 고르며 생각한다 (`research/s3-turn-end.md` 결정 6)
+    no_input_s: float = 6.0
+    wait_request_s: float = 15.0  # "잠깐만요" 뒤 첫 대기 (`PHONE_WAIT_REQUEST_S`, 결정 5)
+    # 글 없는 말소리(배경 소리)가 마감을 계속 밀어도 처음 마감 + 이만큼에는 되묻는다 (검증 결정 6)
+    no_input_slack_s: float = 6.0
+    # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
+    not_heard_min_ms: int = 500
+    # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
+    # 응답보다 늦게 낼 수 있다(티켓 10 조각 붙잡기 시험). 그 글이 오면 되묻지 않는다
+    not_heard_wait_s: float = 1.0
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
@@ -186,6 +205,7 @@ class _Utterance:
     # 봇이 말하는 동안 모아 둔 말(`_pending`)로 연다. 말 끝이 봇 재생 전이라 말 끝 기준 지연을
     # 재지 않는다(3단계 티켓 01). 합치면 마지막 말을 따른다(뒤에 새로 한 말이면 다시 잰다)
     queued: bool = False
+    wait_request: bool = False  # 끝말 규칙이 기다림 요청("잠깐만요")으로 봤다 (티켓 04)
 
     @staticmethod
     def merge(items: list[_Utterance]) -> _Utterance:
@@ -322,6 +342,17 @@ class CallSession:
         self._thinking_timer: asyncio.TimerHandle | None = None
         self._speaking: asyncio.Task[int] | None = None  # 지금 문장을 보내는 작업 (말 끊기가 취소)
         self._spoken: _Spoken | None = None  # 마지막으로 말한 턴의 문장 (들은 만큼 기록)
+        # 무응답 타이머 (티켓 04). 몇 번째 무응답인지는 엔진이 센다. 세션은 시간만 잰다
+        self._quiet_timer: asyncio.TimerHandle | None = None
+        self._quiet_since: float | None = None  # 이번 무음 대기를 시작한 때 (재생 끝·끊김)
+        self._quiet_delay = 0.0
+        self._quiet_turn: int | None = None  # 그 대기를 연 봇 턴
+        self._speech_end_at: float | None = None  # 마지막 VAD 말 끝(무음 400ms)
+        self._hold_on = False  # 지난 손님 턴이 "잠깐만요"였다. 다음 무음 대기는 `wait_request_s`
+        self._voiced_ms = 0  # 이번 말 구간의 말소리 프레임 길이
+        self._ep_voiced_ms = 0  # 마지막 epFlag 프레임까지의 말소리 길이 (빈 응답 되묻기 기준)
+        self._end_reason: str | None = None  # 대화가 끝난 이유 (`call.end`)
+        self._not_heard_timer: asyncio.TimerHandle | None = None
         self._broken = False
 
     # ------------------------------------------------------------ 바깥 진입점
@@ -346,12 +377,18 @@ class CallSession:
         now = self._clock.monotonic()
         if self._vad.last_voiced:
             self._voice_at = now
+            self._voiced_ms += len(pcm) // BYTES_PER_MS
         ep = self._vad.ep_due or self._commit  # 조기 epFlag: 무음 250ms (턴 판정은 `ended`)
         if ep:
             if self._commit:
                 self._vad.end_speech()
             self._commit = False
             self._ep_at = now
+            self._ep_voiced_ms, self._voiced_ms = self._voiced_ms, 0
+        elif not self._vad.in_speech and not self._vad.last_voiced:
+            self._voiced_ms = 0  # 말 구간 밖 무음: 짧은 잡음은 쌓지 않는다
+        if ended:
+            self._speech_end_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
         if ended:
             self._on_speech_end()
@@ -379,6 +416,7 @@ class CallSession:
         if (self.done or self._terminal or self._phase != "listening" or self._parts
                 or self._pending or self._cont is not None):
             return None
+        self._cancel_quiet()
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
@@ -571,6 +609,7 @@ class CallSession:
             if r.ep_flag:
                 if not self._forced and r.epd_type != "eof" and not self._vad.in_speech:
                     self._log_empty(r)
+                    self._not_heard()
                 self._forced = False  # 말 없이 누른 버튼
             return
         forced = self._forced
@@ -646,14 +685,39 @@ class CallSession:
         """빈 턴: 무음 감지가 말로 봐서 epFlag를 보냈는데 글 없는 응답만 왔다 (지표).
 
         재연결 때 어댑터가 만든 빈 응답(`eof`)과 말 없이 누른 버튼은 세지 않는다.
-        되묻기("잘 못 들었어요")는 3단계 티켓 04가 이 자리에서 한다
+        `voiced_ms`는 그 epFlag까지의 말소리 길이다. 길면 `_not_heard`가 되묻는다(티켓 04)
         """
         record = self._log.get(self._turn)
         if record is not None:
             record.fields.setdefault("empty", []).append({
                 "start_ms": r.start_ms, "end_ms": r.end_ms, "epd_type": r.epd_type,
-                "ep_flag": r.ep_flag,
+                "ep_flag": r.ep_flag, "voiced_ms": self._ep_voiced_ms,
             })
+
+    def _not_heard(self) -> None:
+        """말소리는 `not_heard_min_ms` 이상이었는데 글이 없다: 봇이 다시 말해 달라고 한다 (티켓 04).
+
+        듣는 중이고 손님 말을 붙잡거나 판정하는 중이 아닐 때만(`bot_turn`). 실패로 세지 않는다
+        (엔진 `not_heard`). 재연결 때 어댑터가 만든 `eof`와 말 없이 누른 버튼은 앞에서 걸렀다
+        """
+        voiced, self._ep_voiced_ms = self._ep_voiced_ms, 0
+        if voiced >= self._settings.not_heard_min_ms:
+            self._cancel_not_heard()
+            self._not_heard_timer = asyncio.get_running_loop().call_later(
+                self._settings.not_heard_wait_s, self._on_not_heard_timer
+            )
+
+    def _on_not_heard_timer(self) -> None:
+        """그사이 글 있는 결과가 왔거나(붙잡는 중·턴이 열림) 다시 말하는 중이면 되묻지 않는다."""
+        self._not_heard_timer = None
+        if self._vad.in_speech:
+            return  # 새 말이 제 결과를 낸다
+        self.bot_turn("not_heard", lambda engine, now: engine.not_heard(now))
+
+    def _cancel_not_heard(self) -> None:
+        if self._not_heard_timer is not None:
+            self._not_heard_timer.cancel()
+            self._not_heard_timer = None
 
     def _release(self, r: SttResult, end_by: str) -> None:
         """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""
@@ -833,6 +897,11 @@ class CallSession:
 
     def _dispatch(self, u: _Utterance, decision: TurnDecision | None = None) -> None:
         """손님 말 하나를 새 턴으로 넘긴다."""
+        self._cancel_quiet()
+        self._cancel_not_heard()
+        if decision is not None and decision.label == "wait_request":
+            u = replace(u, wait_request=True)  # 엔진이 "천천히 말씀하세요"를 하고 오래 기다린다
+        self._hold_on = u.wait_request
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
@@ -903,8 +972,8 @@ class CallSession:
             act = u.act
             result = await self._call_engine(lambda: act(engine, now))
         else:
-            text = u.text
-            result = await self._call_engine(lambda: engine.handle(text, now))
+            text, wait = u.text, u.wait_request
+            result = await self._call_engine(lambda: engine.handle(text, now, wait_request=wait))
         self._log.mark(turn, "engine_end")
         stats = self._prefetch.take_stats() if self._prefetch is not None else None
         record = self._log.get(turn)
@@ -913,6 +982,7 @@ class CallSession:
         self._last = result
         if result.state in TERMINAL:
             self._terminal = True
+            self._end_reason = _end_reason(result, u)
         if result.order is not None:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -1122,17 +1192,72 @@ class CallSession:
                                           heard=spoken.heard(seq, played_ms))
 
     def _after_playback(self, turn: int, *, mark: str = "play_done") -> None:
+        """재생이 끝났거나(`playback.done`·안전망) 끊겼다. 듣기로 가고 무음 타이머를 건다."""
         self._cancel_play_timer()
         self._log.mark(turn, mark)
         if self._terminal:
+            self._say_call_end(turn)
             self._end()
             return
         self._phase = "listening"
         self._emit_state()
+        self._start_quiet(turn)
         if self._pending:
             merged = _Utterance.merge(self._pending)
             self._pending = []
             self._decide(replace(merged, queued=True))
+
+    def _say_call_end(self, turn: int) -> None:
+        """대화가 끝나 서버가 통화를 끝낸다. 이유를 `call.end`와 그 턴 기록에 남긴다 (티켓 04)."""
+        reason = self._end_reason or "done"
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["end_reason"] = reason
+        self._emit({"type": "call.end", "turn": turn, "reason": reason})
+
+    # 무응답 타이머 (티켓 04, grilling Q6). 봇 재생이 끝나거나 끊긴 때(`_after_playback`)부터
+    # `no_input_s`(지난 손님 말이 "잠깐만요"면 `wait_request_s`)를 센다. 손님 말 턴이나 봇 턴이
+    # 열리면 끈다. VAD 말 구간 중에는 멈추고, 그 말 끝(`_speech_end_at`)부터 다시 센다. 그 말이
+    # 턴이 되면(받아들인 말) 엔진이 횟수를 0으로 돌린다. 글 없는 소리가 계속 와도 처음 마감 +
+    # `no_input_slack_s`에는 되묻는다. 무엇을 말할지(되묻기·마지막 인사)는 엔진 `no_input`이 정한다
+
+    def _start_quiet(self, turn: int) -> None:
+        self._cancel_quiet()
+        self._quiet_delay = (self._settings.wait_request_s if self._hold_on
+                             else self._settings.no_input_s)
+        self._hold_on = False
+        self._quiet_since = self._clock.monotonic()
+        self._quiet_turn = turn
+        self._arm_quiet(self._quiet_delay)
+
+    def _arm_quiet(self, delay: float) -> None:
+        self._quiet_timer = asyncio.get_running_loop().call_later(
+            max(delay, 0.0), self._on_quiet_timer
+        )
+
+    def _cancel_quiet(self) -> None:
+        if self._quiet_timer is not None:
+            self._quiet_timer.cancel()
+            self._quiet_timer = None
+
+    def _on_quiet_timer(self) -> None:
+        self._quiet_timer = None
+        if self.done or self._terminal or self._phase != "listening" or self._quiet_since is None:
+            return
+        if self._turn != self._quiet_turn:
+            return  # 그 사이 다른 턴이 열렸다(그 턴이 끝나면 다시 건다)
+        now = self._clock.monotonic()
+        start, delay = self._quiet_since, self._quiet_delay
+        cap = start + delay + self._settings.no_input_slack_s
+        if self._parts or self._held is not None or self._cont is not None or self._pending:
+            self._arm_quiet(_CONT_POLL_S)  # 손님 말을 붙잡거나 판정하는 중이다. 그 말이 먼저다
+            return
+        busy = self._vad.in_speech or self._ep_waiting()
+        due = max(start, self._speech_end_at or start) + delay
+        if now < cap and (busy or now < due):
+            self._arm_quiet(_CONT_POLL_S if busy else min(due, cap) - now)
+            return
+        self.bot_turn("no_input", lambda engine, at: engine.no_input(at))
 
     # ------------------------------------------------------------ 내보내기·끝내기
 
@@ -1186,6 +1311,8 @@ class CallSession:
         self._end()
 
     def _end(self) -> None:
+        self._cancel_quiet()
+        self._cancel_not_heard()
         self._cancel_hold()
         self._cancel_thinking()
         self._cancel_cont_timer()
@@ -1193,6 +1320,17 @@ class CallSession:
         self._phase = "ended"
         self._ready = False
         self._done.set()
+
+
+def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
+    """대화가 끝난 이유 (`call.end`). 봇이 먼저 말한 턴이면 그 이유(no_input 등)."""
+    if isinstance(u, _BotTurn):
+        return u.reason
+    if result.state is State.CLOSING:
+        return "confirmed"
+    if result.state is State.FALLBACK:
+        return "handoff"
+    return "cancelled"
 
 
 def _is_int(value: Any) -> bool:

@@ -76,6 +76,17 @@ def test_continuation_wait_defaults_to_two_seconds_and_can_be_changed() -> None:
     assert s.cont_wait_s == 1.5
 
 
+def test_no_input_waits_default_to_six_and_fifteen_seconds_and_can_be_changed() -> None:
+    # 3단계 티켓 04: 재생 끝부터 6초 무응답이면 되묻고, "잠깐만요" 뒤에는 15초 (grilling Q6)
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert (default.no_input_s, default.wait_request_s) == (6.0, 15.0)
+    s = VoiceSettings.from_env({"PHONE_NO_INPUT_S": "8", "PHONE_WAIT_REQUEST_S": "20"},
+                               env_file=None)
+    assert (s.no_input_s, s.wait_request_s) == (8.0, 20.0)
+    with pytest.raises(SettingsError):
+        VoiceSettings.from_env({"PHONE_NO_INPUT_S": "0"}, env_file=None)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)

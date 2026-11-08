@@ -121,7 +121,9 @@ def phone_router(
             order_sink=order_sink,
             log_dir=settings.log_dir,
             settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s,
-                                     cont_wait_s=settings.cont_wait_s),
+                                     cont_wait_s=settings.cont_wait_s,
+                                     no_input_s=settings.no_input_s,
+                                     wait_request_s=settings.wait_request_s),
             executor=engine_pool,
         )
         await session.open()
