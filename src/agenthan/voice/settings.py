@@ -24,6 +24,10 @@
 | `PHONE_TURN_MODEL_PATH` | Smart Turn ONNX. 없거나 체크섬이 틀리면 규칙만 | `/app/models/…` |
 | `PHONE_TURN_LOW` | 끝남 확률이 이 값 이하면 이어짐 쪽 | `0.3` |
 | `PHONE_TURN_HIGH` | 끝남 확률이 이 값 이상이면 끝남 쪽 | `0.7` |
+| `PHONE_VOICE_BARGE_IN` | 음성 끼어들기 off · shadow(기록만) · on. 안드로이드 크롬만 | `off` |
+| `PHONE_BARGE_THRESHOLD` | 봇 말 중 손님 소리로 볼 RMS (PCM16) | `1500` |
+| `PHONE_BARGE_DUCK_MS` | 이만큼 소리가 이어지면 봇 목소리를 줄인다(ms) | `250` |
+| `PHONE_BARGE_STOP_MS` | 이만큼 이어지면 봇 말을 멈춘다(ms, 1000 이상) | `1000` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -33,19 +37,21 @@ from __future__ import annotations
 
 import math
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Literal, get_args
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from agenthan.voice.call.barge import BargeSettings
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.store_config import KST
 
 NluName = Literal["fake", "hcx"]
 AdapterName = Literal["fake", "clova"]
 TurnModelName = Literal["smart_turn", "off"]
+BargeName = Literal["off", "shadow", "on"]
 DEFAULT_TURN_MODEL_PATH = Path("/app/models/smart-turn-v3.2-cpu.onnx")  # Dockerfile이 받는 자리
 
 DEFAULT_FAKE_REPLIES = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
@@ -77,6 +83,8 @@ class VoiceSettings:
     turn_model_path: Path = DEFAULT_TURN_MODEL_PATH
     turn_low: float = 0.3
     turn_high: float = 0.7
+    # 음성 끼어들기 (3단계 티켓 06). None이면 꺼짐(기본, 반이중 + 말 끊기 버튼)
+    barge: BargeSettings | None = None
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -156,8 +164,30 @@ class VoiceSettings:
             turn_model_path=Path(get("PHONE_TURN_MODEL_PATH", str(DEFAULT_TURN_MODEL_PATH))),
             turn_low=_fraction("PHONE_TURN_LOW", get("PHONE_TURN_LOW", ""), 0.3),
             turn_high=_fraction("PHONE_TURN_HIGH", get("PHONE_TURN_HIGH", ""), 0.7),
+            barge=_barge(get),
             env=env,
         )
+
+
+def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:
+    """`PHONE_VOICE_BARGE_IN`과 문턱들. 꺼져 있으면 문턱 변수는 보지 않는다."""
+    mode = get("PHONE_VOICE_BARGE_IN", "off")
+    _check("PHONE_VOICE_BARGE_IN", mode, get_args(BargeName))
+    if mode == "off":
+        return None
+    base = BargeSettings()
+    duck = int(_number("PHONE_BARGE_DUCK_MS", get("PHONE_BARGE_DUCK_MS", ""), base.duck_ms,
+                       minimum=100))
+    # 한국어 맞장구는 최대 2.4초다. 소리만으로 멈추는 문턱은 1초 아래로 두지 않는다 (s3-papers 3)
+    stop = int(_number("PHONE_BARGE_STOP_MS", get("PHONE_BARGE_STOP_MS", ""), base.stop_ms,
+                       minimum=max(1_000, duck)))
+    return BargeSettings(
+        mode=mode,  # type: ignore[arg-type]  # 위에서 검사
+        threshold=_number("PHONE_BARGE_THRESHOLD", get("PHONE_BARGE_THRESHOLD", ""),
+                          base.threshold),
+        duck_ms=duck,
+        stop_ms=stop,
+    )
 
 
 def read_env_file(path: Path | None) -> dict[str, str]:

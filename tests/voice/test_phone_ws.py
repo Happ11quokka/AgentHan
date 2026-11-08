@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
 from agenthan.voice import ws as ws_module
+from agenthan.voice.call.barge import BargeSettings
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
 from agenthan.voice.call.session import TURN_THREAD_PREFIX
@@ -263,6 +264,22 @@ def test_call_end_from_the_phone_closes_the_socket(tmp_path) -> None:
         phone.until("call.ready", 0)
         phone.send(type="call.end", turn=0)
         assert phone.closed_by_server()
+
+
+@pytest.mark.parametrize("mode, capable, expected", [
+    ("on", True, "on"), ("shadow", True, "shadow"), ("on", False, None), (None, True, None),
+])
+def test_the_voice_barge_in_switch_reaches_the_call_session(
+    tmp_path, mode, capable, expected
+) -> None:
+    # 3단계 티켓 06: 서버 스위치가 켜져 있고 브라우저가 할 수 있다고 알린 통화만 켠다
+    barge = None if mode is None else BargeSettings(mode=mode)
+    client = TestClient(_app(tmp_path, barge=barge))
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0, voice_barge_in=capable)
+        assert phone.until("call.ready", 0).get("voice_barge_in") == expected
+        phone.send(type="call.end", turn=0)
 
 
 def _quiet_talk(ms: int) -> list[bytes]:

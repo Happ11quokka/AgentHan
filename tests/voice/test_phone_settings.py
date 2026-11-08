@@ -87,6 +87,25 @@ def test_no_input_waits_default_to_six_and_fifteen_seconds_and_can_be_changed() 
         VoiceSettings.from_env({"PHONE_NO_INPUT_S": "0"}, env_file=None)
 
 
+def test_voice_barge_in_is_off_by_default_and_takes_its_thresholds_from_the_env() -> None:
+    # 3단계 티켓 06: 기본 꺼짐. shadow는 판정만 기록, on은 실제로 줄이고 멈춘다
+    assert VoiceSettings.from_env({}, env_file=None).barge is None
+    s = VoiceSettings.from_env({"PHONE_VOICE_BARGE_IN": "on", "PHONE_BARGE_THRESHOLD": "2500",
+                                "PHONE_BARGE_DUCK_MS": "300", "PHONE_BARGE_STOP_MS": "1200"},
+                               env_file=None)
+    assert s.barge is not None
+    assert (s.barge.mode, s.barge.threshold, s.barge.duck_ms, s.barge.stop_ms) == (
+        "on", 2500.0, 300, 1200
+    )
+    shadow = VoiceSettings.from_env({"PHONE_VOICE_BARGE_IN": "shadow"}, env_file=None)
+    assert shadow.barge is not None and shadow.barge.mode == "shadow"
+    assert shadow.barge.stop_ms == 1000
+    for bad in ({"PHONE_VOICE_BARGE_IN": "yes"},
+                {"PHONE_VOICE_BARGE_IN": "on", "PHONE_BARGE_STOP_MS": "200"}):
+        with pytest.raises(SettingsError):
+            VoiceSettings.from_env(bad, env_file=None)
+
+
 def test_smart_turn_is_on_by_default_and_can_be_switched_off() -> None:
     # 3단계 티켓 03: 기본 켬(사용자 결정 2026-11-08), 문턱 0.3/0.7, 모델은 이미지 안 고정 경로
     default = VoiceSettings.from_env({}, env_file=None)
