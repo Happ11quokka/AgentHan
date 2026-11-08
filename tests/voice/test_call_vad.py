@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 import struct
 
-from agenthan.voice.call.vad import SilenceDetector
+from agenthan.voice.call.vad import SilenceDetector, VadSettings
 
 SAMPLES = 1_600  # 100ms
 
@@ -48,3 +48,36 @@ def test_a_short_dip_between_words_does_not_end_speech() -> None:
               + _frames(1_000, 300))
 
     assert _end_at_ms(frames) == 1_900 + 400
+
+
+def _ep_at_ms(frames: list[bytes], **settings: int) -> list[int]:
+    vad = SilenceDetector(VadSettings(**settings))
+    eps = []
+    for i, frame in enumerate(frames):
+        vad.feed(frame)
+        if vad.ep_due:
+            eps.append((i + 1) * 100)
+    return eps
+
+
+def test_the_ep_flag_goes_out_at_250ms_of_silence_before_the_400ms_speech_end() -> None:
+    """조기 epFlag(3단계 티켓 01): 무음 250ms에 epFlag, 말 끝(턴 판정)은 그대로 400ms."""
+    frames = _frames(800, 4_000) + _frames(1_000, 300)
+
+    assert _ep_at_ms(frames) == [800 + 300]  # 100ms 프레임이라 250ms를 넘기는 세 번째 무음 프레임
+    assert _end_at_ms(frames) == 800 + 400
+
+
+def test_a_pause_between_250_and_400ms_sends_an_ep_flag_but_does_not_end_speech() -> None:
+    """낱말 사이 300ms 쉼은 epFlag를 한 번 더 낼 뿐 말 끝이 아니다. 쉼마다 epFlag는 한 번."""
+    frames = (_frames(800, 4_000) + _frames(300, 600) + _frames(800, 4_000)
+              + _frames(1_000, 300))
+
+    assert _ep_at_ms(frames) == [1_100, 2_200]
+    assert _end_at_ms(frames) == 1_900 + 400
+
+
+def test_an_ep_silence_longer_than_the_speech_end_sends_the_ep_flag_at_the_end() -> None:
+    frames = _frames(800, 4_000) + _frames(1_000, 300)
+
+    assert _ep_at_ms(frames, ep_silence_ms=600, end_silence_ms=400) == [800 + 400]

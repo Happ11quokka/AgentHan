@@ -250,13 +250,15 @@ class CallSession:
         now = self._clock.monotonic()
         if self._vad.last_voiced:
             self._voice_at = now
-        ep = ended or self._commit
+        ep = self._vad.ep_due or self._commit  # 조기 epFlag: 무음 250ms (턴 판정은 `ended`)
         if ep:
             if self._commit:
                 self._vad.end_speech()
             self._commit = False
             self._ep_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
+        if ended:
+            self._on_speech_end()
         self._stt_backlog += len(pcm)
         backlog_ms = self._stt_backlog // BYTES_PER_MS
         record = self._log.get(self._turn)
@@ -477,7 +479,19 @@ class CallSession:
         """
         if self._vad.speech_since(r.end_ms):
             return True
-        return not r.ep_flag and (self._vad.in_speech or self._ep_waiting())
+        if r.ep_flag:
+            # 조기 epFlag(무음 250ms)의 응답인데 무음이 아직 턴 판정(400ms)에 못 닿았거나 말이 다시
+            # 시작됐다. 턴은 무음 감지가 말 끝을 볼 때(`_on_speech_end`)나 다음 응답으로 넘긴다
+            return self._vad.in_speech
+        return self._vad.in_speech or self._ep_waiting()
+
+    def _on_speech_end(self) -> None:
+        """무음이 턴 판정 길이(400ms)에 닿았다. 그 전에 와서 붙잡아 둔 epFlag 응답이면 넘긴다."""
+        held = self._held
+        if held is None or not held.ep_flag or not self._parts or self._ep_waiting():
+            return
+        self._cancel_hold()
+        self._release(held, "vad")
 
     def _ep_waiting(self) -> bool:
         """마지막으로 쓴 epFlag 프레임의 응답을 아직 못 받았나."""

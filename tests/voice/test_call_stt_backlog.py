@@ -69,7 +69,7 @@ def test_backlogged_frames_are_joined_up_to_the_ep_flag_without_losing_bytes(tmp
             await c.start()
             before_ms, before_writes = stt.audio_ms, len(stt.writes)
             stt.gate = asyncio.Event()
-            frames = tone(800) + silence(1_000)  # 무음 감지 epFlag는 1,200ms 프레임 끝
+            frames = tone(800) + silence(1_000)  # 조기 epFlag(무음 250ms)는 1,100ms 프레임 끝
             for frame in frames:
                 await c.session.feed_audio(frame)
             stt.gate.set()
@@ -78,7 +78,7 @@ def test_backlogged_frames_are_joined_up_to_the_ep_flag_without_losing_bytes(tmp
             assert sum(w.size for w in writes) == sum(len(f) for f in frames)
             assert len(writes) < len(frames)  # 묶여서 갔다
             (ep,) = [w for w in writes if w.ep_flag]
-            assert ep.at_ms - before_ms + ep.size // 32 == 1_200  # epFlag는 같은 바이트 끝에
+            assert ep.at_ms - before_ms + ep.size // 32 == 1_100  # epFlag는 같은 바이트 끝에
             assert ep.seq_id == 1
 
     run(call())

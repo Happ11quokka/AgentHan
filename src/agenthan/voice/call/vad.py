@@ -1,7 +1,12 @@
 """무음 감지기: 올라온 PCM 프레임의 에너지(RMS)로 말 시작·끝을 잡는다 (spec 말 끝 판정).
 
 말소리가 `start_ms` 이어지면 말 시작, 그 뒤 무음이 `end_silence_ms` 이어지면 말 끝이다.
-말 끝 프레임에 세션이 STT `epFlag`를 붙인다. 시작값은 짐작이고 녹음으로 맞춘다(티켓 07).
+타이머는 둘이다(3단계 티켓 01, Alexa 투기적 끝점·Pipecat 두 타이머).
+- 무음이 `ep_silence_ms`(250ms)에 닿는 프레임에 세션이 STT `epFlag`를 붙인다(`ep_due`).
+  STT 글을 그만큼 일찍 받는다. 쉼마다 한 번이다
+- 무음이 `end_silence_ms`(400ms)에 닿으면 말 끝이다(`feed`가 참). 턴 판정은 여기서 한다.
+  250~400ms 쉼 뒤 말이 다시 시작되면 같은 말 구간이 이어진다
+시작값은 짐작이고 녹음으로 맞춘다(티켓 07).
 """
 
 from __future__ import annotations
@@ -33,7 +38,11 @@ class VadSettings:
 
     threshold: float = 1_500.0  # PCM16 RMS. 이 값 이상이면 말소리 프레임
     start_ms: int = 200  # 말소리가 이만큼 이어져야 말 시작 (딸깍 소리 거르기)
-    end_silence_ms: int = 400  # 말 시작 뒤 무음이 이만큼 이어지면 말 끝
+    end_silence_ms: int = 400  # 말 시작 뒤 무음이 이만큼 이어지면 말 끝 (턴 판정)
+    # 무음이 이만큼이면 epFlag를 먼저 보낸다 (3단계 티켓 01). `end_silence_ms`보다 크면 말 끝에.
+    # 250ms: 티켓 07 녹음에서 낱말 사이 쉼(B1 0.3초)도 넘을 수 있어 조각이 는다. 조각은 세션이
+    # 무음 400ms 전까지 붙잡아 합친다
+    ep_silence_ms: int = 250
 
 
 def rms(pcm: bytes) -> float:
@@ -55,6 +64,8 @@ class SilenceDetector:
     offset_ms: int = 0  # 지금까지 넣은 오디오 길이
     segment_starts: list[int] = field(default_factory=list)  # 말 시작으로 본 구간의 시작 시각
     last_voiced: bool = False  # 마지막으로 넣은 프레임이 말소리였나
+    ep_due: bool = False  # 마지막으로 넣은 프레임에 epFlag를 붙인다 (쉼이 `ep_silence_ms`에 닿음)
+    _ep_sent: bool = False  # 이번 쉼에 epFlag를 이미 냈다
     _voiced_ms: int = 0
     _voiced_from: int = 0
     _silent_ms: int = 0
@@ -66,11 +77,13 @@ class SilenceDetector:
         self.offset_ms += ms
         voiced = rms(pcm) >= self.settings.threshold
         self.last_voiced = voiced
+        self.ep_due = False
         if voiced:
             if self._voiced_ms == 0:
                 self._voiced_from = start
             self._voiced_ms += ms
             self._silent_ms = 0
+            self._ep_sent = False
             if not self.in_speech and self._voiced_ms >= self.settings.start_ms:
                 self.in_speech = True
                 self.segment_starts.append(self._voiced_from)
@@ -79,9 +92,13 @@ class SilenceDetector:
         if not self.in_speech:
             return False
         self._silent_ms += ms
+        ep_ms = min(self.settings.ep_silence_ms, self.settings.end_silence_ms)
+        if not self._ep_sent and self._silent_ms >= ep_ms:
+            self.ep_due = self._ep_sent = True
         if self._silent_ms >= self.settings.end_silence_ms:
             self.in_speech = False
             self._silent_ms = 0
+            self._ep_sent = False
             return True
         return False
 
@@ -90,6 +107,7 @@ class SilenceDetector:
         self.in_speech = False
         self._voiced_ms = 0
         self._silent_ms = 0
+        self._ep_sent = False
 
     def speech_since(self, ms: int) -> bool:
         """`ms` 뒤에 말이 이어졌나: `ms` 이후에 **새로 시작한** 말 구간이 있다.

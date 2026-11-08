@@ -10,6 +10,7 @@ import asyncio
 from call_harness import Call, silence, tone
 
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
+from agenthan.voice.call.session import SessionSettings
 
 GREETING = "네, 샘플 러시안 베이커리입니다."
 
@@ -89,3 +90,46 @@ def test_the_phase_stays_thinking_while_the_first_sentence_is_synthesized(tmp_pa
     during, after = run(call())
     assert during == ["thinking"]
     assert after == ["thinking", "speaking"]
+
+
+# ------------------------------------------------------ 조기 epFlag · 턴 판정 (250 / 400ms)
+
+
+def test_a_pause_shorter_than_the_turn_silence_merges_the_early_ep_flag_reply(tmp_path) -> None:
+    # "메도빅 하나랑" … 300ms 쉼 … "나폴레옹 하나요". 쉼에서 epFlag가 먼저 나가 첫 글이 오지만,
+    # 무음이 400ms가 안 됐고 말이 다시 시작됐으니 턴을 넘기지 않고 다음 글과 합친다
+    stt = FakeSttStream(replies=["메도빅 하나랑", "나폴레옹 하나요"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.feed(tone(1_000) + silence(300) + tone(1_000) + silence(1_500))
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    c = run(call())
+    (final,) = c.out.of("stt.final")
+    assert (final["text"], final["fragments"], final["end_by"]) == (
+        "메도빅 하나랑 나폴레옹 하나요", 2, "vad"
+    )
+
+
+def test_an_early_ep_flag_reply_waits_for_the_400ms_turn_silence(tmp_path) -> None:
+    # epFlag 응답이 무음 400ms 전에 왔다. 턴은 무음 400ms가 되는 프레임에서 넘긴다(붙잡기 시간
+    # 제한까지 기다리지 않는다)
+    stt = FakeSttStream(replies=["메도빅 하나요"], lag_ms=0)
+    settings = SessionSettings(hold_max_s=5.0)
+
+    async def call() -> tuple[list[dict], dict]:
+        async with Call(tmp_path, stt=stt, settings=settings) as c:
+            await c.start()
+            await c.feed(tone(800) + silence(300))
+            await asyncio.sleep(0.05)
+            early = c.out.of("stt.final")
+            await c.feed(silence(100))
+            final = await c.out.wait_for("stt.final", turn=1)
+            return early, final
+
+    early, final = run(call())
+    assert early == []
+    assert (final["text"], final["end_by"]) == ("메도빅 하나요", "vad")

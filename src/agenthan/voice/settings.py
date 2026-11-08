@@ -13,7 +13,8 @@
 | `PHONE_WEB_DIST` | 개발 서버가 같이 낼 React 빌드 폴더 (있을 때만) | `web/dist` |
 | `PHONE_VAD_THRESHOLD` | 무음 감지 RMS 임계값 (PCM16) | `VadSettings` 기본값 |
 | `PHONE_VAD_START_MS` | 말 시작으로 볼 말소리 길이(ms) | `VadSettings` 기본값 |
-| `PHONE_VAD_END_SILENCE_MS` | 말 끝으로 볼 무음 길이(ms, 100 이상) | `VadSettings` 기본값 |
+| `PHONE_VAD_END_SILENCE_MS` | 말 끝(턴 판정)으로 볼 무음 길이(ms, 100 이상) | `VadSettings` 값 |
+| `PHONE_VAD_EP_SILENCE_MS` | STT `epFlag`를 먼저 보낼 무음 길이(ms, 말 끝 무음 이하) | `250` |
 | `PHONE_MAX_CALLS` | 동시 통화 상한. 넘으면 `error{code: "busy"}` (CLOVA 도메인당 15) | `10` |
 | `PHONE_MAX_CALL_S` | 통화 하나의 최대 길이(초). 넘으면 `call_too_long` | `600` |
 
@@ -97,7 +98,14 @@ class VoiceSettings:
             end_silence_ms=int(_number("PHONE_VAD_END_SILENCE_MS",
                                        get("PHONE_VAD_END_SILENCE_MS", ""),
                                        base.end_silence_ms, minimum=100)),
+            ep_silence_ms=int(_number("PHONE_VAD_EP_SILENCE_MS",
+                                      get("PHONE_VAD_EP_SILENCE_MS", ""), base.ep_silence_ms)),
         )
+        if vad.ep_silence_ms > vad.end_silence_ms:
+            raise SettingsError(
+                "PHONE_VAD_EP_SILENCE_MS는 PHONE_VAD_END_SILENCE_MS 이하여야 해요 "
+                f"(epFlag 먼저, 턴 판정은 그 뒤): {vad.ep_silence_ms} > {vad.end_silence_ms}"
+            )
         max_calls = _number("PHONE_MAX_CALLS", get("PHONE_MAX_CALLS", ""), 10)
         if max_calls != int(max_calls):
             raise SettingsError(f"PHONE_MAX_CALLS는 정수여야 해요: {max_calls!r}")
