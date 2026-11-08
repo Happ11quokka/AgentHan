@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,13 @@ from agenthan.voice.adapters import AdapterMissing, stt_factory, tts_factory
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import PortError
 from agenthan.voice.settings import SettingsError, VoiceSettings
+
+
+@pytest.fixture(autouse=True)
+def _no_grpc_dns_leak(monkeypatch):
+    """`stt_factory`가 `os.environ`에 넣는 `GRPC_DNS_RESOLVER`를 테스트 뒤에 되돌린다."""
+    monkeypatch.setenv("GRPC_DNS_RESOLVER", "placeholder")
+    monkeypatch.delenv("GRPC_DNS_RESOLVER")
 
 
 def test_without_any_variable_everything_is_fake_and_kst(tmp_path) -> None:
@@ -83,3 +91,36 @@ def test_clova_tts_without_keys_fails_per_call_with_tts_config() -> None:
     with pytest.raises(PortError) as err:
         make_tts()
     assert (err.value.code, err.value.retry) == ("tts_config", False)
+
+
+def test_clova_stt_builds_from_the_settings_env_without_network() -> None:
+    env = {"PHONE_STT": "clova", "CLOVA_SPEECH_SECRET_KEY": "stt-secret-1",
+           "CLOVA_SPEECH_GRPC_ENDPOINT": "https://clovaspeech-gw.ncloud.com"}
+    make_stt = stt_factory(VoiceSettings.from_env(env, env_file=None))
+    first, second = make_stt(), make_stt()
+    assert type(first).__name__ == "ClovaSttStream" and first is not second
+    assert first._settings.endpoint == "clovaspeech-gw.ncloud.com:50051"
+    assert "stt-secret-1" not in repr(first._settings)
+    assert first._conn is None  # 접속은 세션의 start()에서
+    assert os.environ["GRPC_DNS_RESOLVER"] == "native"
+
+
+def test_clova_stt_keeps_a_grpc_dns_resolver_that_is_already_set(monkeypatch) -> None:
+    monkeypatch.setenv("GRPC_DNS_RESOLVER", "ares")
+    stt_factory(VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))
+    assert os.environ["GRPC_DNS_RESOLVER"] == "ares"
+
+
+def test_clova_stt_takes_grpc_dns_resolver_from_the_env_file(tmp_path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("PHONE_STT=clova\nGRPC_DNS_RESOLVER=ares\n", encoding="utf-8")
+    stt_factory(VoiceSettings.from_env({}, env_file=env_file))
+    assert os.environ["GRPC_DNS_RESOLVER"] == "ares"
+
+
+def test_clova_stt_without_its_key_fails_per_call_with_stt_config() -> None:
+    env = {"PHONE_STT": "clova", "CLOVA_SPEECH_SECRET_KEY": "  "}
+    make_stt = stt_factory(VoiceSettings.from_env(env, env_file=None))
+    with pytest.raises(PortError, match="CLOVA_SPEECH_SECRET_KEY") as err:
+        make_stt()
+    assert (err.value.code, err.value.retry) == ("stt_config", False)
