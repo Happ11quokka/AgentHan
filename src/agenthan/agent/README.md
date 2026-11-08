@@ -16,7 +16,7 @@
      ② 기능 하나 고르기: 지금은 매칭 1위 (PRD는 HCX-DASH-002 select_feature — 아직 안 함)
      ③ 대표 기능 위임 또는 그 기능 도구만 붙여 HCX-005 실행
         ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
-        ├ 메뉴판 사진 (A-1)         → ask_photo(): agent/menu_photo.py 초안 → 사장님 승인 → 저장
+        ├ 메뉴판·음식 사진          → ask_photo(): 사진 분류 → 초안 → 사장님 승인 → 저장
         ├ review_reply, ai_review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
         ├ statistics (A-3, R2)    → R1 facts → 해석 규칙 → 도구 없는 HCX-005 문장화/템플릿
         └ 그 밖의 기능              → 이름·설명 안내 (도구는 tools/feature_tools.py에 정의만)
@@ -25,6 +25,7 @@
 | 위치 | 하는 일 |
 |---|---|
 | `agent/owner_assistant.py` | 오케스트레이터 대화 루프 (CLI: `python -m agenthan.agent.owner_assistant`) |
+| `agent/food_photo.py` | 음식 사진 분류·AI 메뉴 추측·배경 제거 연결 |
 | `agent/menu_photo.py` | A-1 메뉴 사진 → 초안: HCX-005 사진 읽기 → 가게 지식(`StoreKnowledge`) 대조 → 한국어 이름·설명 |
 | `agent/place_matcher.py`, `place_features.json` | 플레이스 기능 카탈로그(=PRD의 `features.json`)와 요청→기능 매칭 |
 | `agent/review/` | 리뷰 서브에이전트: 분석·요약, 미답글, 답글 초안·등록(더미), 정기 보고 루틴(A-2·A-4) |
@@ -37,7 +38,7 @@
 | `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`은 실제 리뷰로 학습해 레포에 없음 · 카톡으로 받기) |
 | `tools/knowledge_adapters.py` | `StoreKnowledge`(Part B 계약) → 리뷰 서브에이전트의 리뷰·메뉴 입력 |
 | `tools/review_adapters.py` | 더미 플레이스 API → 리뷰 서브에이전트 입력 |
-| `tools/image_cutout.py` | M1a 음식 사진 배경 제거 → 흰 배경 정사각형 바이트 (M1b 연결 전) |
+| `tools/image_cutout.py` | M1a 음식 사진 배경 제거 → 흰 배경 정사각형 바이트 (음식 사진 등록에 연결) |
 | `eval/tool_selection.py` | 16개 도구를 다 붙였을 때 HCX-005 도구 선택 평가 |
 
 공통 HCX 클라이언트는 `core/llm.py`, 임베딩은 `core/embedding.py`를 쓴다.
@@ -172,6 +173,15 @@ uv run --env-file .env python -m agenthan.agent.owner_assistant \
 
 분류기·스냅샷·평가 스크립트는 `docs/review-clf.md`, 리뷰 통합 설계는 `docs/integrate-review-tools.md`.
 
+### 음식 사진 등록
+
+`/photo ~/cake.jpg 이거 메뉴로 올려 줘`로 사진을 보내면 음식 이름과 설명, 다른 후보를
+AI가 추측해 보여 준다. 틀릴 수 있으므로 사장님이 이름·설명을 고치고 가격을 알려 준 뒤
+`네`로 저장한다. 기존 메뉴와 맞는 후보가 있으면 메뉴 이름을 말해 사진 변경을 명시적으로
+확인해야 한다. 사진과 함께 이름을 말하면 그 이름을 쓴다. 저장 사진은 흰 배경 정사각형이며
+배경 분리에 실패하면 흰 여백을 더한 원본을 쓴다. 사진과 메뉴는 로컬 더미 저장소에만 저장한다.
+음식 판별과 이름·설명은 부정확할 수 있고 여러 장 동시 등록은 지원하지 않는다.
+
 ### M1a 음식 사진 배경 제거
 
 `agenthan.tools.image_cutout.cutout_on_white(data, box=None, size=1024, fmt="JPEG")`는
@@ -185,7 +195,7 @@ OpenCV GrabCut을 5회 사용한다. 학습 모델·외부 API를 쓰지 않는�
 실패할 수 있고, 분리된 여러 음식 중 가장 큰 덩어리만 남는다. 전경이 전체의 3% 미만 또는
 90% 초과이거나 GrabCut이 실패하면 `ok=False`와 한국어 `reason`을 주고 원본에 흰 여백만
 더한 정사각형 사진을 반환한다. 빈 파일·잘못된 이미지·20MB 초과·한 변이라도 64px 미만이면
-`ImageCutoutError`다. 메뉴 초안·저장·비서 연결은 M1b에서 한다.
+`ImageCutoutError`다. 메뉴 초안·저장·비서 연결은 음식 사진 등록 흐름에서 한다.
 
 ```bash
 uv run python -m agenthan.tools.image_cutout in.jpg out.jpg --box 0.1,0.1,0.9,0.9

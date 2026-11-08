@@ -39,6 +39,8 @@ class FakeV3:
         self.calls.append((model, copy.deepcopy(body)))
         content = body["messages"][-1]["content"]
         if isinstance(content, list):
+            if content[1]["text"] == "사진을 분류해 menu_board, food, other 중 한 단어만 답하세요.":
+                return {"message": {"content": "menu_board"}}
             assert content[0]["dataUri"]["data"].startswith("data:image/jpeg;base64,")
             return {"message": {"content": self.vision}}
         name = content.rsplit("메뉴 원어 이름: ", 1)[1]

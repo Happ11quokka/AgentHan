@@ -60,6 +60,8 @@ GEMINI.md
 tests/data/*
 !tests/data/place_request_cases.jsonl
 !tests/data/tool_selection_cases.jsonl
+# 저작권을 확인한 공개 음식 사진 테스트 fixture
+!tests/data/food/
 
 # 실제 리뷰로 학습한 모델: 학습 데이터 조각이 들어 있어 올리지 않는다 (카톡으로 공유)
 models/*.joblib

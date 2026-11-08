@@ -71,6 +71,13 @@ class MenuDraft:
     # generated, check_spelling, price_missing, name_missing
     notes: list[str] = field(default_factory=list)
 
+    photo: bytes | None = None
+    photo_mime: str | None = None
+    candidates: list[str] = field(default_factory=list)
+    is_food: bool = False
+    possible_menu_id: str | None = None
+    possible_menu_name: str | None = None
+
     @property
     def complete(self) -> bool:
         return bool(self.name_ko.strip()) and isinstance(self.price, int) and self.price > 0
