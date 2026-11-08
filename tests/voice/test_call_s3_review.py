@@ -89,3 +89,25 @@ def test_a_correction_said_while_the_readback_is_being_synthesized_is_kept(tmp_p
     c = run(call())
     assert c.out.of("order") == []
     assert "15,000원" in " ".join(e["text"] for e in c.out.of("bot.say", 4))
+
+
+# ---------------------------------------------------------------- C6
+
+
+def test_a_confirm_turn_without_the_readback_can_be_interrupted(tmp_path) -> None:
+    # 복창 중 "잠깐만요" → "네, 천천히 말씀하세요"는 CONFIRM 상태지만 복창이 아니다
+    stt = FakeSttStream(replies=[*READBACK, "잠깐만요"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            for turn in (1, 2, 3, 4):
+                await c.turn(turn)
+            return c
+
+    c = run(call())
+    speaking = {e["turn"]: e["interruptible"] for e in c.out.of("state")
+                if e["phase"] == "speaking"}
+    assert speaking[3] is False  # 최종 복창
+    assert speaking[4] is True
+    assert [e["text"] for e in c.out.of("bot.say", 4)] == ["네, 천천히 말씀하세요."]
