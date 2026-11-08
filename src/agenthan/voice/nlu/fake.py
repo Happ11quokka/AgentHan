@@ -4,7 +4,8 @@
 - `_EXCLUSIVE`: 발화 전체가 그 뜻일 때만 걸리고, 걸리면 다른 인식기는 돌리지 않는다 (네/아니요)
 - `_RECOGNIZERS`: 한 발화에서 여러 개가 같이 걸릴 수 있다 (메뉴 + 픽업 시간 등)
 
-티켓 01 범위: "{메뉴명} 하나/두 개", "그게 다예요", "네/아니요", "{N}시".
+티켓 01: "{메뉴명} 하나/두 개", "그게 다예요", "네/아니요", "{N}시".
+티켓 03: 여러 항목, 수량(숫자·고유어), 옵션, 빼기, 수량 바꾸기, 요청사항.
 """
 
 from __future__ import annotations
@@ -68,15 +69,46 @@ def _done_ordering(text: str, ctx: NluContext) -> list[Act]:
     return [Act("done_ordering")] if _DONE.search(text) else []
 
 
-# ---------------------------------------------------------------- 메뉴 + 수량
+# ---------------------------------------------------------------- 메뉴 + 수량·옵션·변경·삭제·요청
+#
+# 발화에서 메뉴 이름이 나온 자리마다 한 act를 만든다. 메뉴 i에 딸린 말은
+# "메뉴 i 앞에서 직전 연결어 뒤까지(prefix)" + "메뉴 i 뒤에서 첫 연결어 앞까지(head)"다.
+#   "아이스 아메리카노 하나랑 따뜻한 아메리카노 하나요"
+#    prefix=아이스 head=하나 | prefix=따뜻한 head=하나요
+# head로 종류를 정한다: 옵션 → (장바구니에 있으면) set_option, 아니면 add_item
+#                      빼/취소 → remove_item · "N개로" → change_qty · 따로/많이… → set_request
+# 메뉴 이름이 없으면 발화 전체로 같은 순서로 본다 (대상은 엔진이 직전 항목으로 정한다).
 
-_NATIVE_QTY = {"하나": 1, "한": 1, "둘": 2, "두": 2, "셋": 3, "세": 3, "넷": 4, "네": 4}
-_QTY = re.compile(r"(\d+)\s*(?:개|잔)?|(하나|둘|셋|넷)|(한|두|세|네)\s*(?:개|잔)")
+_NATIVE_QTY = {
+    "하나": 1, "한": 1, "둘": 2, "두": 2, "셋": 3, "세": 3, "넷": 4, "네": 4,
+    "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10,
+}
+_QTY_PAT = (
+    r"\d+\s*(?:개|잔)?"
+    r"|(?:하나|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:\s*(?:개|잔))?"
+    r"|(?:한|두|세|네)\s*(?:개|잔)"
+)
+_QTY = re.compile(_QTY_PAT)
+_UNIT = re.compile(r"\s*(?:개|잔)$")
 # 메뉴 목록에 없는 이름 + 수량. 예: "짜장면 하나요" → menu_text="짜장면" (판정은 엔진의 매처)
 _UNLISTED_ITEM = re.compile(
     r"(?P<menu>[가-힣A-Za-z][가-힣A-Za-z ]*?)\s*"
-    r"(?P<qty>\d+\s*(?:개|잔)?|하나|둘|셋|넷|(?:한|두|세|네)\s*(?:개|잔))"
+    rf"(?P<qty>{_QTY_PAT})"
     r"\s*(?:요|이요|주세요|만)?$"
+)
+# 손님이 옵션을 부르는 말 (가짜 NLU용 어휘. 어느 옵션인지는 엔진의 options.py가 판정)
+_OPTION = re.compile(
+    r"따뜻하게|따뜻한|따듯하게|따듯한|뜨겁게|뜨거운|차갑게|차가운|차게|아이스|시원하게|시원한"
+    r"|디카페인|샷\s*추가|사워크림\s*(?:빼|없이)|홀\s*케이크"
+)
+_CONNECTOR = re.compile(r"이랑|랑|하고|그리고|[,.]")
+_PARTICLE = re.compile(r"^(?:은|는|을|를|도|에는|에|이|가)?\s*")
+_REMOVE = re.compile(r"빼|취소|없애")
+_CHANGE = re.compile(rf"({_QTY_PAT})\s*으?로")
+_REQUEST = re.compile(r"따로|많이|적게|덜|넉넉히|조금만|잘라|썰어|넣어|담아|데워|챙겨|포장")
+_REMOVE_WHAT = re.compile(r"(?P<what>[가-힣A-Za-z ]*?)\s*(?:은|는|을|를|도)?\s*(?:빼|취소|없애)")
+_THAT_ONE = frozenset(
+    {"", "그거", "그것", "이거", "이것", "저거", "그건", "방금 거", "방금거", "마지막 거"}
 )
 
 
@@ -84,9 +116,55 @@ def _parse_qty(text: str) -> int | None:
     m = _QTY.search(text)
     if m is None:
         return None
-    if m.group(1):
-        return int(m.group(1))
-    return _NATIVE_QTY[m.group(2) or m.group(3)]
+    word = _UNIT.sub("", m.group(0)).strip()
+    return int(word) if word.isdigit() else _NATIVE_QTY[word]
+
+
+def _option_text(text: str) -> str:
+    return " ".join(re.sub(r"\s+", " ", m.group(0)) for m in _OPTION.finditer(text))
+
+
+def _clean(text: str) -> str:
+    return _TRAILING.sub("", _PARTICLE.sub("", text.strip(), count=1)).strip()
+
+
+def _menu_act(name: str, prefix: str, head: str, ctx: NluContext) -> Act:
+    menu = {"menu_text": name, "menu_guess": name}
+    qty = _parse_qty(head)
+    if option := _option_text(prefix + " " + head):
+        if qty is None and name in ctx.cart_summary:
+            return Act("set_option", **menu, option_text=option)
+        return Act("add_item", **menu, qty=qty, option_text=option)
+    if _REMOVE.match(_PARTICLE.sub("", head.strip(), count=1)):
+        return Act("remove_item", **menu)
+    if m := _CHANGE.search(head):
+        return Act("change_qty", **menu, qty=_parse_qty(m.group(1)))
+    if _REQUEST.search(head):
+        return Act("set_request", **menu, free_text=_clean(head))
+    return Act("add_item", **menu, qty=qty)
+
+
+def _split_head(segment: str) -> tuple[str, str]:
+    """메뉴 뒤 구간 → (이 메뉴에 딸린 말, 다음 메뉴 앞에 붙는 말)."""
+    m = _CONNECTOR.search(segment)
+    return (segment, "") if m is None else (segment[: m.start()], segment[m.end() :])
+
+
+def _no_menu_act(text: str) -> list[Act]:
+    t = _TRAILING.sub("", text)
+    if option := _option_text(t):
+        return [Act("set_option", option_text=option)]
+    if (m := _REMOVE_WHAT.match(t)) and "주문" not in m.group("what"):
+        what = m.group("what").strip()
+        return [Act("remove_item", menu_text="" if what in _THAT_ONE else what)]
+    if m := _CHANGE.search(t):
+        return [Act("change_qty", qty=_parse_qty(m.group(1)))]
+    if _REQUEST.search(t):
+        return [Act("set_request", free_text=t)]
+    m = _UNLISTED_ITEM.search(t)
+    if m is None:
+        return []
+    return [Act("add_item", menu_text=m.group("menu").strip(), qty=_parse_qty(m.group("qty")))]
 
 
 def _items(text: str, ctx: NluContext) -> list[Act]:
@@ -96,17 +174,16 @@ def _items(text: str, ctx: NluContext) -> list[Act]:
         for name in ctx.menu_names
         for pos in (m.start() for m in re.finditer(re.escape(name), text))
     )
+    if not found:
+        return _no_menu_act(text)
     acts = []
+    prefix = text[: found[0][0]]
     for i, (pos, name) in enumerate(found):
         end = found[i + 1][0] if i + 1 < len(found) else len(text)
-        qty = _parse_qty(text[pos + len(name) : end])
-        acts.append(Act("add_item", menu_text=name, menu_guess=name, qty=qty))
-    if acts:
-        return acts
-    m = _UNLISTED_ITEM.search(_TRAILING.sub("", text))
-    if m is None:
-        return []
-    return [Act("add_item", menu_text=m.group("menu").strip(), qty=_parse_qty(m.group("qty")))]
+        head, tail = _split_head(text[pos + len(name) : end])
+        acts.append(_menu_act(name, prefix, head, ctx))
+        prefix = tail
+    return acts
 
 
 # ---------------------------------------------------------------- 조립

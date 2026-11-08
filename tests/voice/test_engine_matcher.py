@@ -344,3 +344,53 @@ def test_sold_out_templates_particles() -> None:
     assert templates.sold_out("아메리카노") == "죄송해요, 아메리카노는 오늘 다 떨어졌어요."
     assert templates.suggest_menu(["블린", "아메리카노"]) == "블린이나 아메리카노는 어떠세요?"
     assert templates.suggest_menu(["아메리카노", "블린"]) == "아메리카노나 블린은 어떠세요?"
+
+
+# ---------------------------------------------------------------- 되묻기 + 필수 옵션 (02·03·04)
+
+TEMP_Q = "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+
+
+def test_confirmed_menu_then_asks_required_option() -> None:
+    engine = _engine()
+    r = engine.handle("아메리카누 하나요", NOW)
+    assert r.utterances == ["혹시 아메리카노 말씀하신 거 맞으세요?"]
+    r = engine.handle("네", NOW)
+    assert r.state is State.CLARIFY
+    assert r.utterances == ["아메리카노 한 잔요.", TEMP_Q]
+    r = engine.handle("차갑게요", NOW)
+    assert r.utterances == ["아메리카노 차갑게 한 잔요. 더 필요하신 거 있으세요?"]
+    r = engine.handle("그게 다예요", NOW)
+    assert r.state is State.ASK_PICKUP
+
+
+def test_deferred_done_and_pickup_wait_for_required_option() -> None:
+    """되묻기에 미뤄 둔 "그게 다예요"·시각: 필수 옵션을 먼저 묻고, 답을 받으면 바로 복창."""
+    americano = Act("add_item", "아메리카노", "아메리카노", qty=1)
+    pickup = Act("set_pickup_time", time_text="6시 반")
+    nlu = ScriptedNlu({"전부": [MEDOBI_1, americano, Act("done_ordering"), pickup]})
+    engine = _engine(nlu=nlu)
+    r = engine.handle("전부", NOW)
+    assert r.utterances == ["혹시 메도빅 말씀하신 거 맞으세요?"]
+    r = engine.handle("네", NOW)
+    assert r.utterances == ["메도빅 하나, 아메리카노 한 잔요.", TEMP_Q]
+    r = engine.handle("차갑게요", NOW)
+    assert r.state is State.CONFIRM
+    assert r.utterances[-1].startswith("메도빅 하나, 아메리카노 차갑게 한 잔, 6시 반 픽업")
+    r = engine.handle("네", NOW)
+    assert r.order is not None
+    assert r.order.lines == [
+        OrderLine(menu_id="m01", quantity=1),
+        OrderLine(menu_id="m03", quantity=1, options=("차갑게",)),
+    ]
+
+
+def test_new_menu_during_option_question_is_added_and_option_asked_again() -> None:
+    engine = _engine()
+    engine.handle("아메리카노 하나요", NOW)
+    r = engine.handle("블린 하나요", NOW)
+    assert r.utterances == ["블린 하나요.", TEMP_Q]
+    r = engine.handle("메도비 하나요", NOW)
+    assert r.utterances == ["혹시 메도빅 말씀하신 거 맞으세요?"]
+    r = engine.handle("네", NOW)
+    assert r.utterances == ["메도빅 하나요.", TEMP_Q]
