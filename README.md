@@ -29,6 +29,9 @@ uv run pytest      # 테스트 (계약 테스트 포함)
 uv run ruff check .
 ```
 
+공통 케이스·재생·기준선·회귀 게이트는 [M0 평가 안내](src/agenthan/eval/README.md)를 참고한다.
+`uv run --frozen --offline python -m agenthan.eval.run --backend replay`로 키 없이 평가 경로를 확인한다.
+
 비밀 키는 `.env.example`을 복사해 `.env`에 채운다. `.env`는 커밋하지 않는다.
 
 ## 통계 리포트

@@ -40,6 +40,7 @@
 | `tools/review_adapters.py` | 더미 플레이스 API → 리뷰 서브에이전트 입력 |
 | `tools/image_cutout.py` | M1a 음식 사진 배경 제거 → 흰 배경 정사각형 바이트 (음식 사진 등록에 연결) |
 | `eval/tool_selection.py` | 16개 도구를 다 붙였을 때 HCX-005 도구 선택 평가 |
+| `eval/run.py`, `eval/gate.py` | [M0 공통 평가·재생·기준선·회귀 게이트](../eval/README.md) |
 
 공통 HCX 클라이언트는 `core/llm.py`, 임베딩은 `core/embedding.py`를 쓴다.
 

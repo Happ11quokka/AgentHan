@@ -59,11 +59,16 @@ def run_case(case: dict, chat_fn: Callable, tools: list[dict]) -> dict:
         ]
         started = time.monotonic()
         try:
-            message = parse_message(chat_fn(messages, tools=tools))
+            response = chat_fn(messages, tools=tools)
+            message = parse_message(response)
         except ClovaChatError as error:
-            row.update(got=None, calls=[], api_error=str(error))
+            row.update(
+                got=None, calls=[], api_error=str(error), latency_sec=time.monotonic() - started
+            )
             return row
-        row["latency_sec"] = round(time.monotonic() - started, 2)
+        row["latency_sec"] = time.monotonic() - started
+        if isinstance(response, dict) and isinstance(response.get("usage"), dict):
+            row["usage"] = response["usage"]
         calls = message.get("tool_calls", [])
         row["calls"] = [c["function"]["name"] for c in calls]
         row["got"] = row["calls"][0] if calls else None
