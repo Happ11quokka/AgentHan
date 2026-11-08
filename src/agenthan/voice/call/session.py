@@ -52,6 +52,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import math
 import uuid
 from collections.abc import Callable
 from concurrent.futures import Executor
@@ -1199,7 +1200,9 @@ def _is_int(value: Any) -> bool:
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool) and value >= 0
+    """0 이상의 유한한 수 (파이썬 JSON은 `NaN`·`Infinity`도 받는다)."""
+    return (isinstance(value, int | float) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0)
 
 
 def _of_turn(item: tuple[str, Any, Any], turn: int) -> bool:

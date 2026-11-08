@@ -176,6 +176,25 @@ def test_a_cut_after_every_sentence_was_sent_marks_earlier_sentences_heard(tmp_p
     assert "play_done_timeout" not in record
 
 
+def test_a_bad_played_ms_still_cuts_but_records_no_heard_list(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("bot.done", turn=1)
+            await interrupt(c, 1, seq=0, played_ms=float("inf"))
+            await asyncio.sleep(0.05)
+            await c.session.feed_event({"type": "call.end", "turn": 1})
+            return c
+
+    c = run(call())
+    assert c.out.of("error") == []
+    record = next(line for line in _lines(c) if line["turn"] == 1)
+    assert record["interrupt"] == {"by": "button"}
+
+
 def test_a_button_press_during_the_final_readback_cannot_lead_to_a_confirm(tmp_path) -> None:
     # 회귀: 복창(총액 문장) 중 버튼을 눌러 끊고 "네"라고 하면 총액을 못 듣고 확정됐을 것이다.
     # 브라우저가 버튼을 막지만, 서버도 복창 턴의 끊기를 받지 않는다. 봇이 계속 말하는 중이라
