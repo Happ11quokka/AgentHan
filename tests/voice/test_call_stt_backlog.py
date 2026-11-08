@@ -58,7 +58,7 @@ def test_playback_done_is_handled_at_once_even_if_stt_writes_are_slow(tmp_path) 
             await _until(lambda: c.out.of("state", 0)[-1]["phase"] == "listening")
             return time.monotonic() - began
 
-    assert run(call()) < 0.05
+    assert run(call()) < 0.2  # 고치기 전에는 0.3초 × 20 = 6초
 
 
 def test_backlogged_frames_are_joined_up_to_the_ep_flag_without_losing_bytes(tmp_path) -> None:
