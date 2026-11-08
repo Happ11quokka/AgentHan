@@ -1,0 +1,159 @@
+{
+  "맛": {
+    "n_reviews": 197,
+    "review_precision": 0.8962264150943396,
+    "review_recall": 0.9644670050761421,
+    "review_f1": 0.9290953545232273,
+    "span_precision": 0.8419117647058824,
+    "span_recall": 0.9389312977099237,
+    "span_f1": 0.8877787408399653
+  },
+  "만족도": {
+    "n_reviews": 194,
+    "review_precision": 0.925531914893617,
+    "review_recall": 0.8969072164948454,
+    "review_f1": 0.9109947643979057,
+    "span_precision": 0.7875457875457875,
+    "span_recall": 0.8035714285714286,
+    "span_f1": 0.7954779033915724
+  },
+  "서비스": {
+    "n_reviews": 200,
+    "review_precision": 0.9308510638297872,
+    "review_recall": 0.875,
+    "review_f1": 0.902061855670103,
+    "span_precision": 0.9179487179487179,
+    "span_recall": 0.8411214953271028,
+    "span_f1": 0.8778573958532
+  },
+  "음식량": {
+    "n_reviews": 130,
+    "review_precision": 0.8787878787878788,
+    "review_recall": 0.8923076923076924,
+    "review_f1": 0.8854961832061069,
+    "span_precision": 0.8676470588235294,
+    "span_recall": 0.8814814814814815,
+    "span_f1": 0.8745095596935916
+  },
+  "가격": {
+    "n_reviews": 163,
+    "review_precision": 0.6170212765957447,
+    "review_recall": 0.8895705521472392,
+    "review_f1": 0.7286432160804021,
+    "span_precision": 0.5534351145038168,
+    "span_recall": 0.8780487804878049,
+    "span_f1": 0.6789360733563113
+  },
+  "분위기": {
+    "n_reviews": 172,
+    "review_precision": 0.8,
+    "review_recall": 0.7209302325581395,
+    "review_f1": 0.7584097859327217,
+    "span_precision": 0.7884615384615384,
+    "span_recall": 0.7028571428571428,
+    "span_f1": 0.743202416918429
+  },
+  "메뉴": {
+    "n_reviews": 144,
+    "review_precision": 0.7615894039735099,
+    "review_recall": 0.7986111111111112,
+    "review_f1": 0.7796610169491525,
+    "span_precision": 0.7358490566037735,
+    "span_recall": 0.7814569536423841,
+    "span_f1": 0.757967553322902
+  },
+  "대기시간": {
+    "n_reviews": 155,
+    "review_precision": 0.7383720930232558,
+    "review_recall": 0.8193548387096774,
+    "review_f1": 0.7767584097859327,
+    "span_precision": 0.7134831460674157,
+    "span_recall": 0.8,
+    "span_f1": 0.7542687453600593
+  },
+  "청결도": {
+    "n_reviews": 125,
+    "review_precision": 0.8571428571428571,
+    "review_recall": 0.816,
+    "review_f1": 0.8360655737704918,
+    "span_precision": 0.8429752066115702,
+    "span_recall": 0.8095238095238095,
+    "span_f1": 0.825910931174089
+  },
+  "목적": {
+    "n_reviews": 147,
+    "review_precision": 0.7015706806282722,
+    "review_recall": 0.9115646258503401,
+    "review_f1": 0.7928994082840235,
+    "span_precision": 0.639269406392694,
+    "span_recall": 0.8881578947368421,
+    "span_f1": 0.7434359327367489
+  },
+  "위치": {
+    "n_reviews": 114,
+    "review_precision": 0.7521367521367521,
+    "review_recall": 0.7719298245614035,
+    "review_f1": 0.761904761904762,
+    "span_precision": 0.7435897435897436,
+    "span_recall": 0.7631578947368421,
+    "span_f1": 0.7532467532467534
+  },
+  "예약": {
+    "n_reviews": 69,
+    "review_precision": 0.9402985074626866,
+    "review_recall": 0.9130434782608695,
+    "review_f1": 0.9264705882352942,
+    "span_precision": 0.9154929577464789,
+    "span_recall": 0.8904109589041096,
+    "span_f1": 0.9027777777777778
+  },
+  "전망": {
+    "n_reviews": 4,
+    "review_precision": 0.14285714285714285,
+    "review_recall": 0.75,
+    "review_f1": 0.24,
+    "span_precision": 0.13043478260869565,
+    "span_recall": 0.75,
+    "span_f1": 0.22222222222222218
+  },
+  "배달": {
+    "n_reviews": 27,
+    "review_precision": 0.4166666666666667,
+    "review_recall": 0.5555555555555556,
+    "review_f1": 0.4761904761904762,
+    "span_precision": 0.39473684210526316,
+    "span_recall": 0.5357142857142857,
+    "span_f1": 0.45454545454545453
+  },
+  "방역": {
+    "n_reviews": 22,
+    "review_precision": 0.5769230769230769,
+    "review_recall": 0.6818181818181818,
+    "review_f1": 0.6249999999999999,
+    "span_precision": 0.5555555555555556,
+    "span_recall": 0.6521739130434783,
+    "span_f1": 0.6
+  },
+  "주차": {
+    "n_reviews": 7,
+    "review_precision": 0.5,
+    "review_recall": 0.8571428571428571,
+    "review_f1": 0.631578947368421,
+    "span_precision": 0.5,
+    "span_recall": 0.875,
+    "span_f1": 0.6363636363636364
+  },
+  "_micro": {
+    "n_reviews": 1870,
+    "review_precision": 0.7873392680514342,
+    "review_recall": 0.8513368983957219,
+    "review_f1": 0.8180883864337101,
+    "span_precision": 0.7461300309597523,
+    "span_recall": 0.8274528757854036,
+    "span_f1": 0.7846900689897822
+  },
+  "_sanity": {
+    "pred_features_per_review": 2.5873015873015874,
+    "observed_gold_features_per_review": 1.1873015873015873
+  }
+}

@@ -1,0 +1,378 @@
+{
+  "checked_at": "2026-11-07 16:44:11",
+  "models": [
+    "HCX-003",
+    "HCX-005",
+    "HCX-007",
+    "HCX-DASH-001",
+    "HCX-DASH-002"
+  ],
+  "chat": {
+    "HCX-005": {
+      "ok": true,
+      "sec": 0.34,
+      "text": "안녕",
+      "error": null
+    },
+    "HCX-007": {
+      "ok": true,
+      "sec": 0.31,
+      "text": "안녕",
+      "error": null
+    },
+    "HCX-DASH-002": {
+      "ok": true,
+      "sec": 0.27,
+      "text": "안녕",
+      "error": null
+    }
+  },
+  "json_schema": {
+    "HCX-005": {
+      "sec": 1.27,
+      "raw": "{\"items\": [{\"clause\": 0, \"sentiment\": \"positive\"}, {\"clause\": 1, \"sentiment\": \"negative\"}, {\"clause\": 2, \"sentiment\": \"negative\"}]}",
+      "error": null,
+      "valid_json": true,
+      "correct": 3
+    },
+    "HCX-007": {
+      "sec": 1.13,
+      "raw": "{\"items\":[{\"clause\":0,\"sentiment\":\"positive\"},{\"clause\":1,\"sentiment\":\"negative\"},{\"clause\":2,\"sentiment\":\"negative\"}]}",
+      "error": null,
+      "valid_json": true,
+      "correct": 3
+    },
+    "HCX-DASH-002": {
+      "sec": 0.79,
+      "raw": "{\"items\": [{\"clause\": 0, \"sentiment\": \"positive\"}, {\"clause\": 1, \"sentiment\": \"negative\"}, {\"clause\": 2, \"sentiment\": \"negative\"}]}",
+      "error": null,
+      "valid_json": true,
+      "correct": 3
+    }
+  },
+  "function_calling": {
+    "HCX-005": [
+      {
+        "text": "최근 리뷰 어때?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {},
+        "got_args": {
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 2.25,
+        "error": null
+      },
+      {
+        "text": "이번 달 메도빅 불만 있어?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "30d",
+          "focus": "complaint",
+          "topic": "메도빅"
+        },
+        "got_args": {
+          "period": "30d",
+          "focus": "complaint",
+          "topic": "메도빅"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 3.13,
+        "error": null
+      },
+      {
+        "text": "웨이팅 길다는 얘기 많아?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "topic": "웨이팅"
+        },
+        "got_args": {
+          "topic": "웨이팅"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 2.41,
+        "error": null
+      },
+      {
+        "text": "Any bad reviews this week?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "got_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 2.31,
+        "error": null
+      },
+      {
+        "text": "Есть плохие отзывы на этой неделе?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "got_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 2.89,
+        "error": null
+      },
+      {
+        "text": "이번 주 매출 얼마야?",
+        "want_tool": "get_sales_stats",
+        "got_tool": "get_sales_stats",
+        "want_args": null,
+        "got_args": {
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.69,
+        "error": null
+      },
+      {
+        "text": "오늘 날씨 어때?",
+        "want_tool": null,
+        "got_tool": null,
+        "want_args": null,
+        "got_args": null,
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 4.06,
+        "error": null
+      }
+    ],
+    "HCX-007": [
+      {
+        "text": "최근 리뷰 어때?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {},
+        "got_args": {
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.5,
+        "error": null
+      },
+      {
+        "text": "이번 달 메도빅 불만 있어?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "30d",
+          "focus": "complaint",
+          "topic": "메도빅"
+        },
+        "got_args": {
+          "period": "30d",
+          "focus": "complaint",
+          "topic": "메도빅"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.92,
+        "error": null
+      },
+      {
+        "text": "웨이팅 길다는 얘기 많아?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "topic": "웨이팅"
+        },
+        "got_args": {
+          "focus": "complaint",
+          "topic": "웨이팅"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.74,
+        "error": null
+      },
+      {
+        "text": "Any bad reviews this week?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "got_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.76,
+        "error": null
+      },
+      {
+        "text": "Есть плохие отзывы на этой неделе?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "got_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.76,
+        "error": null
+      },
+      {
+        "text": "이번 주 매출 얼마야?",
+        "want_tool": "get_sales_stats",
+        "got_tool": "get_sales_stats",
+        "want_args": null,
+        "got_args": {
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.36,
+        "error": null
+      },
+      {
+        "text": "오늘 날씨 어때?",
+        "want_tool": null,
+        "got_tool": null,
+        "want_args": null,
+        "got_args": null,
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.39,
+        "error": null
+      }
+    ],
+    "HCX-DASH-002": [
+      {
+        "text": "최근 리뷰 어때?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {},
+        "got_args": {
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.3,
+        "error": null
+      },
+      {
+        "text": "이번 달 메도빅 불만 있어?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "30d",
+          "focus": "complaint",
+          "topic": "메도빅"
+        },
+        "got_args": {
+          "focus": "complaint",
+          "topic": "메도빅",
+          "period": "30d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.78,
+        "error": null
+      },
+      {
+        "text": "웨이팅 길다는 얘기 많아?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "topic": "웨이팅"
+        },
+        "got_args": {
+          "focus": "complaint",
+          "topic": "웨이팅"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.61,
+        "error": null
+      },
+      {
+        "text": "Any bad reviews this week?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "got_args": {
+          "focus": "complaint",
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.43,
+        "error": null
+      },
+      {
+        "text": "Есть плохие отзывы на этой неделе?",
+        "want_tool": "analyze_reviews",
+        "got_tool": "analyze_reviews",
+        "want_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "got_args": {
+          "period": "7d",
+          "focus": "complaint"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.5,
+        "error": null
+      },
+      {
+        "text": "이번 주 매출 얼마야?",
+        "want_tool": "get_sales_stats",
+        "got_tool": "get_sales_stats",
+        "want_args": null,
+        "got_args": {
+          "period": "7d"
+        },
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.14,
+        "error": null
+      },
+      {
+        "text": "오늘 날씨 어때?",
+        "want_tool": null,
+        "got_tool": null,
+        "want_args": null,
+        "got_args": null,
+        "tool_ok": true,
+        "args_ok": true,
+        "sec": 1.54,
+        "error": null
+      }
+    ]
+  }
+}

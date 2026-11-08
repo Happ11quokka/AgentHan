@@ -1,0 +1,27 @@
+# 새 worktree에는 .venv가 없으므로 --no-sync 대신 잠금 파일·로컬 캐시로 설치한다(--frozen --offline).
+# 구현자(Codex)의 네트워크를 연다. CLOVA 임베딩을 직접 호출해 확인하기 위해서다.
+network = true
+# 아래 [[command]]의 env 값(CLOVASTUDIO_API_KEY)을 구현자에게도 넘긴다. geass#18부터 network와 별도 설정이다.
+implement_env = true
+
+[[command]]
+name = "pytest"
+argv = ["uv", "run", "--frozen", "--offline", "pytest", "-q"]
+timeout_sec = 120
+
+# 실제 CLOVA API 테스트. 이 명령에만 키를 넘긴다(값은 하네스가 로그에서 가린다).
+[[command]]
+name = "api"
+argv = ["uv", "run", "--frozen", "--offline", "pytest", "-q", "-m", "network"]
+env = ["CLOVASTUDIO_API_KEY"]
+timeout_sec = 300
+
+[[command]]
+name = "lint"
+argv = ["uv", "run", "--frozen", "--offline", "ruff", "check", "."]
+timeout_sec = 60
+
+[[command]]
+name = "format"
+argv = ["uv", "run", "--frozen", "--offline", "ruff", "format", "--check", "."]
+timeout_sec = 60
