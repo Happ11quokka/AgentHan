@@ -3,6 +3,7 @@
 import pytest
 
 from agenthan.voice.hangul import (
+    confusable_distance,
     decompose,
     final_consonant,
     has_batchim,
@@ -109,3 +110,32 @@ def test_batchim_of_last_syllable(word: str, batchim: bool, final: str) -> None:
 
 def test_plain_levenshtein_works_on_tuples() -> None:
     assert levenshtein(("ㅂ", "ㅣ", "ㄱ"), ("ㅂ", "ㅣ", " ")) == 1
+
+
+# ---------------------------------------------------------------- STT 혼동 비용 (티켓 10)
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "dist"),
+    [
+        ("메도빅", "맥도빅", (0.15 + 0.4) / 3),  # ㅔ/ㅐ + 받침 ㄱ 넣기
+        ("빅", "비", 0.4 / 3),  # 받침 ㄱ 빼기
+        ("사", "샤", 0.35 / 3),  # ㅏ/ㅑ
+        ("나", "라", 0.5 / 3),  # 초성 ㄴ/ㄹ
+        ("사", "싸", 0.3 / 3),  # 평음/경음
+        ("가", "카", 0.5 / 3),  # 평음/격음
+        ("블", "볼", 0.5 / 3),  # ㅡ/ㅗ
+        ("린", "링", 0.5 / 3),  # 받침 ㄴ/ㅇ (콧소리끼리)
+        ("메도빅", "메도빗", 1 / 3),  # 표에 없는 쌍은 그대로 1
+        ("빅", "빌", 1 / 3),  # 받침 ㄹ 넣기·빼기는 싸지 않다
+        ("메도빅", "메도", 1),  # 음절 넣기·빼기는 그대로 1
+    ],
+)
+def test_confusable_distance_makes_common_stt_slips_cheap(a: str, b: str, dist: float) -> None:
+    assert confusable_distance(a, b) == pytest.approx(dist)
+    assert confusable_distance(b, a) == pytest.approx(dist)
+
+
+def test_confusable_distance_never_exceeds_plain_jamo_distance() -> None:
+    for a, b in [("메도빅", "맥도비"), ("나폴레옹", "나폴내용"), ("블루베리", "블리니")]:
+        assert confusable_distance(a, b) <= jamo_levenshtein(a, b)

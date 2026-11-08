@@ -3,7 +3,8 @@
 순서:
 1. 정규화: 공백·문장부호를 빼고, 끝에 붙은 조사·수량 표현("~요", "~하나", "~두 개", "~랑")을 뗀다
 2. 이름·별칭과 같으면 1.0
-3. 자모 유사도 `1 - jamo_levenshtein / max_len`. 발화가 더 길면 메뉴명 길이 구간으로 부분 일치
+3. 자모 유사도 `1 - confusable_distance / max_len`(STT가 자주 헷갈리는 자모는 싸게 바꾼다).
+   발화가 더 길면 메뉴명 길이 구간으로 부분 일치
 4. `menu_guess`(NLU 추정)가 같은 메뉴를 가리키면 점수를 올린다. 보조 신호일 뿐이다
 5. 판정: accept / confirm(후보 1개) / choose(1·2등이 가까움) / reject. 품절은 sold_out으로 따로
 
@@ -21,13 +22,17 @@ from dataclasses import dataclass
 from typing import Literal
 
 from agenthan.core.contracts import MenuItem
-from agenthan.voice.hangul import has_batchim, jamo_levenshtein
+from agenthan.voice.hangul import confusable_distance, has_batchim
 
 MatchDecision = Literal["accept", "confirm", "choose", "reject", "sold_out"]
 
-# 판정 경계값 (시작값. 5단계에서 오류 셋으로 조정한다)
+# 판정 경계값. 티켓 10에서 STT 오류 셋(`test_matching.py`)으로 다시 맞췄다
 ACCEPT_AT = 0.85  # 이 점수 이상이고 2등과 MARGIN 이상 차이 나면 수락
-REJECT_BELOW = 0.6  # 이 점수 미만이면 없는 메뉴
+# 0.6 → 0.7 (티켓 10). 혼동 비용 표(`hangul.confusable_distance`)를 넣자 실측 변형이 0.83~0.94로
+# 올랐지만(맥도빅 0.94, 맥도비 0.89, 나폴내용 0.92, 볼링 0.83) 무관 단어도 같이 올라
+# "맥도날드"(0.50 → 0.62)와 "블루베리"(블리니 창 0.67)가 확인 구간에 들었다. 0.7이면 둘 다 거절되고,
+# 되물어야 하는 가장 낮은 기존 예("꿀케익" 0.72)는 확인 구간에 남는다
+REJECT_BELOW = 0.7  # 이 점수 미만이면 없는 메뉴
 MARGIN = 0.1  # 1·2등 차이가 이보다 작으면 둘 중 하나를 묻는다
 GUESS_BONUS = 0.1  # menu_guess가 같은 메뉴를 가리킬 때 더하는 점수
 
@@ -83,7 +88,7 @@ def _ratio(a: str, b: str) -> float:
     longest = max(len(a), len(b))
     if longest == 0:
         return 0.0
-    return max(0.0, 1 - jamo_levenshtein(a, b) / longest)
+    return max(0.0, 1 - confusable_distance(a, b) / longest)
 
 
 def similarity(query: str, name: str) -> float:

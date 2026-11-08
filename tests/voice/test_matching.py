@@ -199,7 +199,8 @@ def test_shared_alias_asks_to_choose() -> None:
 
 
 def test_thresholds_can_be_overridden() -> None:
-    strict = MenuMatcher(MENU, accept_at=0.95, fuzzy_accept_needs_guess=False)
+    # "메도비"는 혼동 비용(받침 ㄱ 빼기 0.4)으로 0.96이다 (티켓 10 전에는 0.89)
+    strict = MenuMatcher(MENU, accept_at=0.97, fuzzy_accept_needs_guess=False)
     assert strict.match("메도비").decision == "confirm"
     assert MenuMatcher(MENU, fuzzy_accept_needs_guess=False).match("메도비").decision == "accept"
 
@@ -262,3 +263,51 @@ def test_alternatives_prefer_same_category_and_skip_sold_out() -> None:
 
 def test_available_lists_only_items_not_sold_out() -> None:
     assert [m.id for m in MenuMatcher(_with_sold_out("m03")).available()] == ["m01", "m02", "m04"]
+
+
+# ---------------------------------------------------------------- STT 오류 셋 (티켓 10)
+# 07 실측(실제 CLOVA, 동현 녹음)에서 나온 받아쓰기 변형과, 걸리면 안 되는 무관 단어.
+# 숫자는 자모 혼동 비용을 넣기 전 점수(맥도빅 0.78, 맥도비 0.67, 나폴내용 0.75, 볼링 0.67).
+
+
+@pytest.mark.parametrize(
+    ("text", "menu_id"),
+    [
+        ("맥도빅", "m01"),  # 메도빅: ㅔ→ㅐ, 받침 ㄱ 넣기
+        ("맥도비", "m01"),  # 위 + 끝 받침 ㄱ 빼기
+        ("맥도빅 두개랑", "m01"),
+        ("나폴내용", "m02"),  # 나폴레옹: ㄹ→ㄴ, ㅔ→ㅐ, ㅗ→ㅛ
+        ("나폴내용도 하나요", "m02"),
+    ],
+)
+def test_measured_stt_variants_score_in_the_accept_band(
+    matcher: MenuMatcher, text: str, menu_id: str
+) -> None:
+    # 신호 하나(자모 유사도)라 아직 되묻지만, 점수는 수락 구간이다. NLU 추정이 맞으면 수락한다
+    alone = matcher.match(text)
+    assert alone.item is not None and alone.item.id == menu_id
+    assert alone.score >= ACCEPT_AT
+    assert alone.decision == "confirm"
+    name = next(m.name_ko for m in MENU if m.id == menu_id)
+    assert matcher.match(text, menu_guess=name).decision == "accept"
+
+
+def test_bowling_for_blin_is_asked_back(matcher: MenuMatcher) -> None:
+    # 블린 → "볼링"(이전 실행 B4): ㅡ→ㅗ, 받침 ㄴ→ㅇ. 되물을 수 있는 점수여야 한다
+    result = matcher.match("볼링")
+    assert result.decision == "confirm"
+    assert result.item is not None and result.item.id == "m04"
+
+
+@pytest.mark.parametrize("text", ["메뉴", "멕시칸", "블루베리", "맥도날드", "맥주", "3잔", "6시"])
+def test_unrelated_words_from_the_error_set_are_rejected(matcher: MenuMatcher, text: str) -> None:
+    assert matcher.match(text).decision == "reject"
+
+
+@pytest.mark.parametrize("guess", ["메도빅", "나폴레옹", "블린"])
+def test_unrelated_word_is_never_accepted_even_with_a_menu_guess(
+    matcher: MenuMatcher, guess: str
+) -> None:
+    # 무관 단어 + 엉뚱한 NLU 추정이어도 확인 없이 받지 않는다
+    assert matcher.match("맥도날드", menu_guess=guess).decision != "accept"
+    assert matcher.match("블루베리", menu_guess=guess).decision != "accept"

@@ -4,6 +4,8 @@
   음절 번호 = (초성 × 21 + 중성) × 28 + 종성, 음절 = U+AC00 + 음절 번호
 - 편집거리는 보통의 두 줄 동적 계획법(Wagner–Fischer)이다. 넣기·빼기는 1이고, 음절 바꾸기는
   초·중·종성 세 자리의 편집거리를 3으로 나눈 값이다. "빅" → "빗"은 1/3.
+- `confusable_distance`는 같은 틀에 "STT가 자주 헷갈리는 자모는 싸게" 비용 표를 얹은 것이다
+  (티켓 10, `research/s2-stt-misrecognition.md` Q2). 메뉴 매처가 쓴다.
 """
 
 from __future__ import annotations
@@ -95,3 +97,66 @@ def _syllable_cost(x: str, y: str) -> float:
 def jamo_levenshtein(a: str, b: str) -> float:
     """음절 넣기·빼기 1, 음절 바꾸기는 자모 차이 / 3. 순서를 바꿔도 값이 같다."""
     return _edit_distance(a, b, _syllable_cost)
+
+
+# ---------------------------------------------------------------- STT 혼동 비용 (티켓 10)
+# 자리별로 "소리가 가까워 STT가 서로 바꿔 적는" 자모 쌍의 바꾸기 비용. 표에 없는 쌍은 1이다.
+# 값은 07 실측 변형(메도빅→맥도빅·맥도비, 나폴레옹→나폴내용, 사워크림→샤워크림, 블린→볼링)이
+# 매처 수락 구간(0.85 이상)에 들고, 무관 단어(맥도날드·블루베리·메뉴·멕시칸)는 거절 경계 아래에
+# 남도록 맞춘 시작값이다. 한국어 STT 자모 혼동 통계를 낸 공개 자료는 없어서 근거는 실측뿐이다.
+
+
+def _pairs(cost: float, *groups: str) -> dict[frozenset[str], float]:
+    """`"ㅔㅐ"`처럼 적은 묶음 안의 모든 두 자모 쌍 → 비용."""
+    return {
+        frozenset((x, y)): cost
+        for group in groups
+        for i, x in enumerate(group)
+        for y in group[i + 1 :]
+    }
+
+
+_MEDIAL_COST = {
+    **_pairs(0.15, "ㅔㅐ", "ㅖㅒ"),  # 서울말에서 사실상 같은 소리
+    **_pairs(0.2, "ㅚㅙㅞ"),
+    **_pairs(0.35, "ㅏㅑ", "ㅓㅕ", "ㅗㅛ", "ㅜㅠ"),  # 반모음 ㅣ 넣기·빼기 (사워 → 샤워)
+    **_pairs(0.4, "ㅢㅣ"),
+    **_pairs(0.5, "ㅗㅜ", "ㅓㅗ", "ㅡㅜ", "ㅡㅗ"),  # 입 모양이 가까운 것 (블린 → 볼링)
+}
+_INITIAL_COST = {
+    **_pairs(0.3, "ㄱㄲ", "ㄷㄸ", "ㅂㅃ", "ㅅㅆ", "ㅈㅉ"),  # 평음/경음
+    **_pairs(0.5, "ㄱㅋ", "ㄷㅌ", "ㅂㅍ", "ㅈㅊ", "ㄴㄹ"),  # 평음/격음, ㄴ/ㄹ (레옹 → 내용)
+}
+_FINAL_COST = {
+    **_pairs(0.5, "ㄴㅇㅁ"),  # 콧소리 받침끼리 (린 → 링)
+    **_pairs(0.3, "ㄱㄲㅋ"),  # 받침에서는 같은 소리
+}
+# 받침 넣기·빼기. 다음 음절 초성에 묻히기 쉬운 ㄱ·ㅇ·ㄴ만 싸다 (메도빅 → 맥도비)
+_FINAL_INSERT_COST = {"ㄱ": 0.4, "ㅇ": 0.4, "ㄴ": 0.4}
+_SEAT_COST = (_INITIAL_COST, _MEDIAL_COST, _FINAL_COST)
+
+
+def _jamo_cost(seat: int, x: str, y: str) -> float:
+    if x == y:
+        return 0.0
+    if seat == 2 and BLANK in (x, y):
+        return _FINAL_INSERT_COST.get(y if x == BLANK else x, 1.0)
+    return _SEAT_COST[seat].get(frozenset((x, y)), 1.0)
+
+
+def _confusable_syllable_cost(x: str, y: str) -> float:
+    jx, jy = decompose(x), decompose(y)
+    if jx is None or jy is None:
+        return 1.0
+    seats = enumerate(zip(jx, jy, strict=True))
+    return sum(_jamo_cost(seat, a, b) for seat, (a, b) in seats) / 3
+
+
+def confusable_distance(a: str, b: str) -> float:
+    """`jamo_levenshtein`과 같은 틀(음절 넣기·빼기 1, 바꾸기는 자리 비용 합 / 3)에
+    자리별 혼동 비용 표를 얹은 거리. 표에 없는 쌍은 1이다.
+
+    자모는 자리끼리(초성은 초성끼리) 견준다. 한글 음절끼리는 이것이 세 자리 편집거리와 같아서,
+    음절끼리라면 `jamo_levenshtein`보다 커지지 않는다.
+    """
+    return _edit_distance(a, b, _confusable_syllable_cost)
