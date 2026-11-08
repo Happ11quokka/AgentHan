@@ -266,3 +266,67 @@ def test_the_end_of_speech_button_ends_the_wait(tmp_path) -> None:
     c, waited = run(call())
     assert waited < 0.5
     assert records(c)[1]["turn_end"]["path"] == "button"
+
+
+# ---------------------------------------------------------------- 미리 해석 (NLU 선호출)
+
+
+def test_the_held_text_is_parsed_ahead_and_the_engine_reuses_it(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 두 개랑"])
+    nlu = CountingNlu()
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, nlu=nlu, settings=settings()) as c:
+            await c.start()
+            await c.say()
+            await asyncio.sleep(0.1)
+            assert nlu.calls == ["메도빅 두 개랑"]  # 기다리는 동안 미리 불렀다
+            assert c.out.of("stt.final") == []  # 엔진은 아직 안 돈다
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    c = run(call())
+    assert nlu.calls == ["메도빅 두 개랑"]  # 엔진이 같은 (글, 문맥)으로 불러 다시 부르지 않았다
+    assert c.out.of("state")[-1]["cart"][0]["qty"] == 2
+    prefetch = records(c)[1]["nlu_prefetch"]
+    assert (prefetch["prefetched"], prefetch["used"], prefetch["discarded"]) == (1, True, 0)
+    assert prefetch["miss"] is None
+
+
+def test_a_prefetch_for_text_that_then_grew_is_discarded(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 두 개랑", "블린 하나요"])
+    nlu = CountingNlu()
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, nlu=nlu, settings=settings()) as c:
+            await c.start()
+            await c.say()
+            await asyncio.sleep(0.1)
+            await c.say()
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    c = run(call())
+    assert nlu.calls == ["메도빅 두 개랑", "메도빅 두 개랑 블린 하나요"]
+    prefetch = records(c)[1]["nlu_prefetch"]
+    assert (prefetch["prefetched"], prefetch["used"], prefetch["discarded"]) == (1, False, 1)
+    assert prefetch["miss"] == "text"
+
+
+def test_a_prefetch_slower_than_its_time_limit_is_called_again(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 두 개랑"])
+    nlu = CountingNlu(block="메도빅 두 개랑")  # 미리 부른 첫 호출만 멈춘다
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, nlu=nlu,
+                        settings=settings(cont_wait_s=0.2, prefetch_timeout_s=0.4)) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("bot.done", turn=1)
+            nlu.release.set()
+            return c
+
+    c = run(call())
+    assert nlu.calls == ["메도빅 두 개랑", "메도빅 두 개랑"]
+    prefetch = records(c)[1]["nlu_prefetch"]
+    assert (prefetch["used"], prefetch["miss"], prefetch["discarded"]) == (False, "timeout", 1)

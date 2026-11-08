@@ -87,8 +87,10 @@ from agenthan.voice.call.turn_end import (
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
+from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import TERMINAL
 from agenthan.voice.nlu.base import Nlu
+from agenthan.voice.nlu.prefetch import PrefetchNlu
 from agenthan.voice.store_config import StoreConfig
 
 log = logging.getLogger(__name__)
@@ -118,6 +120,9 @@ class SessionSettings:
     cont_wait_s: float = 2.0
     # 이어짐 대기 전체 상한(처음 이어짐 판정부터). 배경 소리가 "말하는 중"을 안 풀어도 여기서 넘긴다
     cont_max_s: float = 8.0
+    # 미리 해석(이어짐 대기 중 NLU 선호출)의 시간 제한. 넘으면 버리고 엔진이 새로 부른다.
+    # HCX p95 1.14초(1단계 티켓 07)에 여유를 두고, 새로 불러도 `turn_timeout_s` 안에 끝나게
+    prefetch_timeout_s: float = 5.0
     turn_model_low: float = MODEL_LOW  # Smart Turn 점수 대역 (티켓 03이 점수를 넣는다)
     turn_model_high: float = MODEL_HIGH
     # `playback.done`이 안 와도(AudioContext 멈춤 등) 보낸 소리 길이 + 이만큼 뒤 듣기로 (리뷰 4번)
@@ -218,6 +223,7 @@ class CallSession:
         self._writer: asyncio.Task[None] | None = None
 
         self._engine: DialogEngine | None = None
+        self._prefetch: PrefetchNlu | None = None  # 엔진에 넣은 NLU (미리 해석 래퍼)
         self._last: TurnResult | None = None
         self._phase: Phase = "idle"
         self._turn = 0
@@ -402,9 +408,11 @@ class CallSession:
         nlu = self._nlu
         if isinstance(nlu, str):
             nlu = await self._in_thread(make_nlu, nlu)  # hcx는 .env를 읽는다
+        self._prefetch = PrefetchNlu(nlu, timeout_s=self._settings.prefetch_timeout_s,
+                                     clock=self._clock.monotonic)
         # list_menu()가 동기라 엔진 생성도 스레드에서 (verify-web D5 조건 2)
         self._engine = await self._in_thread(
-            DialogEngine, self._store, nlu, self._config, order_id=self.call_id
+            DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -607,7 +615,23 @@ class CallSession:
         self._cont, self._cont_decision = u, decision
         if self._cont_since is None:
             self._cont_since = self._clock.monotonic()
+        self._prefetch_nlu(u.text, decision)
         self._on_cont_timer()
+
+    def _prefetch_nlu(self, text: str, decision: TurnDecision) -> None:
+        """기다리는 동안 붙잡은 글로 NLU를 미리 부른다(엔진은 확정 뒤에만 돈다).
+
+        엔진이 NLU를 부르지 않을 글(규칙 단계에 걸림)과 필러만 있는 말은 부르지 않는다.
+        """
+        engine, prefetch = self._engine, self._prefetch
+        if engine is None or prefetch is None or decision.verdict.filler_only:
+            return
+        if apply_rules(text) is not None:
+            return
+        prefetch.prefetch(text, engine.nlu_context(), self._submit)
+
+    def _submit(self, fn: Callable[[], None]) -> None:
+        self._in_thread(fn).add_done_callback(_retrieve)
 
     def _arm_cont(self, delay: float) -> None:
         self._cont_timer = asyncio.get_running_loop().call_later(
@@ -712,6 +736,10 @@ class CallSession:
         else:
             result = await self._call_engine(lambda: engine.handle(u.text, now))
         self._log.mark(turn, "engine_end")
+        stats = self._prefetch.take_stats() if self._prefetch is not None else None
+        record = self._log.get(turn)
+        if stats is not None and record is not None:
+            record.fields["nlu_prefetch"] = stats
         self._last = result
         if result.state in TERMINAL:
             self._terminal = True
