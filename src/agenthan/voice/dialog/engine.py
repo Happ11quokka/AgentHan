@@ -65,6 +65,10 @@ class TurnResult:
     state: State
     cart: Cart  # 이번 턴 뒤 장바구니 (시나리오 테스트가 비교)
     order: Order | None  # CLOSING·FALLBACK에서만 채워짐
+    # 이 턴의 마지막 질문이 최종 복창이다(3단계 리뷰 C6). CONFIRM 상태여도 "네, 천천히
+    # 말씀하세요"·"잘 못 들었어요"처럼 복창이 없는 턴은 거짓이다. 세션이 말 끊기 버튼을 막고
+    # 금액 문장 전의 "네"를 무시하는 기준이다
+    readback: bool = False
 
 
 @dataclass
@@ -449,7 +453,9 @@ class DialogEngine:
         self._transcript.extend(f"AI: {text}" for text in turn.utterances)
         if turn.order_status is not None:
             turn.order = self._build_order(turn.order_status)
-        result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order)
+        readback = self._state is State.CONFIRM and turn.question in self._readbacks()
+        result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
+                            readback=readback)
         if self._state in TERMINAL:
             self._state = State.DONE
         return result

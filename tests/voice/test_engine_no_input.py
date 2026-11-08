@@ -63,3 +63,22 @@ def test_the_call_ends_on_silence_without_an_order_even_with_items_in_the_cart()
 ])
 def test_wait_request_rest(text: str, rest: str | None) -> None:
     assert wait_request_rest(text) == rest
+
+
+def test_the_engine_marks_only_turns_that_end_with_the_final_readback() -> None:
+    # 리뷰 C6: CONFIRM 상태로 끝난 턴이 모두 복창은 아니다. 세션은 이 표시로 말 끊기 버튼과
+    # 복창 끼어들기 규칙(금액 전 "네" 무시)을 건다
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), StoreConfig.from_fixture(),
+                          order_id="t")
+    assert engine.start(NOW).readback is False
+    assert engine.handle("메도빅 하나요", NOW).readback is False
+    assert engine.handle("그게 다예요", NOW).readback is False
+    readback = engine.handle("여섯시 반이요", NOW)
+    assert readback.state is State.CONFIRM and readback.readback is True
+    wait = engine.handle("잠깐만요", NOW, wait_request=True)
+    assert wait.state is State.CONFIRM and wait.readback is False
+    heard = engine.not_heard(NOW)
+    assert heard.state is State.CONFIRM and heard.readback is False
+    again = engine.no_input(NOW)  # "여보세요?" + 지금 장바구니 복창
+    assert again.state is State.CONFIRM and again.readback is True
+    assert engine.handle("네", NOW).readback is False  # 확정 인사

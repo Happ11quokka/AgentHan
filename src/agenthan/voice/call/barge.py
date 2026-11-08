@@ -22,8 +22,9 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
+from agenthan.voice.call.spoken import SpokenTurn
 from agenthan.voice.call.turn_end import is_backchannel
 from agenthan.voice.dialog.rules import yes_or_no
 
@@ -63,6 +64,35 @@ class BargeSettings:
     answer_gap_ms: int = 150
     # 봇 문장과 글자 두 개짜리 조각이 이 비율 이상 겹치면 에코 글로 본다
     echo_overlap: float = 0.6
+
+
+def is_early_yes(text: str) -> bool:
+    """최종 복창의 금액 문장이 끝나기 전에 한 말이면 무시할 말인가: 예 또는 맞장구 (grilling Q10).
+
+    정정("아니 두 개요")은 받는다. 음성 끼어들기 판정과 반이중의 대기 말(리뷰 P1)이 같이 쓴다
+    """
+    t = text.strip()
+    return bool(t) and (yes_or_no(t) == "yes" or is_backchannel(t))
+
+
+@dataclass
+class BotWindow:
+    """봇 말 구간 하나 (음성 끼어들기). 시각은 모두 오디오 시각이다(`SpokenTurn` 참고)."""
+
+    kind: WindowKind
+    spoken: SpokenTurn
+    to_ms: int | None = None  # 재생 끝 보고·끊긴 때. None이면 아직 말하는 중
+    cut: bool = False  # 음성 끼어들기로 멈췄다
+    log: dict[str, Any] = field(default_factory=dict)  # 그 턴 기록의 `barge`
+
+    @property
+    def turn(self) -> int:
+        return self.spoken.turn
+
+    def holds(self, start_ms: int, gap_ms: int = 0) -> bool:
+        """이 구간에 시작한 말인가. 끝이 열려 있으면 지금도 말하는 중이다."""
+        return start_ms >= self.spoken.from_ms and (
+            self.to_ms is None or start_ms < self.to_ms + gap_ms)
 
 
 _NOT_TEXT = re.compile(r"[^0-9A-Za-z가-힣]+")
@@ -165,7 +195,7 @@ class BargeTracker:
         if is_echo(t, bot_texts, self.settings.echo_overlap):
             return "echo"
         if kind == "readback":
-            if yes_or_no(t) == "yes" or is_backchannel(t):
+            if is_early_yes(t):
                 # 금액을 다 듣기 전의 "네"는 확정이 아니다(1단계 불변식). 다 들은 뒤면 답이다
                 return "early_yes" if before_amount_end else (
                     "accept" if yes_or_no(t) == "yes" else "backchannel")
