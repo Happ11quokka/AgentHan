@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import struct
 
 from call_harness import Call, silence, tone
 
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
+from agenthan.voice.call.ports import SttResult
 from agenthan.voice.call.session import SessionSettings
 
 GREETING = "네, 샘플 러시안 베이커리입니다."
@@ -287,3 +289,77 @@ def test_a_bot_initiated_turn_is_refused_unless_the_call_is_listening(tmp_path) 
     c, refused = run(call())
     assert refused is None
     assert c.out.of("bot.done", 2) == []
+
+
+# ------------------------------------------------------ 턴 기록 지표
+
+
+def _lines(c: Call) -> list[dict]:
+    path = c.log_dir / "phone-20261108.jsonl"
+    return [json.loads(s) for s in path.read_text().splitlines()]
+
+
+def test_each_guest_turn_records_speech_end_to_first_voice_and_thinking(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요"])
+    settings = SessionSettings(thinking_after_s=0.2)
+    tts = FakeTts(delays=lambda text: 0.4 if text == "몇 시쯤 오세요?" else 0.0)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, tts=tts, settings=settings) as c:
+            await c.start()
+            await c.turn(1)
+            await c.turn(2)
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+        return c
+
+    greeting, first, second = _lines(run(call()))
+    assert "end_to_voice_ms" not in greeting
+    for line in (first, second):
+        marks = line["marks"]
+        assert line["end_to_voice_ms"] == marks["play_start"] - marks["speech_end"]
+    assert "end_to_thinking_ms" not in first
+    marks = second["marks"]
+    assert second["end_to_thinking_ms"] == marks["thinking"] - marks["speech_end"]
+
+
+def test_a_turn_queued_during_playback_has_no_speech_end_to_voice_time(tmp_path) -> None:
+    # 봇 재생 전에 끝난 말이라 "말 끝 → 첫 목소리"가 재생 시간까지 잰다. 지표에서 뺀다
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요"])
+    tts = slow_after_greeting(0.6)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, tts=tts) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=1)
+            await c.say()
+            await c.out.wait_for("bot.done", turn=1)
+            await c.played(1)
+            await c.out.wait_for("bot.done", turn=2)
+            await c.played(2)
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+        return c
+
+    lines = _lines(run(call()))
+    assert lines[2]["queued"] is True
+    assert "end_to_voice_ms" not in lines[2]
+    assert "queued" not in lines[1] and "end_to_voice_ms" in lines[1]
+
+
+def test_speech_with_an_empty_ep_flag_reply_is_logged_as_an_empty_turn(tmp_path) -> None:
+    # 말소리는 있었는데 STT 글이 비었다(빈 턴). 재연결 때 어댑터가 만든 빈 결과(eof)는 세지 않는다
+    stt = FakeSttStream(replies=[""])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.say()
+            stt.push(SttResult("", 5_000, 5_000, "eof", True))
+            await asyncio.sleep(0.05)
+            await c.session.feed_event({"type": "call.end", "turn": 0})
+        return c
+
+    (greeting,) = _lines(run(call()))
+    (empty,) = greeting["empty"]
+    assert (empty["epd_type"], empty["ep_flag"]) == ("endPoint", True)
+    assert empty["start_ms"] <= empty["end_ms"]

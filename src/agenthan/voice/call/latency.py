@@ -12,6 +12,14 @@
 - `marks`는 그 일이 있었을 때만 들어간다 (인사 턴 0에는 `speech_end`·`stt_final`이 없다)
 - `dropped`(있을 때만): 그 턴에 버린 STT 결과 `[{text, epd_type, start_ms, end_ms, ep_flag,
   reason}]`. reason은 speaking(반이중) · terminal(확정·handoff 뒤) · ended(통화 끝) (티켓 10)
+- 3단계 티켓 01 지표 (있을 때만)
+  - `end_to_voice_ms`·`end_to_thinking_ms`: `TurnRecord.spans` 참고. `marks.thinking`은 생각 중
+    효과음 신호(`bot.thinking`)를 보낸 때
+  - `queued`: 봇이 말하는 동안 모아 둔 말로 연 턴(말 끝 기준 지연을 재지 않는다)
+  - `bot_turn`: 봇이 먼저 말한 턴의 이유(무음 되묻기 등). `end_by`: 말 끝 판정 경로
+  - `tts_trim_ms`: 첫 문장 앞에서 잘라 낸 무음 길이
+  - `empty`: 말소리는 있었는데 글이 빈 epFlag 응답 `[{start_ms, end_ms, epd_type, ep_flag}]`
+    (빈 턴, 합성 `eof` 제외)
 - `client`는 그 턴의 `client.metrics` 이벤트 내용을 합친 것(`turn`·`type` 뺌).
   턴 0에는 `call.start`의 값(마이크 실제 설정값 등)도 들어간다
 - 줄은 다음 턴이 시작될 때나 통화가 끝날 때 쓴다.
@@ -43,9 +51,26 @@ class TurnRecord:
             "turn": self.turn,
             "at": self.at,
             **self.fields,
+            **self.spans(),
             "marks": dict(self.marks),
             "client": dict(self.client),
         }
+
+    def spans(self) -> dict[str, int]:
+        """말 끝에서 잰 시간(ms). 손님 말로 바로 연 턴만(`queued`·`bot_turn` 턴은 뺀다).
+
+        `end_to_voice_ms`: 말 끝 → 브라우저 첫 재생 보고(`play_start`). 둘 다 서버가 받은 시각이라
+        올림 지연이 서로 지워져, 손님 귀 기준 지연에 가깝다(스피커 지연은 빠짐).
+        `end_to_thinking_ms`: 말 끝 → `bot.thinking` 보냄
+        """
+        marks = self.marks
+        if self.fields.get("queued") or "speech_end" not in marks:
+            return {}
+        out = {}
+        for name, mark in (("end_to_voice_ms", "play_start"), ("end_to_thinking_ms", "thinking")):
+            if mark in marks:
+                out[name] = marks[mark] - marks["speech_end"]
+        return out
 
 
 class LatencyLog:

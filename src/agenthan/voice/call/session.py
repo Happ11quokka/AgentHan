@@ -486,6 +486,8 @@ class CallSession:
             return
         if not self._parts:
             if r.ep_flag:
+                if not self._forced and r.epd_type != "eof" and not self._vad.in_speech:
+                    self._log_empty(r)
                 self._forced = False  # 말 없이 누른 버튼
             return
         forced = self._forced
@@ -556,6 +558,19 @@ class CallSession:
             "text": r.text, "epd_type": r.epd_type, "start_ms": r.start_ms, "end_ms": r.end_ms,
             "ep_flag": r.ep_flag, "reason": reason,
         })
+
+    def _log_empty(self, r: SttResult) -> None:
+        """빈 턴: 무음 감지가 말로 봐서 epFlag를 보냈는데 글 없는 응답만 왔다 (지표).
+
+        재연결 때 어댑터가 만든 빈 응답(`eof`)과 말 없이 누른 버튼은 세지 않는다.
+        되묻기("잘 못 들었어요")는 3단계 티켓 04가 이 자리에서 한다
+        """
+        record = self._log.get(self._turn)
+        if record is not None:
+            record.fields.setdefault("empty", []).append({
+                "start_ms": r.start_ms, "end_ms": r.end_ms, "epd_type": r.epd_type,
+                "ep_flag": r.ep_flag,
+            })
 
     def _release(self, r: SttResult, end_by: str) -> None:
         """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""
