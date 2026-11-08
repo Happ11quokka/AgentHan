@@ -92,8 +92,10 @@ class SilenceDetector:
         self._silent_ms = 0
 
     def speech_since(self, ms: int) -> bool:
-        """`ms` 뒤에 말소리가 이어졌나: 지금 말하는 중이거나, `ms` 이후에 시작한 말 구간이 있다.
+        """`ms` 뒤에 말이 이어졌나: `ms` 이후에 **새로 시작한** 말 구간이 있다.
 
-        말 구간으로 본 것만 센다. 그래야 붙잡은 턴이 그 구간의 말 끝(`epFlag`) 결과로 반드시 풀린다.
+        말 구간으로 본 것만 센다. 그래야 붙잡은 턴이 그 구간의 말 끝(`epFlag`) 결과로 풀린다.
+        `ms` 전부터 이어진 구간은 세지 않는다(리뷰 2번). STT는 그 사이에 gap(700ms)을 봤는데
+        무음 감지는 400ms 무음도 못 봤다면, 이어진 것은 말이 아니라 임계값 위의 배경 소리다.
         """
-        return self.in_speech or any(start >= ms for start in self.segment_starts)
+        return any(start >= ms for start in self.segment_starts)

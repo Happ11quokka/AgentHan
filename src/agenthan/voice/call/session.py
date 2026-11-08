@@ -76,6 +76,8 @@ class SessionSettings:
     chunk_bytes: int = CHUNK_BYTES  # 내리는 오디오 조각 ≈ 200ms
     stt_backlog_ms: int = 3_000  # STT 쓰기가 이만큼 밀리면 통화를 끝낸다 (stt_backlog)
     stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
+    hold_max_s: float = 1.2  # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout)
+    hold_cap_s: float = 3.0  # 이어진 말이 아직 열려 있어도 붙잡기는 여기까지
 
 
 def make_nlu(choice: NluChoice) -> Nlu:
@@ -175,6 +177,10 @@ class CallSession:
         self._terminal = False  # 확정·handoff·취소로 대화가 끝났다. 재생이 끝나면 통화 끝
         self._last_seq: dict[int, int] = {}  # 턴 → 마지막 문장 seq
         self._parts: list[SttResult] = []
+        self._held: SttResult | None = None  # 붙잡은 끝 후보 결과 (뒤에 말이 이어짐)
+        self._hold_at: float | None = None  # 마지막으로 붙잡은 때
+        self._hold_since: float | None = None  # 처음 붙잡은 때 (`hold_cap_s` 기준)
+        self._hold_timer: asyncio.TimerHandle | None = None
         self._pending: list[_Utterance] = []
         self._commit = False  # "말 끝" 버튼: 다음 DATA에 epFlag
         self._forced = False  # "말 끝" 버튼: 다음 말 끝 결과는 붙잡지 않는다
@@ -366,9 +372,12 @@ class CallSession:
     def _on_result(self, r: SttResult) -> None:
         if self.done or self._terminal or self._phase == "speaking":
             return  # 반이중: 봇 말하는 중 결과는 버린다
+        self._cancel_hold()
         if r.text.strip():
             self._parts.append(r)
         if not r.ends_speech:
+            if self._parts and self._held is not None:
+                self._arm_hold(self._settings.hold_max_s)  # 아직 끝 후보가 아니다. 계속 기다린다
             return
         if not self._parts:
             if r.ep_flag:
@@ -376,23 +385,67 @@ class CallSession:
             return
         forced = self._forced
         if not forced and self._vad.speech_since(r.end_ms):
-            return  # 결과 끝 뒤에 말이 이어졌다. 다음 결과와 합친다
+            # 결과 끝 뒤에 새 말이 시작됐다. 다음 결과와 합친다. 안 오면 시간 제한으로 푼다
+            self._held = r
+            self._hold_at = self._clock.monotonic()
+            if self._hold_since is None:
+                self._hold_since = self._hold_at
+            self._arm_hold(self._settings.hold_max_s)
+            return
+        self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
+
+    def _release(self, r: SttResult, end_by: str) -> None:
+        """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""
+        forced = end_by == "button"
         self._forced = False
         utterance = _Utterance(
             text=" ".join(p.text.strip() for p in self._parts),
             fragments=len(self._parts),
             epd_type=r.epd_type,
-            end_by="button" if forced else ("vad" if r.ep_flag else r.epd_type),
+            end_by=end_by,
             stt_final=self._clock.monotonic(),
             speech_end=self._voice_at,
             ep_sent=self._ep_at if r.ep_flag else None,
             button=self._button_at if forced else None,
         )
-        self._parts = []
+        self._clear_hold()
         if self._phase == "listening":
             self._dispatch(utterance)
         else:
             self._pending.append(utterance)
+
+    # 붙잡기 시간 제한 (리뷰 2번). 붙잡은 뒤 `hold_max_s` 동안 새 결과가 없으면 푼다. 다만 그때
+    # 이어진 말 구간이 아직 열려 있거나 그 구간의 `epFlag` 응답을 기다리는 중이면 `hold_cap_s`까지
+    # 늘린다. 그래야 "메도빅 두 개… 랑 아메리카노 하나요"처럼 긴 뒷말이 쪼개지지 않는다
+
+    def _arm_hold(self, delay: float) -> None:
+        self._hold_timer = asyncio.get_running_loop().call_later(delay, self._on_hold_timer)
+
+    def _cancel_hold(self) -> None:
+        if self._hold_timer is not None:
+            self._hold_timer.cancel()
+            self._hold_timer = None
+
+    def _clear_hold(self) -> None:
+        """붙잡아 둔 조각·시간 제한을 모두 지운다."""
+        self._cancel_hold()
+        self._parts = []
+        self._held = None
+        self._hold_at = self._hold_since = None
+
+    def _on_hold_timer(self) -> None:
+        self._hold_timer = None
+        held = self._held
+        if held is None or not self._parts or self.done or self._phase == "speaking":
+            return
+        now = self._clock.monotonic()
+        assert self._hold_since is not None and self._hold_at is not None
+        left = self._settings.hold_cap_s - (now - self._hold_since)
+        ep_waiting = self._ep_at is not None and self._ep_at > self._hold_at
+        if left > 0 and (self._vad.in_speech or ep_waiting):
+            self._arm_hold(min(self._settings.hold_max_s, left))
+            return
+        self._release(held, "hold_timeout")
 
     def _dispatch(self, u: _Utterance) -> None:
         self._turn += 1
@@ -439,6 +492,11 @@ class CallSession:
         if sentences:
             self._last_seq[turn] = len(sentences) - 1
             self._phase = "speaking"
+            # 이 뒤에 오는 결과는 버리므로, 붙잡아 둔 조각과 "말 끝" 표시가 다음 손님 말에
+            # 붙지 않게 여기서 지운다(리뷰 3번). 이미 끝난 말(`_pending`)은 그대로 둔다
+            self._clear_hold()
+            self._forced = self._commit = False
+            self._button_at = None
             self._emit_state()
             await self._speak(turn, sentences)
         self._emit({"type": "bot.done", "turn": turn, "sentences": len(sentences)})
@@ -550,6 +608,7 @@ class CallSession:
         self._end()
 
     def _end(self) -> None:
+        self._cancel_hold()
         self._phase = "ended"
         self._ready = False
         self._done.set()
