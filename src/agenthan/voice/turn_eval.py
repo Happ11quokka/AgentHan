@@ -116,18 +116,19 @@ def simulate(pauses: Iterable[Pause], policy: Policy, *, vad_s: float = VAD_S,
              text_s: float = TEXT_S, start_s: float = START_S) -> Result:
     result = Result()
     for p in pauses:
+        dur = round(p.dur, 3)  # 0.1초 단위 시각의 뺄셈 오차(0.1999…)를 ms로 맞춘다
         commit = None
-        if p.dur >= vad_s or p.label == "eot":
+        if dur >= vad_s or p.label == "eot":
             waiting = label_for(p, policy) == "continue"
             commit = max(text_s, policy.cap) if waiting else text_s
         if p.label == "eot":
             assert commit is not None
             result.waits.append(commit)
             continue
-        if not HOLD_RANGE[0] <= p.dur <= HOLD_RANGE[1]:
+        if not HOLD_RANGE[0] <= dur <= HOLD_RANGE[1]:
             continue
         result.holds += 1
-        if commit is not None and p.dur + start_s > commit:
+        if commit is not None and round(dur + start_s, 3) > commit:
             result.cut += 1
     return result
 
@@ -211,7 +212,7 @@ def recording_pauses(wav_dir: Path, manifest: dict, model, *, menu_names: tuple[
             if not text.strip():
                 continue  # 글 없는 말 끝(잡음): 세션도 판정하지 않는다
             silence_start = end_ms - vad.end_silence_ms
-            later = [s for s in detector.segment_starts if s > end_ms]
+            later = [s for s in detector.segment_starts if s >= end_ms]  # 바로 다음 프레임도
             label = "hold" if later else "eot"
             until_ms = later[0] if later else len(pcm) // BYTES_PER_MS  # 다시 말함 또는 녹음 끝
             dur = (until_ms - silence_start) / 1000

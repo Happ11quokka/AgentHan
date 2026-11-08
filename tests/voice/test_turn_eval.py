@@ -136,3 +136,23 @@ def test_results_must_stay_under_data_or_private(tmp_path) -> None:
     (tmp_path / "pyproject.toml").write_text("")
     main(["--out", str(tmp_path / "private" / "turn-eval")])  # 저장소의 private/ 아래는 된다
     assert (tmp_path / "private" / "turn-eval" / "summary.md").is_file()
+
+
+def test_pause_lengths_from_float_timestamps_are_read_to_the_millisecond() -> None:
+    # EoT-Bench 멈춤은 0.1초 단위다. 8.7 - 8.5 = 0.1999…는 0.2초 쉼, 9.0 - 8.2 = 0.8000…01은
+    # 0.8초 쉼(다시 말함 1.0초 = 확정 글과 같은 때, 오끊김 아님)
+    result = simulate([pause("hold", 8.7 - 8.5), pause("hold", 9.0 - 8.2)], NOW)
+    assert (result.holds, result.cut) == (2, 0)
+
+
+def test_speech_that_restarts_right_after_the_vad_end_makes_that_end_a_hold(tmp_path) -> None:
+    from call_harness import silence, tone
+
+    from agenthan.voice.turn_eval import recording_pauses
+
+    # 무음 400ms에 말 끝, 바로 다음 프레임부터 다시 말함 (B1 모양)
+    _wav(tmp_path / "R2.wav", tone(800) + silence(400) + tone(600) + silence(800))
+    manifest = {"R2": {"question": "", "state": "", "texts": ["블린 하나요", "블린 하나요 주세요"]}}
+    hold, end = recording_pauses(tmp_path, manifest, None)[0]
+    assert (hold.label, hold.dur) == ("hold", 0.4)
+    assert end.label == "eot"
