@@ -272,3 +272,34 @@ def test_close_ends_results_and_can_be_called_twice() -> None:
             return await asyncio.wait_for(reading, WAIT)
 
     assert run(go()) == []
+
+
+class AbortFirstAfterEp(FakeNest):
+    """첫 연결이 epFlag 결과를 낸 뒤 UNAVAILABLE로 끊긴다 (재연결 뒤 앞 연결의 끊김)."""
+
+    def _on_request(self, conn, req) -> None:
+        super()._on_request(conn, req)
+        if conn is self.connections[0] and conn.extras and conn.extras[-1].get("epFlag"):
+            conn.abort(grpc.StatusCode.UNAVAILABLE, "server going away")
+
+
+def test_an_error_on_the_retired_connection_after_reconnect_does_not_end_the_call() -> None:
+    # 붙잡기에 시간 제한이 생겨(리뷰 2번) 앞 연결의 오류는 로그만 남긴다 (리뷰 12번)
+    clock = Clock()
+
+    async def go():
+        async with NestServer(AbortFirstAfterEp(["메도빅 하나요 ", "포장이요 "])) as srv:
+            stt = ClovaSttStream(settings(srv.endpoint), monotonic=clock)
+            await stt.start()
+            await stt.write(FRAME)
+            clock.t = 271.0
+            await stt.write(FRAME, ep_flag=True, seq_id=1)  # 이 뒤 새 연결. 앞 연결은 끊긴다
+            first = await next_result(stt)
+            await asyncio.sleep(0.2)  # 앞 연결의 UNAVAILABLE이 도착할 틈
+            await stt.write(FRAME, ep_flag=True, seq_id=2)
+            second = await next_result(stt)
+            await stt.close()
+            return first, second
+
+    first, second = run(go())
+    assert (first.text, second.text) == ("메도빅 하나요 ", "포장이요 ")

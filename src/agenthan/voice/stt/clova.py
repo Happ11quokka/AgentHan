@@ -10,7 +10,8 @@
   `epFlag` 응답(빈 글일 수 있음)도 넘긴다
 - 5분 연결 제한: 연결이 `reconnect_after_s`(4분 30초)를 넘긴 뒤 `epFlag` 프레임을 쓰면
   (= 턴 사이) 그 연결은 쓰기를 닫고, 다음 프레임부터 새 연결로 보낸다. 앞 연결은 남은 결과를
-  다 받을 때까지(EOF) 읽는다. `epFlag`가 오지 않고 `hard_reconnect_after_s`를 넘기면 그냥 바꾼다
+  다 받을 때까지(EOF) 읽는다(그사이 끊기면 로그만 남긴다).
+  `epFlag`가 오지 않고 `hard_reconnect_after_s`를 넘기면 그냥 바꾼다
 - 결과 시각은 통화 오디오 시각으로 이어 준다: 연결마다 CLOVA 시각이 0부터라서,
   그 연결 전까지 쓴 오디오 길이를 더한다
 
@@ -237,12 +238,14 @@ class ClovaSttStream:
         except asyncio.CancelledError:
             raise
         except grpc.aio.AioRpcError as err:
-            if not self._closed and err.code() != grpc.StatusCode.CANCELLED:
+            if not conn.writing:  # 바꿔 둔 앞 연결. 통화는 새 연결로 이어진다 (리뷰 12번)
+                log.info("CLOVA Speech 앞 연결이 오류로 끝남 (%s)", err.code().name)
+            elif not self._closed and err.code() != grpc.StatusCode.CANCELLED:
                 self._queue.put_nowait(_port_error(err))
             return
         except Exception:
             log.exception("CLOVA Speech 응답 읽기 실패")
-            if not self._closed:
+            if not self._closed and conn.writing:
                 self._queue.put_nowait(SttDisconnected())
             return
         finally:
@@ -277,7 +280,8 @@ class ClovaSttStream:
     async def _reconnect(self) -> None:
         """앞 연결은 쓰기만 닫고 EOF까지 계속 읽는다.
 
-        새 연결의 CONFIG 응답(실측 0.1~0.2초)까지 이 `write`가 기다린다.
+        새 연결의 CONFIG 응답(실측 0.1~0.2초)까지 이 `write`가 기다린다. 기다리는 쪽은 세션의
+        STT 쓰기 작업이라 WS 읽기는 멈추지 않는다(밀린 프레임은 세션 큐에 쌓인다).
         """
         old = self._conn
         assert old is not None
