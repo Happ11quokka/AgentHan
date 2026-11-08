@@ -35,7 +35,23 @@ def _yes_no(text: str, ctx: NluContext) -> list[Act]:
 
 # ---------------------------------------------------------------- 픽업 시간
 
-_TIME = re.compile(r"\d{1,2}\s*시(?:\s*반|\s*\d{1,2}\s*분)?")
+# 시각 조각만 그대로 뽑는다. 계산은 `timeparse.parse_pickup`이 한다 (티켓 04).
+_HOUR_NUM = r"(?:\d{1,2}|열한|열두|열|한|두|세|네|다섯|여섯|일곱|여덟|아홉)"
+_SINO_NUM = r"(?:[이삼사오]?십[일이삼사오육칠팔구]?|[일이삼사오육칠팔구])"
+_MINUTES = rf"(?:\d{{1,2}}|{_SINO_NUM})\s*분"
+_LATER = r"(?:좀\s*)?(?:이따가?|있다가)"
+_RELATIVE = (
+    rf"(?:{_MINUTES}|{_HOUR_NUM}\s*시간(?:\s*반)?)\s*(?:뒤|후|있다가?|이따가?)"
+)
+_CLOCK = (
+    rf"(?:(?:오전|오후|아침|낮|저녁|밤)\s*)?{_HOUR_NUM}\s*시(?!간)(?:\s*반|\s*{_MINUTES})?"
+    r"|\d{1,2}:\d{2}"
+)
+_ASAP = (
+    r"(?:지금(?:\s*바로)?|바로|곧|금방|잠시\s*(?:후|뒤))"
+    r"(?=\s*(?:에\s*)?(?:갈|가|출발|도착|들|방문|이요|요|$))"
+)
+_TIME = re.compile(rf"{_RELATIVE}|(?:{_LATER}\s*)?(?:{_CLOCK})|{_ASAP}|{_LATER}")
 
 
 def _pickup_time(text: str, ctx: NluContext) -> list[Act]:

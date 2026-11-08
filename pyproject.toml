@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "네이버 클라우드 기반 소상공인 AI 비서"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = [
+    "korean-datetime==1.0.0",
+]
 
 [dependency-groups]
 dev = ["pytest", "ruff"]
