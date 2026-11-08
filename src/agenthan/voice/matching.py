@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from agenthan.core.contracts import MenuItem
-from agenthan.voice.jamo import decompose, jamo_levenshtein
+from agenthan.voice.hangul import decompose, jamo_levenshtein
 
 MatchDecision = Literal["accept", "confirm", "choose", "reject", "sold_out"]
 

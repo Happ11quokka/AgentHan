@@ -2,7 +2,7 @@
 
 import pytest
 
-from agenthan.voice.jamo import decompose, jamo_levenshtein, levenshtein
+from agenthan.voice.hangul import decompose, jamo_levenshtein, levenshtein
 
 
 def test_decompose_syllable() -> None:
@@ -54,3 +54,33 @@ def test_jamo_levenshtein_is_symmetric() -> None:
 
 def test_jamo_distance_is_finer_than_plain() -> None:
     assert jamo_levenshtein("메도빅", "메도빗") < levenshtein("메도빅", "메도빗")
+
+
+@pytest.mark.parametrize("c", ["", "메도", "ab"])
+def test_decompose_needs_exactly_one_char(c: str) -> None:
+    assert decompose(c) is None
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        ("메도빅", "메도빗"),
+        ("블린", "블리니"),
+        ("아메리카노", "아이스"),
+        ("a메", "메b"),
+        ("", "블린"),
+    ],
+)
+def test_jamo_levenshtein_symmetric_cases(a: str, b: str) -> None:
+    assert jamo_levenshtein(a, b) == pytest.approx(jamo_levenshtein(b, a))
+
+
+def test_substitution_counts_each_differing_jamo_as_a_third() -> None:
+    assert jamo_levenshtein("가", "개") == pytest.approx(1 / 3)  # 중성
+    assert jamo_levenshtein("가", "객") == pytest.approx(2 / 3)  # 중성 + 종성
+    assert jamo_levenshtein("가", "뷁") == pytest.approx(1)  # 셋 다
+    assert jamo_levenshtein("ㄱ", "가") == pytest.approx(1 / 3)  # 낱자음 = 빈 중성
+
+
+def test_plain_levenshtein_works_on_tuples() -> None:
+    assert levenshtein(("ㅂ", "ㅣ", "ㄱ"), ("ㅂ", "ㅣ", " ")) == 1
