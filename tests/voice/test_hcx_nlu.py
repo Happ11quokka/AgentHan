@@ -59,12 +59,20 @@ def test_prompt_holds_only_menu_cart_question_and_one_utterance() -> None:
     assert "직전 질문: 더 필요하신 거 있으세요?" in system
 
 
-def test_payload_offers_parse_turn_with_auto_by_default() -> None:
+def test_payload_is_body_json_without_tools_by_default() -> None:
     payload = HcxNlu(ClovaClient(KEY)).payload("블린 하나요", CTX)
+    assert "tools" not in payload and "toolChoice" not in payload
+    assert payload["maxTokens"] >= 1024
+
+
+def test_payload_offers_parse_turn_with_auto_when_tools_on() -> None:
+    payload = HcxNlu(ClovaClient(KEY), tools=True).payload("블린 하나요", CTX)
     assert [t["function"]["name"] for t in payload["tools"]] == ["parse_turn"]
     assert payload["toolChoice"] == "auto"
     assert payload["maxTokens"] >= 1024
-    forced = HcxNlu(ClovaClient(KEY), tool_choice=FORCE_PARSE_TURN).payload("블린 하나요", CTX)
+    forced = HcxNlu(ClovaClient(KEY), tools=True, tool_choice=FORCE_PARSE_TURN).payload(
+        "블린 하나요", CTX
+    )
     assert forced["toolChoice"] == {"type": "function", "function": {"name": "parse_turn"}}
 
 
@@ -197,7 +205,7 @@ def test_forced_choice_rejection_becomes_unknown() -> None:
         return httpx.Response(400, json={"status": {"code": "40009",
                                                     "message": "Unsupported function"}})
 
-    nlu = HcxNlu(client_with(handler), tool_choice=FORCE_PARSE_TURN)
+    nlu = HcxNlu(client_with(handler), tools=True, tool_choice=FORCE_PARSE_TURN)
     assert nlu.parse("주차는요?", CTX) == [Act("unknown", free_text="주차는요?")]
     with pytest.raises(ClovaError) as err:
         client_with(handler).chat(MODEL, {})
@@ -304,21 +312,23 @@ def test_tool_call_failure_retries_once_without_tools() -> None:
             return httpx.Response(400, json={"status": {"code": "40009"}})
         return httpx.Response(200, json=ok_body({"content": '{"acts":[{"type":"done_ordering"}]}'}))
 
-    assert HcxNlu(client_with(handler)).parse("그게 다예요", CTX) == [Act("done_ordering")]
+    nlu = HcxNlu(client_with(handler), tools=True)
+    assert nlu.parse("그게 다예요", CTX) == [Act("done_ordering")]
     assert ["tools" in b for b in bodies] == [True, False]
 
 
-def test_other_errors_do_not_retry_and_tools_false_sends_no_tools() -> None:
+def test_other_errors_do_not_retry_and_default_sends_no_tools() -> None:
     bodies: list[dict[str, Any]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         bodies.append(json.loads(request.content))
         return httpx.Response(400, json={"status": {"code": "40001"}})
 
-    assert HcxNlu(client_with(handler)).parse("음", CTX) == [Act("unknown", free_text="음")]
+    nlu = HcxNlu(client_with(handler), tools=True)
+    assert nlu.parse("음", CTX) == [Act("unknown", free_text="음")]
     assert len(bodies) == 1
     bodies.clear()
-    HcxNlu(client_with(handler), tools=False).parse("음", CTX)
+    HcxNlu(client_with(handler)).parse("음", CTX)
     assert len(bodies) == 1
     assert "tools" not in bodies[0] and "toolChoice" not in bodies[0]
 

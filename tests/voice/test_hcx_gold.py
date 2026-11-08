@@ -1,8 +1,10 @@
 """L1 NLU 골드셋 (spec §9, 티켓 07). HCX 응답은 녹화본(cassette)을 재생한다.
 
-키·네트워크 없이 돈다. 녹화 다시 하기(실제 호출 30번, 키 필요):
+키·네트워크 없이 돈다. 녹화본은 설정마다 하나다: 기본(도구 없이 본문 JSON)과 `tools=True`.
+녹화 다시 하기(설정마다 실제 호출 30번 남짓, 저장소 루트의 `.env`에 키 필요):
 
-    uv run pytest tests/voice/test_hcx_gold.py --record-mode=rewrite
+    uv run pytest tests/voice/test_hcx_gold.py --record-mode=rewrite  # 둘 다
+    uv run pytest tests/voice/test_hcx_gold.py -k "not with_tools" --record-mode=rewrite  # 기본만
 
 프롬프트나 도구 스키마를 바꾸면 요청 본문이 달라져 재생이 실패한다. 그때 다시 녹화한다.
 """
@@ -123,10 +125,8 @@ def score(gold: dict[str, Any], parse) -> list[dict[str, Any]]:
     return rows
 
 
-@pytest.mark.vcr
-def test_hcx_gold_set_type_accuracy() -> None:
+def _check_gold(nlu: HcxNlu) -> None:
     gold = load_gold()
-    nlu = HcxNlu(ClovaClient(load_api_key() or "replay-only-dummy-key"))
     rows = score(gold, nlu.parse)
 
     n = len(rows)
@@ -139,6 +139,22 @@ def test_hcx_gold_set_type_accuracy() -> None:
             print(f"  {r['id']} {r['text']!r} → {r['got']} {r['acts']}")
     assert n == 30
     assert type_acc >= MIN_TYPE_ACCURACY
+
+
+def _client() -> ClovaClient:
+    return ClovaClient(load_api_key() or "replay-only-dummy-key")
+
+
+@pytest.mark.vcr
+def test_hcx_gold_set_type_accuracy() -> None:
+    """기본 설정(도구 없이 본문 JSON)."""
+    _check_gold(HcxNlu(_client()))
+
+
+@pytest.mark.vcr
+def test_hcx_gold_set_type_accuracy_with_tools() -> None:
+    """`tools=True`(parse_turn 도구 + "auto")도 계속 쓸 수 있게 녹화본을 따로 둔다."""
+    _check_gold(HcxNlu(_client(), tools=True))
 
 
 def test_gold_set_shape() -> None:

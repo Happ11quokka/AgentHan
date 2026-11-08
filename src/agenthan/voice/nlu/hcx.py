@@ -1,6 +1,8 @@
 """HCX-DASH-002 NLU (spec D2·D4, 티켓 07).
 
-턴마다 HCX를 한 번 부른다. `parse_turn` 도구 하나를 주고 `acts[]`를 받는다.
+턴마다 HCX를 한 번 부르고 `{"acts": [...]}`를 받는다. 기본은 도구 없이 본문에 쓴 JSON을 읽는다
+(`tools=False`). 스파이크에서 정확도는 도구를 줄 때와 비슷했고 지연은 절반 아래였다.
+`tools=True`면 `parse_turn` 도구를 준다 (spec D2의 처음 안).
 프롬프트에는 메뉴명 목록, 장바구니 요약, 직전 AI 질문, 손님 발화 하나만 넣는다 (D4).
 
 스파이크(티켓 07 Comments)에서 본 HCX-DASH-002의 동작:
@@ -309,9 +311,10 @@ class HcxNlu:
 
     엔진은 unknown을 실패로 세고 다시 묻는다. 같은 질문에 세 번이면 FALLBACK이다.
 
-    `tools=True`(기본, spec D2)면 parse_turn 도구를 준다. 모델이 도구 호출에 실패해 `40009`가
-    오면 도구 없이 한 번 더 부른다(프롬프트의 JSON 예시대로 본문에 답한다).
-    `tools=False`면 처음부터 도구 없이 부른다. 스파이크에서 정확도는 비슷했고 지연은 절반 아래였다.
+    `tools=False`(기본)면 도구 없이 부르고, 모델이 프롬프트의 JSON 예시대로 본문에 쓴 답을 읽는다.
+    스파이크에서 정확도는 도구를 줄 때와 비슷했고 지연은 절반 아래였다. 호출도 늘 한 번이다.
+    `tools=True`면 parse_turn 도구를 준다(spec D2). 모델이 도구 호출에 실패해 `40009`가 오면
+    도구 없이 한 번 더 부른다.
     """
 
     def __init__(
@@ -319,7 +322,7 @@ class HcxNlu:
         client: ClovaClient,
         *,
         model: str = MODEL,
-        tools: bool = True,
+        tools: bool = False,
         tool_choice: str | Mapping[str, Any] = "auto",
         temperature: float = 0.1,
     ) -> None:

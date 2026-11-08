@@ -63,21 +63,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uBA54\uB3C4\uBE45
-      \uD558\uB098 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uD558\uB098 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -86,7 +72,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5142'
+      - '3856'
       content-type:
       - application/json
       host:
@@ -97,7 +83,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1}]}\"},\"finishReason\":\"stop\",\"created\":1794132354,\"seed\":364533232,\"usage\":{\"promptTokens\":909,\"completionTokens\":28,\"totalTokens\":937}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1}]}\"},\"finishReason\":\"stop\",\"created\":1794137259,\"seed\":2912633375,\"usage\":{\"promptTokens\":909,\"completionTokens\":28,\"totalTokens\":937}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -168,21 +154,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uBA54\uB3C4\uBE44\uD06C
-      \uB450 \uAC1C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB450 \uAC1C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -191,7 +163,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5139'
+      - '3853'
       content-type:
       - application/json
       host:
@@ -202,7 +174,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":[{\"id\":\"call_8lc3wOet26tPf0UVlIRFRjKd\",\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"arguments\":{\"acts\":[{\"type\":\"add_item\",\"menu_text\":\"\uBA54\uB3C4\uBE45\",\"menu_guess\":\"\uBA54\uB3C4\uBE45\",\"qty\":2}]}}}]},\"finishReason\":\"tool_calls\",\"created\":1794132355,\"seed\":1386067294,\"usage\":{\"promptTokens\":911,\"completionTokens\":58,\"totalTokens\":969}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":2}]}\"},\"finishReason\":\"stop\",\"created\":1794137260,\"seed\":1313540099,\"usage\":{\"promptTokens\":911,\"completionTokens\":28,\"totalTokens\":939}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -273,21 +245,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uC544\uC774\uC2A4
-      \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C \uC794\uC774\uB791 \uBE14\uB9B0 \uD558\uB098\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C \uC794\uC774\uB791 \uBE14\uB9B0 \uD558\uB098\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -296,7 +254,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5172'
+      - '3886'
       content-type:
       - application/json
       host:
@@ -308,7 +266,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uC774\uC2A4
-        \uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":1},{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"qty\\\":1}]})\"},\"finishReason\":\"stop\",\"created\":1794132359,\"seed\":3026569782,\"usage\":{\"promptTokens\":917,\"completionTokens\":54,\"totalTokens\":971}}}"
+        \uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":1},{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"qty\\\":1}]})\"},\"finishReason\":\"stop\",\"created\":1794137261,\"seed\":367017697,\"usage\":{\"promptTokens\":917,\"completionTokens\":54,\"totalTokens\":971}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -380,21 +338,7 @@ interactions:
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uB098\uD3F4\uB808\uC639
       \uC138 \uAC1C \uD558\uACE0 \uB530\uB73B\uD55C \uC544\uBA54\uB9AC\uCE74\uB178
-      \uB450 \uC794 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB450 \uC794 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -403,7 +347,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5187'
+      - '3901'
       content-type:
       - application/json
       host:
@@ -414,7 +358,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":[{\"id\":\"call_Sy0Mt2ByDTb3ecazGzqmJB3w\",\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"arguments\":{\"acts\":[{\"type\":\"add_item\",\"menu_text\":\"\uB098\uD3F4\uB808\uC639\",\"menu_guess\":\"\uB098\uD3F4\uB808\uC639\",\"qty\":3},{\"type\":\"add_item\",\"menu_text\":\"\uC544\uBA54\uB9AC\uCE74\uB178\",\"menu_guess\":\"\uC544\uBA54\uB9AC\uCE74\uB178\",\"qty\":2,\"option_text\":\"\uB530\uB73B\uD55C\"}]}}}]},\"finishReason\":\"tool_calls\",\"created\":1794132361,\"seed\":1823752667,\"usage\":{\"promptTokens\":918,\"completionTokens\":101,\"totalTokens\":1019}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"menu_guess\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"qty\\\":3},{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":2,\\\"option_text\\\":\\\"\uB530\uB73B\uD55C\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137262,\"seed\":3054804522,\"usage\":{\"promptTokens\":918,\"completionTokens\":60,\"totalTokens\":978}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -485,21 +429,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uAFC0\uCF00\uC774\uD06C
-      \uD558\uB098 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uD558\uB098 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -508,7 +438,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5145'
+      - '3859'
       content-type:
       - application/json
       host:
@@ -519,7 +449,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uAFC0\uCF00\uC774\uD06C\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1}]}\"},\"finishReason\":\"stop\",\"created\":1794132364,\"seed\":1592092038,\"usage\":{\"promptTokens\":910,\"completionTokens\":29,\"totalTokens\":939}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uAFC0\uCF00\uC774\uD06C\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1}]}\"},\"finishReason\":\"stop\",\"created\":1794137263,\"seed\":2829933265,\"usage\":{\"promptTokens\":910,\"completionTokens\":29,\"totalTokens\":939}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -590,21 +520,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uC544\uBA54\uB9AC\uAE4C\uB178
-      \uD55C \uC794 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uD55C \uC794 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -613,7 +529,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5149'
+      - '3863'
       content-type:
       - application/json
       host:
@@ -624,7 +540,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":1}]})\"},\"finishReason\":\"stop\",\"created\":1794132366,\"seed\":1398962085,\"usage\":{\"promptTokens\":912,\"completionTokens\":30,\"totalTokens\":942}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":1}]})\"},\"finishReason\":\"stop\",\"created\":1794137264,\"seed\":772419237,\"usage\":{\"promptTokens\":912,\"completionTokens\":30,\"totalTokens\":942}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -695,21 +611,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uC9DC\uC7A5\uBA74
-      \uD558\uB098\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uD558\uB098\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -718,7 +620,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5135'
+      - '3849'
       content-type:
       - application/json
       host:
@@ -729,7 +631,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"unknown\"}]}"},"finishReason":"stop","created":1794132368,"seed":3823130866,"usage":{"promptTokens":909,"completionTokens":9,"totalTokens":918}}}'
+      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"unknown\"}]}"},"finishReason":"stop","created":1794137265,"seed":2248796188,"usage":{"promptTokens":909,"completionTokens":9,"totalTokens":918}}}'
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -800,21 +702,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uBE14\uB9AC\uB2C8
-      \uB450 \uAC1C\uB791 \uBA54\uB3C4\uBE45 \uD558\uB098 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB450 \uAC1C\uB791 \uBA54\uB3C4\uBE45 \uD558\uB098 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -823,7 +711,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5163'
+      - '3877'
       content-type:
       - application/json
       host:
@@ -834,7 +722,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":[{\"id\":\"call_Mo8AgegUZDnxEaHsdI6QJyk7\",\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"arguments\":{\"acts\":[{\"type\":\"add_item\",\"menu_text\":\"\uBE14\uB9AC\uB2C8\",\"menu_guess\":\"\uBE14\uB9B0\",\"qty\":2},{\"type\":\"add_item\",\"menu_text\":\"\uBA54\uB3C4\uBE45\",\"menu_guess\":\"\uBA54\uB3C4\uBE45\",\"qty\":1}]}}}]},\"finishReason\":\"tool_calls\",\"created\":1794132369,\"seed\":4027946984,\"usage\":{\"promptTokens\":916,\"completionTokens\":90,\"totalTokens\":1006}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBE14\uB9AC\uB2C8\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"qty\\\":2},{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1}]}\"},\"finishReason\":\"stop\",\"created\":1794137265,\"seed\":777635871,\"usage\":{\"promptTokens\":916,\"completionTokens\":52,\"totalTokens\":968}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -906,21 +794,7 @@ interactions:
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE14\uB9B0 \uD558\uB098, \uBA54\uB3C4\uBE45
       \uD558\uB098\\n\uC9C1\uC804 \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70
       \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uBE14\uB9B0\uC740
-      \uBE7C \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uBE7C \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -929,7 +803,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5185'
+      - '3899'
       content-type:
       - application/json
       host:
@@ -940,7 +814,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"remove_item\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132373,\"seed\":385502053,\"usage\":{\"promptTokens\":921,\"completionTokens\":24,\"totalTokens\":945}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"remove_item\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137266,\"seed\":2134030795,\"usage\":{\"promptTokens\":921,\"completionTokens\":24,\"totalTokens\":945}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1011,21 +885,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBA54\uB3C4\uBE45 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uBA54\uB3C4\uBE45
-      \uC138 \uAC1C\uB85C \uBC14\uAFD4 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC138 \uAC1C\uB85C \uBC14\uAFD4 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1034,7 +894,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5184'
+      - '3898'
       content-type:
       - application/json
       host:
@@ -1045,7 +905,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"change_qty\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":3}]}\"},\"finishReason\":\"stop\",\"created\":1794132374,\"seed\":2310869774,\"usage\":{\"promptTokens\":919,\"completionTokens\":28,\"totalTokens\":947}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"change_qty\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":3}]}\"},\"finishReason\":\"stop\",\"created\":1794137267,\"seed\":779366590,\"usage\":{\"promptTokens\":919,\"completionTokens\":28,\"totalTokens\":947}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1116,21 +976,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C
       \uC794\\n\uC9C1\uC804 \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uB450
-      \uAC1C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uAC1C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1139,7 +985,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5164'
+      - '3878'
       content-type:
       - application/json
       host:
@@ -1150,7 +996,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":2}]})\"},\"finishReason\":\"stop\",\"created\":1794132376,\"seed\":1889929697,\"usage\":{\"promptTokens\":915,\"completionTokens\":30,\"totalTokens\":945}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":2}]})\"},\"finishReason\":\"stop\",\"created\":1794137267,\"seed\":1578599707,\"usage\":{\"promptTokens\":915,\"completionTokens\":30,\"totalTokens\":945}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1221,21 +1067,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C
       \uC794\\n\uC9C1\uC804 \uC9C8\uBB38: \uC544\uBA54\uB9AC\uCE74\uB178\uB294 \uB530\uB73B\uD558\uAC8C
-      \uB4DC\uB9B4\uAE4C\uC694, \uCC28\uAC11\uAC8C \uB4DC\uB9B4\uAE4C\uC694?\"},{\"role\":\"user\",\"content\":\"\uCC28\uAC11\uAC8C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB4DC\uB9B4\uAE4C\uC694, \uCC28\uAC11\uAC8C \uB4DC\uB9B4\uAE4C\uC694?\"},{\"role\":\"user\",\"content\":\"\uCC28\uAC11\uAC8C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1244,7 +1076,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5201'
+      - '3915'
       content-type:
       - application/json
       host:
@@ -1255,7 +1087,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_option\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"option_text\\\":\\\"\uCC28\uAC00\uC6B4\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132378,\"seed\":969057690,\"usage\":{\"promptTokens\":923,\"completionTokens\":32,\"totalTokens\":955}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_option\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"option_text\\\":\\\"\uCC28\uAC00\uC6B4\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137268,\"seed\":1787790587,\"usage\":{\"promptTokens\":923,\"completionTokens\":32,\"totalTokens\":955}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1326,21 +1158,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C
       \uC794\\n\uC9C1\uC804 \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uC544\uBA54\uB9AC\uCE74\uB178\uC5D0
-      \uC0F7 \uCD94\uAC00\uD574 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC0F7 \uCD94\uAC00\uD574 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1349,7 +1167,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5196'
+      - '3910'
       content-type:
       - application/json
       host:
@@ -1361,7 +1179,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_option\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"option_text\\\":\\\"\uC0F7
-        \uCD94\uAC00\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132380,\"seed\":2203528264,\"usage\":{\"promptTokens\":922,\"completionTokens\":32,\"totalTokens\":954}}}"
+        \uCD94\uAC00\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137269,\"seed\":4050292406,\"usage\":{\"promptTokens\":922,\"completionTokens\":32,\"totalTokens\":954}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1432,21 +1250,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE14\uB9B0 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uBE14\uB9B0
-      \uC0AC\uC6CC\uD06C\uB9BC \uBE7C \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC0AC\uC6CC\uD06C\uB9BC \uBE7C \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1455,7 +1259,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5177'
+      - '3891'
       content-type:
       - application/json
       host:
@@ -1467,7 +1271,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"remove_item\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"reason\\\":\\\"\uC0AC\uC6CC\uD06C\uB9BC
-        \uBE7C\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132382,\"seed\":1481766163,\"usage\":{\"promptTokens\":918,\"completionTokens\":31,\"totalTokens\":949}}}"
+        \uBE7C\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137270,\"seed\":1140075314,\"usage\":{\"promptTokens\":918,\"completionTokens\":31,\"totalTokens\":949}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1538,21 +1342,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBA54\uB3C4\uBE45 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uADF8\uAC8C
-      \uB2E4\uC608\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB2E4\uC608\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1561,7 +1351,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5163'
+      - '3877'
       content-type:
       - application/json
       host:
@@ -1572,7 +1362,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"done_ordering\"}]}"},"finishReason":"stop","created":1794132383,"seed":3732218509,"usage":{"promptTokens":915,"completionTokens":11,"totalTokens":926}}}'
+      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"done_ordering\"}]}"},"finishReason":"stop","created":1794137271,"seed":2798299233,"usage":{"promptTokens":915,"completionTokens":11,"totalTokens":926}}}'
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1644,21 +1434,7 @@ interactions:
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBA54\uB3C4\uBE45 \uD558\uB098, \uBE14\uB9B0
       \uD558\uB098\\n\uC9C1\uC804 \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70
       \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uC774\uB807\uAC8C\uB9CC
-      \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1667,7 +1443,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5184'
+      - '3898'
       content-type:
       - application/json
       host:
@@ -1678,7 +1454,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"done_ordering\"}]}"},"finishReason":"stop","created":1794132385,"seed":1051685702,"usage":{"promptTokens":918,"completionTokens":11,"totalTokens":929}}}'
+      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"done_ordering\"}]}"},"finishReason":"stop","created":1794137272,"seed":3275052463,"usage":{"promptTokens":918,"completionTokens":11,"totalTokens":929}}}'
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1749,21 +1525,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBA54\uB3C4\uBE45 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uBA87 \uC2DC\uCBE4 \uC624\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"6\uC2DC
-      \uBC18\uC5D0 \uAC08\uAC8C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uBC18\uC5D0 \uAC08\uAC8C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1772,7 +1534,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5155'
+      - '3869'
       content-type:
       - application/json
       host:
@@ -1784,7 +1546,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_pickup_time\\\",\\\"time_text\\\":\\\"6\uC2DC
-        \uBC18\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132387,\"seed\":753377220,\"usage\":{\"promptTokens\":916,\"completionTokens\":19,\"totalTokens\":935}}}"
+        \uBC18\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137272,\"seed\":398380712,\"usage\":{\"promptTokens\":916,\"completionTokens\":19,\"totalTokens\":935}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1855,21 +1617,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBA54\uB3C4\uBE45 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uBA87 \uC2DC\uCBE4 \uC624\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uC5EC\uC12F
-      \uC2DC \uBC18\uCBE4 \uCC3E\uC73C\uB7EC \uAC08\uAC8C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC2DC \uBC18\uCBE4 \uCC3E\uC73C\uB7EC \uAC08\uAC8C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1878,7 +1626,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5171'
+      - '3885'
       content-type:
       - application/json
       host:
@@ -1890,7 +1638,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_pickup_time\\\",\\\"time_text\\\":\\\"\uC5EC\uC12F
-        \uC2DC \uBC18\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132389,\"seed\":2601089482,\"usage\":{\"promptTokens\":919,\"completionTokens\":20,\"totalTokens\":939}}}"
+        \uC2DC \uBC18\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137273,\"seed\":1868856629,\"usage\":{\"promptTokens\":919,\"completionTokens\":20,\"totalTokens\":939}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -1961,21 +1709,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE14\uB9B0 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uBA87 \uC2DC\uCBE4 \uC624\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uC0BC\uC2ED
-      \uBD84 \uB4A4\uC5D0 \uAC08\uAC8C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uBD84 \uB4A4\uC5D0 \uAC08\uAC8C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -1984,7 +1718,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5158'
+      - '3872'
       content-type:
       - application/json
       host:
@@ -1996,7 +1730,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_pickup_time\\\",\\\"time_text\\\":\\\"\uC0BC\uC2ED
-        \uBD84 \uB4A4\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132391,\"seed\":4247758839,\"usage\":{\"promptTokens\":915,\"completionTokens\":20,\"totalTokens\":935}}}"
+        \uBD84 \uB4A4\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137273,\"seed\":3902384873,\"usage\":{\"promptTokens\":915,\"completionTokens\":20,\"totalTokens\":935}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2067,21 +1801,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uBA54\uB3C4\uBE45
-      \uD558\uB098 \uC8FC\uC2DC\uACE0 7\uC2DC\uC5D0 \uCC3E\uC73C\uB7EC \uAC08\uAC8C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uD558\uB098 \uC8FC\uC2DC\uACE0 7\uC2DC\uC5D0 \uCC3E\uC73C\uB7EC \uAC08\uAC8C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2090,7 +1810,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5170'
+      - '3884'
       content-type:
       - application/json
       host:
@@ -2101,7 +1821,8 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":[{\"id\":\"call_KevQ3VVEY6tOQiccpTqIdXOi\",\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"arguments\":{\"acts\":[{\"type\":\"add_item\",\"menu_text\":\"\uBA54\uB3C4\uBE45\",\"menu_guess\":\"\uBA54\uB3C4\uBE45\",\"qty\":1},{\"type\":\"set_pickup_time\",\"time_text\":\"7\uC2DC\"}]}}}]},\"finishReason\":\"tool_calls\",\"created\":1794132391,\"seed\":2867208041,\"usage\":{\"promptTokens\":917,\"completionTokens\":76,\"totalTokens\":993}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1},{\\\"type\\\":\\\"set_pickup_time\\\",\\\"time_text\\\":\\\"\uC77C\uACF1
+        \uC2DC\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137274,\"seed\":3133838225,\"usage\":{\"promptTokens\":917,\"completionTokens\":42,\"totalTokens\":959}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2172,21 +1893,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE14\uB9B0 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uADF8\uAC8C
-      \uB2E4\uACE0\uC694 6\uC2DC\uC5D0 \uAC08\uAC8C\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB2E4\uACE0\uC694 6\uC2DC\uC5D0 \uAC08\uAC8C\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2195,7 +1902,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5178'
+      - '3892'
       content-type:
       - application/json
       host:
@@ -2207,7 +1914,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_pickup_time\\\",\\\"time_text\\\":\\\"\uC5EC\uC12F
-        \uC2DC\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132395,\"seed\":3082691578,\"usage\":{\"promptTokens\":920,\"completionTokens\":19,\"totalTokens\":939}}}"
+        \uC2DC\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137276,\"seed\":4260830405,\"usage\":{\"promptTokens\":920,\"completionTokens\":19,\"totalTokens\":939}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2278,21 +1985,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uBA54\uB3C4\uBE45
-      \uB9CE\uC774 \uB2EC\uC544\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB9CE\uC774 \uB2EC\uC544\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2301,7 +1994,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5142'
+      - '3856'
       content-type:
       - application/json
       host:
@@ -2312,8 +2005,8 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_menu_info\\\",\\\"free_text\\\":\\\"\uBA54\uB3C4\uBE45
-        \uB9CE\uC774 \uB2EC\uC544\uC694\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132396,\"seed\":3156845677,\"usage\":{\"promptTokens\":910,\"completionTokens\":21,\"totalTokens\":931}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_menu_info\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"free_text\\\":\\\"\uB9CE\uC774
+        \uB2EC\uC544\uC694\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137277,\"seed\":1907318389,\"usage\":{\"promptTokens\":910,\"completionTokens\":33,\"totalTokens\":943}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2384,21 +2077,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uBE14\uB9B0\uC5D0
-      \uBB50 \uB4E4\uC5B4\uAC00\uC694?\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uBB50 \uB4E4\uC5B4\uAC00\uC694?\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2407,7 +2086,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5143'
+      - '3857'
       content-type:
       - application/json
       host:
@@ -2418,7 +2097,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_menu_info\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"info_type\\\":\\\"\uC7AC\uB8CC\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132399,\"seed\":440117011,\"usage\":{\"promptTokens\":913,\"completionTokens\":30,\"totalTokens\":943}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_menu_info\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"info_type\\\":\\\"\uC7AC\uB8CC\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137277,\"seed\":553596920,\"usage\":{\"promptTokens\":913,\"completionTokens\":30,\"totalTokens\":943}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2489,21 +2168,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uB098\uD3F4\uB808\uC639\uC740
-      \uC5BC\uB9C8\uC608\uC694?\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC5BC\uB9C8\uC608\uC694?\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2512,7 +2177,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5145'
+      - '3859'
       content-type:
       - application/json
       host:
@@ -2523,7 +2188,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_menu_info\\\",\\\"menu_text\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"menu_guess\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"info_type\\\":\\\"\uAC00\uACA9\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132401,\"seed\":231421580,\"usage\":{\"promptTokens\":912,\"completionTokens\":32,\"totalTokens\":944}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_menu_info\\\",\\\"menu_text\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"menu_guess\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"info_type\\\":\\\"\uAC00\uACA9\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137278,\"seed\":4282769878,\"usage\":{\"promptTokens\":912,\"completionTokens\":32,\"totalTokens\":944}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2594,21 +2259,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
       \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uC8FC\uCC28\uB294
-      \uC5B4\uB514\uC5D0 \uD558\uBA74 \uB3FC\uC694?\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC5B4\uB514\uC5D0 \uD558\uBA74 \uB3FC\uC694?\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2617,7 +2268,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5150'
+      - '3864'
       content-type:
       - application/json
       host:
@@ -2629,7 +2280,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"ask_other\\\",\\\"free_text\\\":\\\"\uC8FC\uCC28\uB294
-        \uC5B4\uB514\uC5D0 \uD558\uBA74 \uB3FC\uC694?\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132404,\"seed\":2207901997,\"usage\":{\"promptTokens\":911,\"completionTokens\":21,\"totalTokens\":932}}}"
+        \uC5B4\uB514\uC5D0 \uD558\uBA74 \uB3FC\uC694?\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137279,\"seed\":1234065636,\"usage\":{\"promptTokens\":911,\"completionTokens\":21,\"totalTokens\":932}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2700,21 +2351,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE14\uB9B0 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uBE14\uB9B0
-      \uC18C\uC2A4 \uB530\uB85C \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC18C\uC2A4 \uB530\uB85C \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2723,7 +2360,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5174'
+      - '3888'
       content-type:
       - application/json
       host:
@@ -2735,7 +2372,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_option\\\",\\\"menu_text\\\":\\\"\uBE14\uB9B0
-        \uC18C\uC2A4\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"free_text\\\":\\\"\uB530\uB85C\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132405,\"seed\":1910646840,\"usage\":{\"promptTokens\":916,\"completionTokens\":31,\"totalTokens\":947}}}"
+        \uC18C\uC2A4\\\",\\\"menu_guess\\\":\\\"\uBE14\uB9B0\\\",\\\"free_text\\\":\\\"\uB530\uB85C\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137279,\"seed\":3223316765,\"usage\":{\"promptTokens\":916,\"completionTokens\":31,\"totalTokens\":947}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2806,21 +2443,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBA54\uB3C4\uBE45 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uD3EC\uD06C
-      \uB450 \uAC1C \uB123\uC5B4 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uB450 \uAC1C \uB123\uC5B4 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2829,7 +2452,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5178'
+      - '3892'
       content-type:
       - application/json
       host:
@@ -2841,7 +2464,7 @@ interactions:
   response:
     body:
       string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"set_request\\\",\\\"menu_text\\\":\\\"\uD3EC\uD06C\\\",\\\"menu_guess\\\":\\\"\uD3EC\uD06C\\\",\\\"free_text\\\":\\\"\uB450
-        \uAC1C \uB123\uC5B4 \uC8FC\uC138\uC694\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794132409,\"seed\":4235864598,\"usage\":{\"promptTokens\":917,\"completionTokens\":30,\"totalTokens\":947}}}"
+        \uAC1C \uB123\uC5B4 \uC8FC\uC138\uC694\\\"}]}\"},\"finishReason\":\"stop\",\"created\":1794137280,\"seed\":1127133789,\"usage\":{\"promptTokens\":917,\"completionTokens\":30,\"totalTokens\":947}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -2913,21 +2536,7 @@ interactions:
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C
       \uC794\\n\uC9C1\uC804 \uC9C8\uBB38: \uC544\uBA54\uB9AC\uCE74\uB178 \uD55C \uC794,
       6\uC2DC \uBC18 \uD53D\uC5C5, \uCD1D 4,500\uC6D0\uC774\uC5D0\uC694. \uB9DE\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uC544\uB2C8\uC694,
-      \uC544\uBA54\uB9AC\uCE74\uB178 \uB450 \uC794\uC774\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC544\uBA54\uB9AC\uCE74\uB178 \uB450 \uC794\uC774\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -2936,7 +2545,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5238'
+      - '3952'
       content-type:
       - application/json
       host:
@@ -2947,7 +2556,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":2}]}\"},\"finishReason\":\"stop\",\"created\":1794132410,\"seed\":1470761715,\"usage\":{\"promptTokens\":940,\"completionTokens\":30,\"totalTokens\":970}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"menu_guess\\\":\\\"\uC544\uBA54\uB9AC\uCE74\uB178\\\",\\\"qty\\\":2}]}\"},\"finishReason\":\"stop\",\"created\":1794137281,\"seed\":3070508186,\"usage\":{\"promptTokens\":940,\"completionTokens\":30,\"totalTokens\":970}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -3018,21 +2627,7 @@ interactions:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uB098\uD3F4\uB808\uC639 \uD558\uB098\\n\uC9C1\uC804
       \uC9C8\uBB38: \uB354 \uD544\uC694\uD558\uC2E0 \uAC70 \uC788\uC73C\uC138\uC694?\"},{\"role\":\"user\",\"content\":\"\uB098\uD3F4\uB808\uC639\uC740
-      \uBE7C\uACE0 \uBA54\uB3C4\uBE45 \uD558\uB098 \uCD94\uAC00\uD574 \uC8FC\uC138\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uBE7C\uACE0 \uBA54\uB3C4\uBE45 \uD558\uB098 \uCD94\uAC00\uD574 \uC8FC\uC138\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -3041,7 +2636,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5209'
+      - '3923'
       content-type:
       - application/json
       host:
@@ -3052,7 +2647,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":[{\"id\":\"call_PSQdRrQXwc9qUer2Ff21U7GZ\",\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"arguments\":{\"acts\":[{\"type\":\"remove_item\",\"menu_text\":\"\uB098\uD3F4\uB808\uC639\"},{\"type\":\"add_item\",\"menu_text\":\"\uBA54\uB3C4\uBE45\",\"menu_guess\":\"\uBA54\uB3C4\uBE45\",\"qty\":1}]}}},{\"id\":\"call_ipeB6IK4Vx4UFM7Sa8DGIdiN\",\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"arguments\":{\"acts\":[{\"type\":\"add_item\",\"menu_text\":\"\uBA54\uB3C4\uBE45\",\"menu_guess\":\"\uBA54\uB3C4\uBE45\",\"qty\":1}]}}}]},\"finishReason\":\"tool_calls\",\"created\":1794132411,\"seed\":3972462885,\"usage\":{\"promptTokens\":926,\"completionTokens\":121,\"totalTokens\":1047}}}"
+      string: "{\"status\":{\"code\":\"20000\",\"message\":\"OK\"},\"result\":{\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"acts\\\":[{\\\"type\\\":\\\"remove_item\\\",\\\"menu_text\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"menu_guess\\\":\\\"\uB098\uD3F4\uB808\uC639\\\",\\\"qty\\\":1},{\\\"type\\\":\\\"add_item\\\",\\\"menu_text\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"menu_guess\\\":\\\"\uBA54\uB3C4\uBE45\\\",\\\"qty\\\":1}]})\"},\"finishReason\":\"stop\",\"created\":1794137282,\"seed\":965698965,\"usage\":{\"promptTokens\":926,\"completionTokens\":53,\"totalTokens\":979}}}"
     headers:
       content-type:
       - application/json;charset=UTF-8
@@ -3122,21 +2717,7 @@ interactions:
       {\\\"acts\\\":[{\\\"type\\\":\\\"unknown\\\"}]}\\n\\n\uBA54\uB274 \uBAA9\uB85D:
       \uBA54\uB3C4\uBE45, \uB098\uD3F4\uB808\uC639, \uC544\uBA54\uB9AC\uCE74\uB178,
       \uBE14\uB9B0\\n\uC7A5\uBC14\uAD6C\uB2C8: \uBE44\uC5B4 \uC788\uC74C\\n\uC9C1\uC804
-      \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uC74C \uC7A0\uAE50\uB9CC\uC694\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"parse_turn\",\"description\":\"\uC190\uB2D8
-      \uBC1C\uD654 \uD558\uB098\uB97C act \uBAA9\uB85D\uC73C\uB85C \uB098\uB208\uB2E4.
-      \uBAA8\uB4E0 \uBC1C\uD654\uC5D0 \uC774 \uD568\uC218\uB97C \uD638\uCD9C\uD55C\uB2E4.
-      \uC8FC\uBB38\uACFC \uC0C1\uAD00\uC5C6\uB294 \uB9D0\uC774\uBA74 type\uC774 unknown\uC778
-      act \uD558\uB098\uB97C \uB123\uB294\uB2E4.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"acts\":{\"type\":\"array\",\"description\":\"\uBC1C\uD654\uC5D0
-      \uB098\uC628 \uC21C\uC11C\uB300\uB85C. \uBA54\uB274\uAC00 \uC5EC\uB7EC \uAC1C\uBA74
-      \uBA54\uB274\uB9C8\uB2E4 act \uD558\uB098\",\"items\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"add_item\",\"remove_item\",\"change_qty\",\"set_option\",\"set_pickup_time\",\"set_name\",\"set_request\",\"yes\",\"no\",\"done_ordering\",\"ask_menu_info\",\"ask_other\",\"repeat_please\",\"cancel_order\",\"want_owner\",\"unknown\"]},\"menu_text\":{\"type\":\"string\",\"description\":\"\uC190\uB2D8\uC774
-      \uB9D0\uD55C \uBA54\uB274 \uC774\uB984 \uADF8\uB300\uB85C\"},\"menu_guess\":{\"type\":\"string\",\"description\":\"\uBA54\uB274
-      \uBAA9\uB85D \uC911 \uAC00\uC7A5 \uAC00\uAE4C\uC6B4 \uC774\uB984. \uBAA8\uB974\uBA74
-      \uBE48 \uBB38\uC790\uC5F4\"},\"qty\":{\"type\":\"integer\",\"description\":\"\uC218\uB7C9.
-      \uB9D0 \uC548 \uD588\uC73C\uBA74 \uC0DD\uB7B5\"},\"option_text\":{\"type\":\"string\",\"description\":\"\uC635\uC158
-      \uB9D0 \uADF8\uB300\uB85C (\uC544\uC774\uC2A4, \uC0F7 \uCD94\uAC00, \uC0AC\uC6CC\uD06C\uB9BC
-      \uBE7C)\"},\"time_text\":{\"type\":\"string\",\"description\":\"\uC2DC\uAC01
-      \uD45C\uD604 \uADF8\uB300\uB85C\"},\"free_text\":{\"type\":\"string\",\"description\":\"\uC694\uCCAD\uC0AC\uD56D\xB7\uC9C8\uBB38
-      \uC6D0\uBB38\"}},\"required\":[\"type\"]}}},\"required\":[\"acts\"]}}}],\"toolChoice\":\"auto\",\"maxTokens\":1024,\"temperature\":0.1}"
+      \uC9C8\uBB38: \uC5C6\uC74C\"},{\"role\":\"user\",\"content\":\"\uC74C \uC7A0\uAE50\uB9CC\uC694\"}],\"maxTokens\":1024,\"temperature\":0.1}"
     headers:
       accept:
       - application/json
@@ -3145,7 +2726,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '5132'
+      - '3846'
       content-type:
       - application/json
       host:
@@ -3156,7 +2737,7 @@ interactions:
     uri: https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-DASH-002
   response:
     body:
-      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"unknown\"}]}"},"finishReason":"stop","created":1794132415,"seed":550191372,"usage":{"promptTokens":908,"completionTokens":9,"totalTokens":917}}}'
+      string: '{"status":{"code":"20000","message":"OK"},"result":{"message":{"role":"assistant","content":"{\"acts\":[{\"type\":\"unknown\"}]}"},"finishReason":"stop","created":1794137283,"seed":2633474175,"usage":{"promptTokens":908,"completionTokens":9,"totalTokens":917}}}'
     headers:
       content-type:
       - application/json;charset=UTF-8
