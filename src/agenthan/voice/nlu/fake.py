@@ -17,6 +17,7 @@ import re
 from collections.abc import Callable
 
 from agenthan.voice.nlu.base import Act, NluContext
+from agenthan.voice.timeparse import ASAP_PATTERN
 
 Recognizer = Callable[[str, NluContext], list[Act]]
 
@@ -74,11 +75,7 @@ _CLOCK = (
     rf"(?:(?:오전|오후|아침|낮|저녁|밤)\s*)?{_HOUR_NUM}\s*시(?!간)(?:\s*반|\s*{_MINUTES})?"
     r"|\d{1,2}:\d{2}"
 )
-_ASAP = (
-    r"(?:지금(?:\s*바로)?|바로|곧|금방|잠시\s*(?:후|뒤))"
-    r"(?=\s*(?:에\s*)?(?:갈|가|출발|도착|들|방문|이요|요|$))"
-)
-_TIME = re.compile(rf"{_RELATIVE}|(?:{_LATER}\s*)?(?:{_CLOCK})|{_ASAP}|{_LATER}")
+_TIME = re.compile(rf"{_RELATIVE}|(?:{_LATER}\s*)?(?:{_CLOCK})|{ASAP_PATTERN}|{_LATER}")
 
 
 def _pickup_time(text: str, ctx: NluContext) -> list[Act]:

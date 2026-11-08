@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from agenthan.core.contracts import MenuItem
-from agenthan.voice.hangul import decompose, jamo_levenshtein
+from agenthan.voice.hangul import has_batchim, jamo_levenshtein
 
 MatchDecision = Literal["accept", "confirm", "choose", "reject", "sold_out"]
 
@@ -49,14 +49,9 @@ def _clean(text: str) -> str:
     return _NOISE.sub("", text).lower()
 
 
-def _has_batchim(c: str) -> bool:
-    jamo = decompose(c)
-    return jamo is not None and jamo[2] != " " and "가" <= c <= "힣"
-
-
 def _strip_once(q: str) -> str:
     m = _TAIL_I.search(q)
-    if m and m.start() > 0 and _has_batchim(q[m.start() - 1]):
+    if m and m.start() > 0 and has_batchim(q[m.start() - 1]):
         return q[: m.start()]
     for pattern in (_TAIL_POLITE, _TAIL_QTY, _TAIL_PARTICLE):
         m = pattern.search(q)

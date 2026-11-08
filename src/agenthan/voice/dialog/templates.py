@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from datetime import datetime
 
+from agenthan.voice.hangul import final_consonant, has_batchim
+
 # ---------------------------------------------------------------- 수량·단위
 
 # 잔으로 세는 카테고리. 나머지는 개.
@@ -68,18 +70,13 @@ def _join(phrases: Iterable[str]) -> str:
     return ", ".join(phrases)
 
 
-def _has_batchim(word: str) -> bool:
-    last = word[-1:] if word else ""
-    return "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
-
-
 def i_ga(word: str) -> str:
     """주격 조사를 붙인다. 블린 → 블린이, 아메리카노 → 아메리카노가."""
-    return f"{word}{'이' if _has_batchim(word) else '가'}"
+    return f"{word}{'이' if has_batchim(word) else '가'}"
 
 
 def _josa(word: str, after_batchim: str, after_vowel: str) -> str:
-    return f"{word}{after_batchim if _has_batchim(word) else after_vowel}"
+    return f"{word}{after_batchim if has_batchim(word) else after_vowel}"
 
 
 def eun_neun(word: str) -> str:
@@ -241,8 +238,8 @@ def pickup_passed(offer: datetime) -> str:
 
 def _euro(word: str) -> str:
     """'으로/로'를 붙인다. 5시 25분 → 5시 25분으로, 6시 → 6시로."""
-    rieul = word[-1:] and (ord(word[-1]) - ord("가")) % 28 == 8
-    return f"{word}{'으로' if _has_batchim(word) and not rieul else '로'}"
+    rieul = final_consonant(word) == "ㄹ"
+    return f"{word}{'으로' if has_batchim(word) and not rieul else '로'}"
 
 
 def pickup_asap(prep_minutes: int, at: datetime) -> str:

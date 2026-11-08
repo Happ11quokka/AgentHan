@@ -21,10 +21,12 @@ import korean_datetime as kd
 _HALF_DAY = timedelta(hours=12)
 
 # 라이브러리가 모르는 "곧", "바로", "금방"과 "지금이요". 뒤에 가는 말이 오거나 문장이 끝나야 한다.
-_ASAP = re.compile(
+# 가짜 NLU(`nlu/fake.py`)도 같은 패턴으로 시각 조각을 뽑는다. 한 곳에서만 고친다.
+ASAP_PATTERN = (
     r"(?:지금(?:\s*바로)?|바로|곧|금방|잠시\s*(?:후|뒤))"
     r"(?=\s*(?:에\s*)?(?:갈|가|출발|도착|들|방문|이요|요|$))"
 )
+_ASAP = re.compile(ASAP_PATTERN)
 # 혼자 쓰인 "이따". 라이브러리는 이를 '지금'으로 읽지만 손님은 "나중에"라는 뜻이다.
 _LATER_ONLY = re.compile(r"(?:좀\s*)?(?:이따가?|있다가)")
 # "15분 있다 갈게요": 라이브러리는 "있다가"만 안다.

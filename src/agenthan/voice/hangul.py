@@ -51,6 +51,21 @@ def decompose(c: str) -> Jamo | None:
     return None
 
 
+def final_consonant(word: str) -> str:
+    """마지막 글자의 받침. 받침이 없거나 마지막 글자가 한글 음절이 아니면 ""."""
+    last = word[-1:]
+    if not last or not _SYLLABLE_FIRST <= ord(last) <= _SYLLABLE_LAST:
+        return ""
+    jamo = decompose(last)
+    assert jamo is not None
+    return "" if jamo[2] == BLANK else jamo[2]
+
+
+def has_batchim(word: str) -> bool:
+    """마지막 음절에 받침이 있나. 조사 고르기(이/가, 은/는)와 조사 떼기에 쓴다."""
+    return final_consonant(word) != ""
+
+
 def _edit_distance(
     a: Sequence[_T], b: Sequence[_T], substitute: Callable[[_T, _T], float]
 ) -> float:

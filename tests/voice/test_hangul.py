@@ -2,7 +2,13 @@
 
 import pytest
 
-from agenthan.voice.hangul import decompose, jamo_levenshtein, levenshtein
+from agenthan.voice.hangul import (
+    decompose,
+    final_consonant,
+    has_batchim,
+    jamo_levenshtein,
+    levenshtein,
+)
 
 
 def test_decompose_syllable() -> None:
@@ -80,6 +86,25 @@ def test_substitution_counts_each_differing_jamo_as_a_third() -> None:
     assert jamo_levenshtein("가", "객") == pytest.approx(2 / 3)  # 중성 + 종성
     assert jamo_levenshtein("가", "뷁") == pytest.approx(1)  # 셋 다
     assert jamo_levenshtein("ㄱ", "가") == pytest.approx(1 / 3)  # 낱자음 = 빈 중성
+
+
+@pytest.mark.parametrize(
+    ("word", "batchim", "final"),
+    [
+        ("블린", True, "ㄴ"),
+        ("아메리카노", False, ""),
+        ("5시 25분", True, "ㄴ"),
+        ("6시", False, ""),
+        ("메도빅", True, "ㄱ"),
+        ("일", True, "ㄹ"),
+        ("ㄱ", False, ""),  # 낱자는 음절이 아니다
+        ("abc", False, ""),
+        ("", False, ""),
+    ],
+)
+def test_batchim_of_last_syllable(word: str, batchim: bool, final: str) -> None:
+    assert has_batchim(word) is batchim
+    assert final_consonant(word) == final
 
 
 def test_plain_levenshtein_works_on_tuples() -> None:
