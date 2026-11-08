@@ -16,15 +16,17 @@ import json
 import os
 import re
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from agenthan.agent import menu_photo, review_delegate
+from agenthan.agent import food_photo, menu_photo, review_delegate
 from agenthan.agent.clova_chat import ClovaChatError, chat, parse_message
 from agenthan.agent.place_matcher import get_feature, match_features
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError
+from agenthan.tools.image_cutout import ImageCutoutError
 from agenthan.tools.owner_tools import execute_tool, tool_schema
 
 HELP = (
@@ -61,6 +63,8 @@ PHOTO_TEXT = {
     "generated": "이름·설명은 AI 초안",
     "check_spelling": "사진 글자(원어 철자) 확인 필요",
     "won": "원",
+    "food_guess": "AI 추측, 이름을 확인해 주세요",
+    "cutout_failed": "배경 지우기 실패, 원본 사진 사용",
 }
 APPROVE = re.compile(r"^\s*(네|예|응|좋아|저장|올려|그대로|ok|오케이)", re.I)
 CANCEL = re.compile(r"취소|그만|^\s*(아니요?|아뇨)\s*[.!]?\s*$")
@@ -122,6 +126,7 @@ class OwnerAssistant:
         self.knowledge = knowledge or FakeStoreKnowledge.from_fixture()
         self.clova_v3 = clova_v3 or menu_photo.chat_v3
         self.menu_drafts: list[menu_photo.MenuDraft] | None = None
+        self._photo_preview = None
 
     def _finish(self, answer: str, saved: list[dict], missing: list[str]) -> str:
         if missing:
@@ -216,30 +221,93 @@ class OwnerAssistant:
 
     # ------------------------------------------------------------ A-1 menu photo
 
+    def _clear_photo_preview(self):
+        if self._photo_preview is not None:
+            self._photo_preview.cleanup()
+            self._photo_preview = None
+
     def ask_photo(self, image: bytes, text: str = "") -> str:
-        """메뉴판 사진 → 초안을 보여 주고 승인을 기다린다. 아직 저장하지 않는다."""
+        """사진을 분류해 초안을 보여 주고 승인을 기다린다."""
         t = PHOTO_TEXT
         shop = self.store.read()["shop"]
         context = " ".join(filter(None, [shop.get("name"), shop.get("category")]))
         try:
-            drafts = menu_photo.draft_menus(
-                image, self.knowledge, store_context=context, call=self.clova_v3
-            )
-        except menu_photo.MenuPhotoError as error:
+            kind = food_photo.classify_photo(image, call=self.clova_v3)
+            if kind == "other":
+                return "메뉴판이나 음식 사진을 보내 주세요."
+            if kind == "menu_board":
+                drafts = menu_photo.draft_menus(
+                    image, self.knowledge, store_context=context, call=self.clova_v3
+                )
+            else:
+                draft = food_photo.draft_from_food(
+                    image, self.knowledge, store_context=context, call=self.clova_v3
+                )
+                if text.strip():
+                    result = food_photo.text_json(
+                        "사장님 말에서 명시한 음식 이름만 추출하세요. 없으면 빈 문자열. "
+                        'JSON: {"name": ""}\n사장님 말: ' + text,
+                        call=self.clova_v3,
+                    )
+                    name = result.get("name")
+                    if isinstance(name, str) and name.strip() and name.strip() in text:
+                        draft.name_ko = " ".join(name.split())
+                        draft.name_native = ""
+                        draft.notes.remove("food_guess")
+                        self._regenerate_food_description(draft)
+                self._refresh_food_match(draft)
+                drafts = [draft]
+        except (menu_photo.MenuPhotoError, ImageCutoutError) as error:
             return str(error)
+        self._clear_photo_preview()
         self.pending_feature = None
         if not drafts:
             self.menu_drafts = None
             return t["none"]
         self.menu_drafts = drafts
-        self.history.append({"role": "user", "content": text or "(메뉴판 사진)"})
-        answer = t["read"].format(n=len(drafts)) + "\n" + self._draft_lines() + "\n" + t["ask"]
+        if drafts[0].is_food:
+            self._photo_preview = tempfile.TemporaryDirectory(prefix="agenthan-photo-")
+            extension = ".png" if drafts[0].photo_mime == "image/png" else ".jpg"
+            (Path(self._photo_preview.name) / ("preview" + extension)).write_bytes(drafts[0].photo)
+        self.history.append({"role": "user", "content": text or "(사진)"})
+        heading = (
+            "음식 사진으로 메뉴 초안을 만들었어요."
+            if drafts[0].is_food
+            else t["read"].format(n=len(drafts))
+        )
+        answer = heading + "\n" + self._draft_lines() + "\n" + t["ask"]
         self.history.append({"role": "assistant", "content": answer})
         return answer
 
+    def _regenerate_food_description(self, draft):
+        result = food_photo.text_json(
+            "음식 사진에 대한 기존 설명과 확정 이름을 참고해 한국어 한 문장 설명을 쓰세요. "
+            '추측한 재료는 단정하지 마세요. JSON: {"description": ""}\n'
+            f"확정 이름: {draft.name_ko}\n사진에서 본 기존 설명: {draft.description}",
+            call=self.clova_v3,
+        )
+        description = result.get("description")
+        draft.description = description.strip() if isinstance(description, str) else ""
+
+    def _refresh_food_match(self, draft):
+        draft.possible_menu_id = draft.possible_menu_name = None
+        for name in [draft.name_ko, *draft.candidates]:
+            match = menu_photo.match_known(name, self.knowledge)
+            if match:
+                draft.possible_menu_id, draft.possible_menu_name = match[0].id, match[0].name_ko
+                break
+        # 저장소가 지식보다 최신일 수도 있다.
+        for record in self.store.read()["menus"]:
+            if record["name"].casefold() == draft.name_ko.casefold():
+                draft.possible_menu_id, draft.possible_menu_name = record["id"], record["name"]
+                break
+
     def menu_form(self) -> list[dict]:
         """오른쪽 플레이스 메뉴 폼에 채울 값(form.patch). 기다리는 초안이 없으면 []."""
-        return [d.to_form() for d in self.menu_drafts or []]
+        rows = [d.to_form() for d in self.menu_drafts or []]
+        if self._photo_preview is not None and rows:
+            rows[0]["photo"] = str(next(Path(self._photo_preview.name).iterdir()))
+        return rows
 
     def _draft_lines(self) -> str:
         t = PHOTO_TEXT
@@ -255,6 +323,17 @@ class OwnerAssistant:
             marks = ([t["existing"]] if d.menu_id else []) + [t[n] for n in d.notes]
             if marks:
                 line += f"  [{', '.join(marks)}]"
+            if d.is_food and d.candidates:
+                line += (
+                    "\n혹시 "
+                    + ", ".join(f"{i}번 {name}" for i, name in enumerate(d.candidates, 1))
+                    + "인가요?"
+                )
+            if d.is_food and d.possible_menu_name:
+                line += (
+                    f"\n기존 메뉴 {d.possible_menu_name}의 사진을 바꿀까요? "
+                    "(메뉴 이름과 사진 변경을 확인해 주세요)"
+                )
             lines.append(line)
         return "\n".join(lines)
 
@@ -263,16 +342,61 @@ class OwnerAssistant:
         self.history.append({"role": "user", "content": text})
         if CANCEL.search(text):
             self.menu_drafts = None
+            self._clear_photo_preview()
             return self._finish(t["cancel"], [], [])
+        draft = self.menu_drafts[0] if self.menu_drafts else None
+        if (
+            draft
+            and draft.is_food
+            and draft.possible_menu_name
+            and draft.possible_menu_name in text
+            and re.search(r"사진.*(바꿔|변경|교체)", text)
+        ):
+            record = next(
+                (m for m in self.store.read()["menus"] if m["id"] == draft.possible_menu_id), None
+            )
+            if record is None:
+                return self._finish(
+                    "기존 메뉴를 저장소에서 찾을 수 없어요. 이름을 확인해 주세요.", [], []
+                )
+            draft.menu_id = record["id"]
+            draft.name_ko = record["name"]
+            draft.price = record["price"]
+            draft.notes = [n for n in draft.notes if n != "price_missing"]
+            return self._save_menu_drafts()
         if APPROVE.search(text) and not re.search(r"\d", text):
             return self._save_menu_drafts()
-        note = self._edit_menu_drafts(text)
+        if draft and draft.is_food:
+            candidate = re.search(r"([12])번\s*후보", text)
+            if candidate and int(candidate.group(1)) <= len(draft.candidates):
+                self._apply_draft_edit(
+                    {"number": 1, "name_ko": draft.candidates[int(candidate.group(1)) - 1]}
+                )
+                note = ""
+            else:
+                note = self._edit_menu_drafts(text)
+        else:
+            note = self._edit_menu_drafts(text)
         answer = (note + "\n" if note else "") + t["edited"] + "\n" + self._draft_lines()
         return self._finish(answer + "\n" + t["ask"], [], [])
 
     def _save_menu_drafts(self) -> str:
         t = PHOTO_TEXT
         saved, skipped = [], []
+        draft = self.menu_drafts[0] if self.menu_drafts else None
+        if draft and draft.is_food:
+            self._refresh_food_match(draft)
+            if draft.possible_menu_name and not draft.menu_id:
+                return self._finish(
+                    f"기존 메뉴 {draft.possible_menu_name}의 사진을 바꿀까요? "
+                    "메뉴 이름과 사진 변경을 확인해 주세요.",
+                    [],
+                    [],
+                )
+            if not draft.price:
+                return self._finish("가격을 알려 주세요.", [], [])
+            if not draft.name_ko:
+                return self._finish("메뉴 이름을 알려 주세요.", [], [])
         for d in self.menu_drafts or []:
             if not d.complete:
                 skipped.append(d.name_ko or d.name_read)
@@ -281,14 +405,23 @@ class OwnerAssistant:
                 result = self.store.upsert_menu(
                     d.name_ko,
                     d.price,
-                    description=d.description or None,
-                    name_native=d.name_native or None,
+                    description=None if d.is_food and d.menu_id else d.description or None,
+                    name_native=None if d.is_food and d.menu_id else d.name_native or None,
+                    photo=d.photo,
+                    photo_mime=d.photo_mime,
+                    menu_id=d.menu_id if d.is_food else None,
+                    create_only=d.is_food and not d.menu_id,
                 )
             except DummyStoreError:
+                if d.is_food:
+                    return self._finish(
+                        "사진이나 메뉴를 저장하지 못했어요. 다시 시도해 주세요.", [], []
+                    )
                 skipped.append(d.name_ko)
                 continue
             saved.append(result)
         self.menu_drafts = None
+        self._clear_photo_preview()
         lines = [t["saved"]] + [
             f"- {r['record']['name']} · {r['record']['price']:,}{t['won']}" for r in saved
         ]
@@ -327,6 +460,8 @@ class OwnerAssistant:
                     }
                 )
         self.menu_drafts = [d for d in drafts if d.notes != ["removed"]]
+        if not self.menu_drafts:
+            self._clear_photo_preview()
         return note
 
     def _apply_draft_edit(self, arguments: object) -> dict:
@@ -353,8 +488,16 @@ class OwnerAssistant:
             d.notes = [n for n in d.notes if n != "price_missing"]
         name = arguments.get("name_ko")
         if isinstance(name, str) and name.strip():
+            old_name = d.name_ko
             d.name_ko = " ".join(name.split())
-            d.notes = [n for n in d.notes if n not in ("name_missing", "generated")]
+            if d.is_food and d.name_ko != old_name:
+                d.name_native = ""
+                d.menu_id = None
+                d.candidates = []
+                if not isinstance(arguments.get("description"), str):
+                    self._regenerate_food_description(d)
+                self._refresh_food_match(d)
+            d.notes = [n for n in d.notes if n not in ("name_missing", "generated", "food_guess")]
         description = arguments.get("description")
         if isinstance(description, str):
             d.description = description.strip()
