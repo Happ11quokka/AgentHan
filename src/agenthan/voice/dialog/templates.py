@@ -78,6 +78,11 @@ def i_ga(word: str) -> str:
     return f"{word}{'이' if _has_batchim(word) else '가'}"
 
 
+def eun_neun(word: str) -> str:
+    """보조사를 붙인다. 블린 → 블린은, 아메리카노 → 아메리카노는."""
+    return f"{word}{'은' if _has_batchim(word) else '는'}"
+
+
 # ---------------------------------------------------------------- 대사
 
 def greeting(store_name: str) -> str:
@@ -95,11 +100,59 @@ def items_noted(phrases: Sequence[str]) -> str:
 
 def item_accepted(phrases: Sequence[str]) -> str:
     """항목 수락 + 다음 질문. 예: "메도빅 하나요. 더 필요하신 거 있으세요?"."""
-    return f"{items_noted(phrases)} 더 필요하신 거 있으세요?"
+    return f"{items_noted(phrases)} {anything_else()}"
+
+
+def anything_else() -> str:
+    return "더 필요하신 거 있으세요?"
 
 
 def not_on_menu(menu_names: Sequence[str]) -> str:
     return f"죄송해요, 그 메뉴는 없어요. 저희는 {i_ga(_join(menu_names))} 있어요."
+
+
+# ---------------------------------------------------------------- 옵션·변경·삭제·요청 (티켓 03)
+
+
+def ask_required_option(menu_name: str, choices: Sequence[str]) -> str:
+    """필수 옵션 하나를 묻는다. 예: "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"."""
+    if len(choices) == 2:
+        first, second = choices
+        return f"{eun_neun(menu_name)} {first} 드릴까요, {second} 드릴까요?"
+    return f"{eun_neun(menu_name)} {_join(choices)} 중에 어떤 걸로 드릴까요?"
+
+
+def option_not_available(menu_name: str, options: Sequence[str]) -> str:
+    """그 메뉴에 없는 옵션을 말했을 때. 되는 옵션이 있으면 알려 준다."""
+    if not options:
+        return f"죄송해요, {eun_neun(menu_name)} 따로 고를 수 있는 옵션이 없어요."
+    can = f"{eun_neun(_join(options))} 할 수 있어요."
+    return f"죄송해요, {eun_neun(menu_name)} 그 옵션이 없어요. {can}"
+
+
+def option_unavailable(option_name: str) -> str:
+    """옵션은 있는데 오늘 안 될 때 (`MenuOption.available=False`)."""
+    return f"죄송해요, 오늘은 {i_ga(option_name)} 안 돼요."
+
+
+def which_item() -> str:
+    """대상 메뉴를 모르는 옵션·요청. 예: 장바구니가 빈 채로 "디카페인으로요"."""
+    return "어떤 메뉴에 해 드릴까요?"
+
+
+def removed(menu_name: str) -> str:
+    return f"{menu_name} 뺐어요."
+
+
+def not_in_cart(menu_name: str) -> str:
+    return f"주문하신 것 중에 {eun_neun(menu_name)} 없어요."
+
+
+def request_noted(menu_name: str, request: str) -> str:
+    return f"{menu_name}에 {request}라고 적어 둘게요."
+
+
+# ---------------------------------------------------------------- 픽업·확인·마무리
 
 
 def ask_pickup() -> str:
