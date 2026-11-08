@@ -6,7 +6,7 @@ from agenthan.voice import cli
 def test_cli_completes_one_order() -> None:
     stdin = io.StringIO("메도빅 하나요\n그게 다예요\n6시 반이요\n네\n")
     stdout = io.StringIO()
-    code = cli.main(["--now", "2026-11-08T15:00:00+09:00"], stdin=stdin, stdout=stdout)
+    code = cli.main(["--now", "2026-11-08T16:00:00+09:00"], stdin=stdin, stdout=stdout)
     out = stdout.getvalue()
     assert code == 0
     assert "AI: 네, 샘플 러시안 베이커리입니다. 주문 도와드릴게요." in out

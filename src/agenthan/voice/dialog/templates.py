@@ -125,3 +125,42 @@ def closing(pickup: datetime) -> str:
 
 def not_understood() -> str:
     return "죄송해요, 잘 못 알아들었어요."
+
+
+# ---------------------------------------------------------------- 픽업 규칙 (티켓 04)
+
+
+def meridiem_time(dt: datetime) -> str:
+    """오전·오후를 붙여 읽기. 11:00 → "오전 11시", 14:00 → "오후 2시", 12:30 → "낮 12시 반"."""
+    prefix = "오전" if dt.hour < 12 else "낮" if dt.hour == 12 else "오후"
+    return f"{prefix} {spoken_time(dt)}"
+
+
+def pickup_too_early(prep_minutes: int, offer: datetime) -> str:
+    return f"준비에 {prep_minutes}분 정도 걸려요. {spoken_time(offer)} 괜찮으세요?"
+
+
+def _euro(word: str) -> str:
+    """'으로/로'를 붙인다. 5시 25분 → 5시 25분으로, 6시 → 6시로."""
+    rieul = word[-1:] and (ord(word[-1]) - ord("가")) % 28 == 8
+    return f"{word}{'으로' if _has_batchim(word) and not rieul else '로'}"
+
+
+def pickup_asap(prep_minutes: int, at: datetime) -> str:
+    return f"준비에 {prep_minutes}분 정도 걸려서 {_euro(spoken_time(at))} 잡아 둘게요."
+
+
+def pickup_after_close(close: datetime) -> str:
+    return f"죄송해요, 저희가 {spoken_time(close)}에 문을 닫아요. 그 전에 몇 시쯤 오세요?"
+
+
+def pickup_before_open(open_at: datetime) -> str:
+    return f"죄송해요, 저희는 {spoken_time(open_at)}에 문을 열어요. 몇 시쯤 오세요?"
+
+
+def confirm_pickup(at: datetime) -> str:
+    return f"{meridiem_time(at)}에 오시는 거죠?"
+
+
+def ask_pickup_again() -> str:
+    return "그럼 몇 시쯤 오세요?"

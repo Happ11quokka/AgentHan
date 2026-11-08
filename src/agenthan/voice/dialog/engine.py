@@ -19,6 +19,7 @@ from typing import Any, Literal
 from agenthan.core.contracts import MenuItem, Order, StoreKnowledge
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.cart import Cart, CartLine
+from agenthan.voice.dialog.pickup import judge_pickup, today_at
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
@@ -76,6 +77,8 @@ class DialogEngine:
         self._state = State.GREETING
         self._cart = Cart()
         self._pickup: datetime | None = None
+        self._pickup_offer: datetime | None = None  # ASK_PICKUP에서 "네"를 기다리는 시각
+        self._pickup_text = ""  # 주문 중에 말했지만 되물어야 하는 시각 원문
         self._last_question = ""
         self._transcript: list[str] = []
         # CLARIFY가 무엇을 기다리는지. 티켓 02(메뉴 확인)·03(옵션)이 자기 타입을 넣는다.
@@ -138,7 +141,7 @@ class DialogEngine:
             self._ask(turn, templates.ask_order())
         elif self._pickup is None:
             self._state = State.ASK_PICKUP
-            self._ask(turn, templates.ask_pickup())
+            self._ask_pickup(turn)
         else:
             self._state = State.CONFIRM
             readback = templates.final_readback(
@@ -206,20 +209,75 @@ class DialogEngine:
 
     @on("set_pickup_time", State.ORDERING)
     def _on_pickup_while_ordering(self, turn: _Turn, act: Act) -> None:
-        """주문 중에 시간을 먼저 말하면 기억만 해 둔다."""
-        parsed = parse_pickup(act.time_text, turn.now)
-        if parsed.time is not None:
-            self._pickup = parsed.time
+        """주문 중에 시간을 먼저 말하면 기억만 해 둔다.
+
+        바로 잡을 수 있는 시각(수락·지금)만 잡는다. 되물어야 하는 시각은 원문을 두었다가
+        `ASK_PICKUP`에 들어갈 때 다시 판단한다. 못 읽은 말은 버린다.
+        """
+        verdict = judge_pickup(parse_pickup(act.time_text, turn.now), turn.now, self._config)
+        if verdict.kind in ("accept", "asap"):
+            self._pickup = verdict.at
+            self._pickup_text = ""
+        elif verdict.kind != "unclear":  # 나중에 말한 시각이 앞의 것을 대신한다
+            self._pickup = None
+            self._pickup_text = act.time_text
 
     @on("set_pickup_time", State.ASK_PICKUP)
     def _on_pickup(self, turn: _Turn, act: Act) -> None:
-        """티켓 04가 준비 시간·영업시간·모호성 확인을 붙인다."""
-        parsed = parse_pickup(act.time_text, turn.now)
-        if parsed.time is None:
-            self._ask(turn, templates.pickup_not_understood())
+        self._apply_pickup(turn, act.time_text)
+
+    @on("yes", State.ASK_PICKUP)
+    def _on_pickup_yes(self, turn: _Turn, act: Act) -> None:
+        """제안·확인한 시각에 "네"."""
+        if self._pickup_offer is None:
+            self._on_unhandled(turn, act)
             return
-        self._pickup = parsed.time
+        self._pickup, self._pickup_offer = self._pickup_offer, None
         self._advance(turn)
+
+    @on("no", State.ASK_PICKUP)
+    def _on_pickup_no(self, turn: _Turn, act: Act) -> None:
+        if self._pickup_offer is None:
+            self._on_unhandled(turn, act)
+            return
+        self._pickup_offer = None
+        self._ask(turn, templates.ask_pickup_again())
+
+    def _ask_pickup(self, turn: _Turn) -> None:
+        """`ASK_PICKUP`에 들어갈 때. 주문 중에 말해 둔 시각이 있으면 그걸 먼저 판단한다."""
+        if self._pickup_text:
+            text, self._pickup_text = self._pickup_text, ""
+            self._apply_pickup(turn, text)
+        else:
+            self._ask(turn, templates.ask_pickup())
+
+    def _apply_pickup(self, turn: _Turn, time_text: str) -> None:
+        """가게 규칙(`dialog/pickup.py`)의 판정대로 잡거나, 제안하거나, 다시 묻는다."""
+        self._pickup_offer = None
+        verdict = judge_pickup(parse_pickup(time_text, turn.now), turn.now, self._config)
+        prep = self._config.prep_minutes
+        if verdict.kind == "unclear":
+            self._ask(turn, templates.pickup_not_understood())
+        elif verdict.kind == "before_open":
+            open_at = today_at(turn.now, self._config.open_time)
+            self._ask(turn, templates.pickup_before_open(open_at))
+        elif verdict.kind == "after_close":
+            close = today_at(turn.now, self._config.close_time)
+            self._ask(turn, templates.pickup_after_close(close))
+        elif verdict.kind == "too_early":
+            assert verdict.at is not None
+            self._pickup_offer = verdict.at
+            self._ask(turn, templates.pickup_too_early(prep, verdict.at))
+        elif verdict.kind == "confirm":
+            assert verdict.at is not None
+            self._pickup_offer = verdict.at
+            self._ask(turn, templates.confirm_pickup(verdict.at))
+        else:  # accept, asap
+            if verdict.kind == "asap":
+                assert verdict.at is not None
+                self._say(turn, templates.pickup_asap(prep, verdict.at))
+            self._pickup = verdict.at
+            self._advance(turn)
 
     # ------------------------------------------------------------ CONFIRM
 

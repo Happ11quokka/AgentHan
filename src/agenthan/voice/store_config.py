@@ -36,6 +36,9 @@ class StoreConfig:
     prep_minutes: int = 15
     open_time: time = time(10, 0)
     close_time: time = time(21, 0)
+    # 픽업 규칙 (티켓 04). 이보다 멀면 "오후 2시에 오시는 거죠?"로 확인한다.
+    confirm_after_minutes: int = 180
+    pickup_step_minutes: int = 5  # 제안 시각을 이 단위로 올린다. 17:10 + 15분 → 17:25
     # 메뉴 id → 필수 옵션들. 엔진 검사는 티켓 03.
     required_options: Mapping[str, tuple[RequiredOption, ...]] = field(
         default_factory=lambda: _DEFAULT_REQUIRED

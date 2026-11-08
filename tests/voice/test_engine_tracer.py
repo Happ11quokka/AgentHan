@@ -11,7 +11,8 @@ from agenthan.voice.dialog.states import State
 from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.store_config import KST, StoreConfig
 
-NOW = datetime(2026, 11, 8, 15, 0, tzinfo=KST)
+# 16시: "6시 반"이 3시간 안이라 픽업 확인 질문 없이 복창으로 간다 (티켓 04 규칙)
+NOW = datetime(2026, 11, 8, 16, 0, tzinfo=KST)
 
 
 @pytest.fixture
