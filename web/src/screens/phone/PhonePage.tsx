@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { pickupLabel } from './format.ts'
-import { PhoneCall } from './phoneCall.ts'
+import { PhoneCall, phoneOptions } from './phoneCall.ts'
 import './phone.css'
 
 const PHASE_LABEL: Record<string, string> = {
@@ -31,7 +31,7 @@ function statusLabel(s: CallState): string {
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
 
 export default function PhonePage() {
-  const [call] = useState(() => new PhoneCall())
+  const [call] = useState(() => new PhoneCall(phoneOptions(location.search)))
   const state = useSyncExternalStore(call.subscribe, call.getState)
 
   useEffect(() => {

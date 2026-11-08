@@ -1,7 +1,7 @@
 // PhoneCall 컨트롤러를 브라우저 API 가짜로 돌려 본다(리뷰 1·4·9번).
 // 마이크·AudioContext·WebSocket은 최소한의 가짜다. 보는 것은 화면 상태(getState)와 소켓으로 나간 것뿐이다.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PhoneCall } from './phoneCall.ts'
+import { PhoneCall, phoneOptions } from './phoneCall.ts'
 
 type Listener = (e: { data: unknown }) => void
 
@@ -441,5 +441,40 @@ describe('voice barge-in (bot.duck · bot.unduck · bot.stop)', () => {
     ws.onmessage!({ data: audioFrame(3, 1) })
     expect(botSources(ctx)).toHaveLength(1)
     expect(call.getState().botTalking).toBe(false)
+  })
+})
+
+describe('device test options (?mic_first=1 · ?agc=0, 실기기 시험 T4·T5)', () => {
+  const events = (ws: FakeSocket) =>
+    ws.sent.filter((m): m is string => typeof m === 'string').map((m) => JSON.parse(m) as Record<string, unknown>)
+
+  it('reads the options from the page query and defaults to the stage-2 order with auto gain', () => {
+    expect(phoneOptions('')).toEqual({ micFirst: false, agc: true })
+    expect(phoneOptions('?mic_first=1&agc=0')).toEqual({ micFirst: true, agc: false })
+  })
+
+  it('creates the playback context only after the mic is granted with mic_first', async () => {
+    const call = new PhoneCall({ micFirst: true, agc: true })
+    call.dial()
+    expect(FakeAudioContext.instances).toHaveLength(0)
+    mic.resolve(stream)
+    await flush()
+    expect(FakeAudioContext.instances).toHaveLength(1)
+    const ws = FakeSocket.instances[0]
+    ws.open()
+    expect(events(ws)[0]).toMatchObject({ type: 'call.start', ctx_order: 'mic-first' })
+  })
+
+  it('asks for the mic without auto gain control when agc is off', async () => {
+    const getUserMedia = vi.fn(() => mic.promise)
+    vi.stubGlobal('navigator', { userAgent: 'test', mediaDevices: { getUserMedia } })
+    const call = new PhoneCall({ micFirst: false, agc: false })
+    call.dial()
+    mic.resolve(stream)
+    await flush()
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: expect.objectContaining({ autoGainControl: false }) })
+    const ws = FakeSocket.instances[0]
+    ws.open()
+    expect(events(ws)[0]).toMatchObject({ ctx_order: 'context-first' })
   })
 })

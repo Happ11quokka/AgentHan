@@ -38,6 +38,26 @@ const SILENT_FRAME = new ArrayBuffer(FRAME_SAMPLES * 2) // 반이중 중 보내�
 
 type CaptureMode = 'context-16k' | 'downsample'
 
+/**
+ * 실기기 시험용 선택(3단계 티켓 06, 순서표 T4·T5). 주소 뒤 `?mic_first=1`·`?agc=0`으로 켠다.
+ * - micFirst: 재생용 AudioContext를 마이크 허용 뒤에 만든다. 기본(거짓)은 2단계 순서대로 "전화 받기"
+ *   탭 안에서 먼저 만든다. 안드로이드는 출력 스트림을 만들 때 통화 모드면 통화용으로 열어서, 순서가
+ *   에코 제거와 음량 버튼에 영향을 줄 수 있다(s3-barge-in Q1-1). 제스처 밖이라 소리가 멈춰 있으면
+ *   "소리 다시 켜기" 버튼이 뜬다
+ * - agc: 마이크 자동 음량. 끄면 봇 말 중 잔여 에코가 덜 커질 수 있다(T5)
+ */
+export interface PhoneOptions {
+  micFirst: boolean
+  agc: boolean
+}
+
+export const DEFAULT_OPTIONS: PhoneOptions = { micFirst: false, agc: true }
+
+export function phoneOptions(search: string): PhoneOptions {
+  const q = new URLSearchParams(search)
+  return { micFirst: q.get('mic_first') === '1', agc: q.get('agc') !== '0' }
+}
+
 interface TurnClock {
   thinking?: number // 생각 중 효과음을 시작한 때
   firstAudio?: number
@@ -60,6 +80,11 @@ export class PhoneCall {
   private timers = new Set<number>()
   private clocks = new Map<number, TurnClock>()
   private generation = 0 // 다시 걸기 뒤 이전 통화의 늦은 콜백을 버린다
+  private readonly options: PhoneOptions
+
+  constructor(options: PhoneOptions = DEFAULT_OPTIONS) {
+    this.options = options
+  }
 
   getState = (): CallState => this.state
 
@@ -78,9 +103,8 @@ export class PhoneCall {
       this.dispatch({ type: 'mic.failed', reason: 'insecure' })
       return
     }
-    // 제스처 안에서 만들어야 재생이 막히지 않는다.
-    const ctx = makeContext(WIRE_RATE)
-    this.useContext(ctx)
+    // 제스처 안에서 만들어야 재생이 막히지 않는다. 시험 선택 micFirst면 마이크 허용 뒤에 만든다
+    if (!this.options.micFirst) this.useContext(makeContext(WIRE_RATE))
     void this.requestWakeLock()
     void this.connect(gen)
   }
@@ -138,7 +162,9 @@ export class PhoneCall {
   private async connect(gen: number): Promise<void> {
     let stream: MediaStream
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS })
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { ...MIC_CONSTRAINTS, autoGainControl: this.options.agc },
+      })
     } catch (err) {
       if (gen !== this.generation) return
       this.dispatch({ type: 'mic.failed', reason: micFailure(err) })
@@ -150,6 +176,7 @@ export class PhoneCall {
       return
     }
     this.stream = stream
+    if (!this.ctx) this.useContext(makeContext(WIRE_RATE)) // micFirst: 마이크를 연 뒤 재생 컨텍스트
 
     try {
       const capture = await this.startCapture(stream)
@@ -218,6 +245,7 @@ export class PhoneCall {
         sample_rate: ctx.sampleRate,
         output_latency: ctx.outputLatency,
         base_latency: ctx.baseLatency,
+        ctx_order: this.options.micFirst ? 'mic-first' : 'context-first',
         ua: navigator.userAgent,
         // 음성 끼어들기를 할 수 있는 브라우저인가(안드로이드 크롬 + 에코 제거). 켤지는 서버가 정한다
         voice_barge_in: voiceBargeInCapable(navigator.userAgent, uaHints(), mic),
