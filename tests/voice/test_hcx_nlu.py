@@ -246,6 +246,24 @@ def test_body_status_and_network_errors_raise_clova_error() -> None:
     ]
 
 
+def test_client_does_not_send_back_session_cookies() -> None:
+    """CLOVA가 주는 JSESSIONID·XSRF 쿠키를 다음 요청에 돌려보내지 않는다 (녹화본에 남지 않게)."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json=ok_body({"content": '{"acts":[{"type":"unknown"}]}'}),
+            headers={"Set-Cookie": "JSESSIONID=abc123; Path=/"},
+        )
+
+    client = client_with(handler)
+    client.chat(MODEL, {})
+    client.chat(MODEL, {})
+    assert [r.headers.get("cookie") for r in seen] == [None, None]
+
+
 def test_key_never_shows_in_repr_or_errors() -> None:
     client = client_with(lambda r: httpx.Response(401))
     assert KEY not in repr(client)

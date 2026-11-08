@@ -26,19 +26,36 @@ CASSETTES = Path(__file__).with_name("cassettes")
 MIN_TYPE_ACCURACY = 0.8
 
 
-@pytest.fixture(scope="module")
-def vcr_config() -> dict[str, Any]:
+# 녹화하지 않을 요청 헤더. 키, 요청 id, 세션 쿠키와 XSRF 토큰.
+FILTERED_REQUEST_HEADERS = (
+    "authorization",
+    "x-ncp-clovastudio-request-id",
+    "cookie",
+    "set-cookie",
+    "x-xsrf-token",
+    "x-csrf-token",
+)
+# 응답 헤더는 이것만 남긴다 (Set-Cookie 등은 모두 버린다).
+KEPT_RESPONSE_HEADERS = frozenset({"content-type"})
+
+
+def _vcr_config() -> dict[str, Any]:
     return {
-        "filter_headers": ["authorization", "x-ncp-clovastudio-request-id"],
+        "filter_headers": list(FILTERED_REQUEST_HEADERS),
         "match_on": ["method", "scheme", "host", "path", "body"],
         "decode_compressed_response": True,
         "before_record_response": _drop_response_headers,
     }
 
 
+@pytest.fixture(scope="module")
+def vcr_config() -> dict[str, Any]:
+    return _vcr_config()
+
+
 def _drop_response_headers(response: dict[str, Any]) -> dict[str, Any]:
     response["headers"] = {
-        k: v for k, v in response["headers"].items() if k.lower() == "content-type"
+        k: v for k, v in response["headers"].items() if k.lower() in KEPT_RESPONSE_HEADERS
     }
     return response
 
@@ -141,11 +158,30 @@ def test_gold_scorer_strips_leading_no_like_engine() -> None:
     assert not slots_ok(item, [Act("change_qty", menu_text="아메리카노", qty=3)])
 
 
+def test_vcr_filters_cookies_and_session_headers() -> None:
+    filtered = {h.lower() for h in _vcr_config()["filter_headers"]}
+    assert {"authorization", "cookie", "set-cookie"} <= filtered
+    response = {
+        "headers": {
+            "Content-Type": ["application/json"],
+            "Set-Cookie": ["JSESSIONID=abc; Path=/"],
+            "X-XSRF-TOKEN": ["t"],
+        }
+    }
+    assert _drop_response_headers(response)["headers"] == {"Content-Type": ["application/json"]}
+
+
 def test_cassettes_hold_no_secret() -> None:
     files = list(CASSETTES.rglob("*.yaml"))
     assert files, "녹화본이 없어요. --record-mode=rewrite로 녹화하세요"
     for f in files:
         text = f.read_text(encoding="utf-8")
+        lower = text.lower()
         assert "Bearer" not in text
         assert not re.search(r"nv-[0-9a-f]{8,}", text)
-        assert "authorization" not in text.lower()
+        assert "authorization" not in lower
+        # 세션 쿠키·XSRF 토큰 (httpx가 Set-Cookie를 받아 다음 요청에 돌려보낸다)
+        assert "cookie" not in lower  # cookie, set-cookie 둘 다
+        assert "jsessionid" not in lower
+        assert "xsrf" not in lower
+        assert "csrf" not in lower

@@ -6,7 +6,7 @@
 - 429·5xx는 최대 두 번 재시도한다. 초 단위 `Retry-After`가 10초를 넘으면 바로 오류다
 - 네트워크 예외는 그 호출을 끝낸다
 
-키는 오류 메시지·repr·로그에 남기지 않는다.
+키는 오류 메시지·repr·로그에 남기지 않는다. 서버가 준 쿠키는 요청마다 비운다.
 """
 
 from __future__ import annotations
@@ -83,6 +83,9 @@ class ClovaClient:
             "X-NCP-CLOVASTUDIO-REQUEST-ID": request_id,
         }
         for attempt in range(_MAX_RETRIES + 1):
+            # CLOVA가 주는 세션 쿠키(JSESSIONID·XSRF)는 쓸 데가 없다. 다음 요청에 돌려보내면
+            # 로그·녹화본에 남으니 매번 비운다.
+            self._http.cookies.clear()
             try:
                 response = self._http.post(url, headers=headers, json=dict(payload))
             except httpx.HTTPError:
