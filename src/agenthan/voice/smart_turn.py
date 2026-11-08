@@ -13,18 +13,24 @@
 - ONNX 세션 하나를 여러 스레드가 같이 쓴다(`run`은 스레드 안전). intra_op 1 · inter_op 1 ·
   순차 실행. 2 vCPU 서버에서 통화 둘이 동시에 끝나도 이벤트 루프와 덜 다툰다
 - 모델 파일은 앱 시작 때 SHA-256을 확인한다. 없거나 틀리면 경고를 남기고 `None`(규칙만)
+- onnxruntime 공식 빌드는 리눅스·맥에서도 1DS로 Microsoft에 사용 기록을 보낸다(기본 켬, 휠의
+  `Privacy.md`). 외부 호출을 만들지 않게 이 모듈이 뜰 때 `ORT_DISABLE_TELEMETRY=1`을 둔다
+  (런타임이 뜨기 전이어야 한다. 이미지에도 같은 ENV가 있다)
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 log = logging.getLogger(__name__)
+
+os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")  # onnxruntime import 전에
 
 __all__ = [
     "MODEL_FILE",
@@ -120,6 +126,7 @@ class SmartTurnOnnx:
     def __init__(self, path: Path) -> None:
         import onnxruntime as ort  # 무거운 import는 모델을 쓸 때만
 
+        ort.disable_telemetry_events()  # 위 환경 변수와 같이. 남는 이벤트도 끈다
         options = ort.SessionOptions()
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         options.inter_op_num_threads = 1

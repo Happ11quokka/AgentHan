@@ -66,6 +66,7 @@ ENV PHONE_TZ=Asia/Seoul \
     PHONE_WEB_DIST=/app/web/dist \
     PHONE_LOG_DIR=/app/logs \
     PHONE_TURN_MODEL_PATH=/app/models/smart-turn-v3.2-cpu.onnx \
+    ORT_DISABLE_TELEMETRY=1 \
     GRPC_DNS_RESOLVER=native
 
 EXPOSE 8000

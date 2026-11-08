@@ -109,6 +109,14 @@ def test_a_model_file_with_the_wrong_checksum_is_not_loaded(tmp_path, caplog) ->
     assert "SHA-256" in caplog.text
 
 
+def test_onnx_runtime_telemetry_is_off_before_the_runtime_starts() -> None:
+    # onnxruntime 공식 빌드는 리눅스에서도 1DS로 Microsoft에 사용 기록을 보낸다(기본 켬,
+    # 휠의 Privacy.md). 외부 호출이 없어야 하므로 런타임이 뜨기 전에 끈다
+    import agenthan.voice.smart_turn  # noqa: F401
+
+    assert os.environ.get("ORT_DISABLE_TELEMETRY") == "1"
+
+
 def test_the_pinned_checksum_is_the_v3_2_cpu_model() -> None:
     # 연구 노트 Q1: HF 리비전 f766f81d의 smart-turn-v3.2-cpu.onnx, LFS oid와 같은 값
     assert MODEL_SHA256 == "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f"

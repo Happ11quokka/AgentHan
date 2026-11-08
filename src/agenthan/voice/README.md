@@ -78,6 +78,7 @@
 ## 3단계: Smart Turn (`smart_turn.py`, 티켓 03)
 
 - 무엇: 손님 오디오만 보고 "말이 끝났을 확률"을 내는 오디오 턴 모델. Pipecat Smart Turn v3.2 CPU int8 ONNX(8.7MB, 약 8M 파라미터, Whisper Tiny 인코더 + 작은 분류 머리). **서버 안에서 돌리는 자체 호스팅 오픈 모델이다. 외부 모델 API(Whisper API 등)는 부르지 않는다.** NCP에 같은 기능이 없고 직접 만들기 어려워서 쓴다(사용자 결정 2026-11-08)
+- onnxruntime 공식 빌드는 리눅스에서도 1DS로 Microsoft에 사용 기록을 보내는 것이 기본이다(휠의 `Privacy.md`). `smart_turn.py`가 런타임이 뜨기 전에 `ORT_DISABLE_TELEMETRY=1`을 두고 `disable_telemetry_events()`를 부른다. 이미지에도 같은 ENV가 있다
 - 라이선스: Smart Turn 코드·모델 BSD-2-Clause(Daily), 바탕 `openai/whisper-tiny` Apache-2.0, 평가 데이터 LiveKit EoT-Bench CC-BY-4.0(평가에만 쓰고 저장소에 넣지 않는다). 이미지에는 `deploy/phone/NOTICE-smart-turn.txt`가 모델 옆(`/app/models/`)에 같이 들어간다
 - 언제 도나: 무음 감지가 말 끝(무음 400ms)을 볼 때마다 한 번. 통화마다 최근 8초 링 버퍼(봇이 말하는 동안 들어온 프레임은 넣지 않음)의 사본을 전용 2스레드 풀(`phone-turn-*`, 프로세스에 하나)에서 점수 낸다. ONNX 세션 하나를 모든 통화가 같이 쓰고 intra_op 1. 새 말 구간이 시작되면 앞 점수는 버리고, 이어짐 대기 중에는 버퍼를 비우지 않아 다음 말 끝에서 턴 전체를 다시 본다. 턴을 넘기면 비운다
 - 판정: `combine_turn_end`에 점수를 넘긴다(0.7 이상 끝남, 0.3 이하 이어짐, 그 사이 규칙, 확실한 규칙이 먼저). 판정 때 점수가 아직 없으면(`late`)·실패면(`error`) 규칙만. 기다리지 않는다: 말 끝(400ms)부터 STT 확정 글(말 끝 + 0.9~1.1초)까지가 모델의 시간이다(맥 1스레드 약 50ms)

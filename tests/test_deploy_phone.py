@@ -76,6 +76,7 @@ def test_the_image_fetches_the_pinned_smart_turn_model_and_checks_it() -> None:
     assert dockerfile.index("install -d -m 755 /app/models") < dockerfile.index(add.group(0))
     assert line.split()[-1] == str(DEFAULT_TURN_MODEL_PATH)
     assert f"PHONE_TURN_MODEL_PATH={DEFAULT_TURN_MODEL_PATH}" in dockerfile
+    assert "ORT_DISABLE_TELEMETRY=1" in dockerfile  # onnxruntime 1DS 사용 기록 전송 끔
 
 
 def test_the_model_licence_notice_ships_with_the_image() -> None:
