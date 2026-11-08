@@ -1,0 +1,51 @@
+# 전화 주문 배포 (티켓 09): app(FastAPI, 화면 + /api/phone/ws) + caddy(자동 HTTPS)
+#
+#   저장소 루트에서:  ./deploy/phone/deploy.sh up        (= 아래 명령 + 이미지 태그 정리)
+#                     docker compose -f deploy/phone/compose.yaml up -d --build
+#
+# 값은 이 폴더의 .env(서버에만 있음, git·이미지에 안 들어감)에서 온다. 틀은 .env.example.
+name: agenthan-phone
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/phone/Dockerfile
+    image: agenthan-phone:latest
+    restart: unless-stopped
+    # 키는 실행할 때 환경 변수로만 들어간다. 8000은 밖에 열지 않는다(Caddy만 붙는다)
+    env_file: .env
+    expose:
+      - "8000"
+    volumes:
+      - phone_logs:/app/logs # 통화 지연 기록 JSONL
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2.11.6-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    # Caddy에는 키를 주지 않는다. 도메인과 ACME 주소만
+    environment:
+      DOMAIN: ${DOMAIN:?deploy/phone/.env에 DOMAIN을 적어 주세요}
+      ACME_CA: ${ACME_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # 인증서·ACME 계정. 지우면 재발급(LE 한도 주의)
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+  caddy_config:
+  phone_logs:

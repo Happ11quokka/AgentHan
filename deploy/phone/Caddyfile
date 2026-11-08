@@ -1,0 +1,18 @@
+# 전화 주문 서버 앞단 (티켓 09). 값은 compose.yaml이 deploy/phone/.env에서 넣는다.
+#   DOMAIN   예: agenthan.duckdns.org (A 레코드가 이 서버 공인 IP)
+#   ACME_CA  처음엔 Let's Encrypt 스테이징(브라우저 경고가 나는 시험용 인증서).
+#            발급이 되는 걸 본 뒤 운영 주소로 바꾼다 (README "인증서 운영 전환")
+# 인증서·계정은 /data(이름 있는 볼륨 caddy_data)에 남는다. 지우면 재발급 → LE 한도(같은 이름 7일 5장)
+{
+	acme_ca {$ACME_CA}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	# 화면(/phone 등)과 WebSocket(/api/phone/ws)을 같은 앱 하나로. WS 업그레이드는 따로 설정이 필요 없다
+	reverse_proxy app:8000 {
+		# Caddy 설정을 다시 읽어도 통화 중인 WS를 바로 끊지 않는다
+		stream_close_delay 10m
+	}
+	log
+}

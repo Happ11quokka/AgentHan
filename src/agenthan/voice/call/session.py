@@ -561,7 +561,9 @@ class CallSession:
                 delay, self._on_play_timeout, turn
             )
 
-    def _in_thread(self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> asyncio.Future[Any]:
+    def _in_thread(
+        self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any
+    ) -> asyncio.Future[Any]:
         """동기 함수를 엔진 풀(없으면 루프 기본 풀)의 스레드에서 돌린다."""
         loop = asyncio.get_running_loop()
         return loop.run_in_executor(self._executor, functools.partial(fn, *args, **kwargs))
