@@ -119,6 +119,54 @@ def test_the_end_button_during_the_wait_keeps_the_words_whose_text_is_still_comi
     assert [e["text"] for e in c.out.of("stt.final")] == ["메도빅 두 개랑 아메리카노 하나요"]
 
 
+# ---------------------------------------------------------------- P3
+
+
+def test_a_long_order_in_several_parts_is_not_split_by_the_overall_wait_limit(tmp_path) -> None:
+    # 전체 상한(`cont_max_s`)은 배경 소리가 "말하는 중"을 안 풀 때를 막는다. 글이 계속 들어오는
+    # 긴 주문은 첫 이어짐 판정부터 상한을 넘겨도 말하는 중에 쪼개지 않는다(Q3 "다시 셈")
+    stt = FakeSttStream(replies=["메도빅 두 개랑", "블린 하나랑", "아메리카노 하나요"])
+    limits = SessionSettings(cont_wait_s=0.6, cont_max_s=1.0)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, settings=limits) as c:
+            await c.start()
+            await c.say()
+            await asyncio.sleep(0.5)
+            await c.say()  # 둘째 부분 (글이 들어와 이어짐을 다시 판정)
+            await c.feed(tone(400))  # 셋째 부분을 말하는 중
+            await asyncio.sleep(0.8)  # 첫 판정부터 1.3초: 전체 상한을 넘었다
+            assert c.out.of("stt.final") == [], "말하는 중에 쪼개면 안 된다"
+            await c.feed(silence(1_000))
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    c = run(call())
+    assert [e["text"] for e in c.out.of("stt.final")] == [
+        "메도빅 두 개랑 블린 하나랑 아메리카노 하나요"
+    ]
+
+
+def test_background_sound_without_text_still_ends_the_wait_at_the_overall_limit(
+    tmp_path,
+) -> None:
+    stt = FakeSttStream(replies=["메도빅 두 개랑"])
+    limits = SessionSettings(cont_wait_s=0.3, cont_max_s=0.6)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, settings=limits) as c:
+            await c.start()
+            await c.say()
+            await c.feed(tone(300))  # 글이 나오지 않는 소리가 "말하는 중"을 붙잡는다
+            await c.out.wait_for("stt.final", turn=1)
+            return c
+
+    c = run(call())
+    assert [e["text"] for e in c.out.of("stt.final")] == ["메도빅 두 개랑"]
+    turn1 = next(line for line in lines(c) if line["turn"] == 1)
+    assert turn1["turn_end"]["path"] == "cap"
+
+
 # ---------------------------------------------------------------- C2
 
 

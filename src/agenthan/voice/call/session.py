@@ -171,7 +171,8 @@ class SessionSettings:
     # 말 끝 판정 (3단계 티켓 02). 이어짐이면 마지막 말 끝(마지막 유성 프레임 도착)부터 이만큼까지
     # 기다린다. 말이 다시 시작되면 다음 말 끝부터 다시 센다 (grilling Q3, `PHONE_CONT_WAIT_S`)
     cont_wait_s: float = 2.0
-    # 이어짐 대기 전체 상한(처음 이어짐 판정부터). 배경 소리가 "말하는 중"을 안 풀어도 여기서 넘긴다
+    # 이어짐 대기 전체 상한(대기 중 마지막 글부터, 리뷰 P3). 글 없는 배경 소리가 "말하는 중"을
+    # 안 풀어도 여기서 넘긴다. 글이 계속 들어오는 긴 주문은 쪼개지 않는다
     cont_max_s: float = 8.0
     # 미리 해석(이어짐 대기 중 NLU 선호출)의 시간 제한. 넘으면 버리고 엔진이 새로 부른다.
     # HCX p95 1.14초(1단계 티켓 07)에 여유를 두고, 새로 불러도 `turn_timeout_s` 안에 끝나게
@@ -332,7 +333,9 @@ class CallSession:
         # 판정 중 국면 (티켓 02). 국면 값은 listening 그대로 두고(화면은 듣는 중) 이것으로 가른다
         self._cont: _Utterance | None = None  # 이어짐 판정으로 기다리는 말
         self._cont_decision: TurnDecision | None = None
-        self._cont_since: float | None = None  # 처음 이어짐 판정을 낸 때 (`cont_max_s`·대기 시간)
+        self._cont_since: float | None = None  # 처음 이어짐 판정을 낸 때 (대기 시간 기록)
+        # 이어짐 대기 중 마지막으로 글이 들어온 때. 전체 상한(`cont_max_s`)은 여기부터 센다(리뷰 P3)
+        self._cont_text_at: float | None = None
         self._cont_timer: asyncio.TimerHandle | None = None  # 붙잡기 타이머와 따로 둔다
         self._steps: list[dict[str, Any]] = []  # 이 말의 앞선 판정들 (턴 기록 `turn_end_steps`)
         self._commit = False  # "말 끝" 버튼: 다음 DATA에 epFlag
@@ -908,8 +911,9 @@ class CallSession:
     def _wait_more(self, u: _Utterance, decision: TurnDecision) -> None:
         self._steps.append({"text": u.text, **decision.as_record()})
         self._cont, self._cont_decision = u, decision
+        self._cont_text_at = self._clock.monotonic()
         if self._cont_since is None:
-            self._cont_since = self._clock.monotonic()
+            self._cont_since = self._cont_text_at
         self._prefetch_nlu(u.text, decision)
         self._on_cont_timer()
 
@@ -948,9 +952,15 @@ class CallSession:
             return
         settings = self._settings
         now = self._clock.monotonic()
-        assert self._cont_since is not None
-        left = settings.cont_max_s - (now - self._cont_since)
-        if left > 0 and (self._vad.in_speech or self._parts or self._ep_waiting()):
+        if self._parts:
+            # 이어진 말의 글을 붙잡는 중이다. 조각 붙잡기가 `hold_cap_s` 안에 넘긴다
+            self._arm_cont(_CONT_POLL_S)
+            return
+        assert self._cont_text_at is not None
+        # 전체 상한은 마지막 글부터 센다. 글이 계속 들어오는 긴 주문은 쪼개지 않고, 글 없는 배경
+        # 소리가 "말하는 중"을 붙잡을 때만 넘긴다 (리뷰 P3)
+        left = settings.cont_max_s - (now - self._cont_text_at)
+        if left > 0 and (self._vad.in_speech or self._ep_waiting()):
             self._arm_cont(min(_CONT_POLL_S, left))  # 말이 다시 시작됐다. 그 말 끝부터 다시 센다
             return
         assert self._cont_decision is not None
