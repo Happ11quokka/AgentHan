@@ -59,6 +59,31 @@ uv run pytest -q -m network                                 # 실제 CLOVA 호�
 예: `신메뉴 연습 차를 등록하고 싶어요` → 가격 질문 → `5000원`.
 메뉴판 사진: `/photo ~/menu.jpg 이거 올려 줘` → 초안 확인 → `3번 가격 9500원` → `네`.
 
+### R3 검색 노출 진단
+
+`tools/naver_search.py`의 공식 NAVER API HUB 클라이언트와 `tools/search_visibility.py`의
+한국어 템플릿으로 검색어별 지역 검색 순위·같이 나온 가게, 블로그 전체 글 수·상위 글의 가게명
+언급 수를 보여 준다. 지역 검색은 상위 5개만 확인하므로 미노출은 **5위 밖 또는 없음**이다.
+개인화 없는 검색 기준이며 실제 화면과 다를 수 있다. 실제 방문·유입 수를 측정하지는 않는다.
+오케스트레이터·Agent N 연결은 아직 없다.
+
+```bash
+uv run --env-file .env python -m agenthan.tools.search_visibility \
+  --name "가상 연습 베이커리" --area "연습동" --category "베이커리" \
+  --menu 꿀케이크 --menu 겹케이크
+uv run --frozen --offline pytest -q -m network tests/test_naver_search.py
+```
+
+인증은 환경 변수 `NAVER_API_HUB_CLIENT_ID`, `NAVER_API_HUB_CLIENT_SECRET`만 사용하며,
+없거나 호출에 실패하면 정제한 메시지와 종료 코드 1을 반환한다. `--native-menu`는 원어 메뉴,
+`--road-address`는 도로명 주소 보조 판별에 쓴다. `--save data/search/<날짜>.json`으로 저장할 수
+있으며 `data/` 밖 경로나 심볼릭 링크 순환 등으로 확인할 수 없는 경로는 거부한다.
+실제 검색 결과는 커밋하지 않는다.
+가게명은 정규화한 이름의 완전 일치를 우선하고, 도로명 주소는 건물 번호의 하이픈을 유지해
+비교한다. 지점명만 다른 가게를 이름의 부분 일치로 판별하지 않는다.
+오프라인 테스트는 `FixtureSearch`와 가상 데이터 `tools/search_fixture.json`만 사용한다.
+실제 API 테스트는 키가 없으면 건너뛰고 결과를 파일로 남기지 않는다.
+
 ### A-1 메뉴 사진 등록
 
 입출력은 한국어다. 사진 속 메뉴 이름만 원어 그대로 읽어 `name_native`로 남긴다.
