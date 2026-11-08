@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from agenthan.tools.review_clf import FEATURES, get_backend
 from agenthan.tools.review_clf.backends.hcx import HCXBackend
 from agenthan.tools.review_clf.segment import split_clauses
@@ -18,6 +20,10 @@ def test_segment_offsets():
         assert TEXT[c.start : c.end] == c.text
 
 
+@pytest.mark.skipif(
+    not (ROOT / "models" / "baseline.joblib").exists(),
+    reason="models/baseline.joblib 없음 (카톡으로 받거나 scripts/train_baseline.py로 학습)",
+)
 def test_baseline():
     r = get_backend("baseline").classify(TEXT)
     assert set(r.labels) <= set(FEATURES)

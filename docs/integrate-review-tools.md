@@ -111,4 +111,4 @@ uv run --env-file .env pytest -q -m network   # 실제 CLOVA 호출
 
 - 실제 HCX 호출은 이번 통합 뒤에 돌려 보지 않았습니다(오프라인 테스트만). 특히 v3 → OpenAI 호환 전환 후 메뉴 도구 호출과 위임 흐름 E2E.
 - 통합 기준은 로컬에 있던 `upstream/feature/9-review-tools` 0fb5f03입니다. 그 뒤 커밋이 있으면 다시 합쳐야 합니다.
-- `models/baseline.joblib`(14MB)이 저장소에 함께 들어옵니다.
+- `models/baseline.joblib`은 실제 리뷰로 학습해 저장소에 올리지 않습니다(gitignore). 카톡으로 받아 `models/`에 두거나 `scripts/train_baseline.py`로 학습합니다.

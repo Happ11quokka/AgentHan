@@ -51,7 +51,7 @@ scripts/
   check_alignment.py  분절기 경계 재현율 측정
   make_snapshot.py    다른 도구 검증용 고정 입력 세트 생성
 data/  naver_reviews_raw.xlsx(조사 원본), reviews.jsonl(가공), fewshot.json, snapshots/(도구 검증용 고정 입력)
-models/ baseline.joblib, baseline_metrics.json
+models/ baseline.joblib(gitignore · 카톡 공유), baseline_metrics.json
 ```
 
 ## 데이터와 라벨

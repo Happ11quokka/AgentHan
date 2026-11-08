@@ -28,7 +28,7 @@
 | `agent/review_delegate.py` | 오케스트레이터 → 리뷰 서브에이전트 위임 |
 | `tools/dummy_store.py` | 더미 플레이스 API (로컬 `.agenthan/store.json`, 실제 네이버 연동 없음) |
 | `tools/owner_tools.py`, `feature_tools.py` | 메뉴 도구와 15개 기능 도구(미연결) |
-| `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`) |
+| `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`은 실제 리뷰로 학습해 레포에 없음 · 카톡으로 받기) |
 | `tools/knowledge_adapters.py` | `StoreKnowledge`(Part B 계약) → 리뷰 서브에이전트의 리뷰·메뉴 입력 |
 | `tools/review_adapters.py` | 더미 플레이스 API → 리뷰 서브에이전트 입력 |
 | `eval/tool_selection.py` | 16개 도구를 다 붙였을 때 HCX-005 도구 선택 평가 |
