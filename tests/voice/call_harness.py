@@ -125,8 +125,10 @@ class Call:
         await self.played(0)
 
     async def feed(self, frames: list[bytes]) -> None:
+        """프레임을 넣고, 세션의 STT 쓰기 작업이 그것을 다 쓸 때까지 기다린다."""
         for frame in frames:
             await self.session.feed_audio(frame)
+        await self.session.drain_audio()
 
     async def say(self, speech_ms: int = 800, after_ms: int = 1_200) -> None:
         """말소리 뒤 무음. 무음 감지가 `epFlag`를 붙이고 가짜 STT가 대본의 다음 글을 낸다."""

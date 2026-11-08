@@ -7,13 +7,17 @@
     await session.open()        # 송신 작업 시작
     # 읽기 작업 하나에서:
     #   binary → await session.feed_audio(pcm), text → await session.feed_event(dict)
+    #   (둘 다 STT·엔진을 기다리지 않는다. 읽기 작업이 밀리지 않게)
     await session.wait_done()   # 확정·handoff 뒤 재생 끝, call.end, 오류 중 하나
     await session.close()       # STT 닫기, 지연 기록 쓰기, 남은 송신 비우기
 
-작업은 셋이다.
+작업은 넷이다.
 - 송신 작업 1개: 나가는 이벤트·오디오를 큐에서 꺼내 `Outbound`로 보낸다
 - 턴 작업 1개: 준비(엔진 생성·STT 연결) → 인사(턴 0) → 턴을 하나씩.
   엔진은 `asyncio.to_thread`로 부른다
+- STT 쓰기 작업 1개: `feed_audio`가 쌓은 프레임을 STT에 쓴다(리뷰 1번). 쓰기가 밀리면
+  쌓인 프레임을 `epFlag` 프레임까지 이어 붙여 DATA 하나로 보낸다. 바이트를 버리지 않으므로
+  STT 시각과 무음 감지 시각이 그대로 맞는다. `stt_backlog_ms`(3초)만큼 밀리면 `stt_backlog`로 끝낸다
 - STT 읽기 작업 1개: 결과를 받아 조각을 합치고, 말 끝이면 턴을 넘긴다
 
 턴 번호: 인사가 0, 손님 말 하나(합친 것)마다 1씩 는다. 나가는 메시지 모두에 `turn`이 있다.
@@ -40,6 +44,7 @@ from typing import Any, Literal
 
 from agenthan.core.contracts import Order, OrderSink, StoreKnowledge
 from agenthan.voice.call.frames import (
+    BYTES_PER_MS,
     CHUNK_BYTES,
     SAMPLE_RATE,
     AudioFrame,
@@ -69,6 +74,8 @@ class SessionSettings:
     tts_concurrency: int = 2
     sentence_limit: int = TTS_LIMIT
     chunk_bytes: int = CHUNK_BYTES  # 내리는 오디오 조각 ≈ 200ms
+    stt_backlog_ms: int = 3_000  # STT 쓰기가 이만큼 밀리면 통화를 끝낸다 (stt_backlog)
+    stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
 
 
 def make_nlu(choice: NluChoice) -> Nlu:
@@ -154,6 +161,8 @@ class CallSession:
             asyncio.Queue()
         )
         self._turns: asyncio.Queue[tuple[int, _Utterance]] = asyncio.Queue()
+        self._stt_q: asyncio.Queue[tuple[bytes, bool, int]] = asyncio.Queue()
+        self._stt_backlog = 0  # 큐에 있거나 쓰는 중인 바이트
         self._done = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
         self._writer: asyncio.Task[None] | None = None
@@ -202,10 +211,27 @@ class CallSession:
                 self._vad.end_speech()
             self._commit = False
             self._ep_at = now
+        self._stt_q.put_nowait((pcm, ep, self._turn + 1))
+        self._stt_backlog += len(pcm)
+        backlog_ms = self._stt_backlog // BYTES_PER_MS
+        record = self._log.get(self._turn)
+        if record is not None and backlog_ms > record.fields.get("stt_backlog_max", 0):
+            record.fields["stt_backlog_max"] = backlog_ms
+        if backlog_ms >= self._settings.stt_backlog_ms:
+            self._fail(PortError("회선이 느려 통화를 이어 갈 수 없어요. 잠시 후 다시 걸어 주세요.",
+                                 code="stt_backlog", retry=True), "stt")
+            return
+        await asyncio.sleep(0)  # 쓰기 작업에 차례를 준다. STT를 기다리지는 않는다
+
+    async def drain_audio(self) -> None:
+        """받은 오디오를 STT에 다 쓸 때까지(또는 통화가 끝날 때까지) 기다린다. 테스트용."""
+        joined = asyncio.ensure_future(self._stt_q.join())
+        ended = asyncio.ensure_future(self._done.wait())
         try:
-            await self._stt.write(pcm, ep_flag=ep, seq_id=self._turn + 1)
-        except Exception as err:
-            self._fail(err, "stt")
+            await asyncio.wait({joined, ended}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            joined.cancel()
+            ended.cancel()
 
     async def feed_event(self, event: dict[str, Any]) -> None:
         """올라온 JSON 이벤트 하나 (dict로 푼 것)."""
@@ -297,9 +323,34 @@ class CallSession:
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
+        self._spawn(self._write_stt(), "stt-write")
         self._ready = True
         self._emit({"type": "call.ready", "turn": 0, "call": self.call_id,
                     "sample_rate": SAMPLE_RATE})
+
+    async def _write_stt(self) -> None:
+        """STT 쓰기 주체는 이 작업 하나다. `close()`가 이 작업을 취소한 뒤 STT를 닫는다."""
+        batch_limit = self._settings.stt_batch_ms * BYTES_PER_MS
+        while True:
+            pcm, ep, seq = await self._stt_q.get()
+            parts, taken = [pcm], 1
+            size = len(pcm)
+            while not ep and size < batch_limit and not self._stt_q.empty():
+                pcm, ep, seq = self._stt_q.get_nowait()  # epFlag 프레임에서 멈춘다
+                parts.append(pcm)
+                taken += 1
+                size += len(pcm)
+            try:
+                await self._stt.write(b"".join(parts), ep_flag=ep, seq_id=seq)
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:
+                self._fail(err, "stt")
+                return
+            finally:
+                self._stt_backlog -= size
+                for _ in range(taken):
+                    self._stt_q.task_done()
 
     async def _read_stt(self) -> None:
         try:
