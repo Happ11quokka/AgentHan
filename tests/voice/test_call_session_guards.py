@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from call_harness import Call
 
@@ -162,3 +164,49 @@ def test_a_call_longer_than_the_limit_ends_with_an_error(tmp_path) -> None:
 
     error = run(call())
     assert (error["code"], error["retry"]) == ("call_too_long", True)
+
+
+# ---------------------------------------------------------------- 17·09: 엔진 전용 스레드 풀
+
+
+class _ThreadNames:
+    """엔진이 부르는 동기 코드(가게 지식·NLU)가 어느 스레드에서 돌았는지 적는다."""
+
+    def __init__(self) -> None:
+        self.names: list[str] = []
+
+    def mark(self) -> None:
+        self.names.append(threading.current_thread().name)
+
+
+def test_engine_work_runs_on_the_executor_the_caller_gives(tmp_path) -> None:
+    from agenthan.core.fakes import FakeStoreKnowledge
+    from agenthan.voice.nlu.fake import FakeNlu
+
+    seen = _ThreadNames()
+
+    class Store(FakeStoreKnowledge):
+        def list_menu(self):
+            seen.mark()  # 엔진 생성
+            return super().list_menu()
+
+    class Nlu(FakeNlu):
+        def parse(self, text, ctx):
+            seen.mark()  # 손님 말 한 턴
+            return super().parse(text, ctx)
+
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="test-engine")
+
+    async def call() -> None:
+        stt = FakeSttStream(replies=["메도빅 하나요"])
+        async with Call(tmp_path, stt=stt, nlu=Nlu(), store_factory=Store.from_fixture,
+                        executor=pool) as c:
+            await c.start()
+            await c.turn(1)
+
+    try:
+        run(call())
+    finally:
+        pool.shutdown()
+    assert len(seen.names) >= 2
+    assert all(name.startswith("test-engine") for name in seen.names), seen.names

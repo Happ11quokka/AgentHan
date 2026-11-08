@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import struct
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -22,7 +23,7 @@ from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
-from agenthan.voice.ws import WS_PATH, phone_router
+from agenthan.voice.ws import ENGINE_THREAD_PREFIX, WS_PATH, phone_router
 
 ORDER_SCRIPT = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
 NOW = datetime.fromisoformat("2026-11-08T16:00:00+09:00")
@@ -38,11 +39,13 @@ def _settings(tmp_path, **kw: Any) -> VoiceSettings:
     return VoiceSettings(**(base | kw))
 
 
-def _app(tmp_path, *, sink=None, stt_factory=None, tts_factory=None, **kw: Any) -> FastAPI:
+def _app(
+    tmp_path, *, sink=None, store=None, stt_factory=None, tts_factory=None, **kw: Any
+) -> FastAPI:
     app = FastAPI()
     app.include_router(
         phone_router(
-            store=FakeStoreKnowledge.from_fixture(),
+            store=store if store is not None else FakeStoreKnowledge.from_fixture(),
             config=StoreConfig.from_fixture(),
             order_sink=sink if sink is not None else MemoryOrderSink(),
             settings=_settings(tmp_path, **kw),
@@ -286,3 +289,22 @@ def test_vad_settings_reach_the_call_session(tmp_path, threshold, ep_flags) -> N
         assert phone.closed_by_server()
     (stt,) = streams
     assert sum(w.ep_flag for w in stt.writes) == ep_flags
+
+
+def test_the_engine_runs_on_the_router_s_own_thread_pool(tmp_path) -> None:
+    """루프 기본 풀(2 vCPU에서 6개, DNS 조회와 같이 씀)이 아니라 라우터 전용 풀 (티켓 09)."""
+    threads: list[str] = []
+
+    class Store(FakeStoreKnowledge):
+        def list_menu(self):  # 통화를 시작할 때 엔진이 부른다
+            threads.append(threading.current_thread().name)
+            return super().list_menu()
+
+    client = TestClient(_app(tmp_path, store=Store.from_fixture()))
+    for _ in range(2):
+        with client.websocket_connect(WS_PATH) as ws:
+            phone = Phone(ws)
+            phone.send(type="call.start", turn=0)
+            phone.until("call.ready", 0)
+    assert len(threads) == 2
+    assert all(name.startswith(ENGINE_THREAD_PREFIX) for name in threads), threads

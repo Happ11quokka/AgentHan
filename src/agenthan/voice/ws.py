@@ -8,6 +8,9 @@
   소켓을 닫는다
 - 동시 통화가 `max_calls`를 넘으면 세션 없이 `error{code: "busy"}`를 보내고 닫는다 (리뷰 17번).
   통화 길이(`max_call_s`)와 `call.start` 대기(10초)는 세션이 지킨다
+- 엔진(NLU 만들기·엔진 생성·턴)은 라우터 하나가 가진 전용 스레드 풀에서 돈다 (티켓 09).
+  루프 기본 풀은 2 vCPU에서 6개뿐이고 DNS 조회(`getaddrinfo`) 등과 같이 쓴다. 시간을 넘긴
+  엔진 스레드는 취소되지 않고 남으므로 통화당 2개(`ENGINE_THREADS_PER_CALL`)를 잡는다
 
 가게 지식·설정·`OrderSink`는 만드는 쪽이 넣는다. 여기에는 가짜 기본값이 없다.
 """
@@ -17,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import Any
 
@@ -34,6 +38,8 @@ from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
 
 WS_PATH = "/api/phone/ws"
+ENGINE_THREADS_PER_CALL = 2  # 지금 도는 턴 1 + 시간을 넘겨 아직 남은 스레드 1
+ENGINE_THREAD_PREFIX = "phone-engine"
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +73,10 @@ def phone_router(
     make_stt = stt_factory or adapters.stt_factory(settings)
     make_tts = tts_factory or adapters.tts_factory(settings)
     config = replace(config, tz=settings.tz)
+    engine_pool = ThreadPoolExecutor(
+        max_workers=settings.max_calls * ENGINE_THREADS_PER_CALL,
+        thread_name_prefix=ENGINE_THREAD_PREFIX,
+    )
     router = APIRouter()
     active = 0  # 지금 열린 통화 수 (이벤트 루프 하나라 잠금이 필요 없다)
 
@@ -105,6 +115,7 @@ def phone_router(
             order_sink=order_sink,
             log_dir=settings.log_dir,
             settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s),
+            executor=engine_pool,
         )
         await session.open()
         reader = asyncio.create_task(_read(ws, session))

@@ -9,6 +9,7 @@ import asyncio
 import math
 import struct
 from collections.abc import Callable
+from concurrent.futures import Executor
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,7 @@ class Call:
         clock: FakeClock | None = None,
         settings: SessionSettings | None = None,
         store_factory: Callable[[], Any] = FakeStoreKnowledge.from_fixture,
+        executor: Executor | None = None,
     ) -> None:
         self.out = RecordingOutbound()
         self.sink = MemoryOrderSink()
@@ -109,6 +111,7 @@ class Call:
             log_dir=self.log_dir,
             call_id="test-call",
             settings=settings or SessionSettings(),
+            executor=executor,
         )
 
     async def __aenter__(self) -> Call:

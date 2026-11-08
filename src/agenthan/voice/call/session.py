@@ -14,7 +14,8 @@
 작업은 넷이다.
 - 송신 작업 1개: 나가는 이벤트·오디오를 큐에서 꺼내 `Outbound`로 보낸다
 - 턴 작업 1개: 준비(엔진 생성·STT 연결) → 인사(턴 0) → 턴을 하나씩.
-  엔진은 `asyncio.to_thread`로 부른다
+  엔진은 스레드에서 부른다. 만드는 쪽이 `executor`(엔진 전용 풀)를 주면 거기서, 아니면
+  이벤트 루프 기본 풀에서 (`asyncio.to_thread`와 같은 곳)
 - STT 쓰기 작업 1개: `feed_audio`가 쌓은 프레임을 STT에 쓴다(리뷰 1번). 쓰기가 밀리면
   쌓인 프레임을 `epFlag` 프레임까지 이어 붙여 DATA 하나로 보낸다. 바이트를 버리지 않으므로
   STT 시각과 무음 감지 시각이 그대로 맞는다. `stt_backlog_ms`(3초)만큼 밀리면 `stt_backlog`로 끝낸다
@@ -40,9 +41,11 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import uuid
 from collections.abc import Callable
+from concurrent.futures import Executor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -167,6 +170,7 @@ class CallSession:
         log_dir: Path | None = Path("logs"),
         call_id: str | None = None,
         settings: SessionSettings | None = None,
+        executor: Executor | None = None,
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
@@ -178,6 +182,7 @@ class CallSession:
         self._outbound = outbound
         self._sink = order_sink
         self._settings = settings or SessionSettings()
+        self._executor = executor  # None이면 루프 기본 풀
         self._log = LatencyLog(log_dir, self.call_id, clock)
         self._vad = SilenceDetector(self._settings.vad)
 
@@ -366,9 +371,9 @@ class CallSession:
     async def _setup(self) -> None:
         nlu = self._nlu
         if isinstance(nlu, str):
-            nlu = await asyncio.to_thread(make_nlu, nlu)  # hcx는 .env를 읽는다
+            nlu = await self._in_thread(make_nlu, nlu)  # hcx는 .env를 읽는다
         # list_menu()가 동기라 엔진 생성도 스레드에서 (verify-web D5 조건 2)
-        self._engine = await asyncio.to_thread(
+        self._engine = await self._in_thread(
             DialogEngine, self._store, nlu, self._config, order_id=self.call_id
         )
         await self._stt.start()
@@ -556,8 +561,13 @@ class CallSession:
                 delay, self._on_play_timeout, turn
             )
 
+    def _in_thread(self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> asyncio.Future[Any]:
+        """동기 함수를 엔진 풀(없으면 루프 기본 풀)의 스레드에서 돌린다."""
+        loop = asyncio.get_running_loop()
+        return loop.run_in_executor(self._executor, functools.partial(fn, *args, **kwargs))
+
     async def _call_engine(self, fn: Callable[[], TurnResult]) -> TurnResult:
-        task = asyncio.ensure_future(asyncio.to_thread(fn))
+        task = self._in_thread(fn)
         done, _ = await asyncio.wait({task}, timeout=self._settings.turn_timeout_s)
         if not done:
             task.add_done_callback(_retrieve)  # 나중에 예외로 끝나도 경고가 남지 않게 (리뷰 16번)
