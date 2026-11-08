@@ -41,3 +41,13 @@
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
 - 테스트: `tests/voice/test_call_session*.py`, 도구는 `tests/voice/call_harness.py`
+
+### STT 어댑터 (`stt/`)
+
+- `stt/clova.py`의 `ClovaSttStream(ClovaSttSettings(...))`: `SttStream` 포트를 CLOVA Speech 스트리밍 gRPC(`grpc.aio`)로 구현. 키는 설정으로 받는다(`ClovaSttSettings.from_env(사전)`이 `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`를 읽음). 모듈이 `.env`를 직접 읽지는 않는다
+  - CONFIG: 한국어 + `semanticEpd`(`gapThreshold=700`, `durationThreshold=10000`). `durationThreshold`를 빼면 400ms 조각으로 쪼개진다
+  - 오류: `stt_auth`(재시도 X), `stt_config`(재시도 X), `stt_disconnected`, `stt_busy`(15개 초과), `stt_timeout`
+  - 연결 4분 30초가 지난 뒤 `epFlag` 프레임을 쓰면 그 뒤 새 연결로 바꾼다(4분 45초까지 `epFlag`가 없으면 그냥 바꿈). 결과 시각은 통화 하나에 이어진다
+- `nest.proto`는 공식 문서 본문 그대로. 생성 코드(`nest_pb2*.py`)는 커밋돼 있다. 바꿨으면 `uv run python src/agenthan/voice/stt/gen_proto.py`
+- 테스트: `tests/voice/test_stt_clova.py`(로컬 가짜 `NestService` `tests/voice/fake_nest.py`, 오프라인)
+- 실측(키 필요): `AGENTHAN_LIVE_CLOVA=1 uv run pytest -m live_clova -s tests/voice/test_stt_clova_live.py`. 이 맥에서 gRPC DNS가 실패하면 `GRPC_DNS_RESOLVER=native`를 앞에 붙인다
