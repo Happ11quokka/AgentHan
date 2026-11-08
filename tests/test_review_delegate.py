@@ -83,12 +83,12 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     review = lambda _: mock_index["review_reply"]  # noqa: E731
     assistant = owner.OwnerAssistant(path, chat=NoChat(), embed=review, review_session=factory(hcx))
     out = assistant.ask("답글 안 단 리뷰 있어?")
-    assert out.startswith("답글 안 단 리뷰는 3건")  # seed: review-1..3 have no reply
+    assert out.startswith("답글 안 단 리뷰는 2건")  # seed: r02 and r03 have no reply
     assert "**답글 안 단 리뷰**" in out and assistant.pending_feature is None
     out = assistant.ask("안 좋은 리뷰에 답글 써줘")
     assert out.startswith("초안을 만들었어요") and "**답글 초안**" in out
     assert assistant.pending_feature == "review_reply"  # waiting for confirm/edit
-    assert next(iter(assistant.review.toolbox.drafts)) == "review-3"  # the late-food review
+    assert next(iter(assistant.review.toolbox.drafts)) == "r03"  # the portion-size review
     # Follow-ups without a feature keyword stay in the review flow.
     other = lambda _: [0.0] * 1023 + [1.0]  # noqa: E731
     assistant.embed = other
@@ -96,7 +96,7 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     assert not path.exists()  # nothing saved before confirmation
     out = assistant.ask("이대로 올려줘")
     assert out.startswith("답글 1건을 등록했어요") and assistant.pending_feature is None
-    saved = next(r for r in json.loads(path.read_text())["reviews"] if r["review_id"] == "review-3")
+    saved = next(r for r in json.loads(path.read_text())["reviews"] if r["review_id"] == "r03")
     assert saved["has_owner_reply"] is True
     assert saved["owner_reply"]["status"] == "saved_not_sent"
     assert saved["owner_reply"]["reply"].endswith("더 빨리 준비하겠습니다.")
@@ -107,7 +107,7 @@ def test_handle_splits_answer_and_blocks(tmp_path):
     store = DummyStore(tmp_path / "store.json")
     session = factory(SilentHCX())(store, owner_lang="en")
     out = review_delegate.handle("Are there reviews I haven't replied to?", session)
-    assert out["text"].startswith("There are 3 reviews without a reply")
+    assert out["text"].startswith("There are 2 reviews without a reply")
     assert out["blocks"].startswith("**Reviews without a reply**")
     assert session.messages[0]["role"] == "system" and "English" in session.messages[0]["content"]
 
@@ -115,13 +115,13 @@ def test_handle_splits_answer_and_blocks(tmp_path):
 def test_adapters_share_store_data(tmp_path):
     store = DummyStore(tmp_path / "store.json")
     rows = DummyStoreReviewRepo(store).get_reviews("dummy-shop", None, TODAY)
-    assert [r["review_id"] for r in rows][:3] == ["review-1", "review-2", "review-3"]
-    assert rows[0]["store"] == "가상 연습 가게" and rows[0]["category"] == "카페"
+    assert [r["review_id"] for r in rows][:3] == ["r03", "r02", "r01"]
+    assert rows[0]["store"] == "샘플 러시안 베이커리" and rows[0]["category"] == "베이커리·카페"
     assert (
         DummyStoreReviewRepo(store).get_reviews("dummy-shop", date(2026, 11, 4), TODAY)[0][
             "review_id"
         ]
-        == "review-1"
+        == "r03"
     )
     # A menu registered through upsert_menu is matched in review questions right away.
     store.upsert_menu("유자 에이드", 5500)

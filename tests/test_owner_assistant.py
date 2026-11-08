@@ -149,19 +149,19 @@ def test_update_existing_menu_rereads_price(tmp_path, mock_index):
     path.write_bytes(seed_before)
     before = read_file(path)
     fake = FakeChat(
-        call("upsert_menu", {"name": "  연습   라떼  ", "price": 4500}),
+        call("upsert_menu", {"name": "  메도빅  ", "price": 8000}),
         answer("가격을 수정했어요."),
     )
     assistant = owner.OwnerAssistant(path, chat=fake, embed=feature_embed(mock_index, "menu"))
-    result = assistant.ask("연습 라떼 메뉴 가격을 4500원으로 수정")
+    result = assistant.ask("메도빅 메뉴 가격을 8000원으로 수정")
     after = read_file(path)
     tool = tool_results(fake.requests[1])[-1]
     assert tool["action"] == "updated"
-    assert tool["previous_price"] == before["menus"][0]["price"] == 4000
+    assert tool["previous_price"] == before["menus"][0]["price"] == 7500
     assert tool["record"] == after["menus"][0]
-    assert after["menus"][0]["price"] == 4500
+    assert after["menus"][0]["price"] == 8000
     assert len(before["menus"]) == len(after["menus"])
-    assert "4000" in result and "4500" in result
+    assert "7500" in result and "8000" in result
     assert SEED_PATH.read_bytes() == seed_before
 
 
@@ -171,7 +171,7 @@ def test_normalized_name_is_upserted(tmp_path):
     result = store.upsert_menu("test 차", 2000)
     assert result["action"] == "updated"
     assert result["previous_price"] == 1000
-    assert len(store.read()["menus"]) == 3
+    assert len(store.read()["menus"]) == 5
 
 
 def keyword_only(_):
