@@ -4,7 +4,16 @@
 // 순서(verify-web D10·D12): "전화 받기" 탭 핸들러 안에서 AudioContext를 먼저 만들고
 // (재생 잠금 해제), 그다음 getUserMedia를 기다린다.
 
-import { type CallAction, type CallState, type MicFailure, type ServerEvent, callReducer, initialCallState, micLive } from './callState.ts'
+import {
+  type CallAction,
+  type CallState,
+  type MicFailure,
+  SLOW_LINK_BYTES,
+  type ServerEvent,
+  callReducer,
+  initialCallState,
+  micLive,
+} from './callState.ts'
 import captureWorkletUrl from './capture.worklet.ts?worker&url'
 import { parseAudioFrame } from './frames.ts'
 import { CAPTURE_PROCESSOR, FRAME_SAMPLES, WIRE_RATE } from './pcm.ts'
@@ -66,7 +75,6 @@ export class PhoneCall {
     }
     // 제스처 안에서 만들어야 재생이 막히지 않는다.
     const ctx = makeContext(WIRE_RATE)
-    void ctx.resume().catch(() => {})
     this.useContext(ctx)
     void this.requestWakeLock()
     void this.connect(gen)
@@ -76,6 +84,8 @@ export class PhoneCall {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.send({ type: 'call.end', turn: this.state.turn })
     }
+    // 권한 창·워클릿 로드를 기다리던 connect()가 끊은 뒤에 이어 가지 않게 (리뷰 9번)
+    this.generation++
     this.dispatch({ type: 'hangup' })
     this.teardown()
   }
@@ -86,9 +96,8 @@ export class PhoneCall {
 
   /** AudioContext가 suspended·interrupted일 때 화면의 "소리 다시 켜기" 버튼. */
   resumeAudio(): void {
-    void this.ctx?.resume().catch(() => {
-      // interrupted 중에는 reject된다. statechange로 running이 오면 버튼이 사라진다.
-    })
+    const ctx = this.ctx
+    if (ctx) this.resumeAndReport(ctx)
   }
 
   /** 화면이 붙을 때(useEffect). */
@@ -124,6 +133,7 @@ export class PhoneCall {
       const capture = await this.startCapture(stream)
       if (gen !== this.generation) return
       const settings = { ...stream.getAudioTracks()[0]?.getSettings() } as Record<string, unknown>
+      if (!this.ctx) return
       // 화면에는 컨텍스트 레이트·캡처 방식도 보인다(실기에서 16000인지 확인, D10).
       this.dispatch({
         type: 'mic.ready',
@@ -149,12 +159,13 @@ export class PhoneCall {
       if (!(err instanceof DOMException && err.name === 'NotSupportedError')) throw err
       void ctx.close()
       ctx = makeContext()
-      void ctx.resume().catch(() => {})
-      this.useContext(ctx)
+      this.useContext(ctx) // 제스처 밖이라 suspended로 남으면 다시 켜기 버튼이 뜬다
+
       source = ctx.createMediaStreamSource(stream)
       mode = 'downsample'
     }
     await ctx.audioWorklet.addModule(captureWorkletUrl)
+    if (this.ctx !== ctx) throw new Error('통화가 끝났다') // 기다리는 동안 끊었다
     const node = new AudioWorkletNode(ctx, CAPTURE_PROCESSOR, {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -269,6 +280,8 @@ export class PhoneCall {
     if (this.ws?.readyState !== WebSocket.OPEN || this.state.status !== 'live') return
     // 봇이 말하는 동안에도 같은 속도로 보낸다(CLOVA "계속 보내기"). 내용만 0.
     this.ws.send(micLive(this.state) ? frame : SILENT_FRAME)
+    // 회선이 느려 쌓이면 안내만 한다. 프레임을 버리면 서버의 STT 시각이 틀어진다(리뷰 1번)
+    this.dispatch({ type: 'link.slow', slow: this.ws.bufferedAmount > SLOW_LINK_BYTES })
   }
 
   private send(event: Record<string, unknown>): void {
@@ -288,6 +301,16 @@ export class PhoneCall {
     ctx.onstatechange = () => {
       if (this.ctx === ctx) this.dispatch({ type: 'audio.state', state: ctx.state })
     }
+    // 처음부터 suspended로 남으면 statechange가 오지 않는다. 지금 상태를 한 번 알린다(리뷰 4번)
+    this.resumeAndReport(ctx)
+  }
+
+  private resumeAndReport(ctx: AudioContext): void {
+    const report = () => {
+      if (this.ctx === ctx) this.dispatch({ type: 'audio.state', state: ctx.state })
+    }
+    // interrupted 중에는 reject된다. 그래도 지금 상태로 버튼을 맞춘다.
+    void ctx.resume().then(report, report)
   }
 
   private async requestWakeLock(): Promise<void> {
@@ -304,6 +327,10 @@ export class PhoneCall {
     const s = this.state.status
     if (document.visibilityState === 'visible' && (s === 'starting' || s === 'live')) {
       if (!this.wakeLock || this.wakeLock.released) void this.requestWakeLock()
+      // 다른 앱에 다녀오면 소리가 멈춰 있을 수 있다. 멈췄으면 다시 켜기 버튼을 띄운다
+      if (this.ctx && this.ctx.state !== 'running') {
+        this.dispatch({ type: 'audio.state', state: this.ctx.state })
+      }
     }
   }
 

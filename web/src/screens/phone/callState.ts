@@ -55,7 +55,12 @@ export interface CallState {
   error: { message: string; retry: boolean } | null
   /** AudioContext가 suspended·interrupted라 탭으로 다시 켜야 함 */
   audioBlocked: boolean
+  /** 올려 보낼 소리가 소켓에 많이 쌓였다(회선이 느림). 프레임은 버리지 않고 안내만 한다 */
+  slowLink: boolean
 }
+
+/** 소켓에 이만큼(약 2초 분량) 쌓이면 "회선이 느려요" 안내 (리뷰 1번). 100ms 프레임은 3,200바이트 */
+export const SLOW_LINK_BYTES = 64 * 1024
 
 export type MicFailure = 'denied' | 'no-device' | 'insecure' | 'other'
 
@@ -66,6 +71,7 @@ export type CallAction =
   | { type: 'server'; event: ServerEvent }
   | { type: 'playback.finished'; turn: number }
   | { type: 'audio.state'; state: string }
+  | { type: 'link.slow'; slow: boolean }
   | { type: 'socket.closed' }
   | { type: 'hangup' }
 
@@ -81,6 +87,7 @@ export const initialCallState: CallState = {
   mic: null,
   error: null,
   audioBlocked: false,
+  slowLink: false,
 }
 
 const MIC_MESSAGES: Record<MicFailure, string> = {
@@ -104,8 +111,12 @@ export function callReducer(state: CallState, action: CallAction): CallState {
       return onServer(state, action.event)
     case 'playback.finished':
       return action.turn === state.turn ? { ...state, botTalking: false } : state
-    case 'audio.state':
-      return { ...state, audioBlocked: action.state === 'suspended' || action.state === 'interrupted' }
+    case 'audio.state': {
+      const audioBlocked = action.state === 'suspended' || action.state === 'interrupted'
+      return audioBlocked === state.audioBlocked ? state : { ...state, audioBlocked }
+    }
+    case 'link.slow':
+      return action.slow === state.slowLink ? state : { ...state, slowLink: action.slow }
     case 'socket.closed':
       if (state.status === 'live') return { ...state, status: 'ended', botTalking: false }
       if (state.status === 'starting') {

@@ -50,6 +50,14 @@
   margin: 0;
 }
 
+.phone-warn {
+  margin: 0;
+  border: 1px dashed var(--phone-danger);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 0.9em;
+}
+
 .phone-captions {
   flex: 1;
   display: flex;

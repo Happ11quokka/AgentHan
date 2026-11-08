@@ -58,6 +58,12 @@ export default function PhonePage() {
         </button>
       )}
 
+      {state.slowLink && inCall && (
+        <p className="phone-warn" role="status">
+          회선이 느려요. 와이파이나 신호가 좋은 곳으로 옮겨 주세요.
+        </p>
+      )}
+
       {state.error && (
         <div className="phone-error" role="alert">
           <p>{state.error.message}</p>
