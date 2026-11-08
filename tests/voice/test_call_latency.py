@@ -233,3 +233,57 @@ def test_a_quick_answer_sends_no_bot_thinking(tmp_path) -> None:
 
     c = run(call())
     assert c.out.of("bot.thinking") == []
+
+
+# ------------------------------------------------------ 봇이 먼저 말하는 턴 (04·05가 쓴다)
+
+
+def _greet_again(engine, now):
+    return engine.start(now)
+
+
+def test_a_bot_initiated_turn_gets_a_new_turn_number_and_the_next_guest_turn_follows(
+    tmp_path,
+) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요"])
+
+    async def call() -> tuple[Call, int | None]:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            turn = c.session.bot_turn("test", _greet_again)
+            await c.out.wait_for("bot.done", turn=1)
+            # 지난 턴(0)의 늦은 재생 끝 보고로 듣기에 돌아가지 않는다
+            await c.session.feed_event({"type": "playback.done", "turn": 0, "seq": 1})
+            assert c.out.of("state")[-1]["phase"] == "speaking"
+            await c.played(1)
+            await c.say()
+            await c.out.wait_for("bot.done", turn=2)
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+        return c, turn
+
+    c, turn = run(call())
+    assert turn == 1
+    assert [e["text"] for e in c.out.of("bot.say", 1)][0] == GREETING
+    assert {f.turn for f in c.out.frames} == {0, 1, 2}
+    assert [(e["turn"], e["text"]) for e in c.out.of("stt.final")] == [(2, "메도빅 하나요")]
+    (metrics,) = c.out.of("metrics", 1)
+    assert metrics["bot_turn"] == "test"
+    assert "speech_end" not in metrics["marks"]
+
+
+def test_a_bot_initiated_turn_is_refused_unless_the_call_is_listening(tmp_path) -> None:
+    tts = slow_after_greeting(0.3)
+    stt = FakeSttStream(replies=["메도빅 하나요"])
+
+    async def call() -> tuple[Call, int | None]:
+        async with Call(tmp_path, stt=stt, tts=tts) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=1)
+            refused = c.session.bot_turn("test", _greet_again)  # 손님 턴을 처리하는 중
+            await c.out.wait_for("bot.done", turn=1)
+        return c, refused
+
+    c, refused = run(call())
+    assert refused is None
+    assert c.out.of("bot.done", 2) == []

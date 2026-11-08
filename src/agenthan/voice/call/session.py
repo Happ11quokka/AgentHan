@@ -54,6 +54,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import Executor
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -169,6 +170,14 @@ class _Utterance:
         )
 
 
+@dataclass(frozen=True)
+class _BotTurn:
+    """봇이 먼저 말하는 턴 (무음 되묻기·기다림 요청 응답 등, 3단계 티켓 04·05가 쓴다)."""
+
+    reason: str  # 턴 기록 `bot_turn`에 남는다
+    act: Callable[[DialogEngine, datetime], TurnResult]  # 엔진 스레드에서 부른다
+
+
 class _EngineTimeout(Exception):
     pass
 
@@ -207,7 +216,7 @@ class CallSession:
         self._out: asyncio.Queue[tuple[str, Any, Callable[[], None] | None] | None] = (
             asyncio.Queue()
         )
-        self._turns: asyncio.Queue[tuple[int, _Utterance]] = asyncio.Queue()
+        self._turns: asyncio.Queue[tuple[int, _Utterance | _BotTurn]] = asyncio.Queue()
         self._stt_q: asyncio.Queue[tuple[bytes, bool, int]] = asyncio.Queue()
         self._stt_backlog = 0  # 큐에 있거나 쓰는 중인 바이트
         self._done = asyncio.Event()
@@ -282,6 +291,27 @@ class CallSession:
                                           "잠시 후 다시 걸어 주세요."), "stt")
             return
         await asyncio.sleep(0)  # 쓰기 작업에 차례를 준다. STT를 기다리지는 않는다
+
+    def bot_turn(
+        self, reason: str, act: Callable[[DialogEngine, datetime], TurnResult]
+    ) -> int | None:
+        """봇이 먼저 말하는 턴을 새 턴 번호로 연다. 듣는 중일 때만 받는다. 연 턴 번호를 돌려준다.
+
+        `act(engine, now)`가 엔진에서 할 말을 정한다(예: 무응답 진입점). 이 턴도 손님 턴처럼
+        국면·턴 번호·지난 오디오 버리기·반이중·재생 끝 처리를 그대로 탄다. 생각 중 효과음은 없다.
+        손님 말을 붙잡는 중(조각·말 끝 표시)이면 받지 않는다. 그 말이 먼저다
+        """
+        if (self.done or self._terminal or self._phase != "listening" or self._parts
+                or self._pending):
+            return None
+        self._turn += 1
+        turn = self._turn
+        self._phase = "thinking"
+        self._flush_log(before=turn)
+        self._log.begin(turn, text="", bot_turn=reason)
+        self._emit_state()
+        self._turns.put_nowait((turn, _BotTurn(reason, act)))
+        return turn
 
     async def drain_audio(self) -> None:
         """받은 오디오를 STT에 다 쓸 때까지(또는 통화가 끝날 때까지) 기다린다. 테스트용."""
@@ -628,7 +658,7 @@ class CallSession:
 
     # ------------------------------------------------------------ 한 턴
 
-    async def _run_turn(self, turn: int, u: _Utterance | None) -> None:
+    async def _run_turn(self, turn: int, u: _Utterance | _BotTurn | None) -> None:
         engine = self._engine
         assert engine is not None
         if u is None:  # 인사 턴. 마이크 실제 설정값(`call.start`)을 이 줄의 client에 남긴다
@@ -638,8 +668,12 @@ class CallSession:
         self._log.mark(turn, "engine_start")
         if u is None:
             result = await self._call_engine(lambda: engine.start(now))
+        elif isinstance(u, _BotTurn):
+            act = u.act
+            result = await self._call_engine(lambda: act(engine, now))
         else:
-            result = await self._call_engine(lambda: engine.handle(u.text, now))
+            text = u.text
+            result = await self._call_engine(lambda: engine.handle(text, now))
         self._log.mark(turn, "engine_end")
         self._last = result
         if result.state in TERMINAL:
