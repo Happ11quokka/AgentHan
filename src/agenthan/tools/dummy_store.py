@@ -140,9 +140,23 @@ class DummyStore:
                 temporary.unlink()
         raise DummyStoreError("더미 저장소에 저장할 수 없습니다.")
 
-    def upsert_menu(self, name: str, price: int) -> dict:
+    def upsert_menu(
+        self,
+        name: str,
+        price: int,
+        *,
+        description: str | None = None,
+        name_native: str | None = None,
+    ) -> dict:
+        """같은 이름이면 가격을 고치고, 없으면 등록한다. description·name_native는 줄 때만 저장
+        (메뉴 사진 등록 A-1)."""
         if not isinstance(name, str) or not normalize(name) or not valid_price(price):
             raise DummyStoreError("메뉴 이름과 양의 정수 가격(원)이 필요합니다.")
+        extra = {
+            k: " ".join(v.split())
+            for k, v in (("description", description), ("name_native", name_native))
+            if isinstance(v, str) and v.strip()
+        }
         data = self.read()
         record = next((m for m in data["menus"] if normalize(m["name"]) == normalize(name)), None)
         previous_price = None
@@ -159,6 +173,7 @@ class DummyStore:
             action = "updated"
             previous_price = record["price"]
             record["price"] = price
+        record.update(extra)
         self._write(data)
         saved = next(m for m in self.read()["menus"] if m["id"] == record["id"])
         result = {"ok": True, "action": action, "record": saved}
