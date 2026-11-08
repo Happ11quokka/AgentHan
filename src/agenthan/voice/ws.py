@@ -27,7 +27,7 @@ from agenthan.voice import adapters
 from agenthan.voice.adapters import SttFactory, TtsFactory
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.call.ports import Clock, PortError, SystemClock, Tts
-from agenthan.voice.call.session import CallSession
+from agenthan.voice.call.session import CallSession, SessionSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
 
@@ -88,6 +88,7 @@ def phone_router(
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             log_dir=settings.log_dir,
+            settings=SessionSettings(vad=settings.vad),
         )
         await session.open()
         reader = asyncio.create_task(_read(ws, session))

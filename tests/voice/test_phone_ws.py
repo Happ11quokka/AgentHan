@@ -7,16 +7,19 @@
 from __future__ import annotations
 
 import json
+import math
 import struct
 from datetime import datetime
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import PortError
+from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
 from agenthan.voice.ws import WS_PATH, phone_router
@@ -221,3 +224,33 @@ def test_call_end_from_the_phone_closes_the_socket(tmp_path) -> None:
         phone.until("call.ready", 0)
         phone.send(type="call.end", turn=0)
         assert phone.closed_by_server()
+
+
+def _quiet_talk(ms: int) -> list[bytes]:
+    """RMS 약 700의 작은 말소리 100ms 프레임들."""
+    one = struct.pack("<1600h", *(int(1_000 * math.sin(2 * math.pi * 300 * i / 16_000))
+                                  for i in range(1_600)))
+    return [one] * (ms // 100)
+
+
+@pytest.mark.parametrize(("threshold", "ep_flags"), [(500, 1), (2_000, 0)])
+def test_vad_settings_reach_the_call_session(tmp_path, threshold, ep_flags) -> None:
+    """`PHONE_VAD_*` → 세션 무음 감지기. 작은 말소리는 임계값이 높으면 말로 안 본다."""
+    streams: list[FakeSttStream] = []
+
+    def make_stt() -> FakeSttStream:
+        streams.append(FakeSttStream())
+        return streams[-1]
+
+    vad = VadSettings(threshold=threshold, start_ms=200, end_silence_ms=500)
+    client = TestClient(_app(tmp_path, stt_factory=make_stt, vad=vad))
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.until("call.ready", 0)
+        for frame in _quiet_talk(600) + [SILENT_FRAME] * 8:
+            ws.send_bytes(frame)
+        phone.send(type="call.end", turn=0)
+        assert phone.closed_by_server()
+    (stt,) = streams
+    assert sum(w.ep_flag for w in stt.writes) == ep_flags

@@ -12,6 +12,7 @@ from agenthan.voice import adapters
 from agenthan.voice.adapters import AdapterMissing, stt_factory, tts_factory
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import PortError
+from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import SettingsError, VoiceSettings
 
 
@@ -46,6 +47,13 @@ def test_env_file_is_read_and_real_environment_wins(tmp_path) -> None:
     assert s.env["CLOVA_VOICE_CLIENT_ID"] == "abc"
 
 
+def test_vad_values_come_from_the_environment_and_default_to_the_tuned_values() -> None:
+    assert VoiceSettings.from_env({}, env_file=None).vad == VadSettings()
+    s = VoiceSettings.from_env({"PHONE_VAD_THRESHOLD": "900", "PHONE_VAD_START_MS": "300",
+                                "PHONE_VAD_END_SILENCE_MS": "600"}, env_file=None)
+    assert s.vad == VadSettings(threshold=900.0, start_ms=300, end_silence_ms=600)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)
@@ -54,7 +62,8 @@ def test_keys_do_not_show_in_repr(tmp_path) -> None:
 @pytest.mark.parametrize(
     ("name", "value"),
     [("PHONE_STT", "google"), ("PHONE_TTS", "x"), ("PHONE_NLU", "gpt"),
-     ("PHONE_NOW", "2026-11-08T16:00:00"), ("PHONE_NOW", "내일"), ("PHONE_TZ", "Mars/Base")],
+     ("PHONE_NOW", "2026-11-08T16:00:00"), ("PHONE_NOW", "내일"), ("PHONE_TZ", "Mars/Base"),
+     ("PHONE_VAD_THRESHOLD", "크게"), ("PHONE_VAD_END_SILENCE_MS", "-1")],
 )
 def test_wrong_value_names_the_variable(name, value) -> None:
     with pytest.raises(SettingsError, match=name):

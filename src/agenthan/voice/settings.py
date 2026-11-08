@@ -11,6 +11,9 @@
 | `PHONE_FAKE_STT_REPLIES` | 가짜 STT가 `epFlag`마다 낼 손님 말. `\\|`로 나눈다 | 메도빅 주문 대본 |
 | `PHONE_STORE_FIXTURE` | 개발 서버가 읽는 더미 가게 JSON | `fixtures/sample_store.json` |
 | `PHONE_WEB_DIST` | 개발 서버가 같이 낼 React 빌드 폴더 (있을 때만) | `web/dist` |
+| `PHONE_VAD_THRESHOLD` | 무음 감지 RMS 임계값 (PCM16) | `VadSettings` 기본값 |
+| `PHONE_VAD_START_MS` | 말 시작으로 볼 말소리 길이(ms) | `VadSettings` 기본값 |
+| `PHONE_VAD_END_SILENCE_MS` | 말 끝으로 볼 무음 길이(ms) | `VadSettings` 기본값 |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -26,6 +29,7 @@ from pathlib import Path
 from typing import Literal, get_args
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.store_config import KST
 
 NluName = Literal["fake", "hcx"]
@@ -49,6 +53,7 @@ class VoiceSettings:
     fake_replies: tuple[str, ...] = DEFAULT_FAKE_REPLIES
     store_fixture: Path | None = None  # None이면 샘플 가게
     web_dist: Path = Path("web/dist")
+    vad: VadSettings = field(default_factory=VadSettings)
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -77,6 +82,16 @@ class VoiceSettings:
                 "PHONE_NOW는 ISO 8601이어야 해요. 예: 2026-11-08T16:00:00+09:00"
             ) from err
         log_dir = get("PHONE_LOG_DIR", "logs")
+        base = VadSettings()
+        vad = VadSettings(
+            threshold=_number("PHONE_VAD_THRESHOLD", get("PHONE_VAD_THRESHOLD", ""),
+                              base.threshold),
+            start_ms=int(_number("PHONE_VAD_START_MS", get("PHONE_VAD_START_MS", ""),
+                                 base.start_ms)),
+            end_silence_ms=int(_number("PHONE_VAD_END_SILENCE_MS",
+                                       get("PHONE_VAD_END_SILENCE_MS", ""),
+                                       base.end_silence_ms)),
+        )
         return cls(
             nlu=get("PHONE_NLU", "fake"),  # type: ignore[arg-type]  # __post_init__가 검사
             stt=get("PHONE_STT", "fake"),  # type: ignore[arg-type]
@@ -91,6 +106,7 @@ class VoiceSettings:
             ),
             store_fixture=Path(fixture) if (fixture := get("PHONE_STORE_FIXTURE", "")) else None,
             web_dist=Path(get("PHONE_WEB_DIST", "web/dist")),
+            vad=vad,
             env=env,
         )
 
@@ -113,6 +129,18 @@ def read_env_file(path: Path | None) -> dict[str, str]:
 def _check(name: str, value: str, allowed: tuple[str, ...]) -> None:
     if value not in allowed:
         raise SettingsError(f"{name}은(는) {' · '.join(allowed)} 중 하나여야 해요: {value!r}")
+
+
+def _number(name: str, value: str, default: float) -> float:
+    if not value:
+        return float(default)
+    try:
+        number = float(value)
+    except ValueError:
+        number = -1.0
+    if number < 0:
+        raise SettingsError(f"{name}는 0 이상의 숫자여야 해요: {value!r}")
+    return number
 
 
 def _zone(name: str) -> tzinfo:
