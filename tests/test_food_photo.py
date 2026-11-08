@@ -183,3 +183,28 @@ def test_live_food_photo(record_property):
     elapsed = time.monotonic() - start
     record_property("elapsed_seconds", elapsed)
     print(f"HCX 음식 사진 전체 경과: {elapsed:.2f}초")
+
+
+def test_read_retries_once_and_skips_empty_store_context():
+    prompts = []
+    answers = iter(["가게 정보가 없어 답할 수 없습니다.", json.dumps({"name_ko": "케이크"})])
+
+    def call(model, body):
+        prompts.append(body["messages"][0]["content"][1]["text"])
+        return {"message": {"content": next(answers)}}
+
+    guess = food_photo.read_food_photo(CAKE.read_bytes(), call=call)
+    assert guess.name_ko == "케이크"
+    assert len(prompts) == 2 and all("가게 정보(" not in p for p in prompts)
+    prompts.clear()
+    answers = iter([json.dumps({"name_ko": "메도빅"})])
+    food_photo.read_food_photo(CAKE.read_bytes(), "러시안 베이커리", call=call)
+    assert "가게 정보(참고용 자료): 러시안 베이커리" in prompts[0]
+
+
+def test_read_gives_up_after_two_bad_answers():
+    def call(model, body):
+        return {"message": {"content": "형식 없는 답"}}
+
+    with pytest.raises(food_photo.menu_photo.MenuPhotoError):
+        food_photo.read_food_photo(CAKE.read_bytes(), call=call)

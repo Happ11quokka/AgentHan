@@ -54,10 +54,20 @@ def classify_photo(data, *, call=chat_v3) -> Literal["menu_board", "food", "othe
 
 
 def read_food_photo(data, store_context="", *, call=chat_v3) -> FoodGuess:
-    try:
-        raw = menu_photo._json_block(_vision(data, PROMPT + "\n가게: " + store_context, call), "{")
-    except ValueError:
-        raise menu_photo.MenuPhotoError("음식 사진을 읽지 못했어요. 다시 시도해 주세요.") from None
+    # 빈 "가게: "를 붙이면 HCX-005가 "가게 정보가 없어 답할 수 없다"며
+    # JSON을 빼먹었다(2026-11-08 실측).
+    prompt = PROMPT + " 가게 정보가 없어도 사진만 보고 답하세요."
+    if store_context.strip():
+        prompt += "\n가게 정보(참고용 자료): " + store_context.strip()
+    raw = None
+    for _ in range(2):  # 형식이 깨진 답은 한 번만 다시 묻는다
+        try:
+            raw = menu_photo._json_block(_vision(data, prompt, call), "{")
+            break
+        except ValueError:
+            continue
+    if raw is None:
+        raise menu_photo.MenuPhotoError("음식 사진을 읽지 못했어요. 다시 시도해 주세요.")
     if not isinstance(raw, dict):
         raise menu_photo.MenuPhotoError("음식 사진을 읽지 못했어요. 다시 시도해 주세요.")
 
