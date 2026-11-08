@@ -23,7 +23,14 @@ export interface OrderJson {
 }
 
 export type ServerEvent =
-  | { type: 'call.ready'; turn: number; call: string; sample_rate: number }
+  | {
+      type: 'call.ready'
+      turn: number
+      call: string
+      sample_rate: number
+      /** 음성 끼어들기(티켓 06). 서버 스위치가 켜져 있고 이 브라우저가 할 수 있다고 알렸을 때만 온다 */
+      voice_barge_in?: BargeMode
+    }
   | { type: 'stt.final'; turn: number; text: string; epd_type: string; fragments: number; end_by: string }
   | {
       type: 'state'
@@ -39,11 +46,18 @@ export type ServerEvent =
   | { type: 'bot.audio.end'; turn: number; seq: number }
   | { type: 'bot.done'; turn: number; sentences: number; interrupted?: boolean }
   | { type: 'bot.thinking'; turn: number }
+  /** 손님 소리가 들려 봇 목소리를 줄인다 / 되돌린다 / 멈춘다 (음성 끼어들기, 티켓 06) */
+  | { type: 'bot.duck'; turn: number }
+  | { type: 'bot.unduck'; turn: number }
+  | { type: 'bot.stop'; turn: number }
   | { type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number }
   | { type: 'metrics'; turn: number; [key: string]: unknown }
   | { type: 'error'; turn: number; code: string; message: string; retry: boolean }
 
 export type Status = 'idle' | 'starting' | 'live' | 'ended' | 'failed'
+
+/** on: 서버가 줄이고 멈춘다. shadow: 서버가 판정만 기록한다. 둘 다 봇 말 중에도 진짜 소리를 보낸다 */
+export type BargeMode = 'on' | 'shadow'
 
 export interface Caption {
   who: 'guest' | 'bot'
@@ -59,6 +73,8 @@ export interface CallState {
   botTalking: boolean
   /** 서버가 지금 턴의 말 끊기를 받는다(state.interruptible) */
   interruptible: boolean
+  /** 이 통화의 음성 끼어들기(call.ready). null이면 반이중: 봇이 말하는 동안 0 프레임 */
+  bargeIn: BargeMode | null
   /** 말 끊기로 멈춘 마지막 턴. 이 턴 이하의 봇 오디오는 버린다(8바이트 헤더의 turn). 없으면 -1 */
   cutTurn: number
   captions: Caption[]
@@ -96,6 +112,7 @@ export const initialCallState: CallState = {
   turn: 0,
   botTalking: false,
   interruptible: false,
+  bargeIn: null,
   cutTurn: -1,
   captions: [],
   cart: [],
@@ -158,7 +175,11 @@ function onServer(state: CallState, event: ServerEvent): CallState {
   if (state.status === 'ended' || state.status === 'failed') return state
   switch (event.type) {
     case 'call.ready':
-      return { ...state, status: 'live' }
+      return { ...state, status: 'live', bargeIn: event.voice_barge_in ?? null }
+    case 'bot.stop':
+      // 서버가 음성 끼어들기로 멈췄다. 버튼과 같이 끊되, 복창 정정처럼 버튼이 막힌 턴에서도 끊는다
+      if (event.turn !== state.turn || event.turn <= state.cutTurn) return state
+      return { ...state, botTalking: false, interruptible: false, cutTurn: event.turn }
     case 'state': {
       const cut = event.turn <= state.cutTurn // 끊은 턴의 늦은 상태는 마이크를 다시 닫지 않는다
       const next = {
@@ -192,9 +213,12 @@ function onServer(state: CallState, event: ServerEvent): CallState {
   }
 }
 
-/** 지금 올리는 프레임에 진짜 마이크 소리를 담아도 되나. 거짓이면 같은 속도로 0 프레임. */
+/**
+ * 지금 올리는 프레임에 진짜 마이크 소리를 담아도 되나. 거짓이면 같은 속도로 0 프레임.
+ * 음성 끼어들기가 켜진 통화(안드로이드 크롬)는 봇이 말하는 동안에도 진짜 소리다. 판정은 서버가 한다.
+ */
 export function micLive(state: CallState): boolean {
-  return state.status === 'live' && !state.botTalking
+  return state.status === 'live' && (!state.botTalking || state.bargeIn !== null)
 }
 
 /** "말 끝" 버튼(user.end_of_speech)을 받을 수 있는 국면인가. 서버도 listening·thinking만 받는다. */

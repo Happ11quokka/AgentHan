@@ -17,9 +17,18 @@ export interface PlayedSpot {
   playedMs: number
 }
 
+/** 음성 끼어들기 줄이기: 약 -18 dB (grilling Q9). 줄이기는 약 150ms, 되돌리기는 약 80ms에 걸쳐
+ *  바꾼다(vox.ai #36, s3-engineering Q4). setTargetAtTime의 시정수는 그 1/3이다 */
+export const DUCK_GAIN = 10 ** (-18 / 20)
+const DUCK_TC = 0.05
+const RESTORE_TC = 0.027
+
 export class Player {
   private readonly ctx: AudioContext
   private readonly events: PlayerEvents
+  /** 봇 목소리 음량. 모든 조각이 여기를 지나 스피커로 간다 */
+  private readonly volume: GainNode
+  private duckTurn: number | null = null
   private nextTime = 0
   private readonly started = new Set<string>()
   /** 문장마다 첫 조각 예약 시각(지금 턴 것만). 말 끊기 때 들은 자리를 계산한다 */
@@ -30,10 +39,32 @@ export class Player {
   constructor(ctx: AudioContext, events: PlayerEvents) {
     this.ctx = ctx
     this.events = events
+    this.volume = ctx.createGain()
+    this.volume.connect(ctx.destination)
+  }
+
+  /** 음성 끼어들기(티켓 06): 손님 소리가 들려 `turn`의 봇 목소리를 줄인다. 멈추지는 않는다 */
+  duck(turn: number): void {
+    this.duckTurn = turn
+    this.fade(DUCK_GAIN, DUCK_TC)
+  }
+
+  /** 맞장구·에코였다. 원래 크기로 돌린다 */
+  unduck(): void {
+    if (this.duckTurn === null) return
+    this.duckTurn = null
+    this.fade(1, RESTORE_TC)
+  }
+
+  private fade(value: number, timeConstant: number): void {
+    const gain = this.volume.gain
+    gain.cancelScheduledValues(this.ctx.currentTime)
+    gain.setTargetAtTime(value, this.ctx.currentTime, timeConstant)
   }
 
   enqueue(frame: AudioFrame): void {
     const { turn, seq } = frame
+    if (this.duckTurn !== null && turn !== this.duckTurn) this.unduck() // 새 턴은 원래 크기로
     const slot = scheduleChunk({
       nextTime: this.nextTime,
       now: this.ctx.currentTime,
@@ -61,7 +92,7 @@ export class Player {
     buffer.copyToChannel(int16ToFloat(frame.pcm), 0)
     const source = this.ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(this.ctx.destination)
+    source.connect(this.volume)
     this.sources.add(source)
     source.onended = () => {
       this.sources.delete(source)
@@ -102,6 +133,7 @@ export class Player {
     }
     this.sources.clear()
     this.nextTime = 0
+    this.unduck()
   }
 
   private at(when: number, fn: () => void): void {

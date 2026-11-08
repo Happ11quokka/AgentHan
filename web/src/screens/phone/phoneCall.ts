@@ -15,6 +15,7 @@ import {
   initialCallState,
   micLive,
 } from './callState.ts'
+import { uaHints, voiceBargeInCapable } from './bargeIn.ts'
 import captureWorkletUrl from './capture.worklet.ts?worker&url'
 import { parseAudioFrame } from './frames.ts'
 import { CAPTURE_PROCESSOR, FRAME_SAMPLES, WIRE_RATE } from './pcm.ts'
@@ -218,6 +219,8 @@ export class PhoneCall {
         output_latency: ctx.outputLatency,
         base_latency: ctx.baseLatency,
         ua: navigator.userAgent,
+        // 음성 끼어들기를 할 수 있는 브라우저인가(안드로이드 크롬 + 에코 제거). 켤지는 서버가 정한다
+        voice_barge_in: voiceBargeInCapable(navigator.userAgent, uaHints(), mic),
         client_at: Date.now(),
       })
     }
@@ -242,11 +245,31 @@ export class PhoneCall {
     } catch {
       return
     }
+    this.onBargeEvent(event)
     this.dispatch({ type: 'server', event })
     this.onCueEvent(event)
     if (event.type === 'bot.done' && event.turn > this.state.cutTurn) {
       const progress = this.playback.botDone(event.turn, event.sentences)
       if (progress === 'turn-finished') this.finishTurn(event.turn, event.sentences - 1)
+    }
+  }
+
+  /**
+   * 음성 끼어들기(티켓 06). 판정은 서버가 하고 브라우저는 줄이기·되돌리기·멈추기만 한다.
+   * 멈출 때는 버튼처럼 재생을 멈추고(리듀서가 이 턴 이하 오디오를 버리게 한다) 들은 자리를
+   * `playback.interrupted`로 알린다. 지금 턴이 아니거나 이미 끊은 턴이면 무시한다.
+   */
+  private onBargeEvent(event: ServerEvent): void {
+    if (event.type !== 'bot.duck' && event.type !== 'bot.unduck' && event.type !== 'bot.stop') return
+    const turn = event.turn
+    if (turn !== this.state.turn || turn <= this.state.cutTurn) return
+    if (event.type === 'bot.duck') this.player?.duck(turn)
+    else if (event.type === 'bot.unduck') this.player?.unduck()
+    else {
+      const spot = this.player?.interrupt(turn) ?? { seq: 0, playedMs: 0 }
+      this.cue?.stop()
+      this.clocks.delete(turn)
+      this.send({ type: 'playback.interrupted', turn, seq: spot.seq, played_ms: spot.playedMs })
     }
   }
 

@@ -27,6 +27,34 @@ const listening = (turn: number): CallAction => ({
 })
 const interrupt: CallAction = { type: 'interrupt' }
 
+describe('voice barge-in (ticket 06)', () => {
+  const readyWith = (mode: 'on' | 'shadow'): CallAction => ({
+    type: 'server',
+    event: { type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000, voice_barge_in: mode },
+  })
+  const stop = (turn: number): CallAction => ({ type: 'server', event: { type: 'bot.stop', turn } })
+
+  it('keeps half duplex unless the server turned voice barge-in on for this call', () => {
+    expect(micLive(run(dial, micReady, ready, speaking(1)))).toBe(false)
+    expect(micLive(run(dial, micReady, readyWith('on'), speaking(1)))).toBe(true)
+    expect(micLive(run(dial, micReady, readyWith('shadow'), speaking(3, false)))).toBe(true)
+  })
+
+  it('cuts the turn on bot.stop even where the button is blocked (readback correction)', () => {
+    const s = run(dial, micReady, readyWith('on'), speaking(3, false), stop(3))
+    expect(s.botTalking).toBe(false)
+    expect(s.cutTurn).toBe(3)
+    // 끊은 턴의 늦은 speaking 상태는 다시 말하는 중으로 돌리지 않는다
+    expect(callReducer(s, speaking(3, false)).botTalking).toBe(false)
+  })
+
+  it('ignores a bot.stop for another turn', () => {
+    const s = run(dial, micReady, readyWith('on'), speaking(2), stop(1))
+    expect(s.botTalking).toBe(true)
+    expect(s.cutTurn).toBe(-1)
+  })
+})
+
 describe('말 끊기 button (ticket 05)', () => {
   it('is offered only while the bot speaks a turn the server marks interruptible', () => {
     expect(canInterrupt(run(dial, micReady, ready, speaking(1)))).toBe(true)

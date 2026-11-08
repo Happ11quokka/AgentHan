@@ -24,8 +24,11 @@ class FakeAudioContext {
   createMediaStreamSource() {
     return { connect: (next: unknown) => next, disconnect() {} }
   }
+  gains: FakeGain[] = []
   createGain() {
-    return { gain: { value: 1 }, connect: (next: unknown) => next, disconnect() {} }
+    const g = new FakeGain()
+    this.gains.push(g)
+    return g
   }
   sources: FakeSource[] = []
   async decodeAudioData(data: ArrayBuffer) {
@@ -39,6 +42,23 @@ class FakeAudioContext {
     this.sources.push(source)
     return source
   }
+}
+
+class FakeGain {
+  /** setTargetAtTime은 목표값을 바로 value에 둔다(시정수는 따로 남긴다) */
+  gain = {
+    value: 1,
+    timeConstant: 0,
+    setTargetAtTime(v: number, _when: number, tc: number) {
+      this.value = v
+      this.timeConstant = tc
+    },
+    cancelScheduledValues() {},
+  }
+  connect(next: unknown) {
+    return next
+  }
+  disconnect() {}
 }
 
 class FakeSource {
@@ -333,5 +353,93 @@ describe('말 끊기 button (user.interrupt · playback.interrupted)', () => {
     expect(events(ws).filter((e) => String(e.type).includes('interrupt'))).toEqual([])
     expect(micFrame()).not.toBe(ws.sent.at(-1)) // 반이중 그대로
     expect(call.getState().botTalking).toBe(true)
+  })
+})
+
+describe('voice barge-in (bot.duck · bot.unduck · bot.stop)', () => {
+  const ANDROID_CHROME =
+    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36'
+  const speaking = (turn: number, interruptible = true) => ({
+    type: 'state',
+    turn,
+    phase: 'speaking',
+    interruptible,
+    dialog: 'ordering',
+    cart: [],
+    total: 0,
+  })
+  const events = (ws: FakeSocket) =>
+    ws.sent.filter((m): m is string => typeof m === 'string').map((m) => JSON.parse(m) as Record<string, unknown>)
+  const botSources = (ctx: FakeAudioContext) => ctx.sources.filter((s) => !cueSources(ctx).includes(s))
+  /** 봇 목소리가 지나가는 GainNode (캡처 쪽 소리 없는 GainNode는 값이 0이다) */
+  const voiceGain = (ctx: FakeAudioContext) => ctx.gains.find((g) => g.gain.value !== 0)!
+
+  async function bargeCall(): Promise<{ call: PhoneCall; ws: FakeSocket; ctx: FakeAudioContext }> {
+    const call = new PhoneCall()
+    call.dial()
+    mic.resolve(stream)
+    await flush()
+    const ws = FakeSocket.instances[0]
+    ws.open()
+    ws.server({ type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000, voice_barge_in: 'on' })
+    return { call, ws, ctx: FakeAudioContext.instances[0] }
+  }
+
+  it('tells the server it can barge in only on Android Chrome with echo cancellation', async () => {
+    const { ws } = await liveCall()
+    expect(events(ws)[0]).toMatchObject({ type: 'call.start', voice_barge_in: false })
+
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME, mediaDevices: { getUserMedia: () => mic.promise } })
+    FakeSocket.instances = []
+    mic = deferred<typeof stream>()
+    const { ws: android } = await liveCall()
+    expect(events(android)[0]).toMatchObject({ type: 'call.start', voice_barge_in: true })
+  })
+
+  it('sends the real mic while the bot speaks when the server turned it on', async () => {
+    const { ws } = await bargeCall()
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    const frame = new ArrayBuffer(3200)
+    FakeWorkletNode.last!.port.onmessage!({ data: frame })
+    expect(ws.sent.at(-1)).toBe(frame)
+  })
+
+  it('fades the bot voice down about 18 dB on bot.duck and back on bot.unduck', async () => {
+    const { ws, ctx } = await bargeCall()
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    const gain = voiceGain(ctx)
+    ws.server({ type: 'bot.duck', turn: 1 })
+    expect(20 * Math.log10(gain.gain.value)).toBeCloseTo(-18, 0)
+    ws.server({ type: 'bot.unduck', turn: 1 })
+    expect(gain.gain.value).toBe(1)
+  })
+
+  it('restores the full volume when the next turn starts even without bot.unduck', async () => {
+    const { ws, ctx } = await bargeCall()
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    const gain = voiceGain(ctx)
+    ws.server({ type: 'bot.duck', turn: 1 })
+    ws.server({ type: 'bot.duck', turn: 0 }) // 지난 턴의 늦은 줄이기는 무시한다
+    ws.server(speaking(2))
+    ws.onmessage!({ data: audioFrame(2, 0) })
+    expect(gain.gain.value).toBe(1)
+  })
+
+  it('stops playback on bot.stop, reports where it stopped and drops late audio of that turn', async () => {
+    const { call, ws, ctx } = await bargeCall()
+    ws.server(speaking(3, false)) // 복창: 버튼은 막혔지만 정정 음성으로는 멈춘다
+    ws.onmessage!({ data: audioFrame(3, 0) })
+    ctx.currentTime = 0.5
+    ws.server({ type: 'bot.stop', turn: 3 })
+    expect(botSources(ctx)[0].stopped).toBe(true)
+    expect(events(ws).filter((e) => String(e.type).includes('interrupt'))).toEqual([
+      { type: 'playback.interrupted', turn: 3, seq: 0, played_ms: 480 },
+    ])
+    ws.onmessage!({ data: audioFrame(3, 1) })
+    expect(botSources(ctx)).toHaveLength(1)
+    expect(call.getState().botTalking).toBe(false)
   })
 })
