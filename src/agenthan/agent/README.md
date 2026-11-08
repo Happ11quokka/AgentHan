@@ -14,10 +14,11 @@
  → OwnerAssistant (agent/owner_assistant.py)
      ① 기능 후보: agent/place_matcher.py (키워드 30% + CLOVA 임베딩 70%, 18개 기능)
      ② 기능 하나 고르기: 지금은 매칭 1위 (PRD는 HCX-DASH-002 select_feature — 아직 안 함)
-     ③ 그 기능 도구만 붙여 HCX-005 실행
+     ③ 대표 기능 위임 또는 그 기능 도구만 붙여 HCX-005 실행
         ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
         ├ 메뉴판 사진 (A-1)         → ask_photo(): agent/menu_photo.py 초안 → 사장님 승인 → 저장
         ├ review_reply, ai_review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
+        ├ statistics (A-3, R2)    → R1 facts → 해석 규칙 → 도구 없는 HCX-005 문장화/템플릿
         └ 그 밖의 기능              → 이름·설명 안내 (도구는 tools/feature_tools.py에 정의만)
 ```
 
@@ -28,6 +29,9 @@
 | `agent/place_matcher.py`, `place_features.json` | 플레이스 기능 카탈로그(=PRD의 `features.json`)와 요청→기능 매칭 |
 | `agent/review/` | 리뷰 서브에이전트: 분석·요약, 미답글, 답글 초안·등록(더미), 정기 보고 루틴(A-2·A-4) |
 | `agent/review_delegate.py` | 오케스트레이터 → 리뷰 서브에이전트 위임 |
+| `agent/report_explainer.py` | A-3 통계 해석 문장화·숫자 검증·실패 시 코드 템플릿 (`ReportAnswer`) |
+| `tools/place_report.py`, `place_report_data.json` | R1 로컬 더미 통계 계산 (`ReportFacts`) |
+| `tools/report_insights.py` | R2 가게 정보와 통계를 연결하는 해석 규칙, 우선순위 상위 3개 |
 | `tools/dummy_store.py` | 더미 플레이스 API (로컬 `.agenthan/store.json`, 실제 네이버 연동 없음) |
 | `tools/owner_tools.py`, `feature_tools.py` | 메뉴 도구와 15개 기능 도구(미연결) |
 | `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`은 실제 리뷰로 학습해 레포에 없음 · 카톡으로 받기) |
@@ -43,7 +47,7 @@
 - HCX 호출이 openai SDK(OpenAI 호환 API)다. PRD는 sdk.md 네이티브 REST v3. `core/llm.py`만 바꾸면 되게 모아 뒀다.
 - 오케스트레이터가 LangGraph `StateGraph`가 아니라 직접 짠 루프다. 승인(HITL)도 `interrupt()`가 아니라 대화 턴 확인이다.
 - 기능 고르기(HCX-DASH-002 `select_feature`)가 없다. 매칭 1위를 그대로 쓴다.
-- 통계 리포트(A-3)는 아직 없다.
+- 통계 리포트(A-3)는 R1 더미 통계와 R2 한국어 해석까지 연결했다. 후속 질문·용어 풀이(R4), 검색 노출 결과(R3) 연결·먼저 제안은 아직 없다.
 - A-1 승인은 `interrupt()`가 아니라 다음 턴의 "네/취소/고칠 곳"이다. 웹 폼은 `menu_form()` 값으로 채운다.
 
 더미 플레이스 API 시드(`tools/dummy_store_seed.json`)는 `fixtures/sample_store.json`의
@@ -63,6 +67,54 @@ uv run pytest -q -m network                                 # 실제 CLOVA 호�
 
 예: `신메뉴 시르니키를 등록하고 싶어요` → 가격 질문 → `8500원`.
 메뉴판 사진: `/photo ~/menu.jpg 이거 올려 줘` → 초안 확인 → `3번 가격 9500원` → `네`.
+
+### A-3 통계 리포트 해석 (R2)
+
+오케스트레이터에서 `statistics`가 선택되면 `report_explainer.explain()`을 한 번 호출한다.
+마지막 한국어 답만 대화 이력에 넣고 `OwnerAssistant.last_report`에는
+`ReportAnswer(text, facts, insights, used_template)`를 보관한다. 원본 리뷰는 다루지 않는다.
+
+`오늘`·`어제`는 일간, `이번 주`·`지난주`와 나머지 질문은 주간이다. 현재는 각 종류의
+**최신 가용 행**을 사용하며 달력상의 어제·지난주 행을 따로 고르지 않는다. 조회 수는 실제
+방문 손님 수가 아니다. HCX-005에는 facts 요약과 규칙이 고른 근거·가능한 이유·행동만 JSON으로
+보낸다. 도구 없이 `무슨 일이 있었나`·`왜 그럴 수 있나`·`해 볼 일`을 쓰며 행동은 한 가지다.
+자료 안의 지시문은 따르지 않고 추측은 가능성으로 표현한다. 근거 밖 숫자나 단위가 섞이거나,
+응답 형식이 틀리거나, 키가 없거나 API 호출이 실패하면 코드 템플릿으로 바꾼다.
+전환 사유는 `agenthan.agent.report_explainer` INFO 로그의 고정 코드
+(`unknown_number`, `invalid_answer`, `api_error`)만 기록하며 키·서버 본문은 기록하지 않는다.
+
+해석은 다음 순서로 정렬해 최대 3개를 쓴다. 숫자는 R1의 소수 한 자리 사사오입을 따른다.
+
+| 우선순위 | 규칙 | 안내할 기능 |
+|---|---|---|
+| 10 | 조회 증가 + 예약·주문 전환율 하락 | 메뉴 사진·설명 보강 (`menu`) |
+| 20 | 피크가 마감 전 1시간 이내 또는 영업시간 밖·일간 휴무 | 영업시간 확인 (`business_hours`) |
+| 30 | 상위 유입 검색어가 대표키워드·메뉴 이름과 불일치 | 대표키워드 후보 검토 (`search_keywords`) |
+| 40 | 블로그·카페 비중 10% 미만, 유입 건수 감소 또는 비중 감소 | 노출 경로 설명만 (행동 기능 없음) |
+| 50 | R1의 최소·최다 조회 시간 또는 주간 요일이 다름 | 한산한 영업 시간·요일 쿠폰 검토 (`coupon`) |
+| 60 | 스마트콜 통화 증가 | 스마트콜·전화 응대 확인 (`smartcall`) |
+
+가게 정본은 `DummyStore.read()`의 `shop.keywords`, `shop.hours`, `menus[].name`이다.
+검색어 비교는 공백·대소문자를 정규화한 전체 이름 일치다. 날짜별 영업시간 설정이 있으면
+요일별 설정보다 우선한다. 주간 피크는 그 주의 날짜별 영업시간과 대조한다. 요일×시간
+교차 자료는 없으므로 특정 요일의 피크라고 단정하지 않는다. 최소·최다의 건수 분포도
+`ReportFacts`에 없어서 한산함의 격차 크기는 단정하지 않는다. 일간 자료로 다른 요일의
+한산함을 추론하거나, 휴무·영업시간 밖에 쿠폰을 제안하지 않는다.
+`shop=None`일 때만 R1의 대표키워드와 마감을 쓴다. 가게 정보를 넘겼는데 비어 있는 항목은
+R1 값으로 채우지 않는다. 현재 시드에서는 `메도빅`이 이미 대표키워드·메뉴에 있으므로 추가
+후보가 아니고 `이태원 케이크`·`러시아 디저트`·`꿀 케이크`가 불일치 검색어다.
+
+기존 CLI에서 `이번 주 통계 알려줘`를 입력하거나, 키 없이 워커만 실행할 수 있다.
+아래 예는 읽기만 하며 더미 저장소 파일을 만들지 않는다. 환경에 키가 있으면 HCX를 호출한다.
+
+```bash
+uv run --frozen --offline python -c 'from agenthan.agent.report_explainer import explain; from agenthan.tools.dummy_store import DummyStore; print(explain("이번 주 통계 알려줘", shop=DummyStore().read()).text)'
+uv run --frozen --offline pytest -q tests/test_report_insights.py tests/test_report_explainer.py
+uv run --frozen --offline pytest -q -m network tests/test_report_explainer.py
+```
+
+실제 HCX 테스트는 키가 없으면 skip한다. `report_validation` 테스트 속성에는 숫자 검증
+통과(`numbers_verified`) 또는 템플릿 전환 사유를 남긴다.
 
 ### R3 검색 노출 진단
 
