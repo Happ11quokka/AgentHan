@@ -52,7 +52,16 @@ from agenthan.voice.call.frames import (
     pack_audio_frame,
 )
 from agenthan.voice.call.latency import LatencyLog
-from agenthan.voice.call.ports import Clock, Outbound, PortError, SttResult, SttStream, Tts
+from agenthan.voice.call.ports import (
+    CUSTOMER_FATAL,
+    CUSTOMER_RETRY,
+    Clock,
+    Outbound,
+    PortError,
+    SttResult,
+    SttStream,
+    Tts,
+)
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
@@ -63,6 +72,8 @@ from agenthan.voice.store_config import StoreConfig
 
 log = logging.getLogger(__name__)
 
+__all__ = ["CUSTOMER_FATAL", "CUSTOMER_RETRY", "CallSession", "SessionSettings", "make_nlu"]
+
 NluChoice = Literal["fake", "hcx"]
 Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
 
@@ -70,7 +81,9 @@ Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
 @dataclass(frozen=True)
 class SessionSettings:
     vad: VadSettings = field(default_factory=VadSettings)
-    turn_timeout_s: float = 40.0  # HCX 최악(재시도 2번 + Retry-After)보다 길게
+    # 엔진 시간 제한. HCX 한 번(10초) + 재시도 한 번까지. 손님이 더 오래 말없이 기다리지 않게
+    # (리뷰 15번. 전에는 HCX 최악을 다 기다리는 40초)
+    turn_timeout_s: float = 20.0
     tts_concurrency: int = 2
     sentence_limit: int = TTS_LIMIT
     chunk_bytes: int = CHUNK_BYTES  # 내리는 오디오 조각 ≈ 200ms
@@ -78,6 +91,10 @@ class SessionSettings:
     stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
     hold_max_s: float = 1.2  # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout)
     hold_cap_s: float = 3.0  # 이어진 말이 아직 열려 있어도 붙잡기는 여기까지
+    # `playback.done`이 안 와도(AudioContext 멈춤 등) 보낸 소리 길이 + 이만큼 뒤 듣기로 (리뷰 4번)
+    play_done_grace_s: float = 3.0
+    start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
+    max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
 
 def make_nlu(choice: NluChoice) -> Nlu:
@@ -188,6 +205,8 @@ class CallSession:
         self._voice_at: float | None = None
         self._ep_at: float | None = None
         self._client_start: dict[str, Any] = {}
+        self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
+        self._play_timer: asyncio.TimerHandle | None = None
         self._broken = False
 
     # ------------------------------------------------------------ 바깥 진입점
@@ -195,6 +214,7 @@ class CallSession:
     async def open(self) -> None:
         if self._writer is None:
             self._writer = asyncio.create_task(self._write_loop(), name=f"{self.call_id}-writer")
+            self._spawn(self._watch(), "watch")
 
     @property
     def done(self) -> bool:
@@ -224,8 +244,9 @@ class CallSession:
         if record is not None and backlog_ms > record.fields.get("stt_backlog_max", 0):
             record.fields["stt_backlog_max"] = backlog_ms
         if backlog_ms >= self._settings.stt_backlog_ms:
-            self._fail(PortError("회선이 느려 통화를 이어 갈 수 없어요. 잠시 후 다시 걸어 주세요.",
-                                 code="stt_backlog", retry=True), "stt")
+            self._fail(PortError(f"STT 쓰기가 {backlog_ms}ms 밀림", code="stt_backlog",
+                                 customer="회선이 느려 통화를 이어 갈 수 없어요. "
+                                          "잠시 후 다시 걸어 주세요."), "stt")
             return
         await asyncio.sleep(0)  # 쓰기 작업에 차례를 준다. STT를 기다리지는 않는다
 
@@ -243,6 +264,10 @@ class CallSession:
         """올라온 JSON 이벤트 하나 (dict로 푼 것)."""
         kind = event.get("type")
         turn = event.get("turn", self._turn)
+        seq = event.get("seq")
+        if not _is_int(turn) or not (seq is None or _is_int(seq)):
+            log.info("값이 틀린 %s 이벤트를 버림 (%s)", kind, self.call_id)  # 리뷰 10번
+            return
         if kind == "call.start":
             if self._phase == "idle" and not self.done:
                 self._client_start = {k: v for k, v in event.items() if k not in ("type", "turn")}
@@ -256,7 +281,7 @@ class CallSession:
         elif kind == "playback.started":
             self._log.mark(turn, "play_start")
         elif kind == "playback.done":
-            self._on_playback_done(turn, event.get("seq"), event.get("output_latency"))
+            self._on_playback_done(turn, seq, event.get("output_latency"))
         elif kind == "client.metrics":
             record = self._log.get(turn)
             if record is not None:
@@ -285,6 +310,18 @@ class CallSession:
 
     def _spawn(self, coro: Any, name: str) -> None:
         self._tasks.append(asyncio.create_task(coro, name=f"{self.call_id}-{name}"))
+
+    async def _watch(self) -> None:
+        """`call.start` 대기 시간과 통화 전체 길이를 지킨다."""
+        settings = self._settings
+        first = min(settings.start_timeout_s, settings.max_call_s)
+        await asyncio.sleep(first)
+        if self._phase == "idle" and settings.start_timeout_s <= settings.max_call_s:
+            self._fail(PortError("call.start가 오지 않음", code="start_timeout"), "call")
+            return
+        await asyncio.sleep(settings.max_call_s - first)
+        self._fail(PortError(f"통화가 {settings.max_call_s:.0f}초를 넘음", code="call_too_long",
+                             customer="통화가 너무 길어져서 끊을게요. 다시 걸어 주세요."), "call")
 
     async def _write_loop(self) -> None:
         while True:
@@ -315,7 +352,9 @@ class CallSession:
         except asyncio.CancelledError:
             raise
         except _EngineTimeout:
-            self._fail(PortError("엔진 응답이 늦어요", code="engine_timeout", retry=True), "engine")
+            limit = self._settings.turn_timeout_s
+            self._fail(PortError(f"엔진이 {limit:.0f}초 안에 답하지 않음", code="engine_timeout"),
+                       "engine")
         except Exception as err:
             self._fail(err, "engine")
 
@@ -489,6 +528,7 @@ class CallSession:
             s for text in result.utterances
             for s in split_sentences(text, self._settings.sentence_limit)
         ]
+        audio_ms = 0
         if sentences:
             self._last_seq[turn] = len(sentences) - 1
             self._phase = "speaking"
@@ -498,21 +538,32 @@ class CallSession:
             self._forced = self._commit = False
             self._button_at = None
             self._emit_state()
-            await self._speak(turn, sentences)
+            audio_ms = await self._speak(turn, sentences)
         self._emit({"type": "bot.done", "turn": turn, "sentences": len(sentences)})
+        self._bot_done_turn = turn
         self._log.mark(turn, "bot_done")
         if not sentences:
             self._after_playback(turn)
+        elif self._phase == "speaking":
+            # 서버 안전망: 재생 끝 보고가 안 와도 소리 길이 + 여유 뒤에는 듣기로 (리뷰 4번)
+            delay = audio_ms / 1000 + self._settings.play_done_grace_s
+            self._play_timer = asyncio.get_running_loop().call_later(
+                delay, self._on_play_timeout, turn
+            )
 
     async def _call_engine(self, fn: Callable[[], TurnResult]) -> TurnResult:
         task = asyncio.ensure_future(asyncio.to_thread(fn))
         done, _ = await asyncio.wait({task}, timeout=self._settings.turn_timeout_s)
         if not done:
+            task.add_done_callback(_retrieve)  # 나중에 예외로 끝나도 경고가 남지 않게 (리뷰 16번)
             raise _EngineTimeout  # 스레드는 계속 돈다. 이 엔진은 다시 부르지 않는다
         return task.result()
 
-    async def _speak(self, turn: int, sentences: list[str]) -> None:
-        """문장마다 TTS를 동시에 `tts_concurrency`개까지 부르고, 보내는 건 문장 순서대로."""
+    async def _speak(self, turn: int, sentences: list[str]) -> int:
+        """문장마다 TTS를 동시에 `tts_concurrency`개까지 부르고, 보내는 건 문장 순서대로.
+
+        보낸 소리 길이(ms)를 돌려준다.
+        """
         gate = asyncio.Semaphore(self._settings.tts_concurrency)
 
         async def synth(seq: int, text: str) -> bytes:
@@ -531,9 +582,11 @@ class CallSession:
                 return pcm
 
         jobs = [asyncio.create_task(synth(i, s)) for i, s in enumerate(sentences)]
+        audio_bytes = 0
         try:
             for seq, (job, text) in enumerate(zip(jobs, sentences, strict=True)):
                 pcm = await job
+                audio_bytes += len(pcm)
                 self._emit({"type": "bot.say", "turn": turn, "seq": seq, "text": text})
                 for i, (chunk, last) in enumerate(chunk_pcm(pcm, self._settings.chunk_bytes)):
                     frame = pack_audio_frame(AudioFrame(turn, seq, chunk, last))
@@ -543,6 +596,8 @@ class CallSession:
         finally:
             for job in jobs:
                 job.cancel()
+                job.add_done_callback(_retrieve)  # 먼저 실패로 끝난 뒤 문장도 (리뷰 16번)
+        return audio_bytes // BYTES_PER_MS
 
     def _on_playback_done(self, turn: int, seq: Any, output_latency: Any) -> None:
         if self._phase != "speaking" or turn != self._turn:
@@ -550,12 +605,30 @@ class CallSession:
         last = self._last_seq.get(turn)
         if seq is not None and last is not None and seq < last:
             return
+        if seq is None and self._bot_done_turn != turn:
+            return  # seq 없는 보고는 문장을 다 보낸 뒤에만 받는다 (리뷰 11번)
         record = self._log.get(turn)
         if record is not None and output_latency is not None:
             record.fields["output_latency"] = output_latency
         self._after_playback(turn)
 
+    def _on_play_timeout(self, turn: int) -> None:
+        self._play_timer = None
+        if self._phase != "speaking" or turn != self._turn or self.done:
+            return
+        log.info("playback.done이 오지 않아 듣기로 돌아감 (%s, 턴 %d)", self.call_id, turn)
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["play_done_timeout"] = True
+        self._after_playback(turn)
+
+    def _cancel_play_timer(self) -> None:
+        if self._play_timer is not None:
+            self._play_timer.cancel()
+            self._play_timer = None
+
     def _after_playback(self, turn: int) -> None:
+        self._cancel_play_timer()
         self._log.mark(turn, "play_done")
         if self._terminal:
             self._end()
@@ -595,23 +668,38 @@ class CallSession:
     def _fail(self, err: BaseException, where: str) -> None:
         if self.done:
             return
+        detail = None
         if isinstance(err, PortError):
-            code, retry, message = err.code, err.retry, str(err)
-        else:
+            code, retry, message, detail = err.code, err.retry, err.customer_message, str(err)
+            log.info("통화 오류 %s (%s, %s): %s", code, self.call_id, where, detail)
+        else:  # 모르는 예외의 문자열은 키가 들어 있을 수 있어 기록에도 넣지 않는다
             log.exception("통화 세션 오류 (%s, %s)", self.call_id, where, exc_info=err)
-            code, retry, message = where, True, "잠시 후 다시 걸어 주세요."
+            code, retry, message = where, True, CUSTOMER_RETRY
         record = self._log.get(self._turn)
         if record is not None:
             record.fields["error"] = code
+            if detail is not None:
+                record.fields["error_detail"] = detail
         self._emit({"type": "error", "turn": self._turn, "code": code, "message": message,
                     "retry": retry})
         self._end()
 
     def _end(self) -> None:
         self._cancel_hold()
+        self._cancel_play_timer()
         self._phase = "ended"
         self._ready = False
         self._done.set()
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _retrieve(task: asyncio.Future[Any]) -> None:
+    """끝난 작업의 예외를 꺼내 둔다("Task exception was never retrieved" 방지)."""
+    if not task.cancelled():
+        task.exception()
 
 
 def _cart_json(cart: Cart) -> list[dict[str, Any]]:

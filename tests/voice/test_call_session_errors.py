@@ -11,7 +11,7 @@ from call_harness import Call
 from test_call_session import GatedNlu, settle
 
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
-from agenthan.voice.call.ports import PortError
+from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
 from agenthan.voice.call.session import SessionSettings
 
 
@@ -34,7 +34,7 @@ def test_stt_connect_failure_sends_error_without_call_ready(tmp_path) -> None:
             return c, await _start_and_wait_error(c)
 
     c, error = run(call())
-    assert error == {"type": "error", "turn": 0, "code": "stt_auth", "message": "인증 실패",
+    assert error == {"type": "error", "turn": 0, "code": "stt_auth", "message": CUSTOMER_FATAL,
                      "retry": False}
     assert c.out.of("call.ready") == []
 

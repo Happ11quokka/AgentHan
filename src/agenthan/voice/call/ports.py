@@ -23,6 +23,8 @@ from agenthan.core.contracts import OrderSink
 from agenthan.voice.store_config import KST
 
 __all__ = [
+    "CUSTOMER_FATAL",
+    "CUSTOMER_RETRY",
     "Clock",
     "END_EPD_TYPES",
     "OrderSink",
@@ -39,13 +41,28 @@ __all__ = [
 END_EPD_TYPES = frozenset({"gap", "endPoint", "unvoice"})
 
 
-class PortError(Exception):
-    """어댑터 실패. `code`는 `error` 이벤트의 `code`, `retry`는 다시 걸면 될지."""
+# 손님 화면에 나가는 `error.message` 기본값 (spec 이야기 20). 어댑터 메시지(gRPC 상태·서버 설명·
+# 변수 이름)는 개발자용이라 로그·JSONL에만 남긴다 (리뷰 15번)
+CUSTOMER_RETRY = "잠시 후 다시 걸어 주세요."
+CUSTOMER_FATAL = "지금은 전화 주문을 받을 수 없어요. 가게로 직접 연락해 주세요."
 
-    def __init__(self, message: str, *, code: str = "port", retry: bool = True) -> None:
+
+class PortError(Exception):
+    """어댑터 실패. `code`는 `error` 이벤트의 `code`, `retry`는 다시 걸면 될지.
+
+    메시지(`str(err)`)는 개발자용이다. 손님에게는 `customer_message`가 나간다.
+    """
+
+    def __init__(self, message: str, *, code: str = "port", retry: bool = True,
+                 customer: str | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.retry = retry
+        self.customer = customer
+
+    @property
+    def customer_message(self) -> str:
+        return self.customer or (CUSTOMER_RETRY if self.retry else CUSTOMER_FATAL)
 
 
 @dataclass(frozen=True)

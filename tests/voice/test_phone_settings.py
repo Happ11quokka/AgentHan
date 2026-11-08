@@ -54,6 +54,13 @@ def test_vad_values_come_from_the_environment_and_default_to_the_tuned_values() 
     assert s.vad == VadSettings(threshold=900.0, start_ms=300, end_silence_ms=600)
 
 
+def test_call_limits_have_server_defaults_and_can_be_changed() -> None:
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert (default.max_calls, default.max_call_s) == (10, 600.0)
+    s = VoiceSettings.from_env({"PHONE_MAX_CALLS": "3", "PHONE_MAX_CALL_S": "300"}, env_file=None)
+    assert (s.max_calls, s.max_call_s) == (3, 300.0)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)
@@ -63,7 +70,12 @@ def test_keys_do_not_show_in_repr(tmp_path) -> None:
     ("name", "value"),
     [("PHONE_STT", "google"), ("PHONE_TTS", "x"), ("PHONE_NLU", "gpt"),
      ("PHONE_NOW", "2026-11-08T16:00:00"), ("PHONE_NOW", "내일"), ("PHONE_TZ", "Mars/Base"),
-     ("PHONE_VAD_THRESHOLD", "크게"), ("PHONE_VAD_END_SILENCE_MS", "-1")],
+     ("PHONE_VAD_THRESHOLD", "크게"), ("PHONE_VAD_END_SILENCE_MS", "-1"),
+     # 리뷰 13번: nan은 `< 0` 검사를 지나고, 0은 무음 한 프레임마다 말 끝이 된다
+     ("PHONE_VAD_THRESHOLD", "nan"), ("PHONE_VAD_THRESHOLD", "inf"), ("PHONE_VAD_THRESHOLD", "0"),
+     ("PHONE_VAD_START_MS", "0"), ("PHONE_VAD_END_SILENCE_MS", "0"),
+     ("PHONE_VAD_END_SILENCE_MS", "50"),
+     ("PHONE_MAX_CALLS", "0"), ("PHONE_MAX_CALLS", "많이"), ("PHONE_MAX_CALL_S", "nan")],
 )
 def test_wrong_value_names_the_variable(name, value) -> None:
     with pytest.raises(SettingsError, match=name):

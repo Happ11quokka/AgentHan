@@ -33,12 +33,15 @@
 
 - 진입점: `call/session.py`의 `CallSession`. 통화 1건. FastAPI·gRPC·httpx를 모르고 `call/ports.py`의 포트로만 바깥과 만난다
   - `SttStream`(오디오·`epFlag` 쓰기, 결과 읽기), `Tts`(문장 → PCM16 16kHz), `Clock`(KST `now`, 단조 시각), `Outbound`(이벤트·오디오 송신), `OrderSink`(계약)
-  - 실패는 `PortError(code, retry)`로 올린다. 세션이 `error` 이벤트로 옮기고 통화를 끝낸다
+  - 실패는 `PortError(code, retry)`로 올린다. 세션이 `error` 이벤트로 옮기고 통화를 끝낸다. 손님에게 가는 `message`는 고정 문구(`PortError.customer_message`: 다시 걸 수 있으면 "잠시 후 다시 걸어 주세요.")이고, 어댑터 메시지는 서버 로그와 JSONL `error_detail`에만 남는다
+  - 세션이 스스로 쓰는 코드: `engine_timeout`(20초), `stt_backlog`(STT 쓰기가 3초 밀림), `start_timeout`(소켓을 열고 10초 안에 `call.start` 없음), `call_too_long`(`max_call_s`, 기본 10분), 라우터의 `busy`(동시 통화 상한)
 - 쓰는 법: `open()` → 읽기 작업에서 `feed_audio(pcm)` / `feed_event(dict)` → `wait_done()` → `close()`
+  - `feed_audio`는 무음 감지만 하고 프레임을 큐에 넣는다. STT 쓰기는 세션의 쓰기 작업 하나가 한다(밀리면 `epFlag` 프레임까지 묶어 DATA 하나로, 바이트는 버리지 않음). 그래서 STT가 느려도(4분 30초 재연결 포함) 읽기 작업이 `playback.done`·"말 끝"을 늦게 받지 않는다
+  - `playback.done`이 안 와도 보낸 소리 길이 + 3초 뒤에는 서버가 듣기로 돌아간다(JSONL `play_done_timeout`)
 - 내리는 오디오: `call/frames.py` (8바이트 헤더 kind·flags·seq·turn + PCM16LE 16kHz, 약 200ms 조각). TTS PCM을 200ms로 자르는 것은 세션이 한다
 - 대사 → TTS 문장(150자 이하) 나누기, TTS 동시 2개·문장 순서 보내기도 세션이 한다(`call/sentences.py`)
 - 무음 감지(`call/vad.py`): RMS 임계값 1,500, 말 시작 200ms, 말 끝 무음 400ms (티켓 07에서 녹음 17개로 맞춤, 시작값은 500/200/500). 근거는 `VadSettings` 주석. 시작값 500에서는 배경 소리(RMS 400~1,900) 때문에 17개 중 12개가 녹음 안에서 말 끝을 못 잡았고, 지금 값은 17개 모두 잡는다. 코드에서는 `SessionSettings(vad=VadSettings(...))`, 서버에서는 `PHONE_VAD_THRESHOLD`·`PHONE_VAD_START_MS`·`PHONE_VAD_END_SILENCE_MS`로 바꾼다
-- 조각 합치기 규칙은 그대로 둔다: 결과가 왔을 때 무음 감지가 말하는 중이거나 결과 끝 뒤에 시작한 말 구간(200ms 이상)이 있으면 붙잡는다. 낱말 사이 0.3초 쉼(B1)은 붙잡히고, 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이면 다음 턴에 합쳐지고, 봇이 말하는 중이면 버려진다). 3단계 끝남/이어짐 판정에서 다룬다
+- 조각 합치기: 결과가 왔을 때 결과 끝 뒤에 **새로 시작한** 말 구간(200ms 이상)이 있으면 붙잡는다. 결과 전부터 이어진 소리(임계값 위 배경 소리)는 붙잡는 근거가 아니다. 붙잡은 뒤 1.2초(`hold_max_s`) 안에 새 결과가 없으면 턴을 넘긴다(`end_by: hold_timeout`). 그때 이어진 말이 아직 열려 있거나 그 `epFlag` 응답을 기다리는 중이면 3초(`hold_cap_s`)까지 기다린다. 봇이 말하기 시작하면 붙잡아 둔 조각과 "말 끝" 표시를 지운다. 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이면 다음 턴에 합쳐지고, 봇이 말하는 중이면 버려진다). 3단계 끝남/이어짐 판정에서 다룬다
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
 - 테스트: `tests/voice/test_call_session*.py`, 도구는 `tests/voice/call_harness.py`
@@ -65,6 +68,7 @@
 - 설정: 환경 변수 → `.env`(지금 폴더). 변수 표는 `settings.py` 머리 주석
   - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
   - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시각 고정, 시연용), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
+  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
   - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)
   - `clova`를 골랐는데 어댑터 모듈이 없으면 서버가 뜨기 전에 `AdapterMissing`으로 멈춘다. 어댑터 연결은 `adapters.py` 한 곳(TTS는 `tts_clova.ClovaVoiceTts`, STT는 `stt.clova.ClovaSttStream`). 키가 비어 있으면 통화를 걸 때 `error{code: "tts_config"}`·`error{code: "stt_config"}`
   - gRPC DNS: `PHONE_STT=clova`면 `adapters.py`가 `grpc`를 import하기 전에 `GRPC_DNS_RESOLVER`가 비어 있을 때 `native`로 둔다. 맥에서 gRPC 기본 DNS(c-ares)가 "Could not contact DNS servers"(`stt_disconnected`)로 실패해서다. 다른 값을 쓰려면 환경 변수나 `.env`에 `GRPC_DNS_RESOLVER=ares`처럼 적는다

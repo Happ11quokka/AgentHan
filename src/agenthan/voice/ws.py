@@ -6,6 +6,8 @@
 - 내보내기는 세션의 송신 작업 하나가 `WsOutbound`로만 한다 (Starlette `send`에 잠금이 없음)
 - 세션이 끝나거나(확정·handoff·`call.end`·오류) 손님이 끊으면 세션을 닫고(STT 닫기·JSONL 쓰기)
   소켓을 닫는다
+- 동시 통화가 `max_calls`를 넘으면 세션 없이 `error{code: "busy"}`를 보내고 닫는다 (리뷰 17번).
+  통화 길이(`max_call_s`)와 `call.start` 대기(10초)는 세션이 지킨다
 
 가게 지식·설정·`OrderSink`는 만드는 쪽이 넣는다. 여기에는 가짜 기본값이 없다.
 """
@@ -26,7 +28,7 @@ from agenthan.core.contracts import OrderSink, StoreKnowledge
 from agenthan.voice import adapters
 from agenthan.voice.adapters import SttFactory, TtsFactory
 from agenthan.voice.call.fakes import FakeClock
-from agenthan.voice.call.ports import Clock, PortError, SystemClock, Tts
+from agenthan.voice.call.ports import CUSTOMER_RETRY, Clock, PortError, SystemClock, Tts
 from agenthan.voice.call.session import CallSession, SessionSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
@@ -66,10 +68,24 @@ def phone_router(
     make_tts = tts_factory or adapters.tts_factory(settings)
     config = replace(config, tz=settings.tz)
     router = APIRouter()
+    active = 0  # 지금 열린 통화 수 (이벤트 루프 하나라 잠금이 필요 없다)
 
     @router.websocket(WS_PATH)
     async def phone_ws(ws: WebSocket) -> None:
+        nonlocal active
         await ws.accept()
+        if active >= settings.max_calls:
+            log.info("동시 통화 %d개 상한이라 거절", settings.max_calls)
+            await _refuse(ws, PortError("동시 통화 상한", code="busy",
+                                        customer="지금 통화가 많아요. " + CUSTOMER_RETRY))
+            return
+        active += 1
+        try:
+            await _serve(ws)
+        finally:
+            active -= 1
+
+    async def _serve(ws: WebSocket) -> None:
         tts: Tts | None = None
         try:
             tts = make_tts()
@@ -88,7 +104,7 @@ def phone_router(
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             log_dir=settings.log_dir,
-            settings=SessionSettings(vad=settings.vad),
+            settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s),
         )
         await session.open()
         reader = asyncio.create_task(_read(ws, session))
@@ -116,7 +132,7 @@ def _clock(settings: VoiceSettings) -> Clock:
 
 
 async def _read(ws: WebSocket, session: CallSession) -> None:
-    """읽기 작업 하나. 손님이 끊으면 끝난다."""
+    """읽기 작업 하나. 손님이 끊으면 끝난다. 세션 쪽 호출은 STT·엔진을 기다리지 않는다."""
     try:
         while not session.done:
             message = await ws.receive()
@@ -130,6 +146,8 @@ async def _read(ws: WebSocket, session: CallSession) -> None:
                     await session.feed_event(event)
     except WebSocketDisconnect:
         return
+    except Exception:  # 여기서 죽으면 gather가 예외를 삼켜 조용히 끊긴다 (리뷰 10번)
+        log.exception("WS 읽기 작업 오류 (%s)", session.call_id)
 
 
 def _parse(text: str) -> dict[str, Any] | None:
@@ -146,10 +164,12 @@ def _parse(text: str) -> dict[str, Any] | None:
 
 async def _refuse(ws: WebSocket, err: Exception) -> None:
     if isinstance(err, PortError):
-        code, retry, message = err.code, err.retry, str(err)
+        code, retry, message = err.code, err.retry, err.customer_message
+        if code != "busy":
+            log.warning("통화 포트를 만들지 못함 %s: %s", code, err)  # 상세는 서버 로그에만
     else:
         log.exception("통화 포트를 만들지 못함", exc_info=err)
-        code, retry, message = "config", False, "잠시 후 다시 걸어 주세요."
+        code, retry, message = "config", False, CUSTOMER_RETRY
     try:
         await ws.send_text(json.dumps(
             {"type": "error", "turn": 0, "code": code, "message": message, "retry": retry},

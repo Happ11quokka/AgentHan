@@ -13,7 +13,9 @@
 | `PHONE_WEB_DIST` | 개발 서버가 같이 낼 React 빌드 폴더 (있을 때만) | `web/dist` |
 | `PHONE_VAD_THRESHOLD` | 무음 감지 RMS 임계값 (PCM16) | `VadSettings` 기본값 |
 | `PHONE_VAD_START_MS` | 말 시작으로 볼 말소리 길이(ms) | `VadSettings` 기본값 |
-| `PHONE_VAD_END_SILENCE_MS` | 말 끝으로 볼 무음 길이(ms) | `VadSettings` 기본값 |
+| `PHONE_VAD_END_SILENCE_MS` | 말 끝으로 볼 무음 길이(ms, 100 이상) | `VadSettings` 기본값 |
+| `PHONE_MAX_CALLS` | 동시 통화 상한. 넘으면 `error{code: "busy"}` (CLOVA 도메인당 15) | `10` |
+| `PHONE_MAX_CALL_S` | 통화 하나의 최대 길이(초). 넘으면 `call_too_long` | `600` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -21,6 +23,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -54,6 +57,8 @@ class VoiceSettings:
     store_fixture: Path | None = None  # None이면 샘플 가게
     web_dist: Path = Path("web/dist")
     vad: VadSettings = field(default_factory=VadSettings)
+    max_calls: int = 10  # 동시 통화 상한 (리뷰 17번)
+    max_call_s: float = 600.0  # 통화 하나의 최대 길이
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -88,10 +93,14 @@ class VoiceSettings:
                               base.threshold),
             start_ms=int(_number("PHONE_VAD_START_MS", get("PHONE_VAD_START_MS", ""),
                                  base.start_ms)),
+            # 무음 프레임 하나(100ms)보다 짧으면 프레임마다 말 끝이 된다 (리뷰 13번)
             end_silence_ms=int(_number("PHONE_VAD_END_SILENCE_MS",
                                        get("PHONE_VAD_END_SILENCE_MS", ""),
-                                       base.end_silence_ms)),
+                                       base.end_silence_ms, minimum=100)),
         )
+        max_calls = _number("PHONE_MAX_CALLS", get("PHONE_MAX_CALLS", ""), 10)
+        if max_calls != int(max_calls):
+            raise SettingsError(f"PHONE_MAX_CALLS는 정수여야 해요: {max_calls!r}")
         return cls(
             nlu=get("PHONE_NLU", "fake"),  # type: ignore[arg-type]  # __post_init__가 검사
             stt=get("PHONE_STT", "fake"),  # type: ignore[arg-type]
@@ -107,6 +116,8 @@ class VoiceSettings:
             store_fixture=Path(fixture) if (fixture := get("PHONE_STORE_FIXTURE", "")) else None,
             web_dist=Path(get("PHONE_WEB_DIST", "web/dist")),
             vad=vad,
+            max_calls=int(max_calls),
+            max_call_s=_number("PHONE_MAX_CALL_S", get("PHONE_MAX_CALL_S", ""), 600.0),
             env=env,
         )
 
@@ -131,15 +142,17 @@ def _check(name: str, value: str, allowed: tuple[str, ...]) -> None:
         raise SettingsError(f"{name}은(는) {' · '.join(allowed)} 중 하나여야 해요: {value!r}")
 
 
-def _number(name: str, value: str, default: float) -> float:
+def _number(name: str, value: str, default: float, *, minimum: float = 0.0) -> float:
+    """양수(`minimum`이 있으면 그 이상)만 받는다. nan·inf·0은 틀린 값이다 (리뷰 13번)."""
     if not value:
         return float(default)
     try:
         number = float(value)
     except ValueError:
-        number = -1.0
-    if number < 0:
-        raise SettingsError(f"{name}는 0 이상의 숫자여야 해요: {value!r}")
+        number = math.nan
+    if not (math.isfinite(number) and number > 0 and number >= minimum):
+        least = f"{minimum:g} 이상" if minimum else "0보다 큰"
+        raise SettingsError(f"{name}는 {least} 숫자여야 해요: {value!r}")
     return number
 
 

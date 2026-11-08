@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
-from agenthan.voice.call.ports import PortError
+from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
@@ -202,8 +202,40 @@ def test_port_that_cannot_be_made_sends_one_error_and_closes(tmp_path) -> None:
     with client.websocket_connect(WS_PATH) as ws:
         error = json.loads(ws.receive_text())
         assert ws.receive()["type"] == "websocket.close"
+    # 변수 이름 같은 개발자용 문구는 서버 로그에만. 손님에게는 고정 문구 (리뷰 15번)
     assert error == {"type": "error", "turn": 0, "code": "stt_config",
-                     "message": "CLOVA_SPEECH_SECRET_KEY가 없어요", "retry": False}
+                     "message": CUSTOMER_FATAL, "retry": False}
+
+
+def test_calls_over_the_limit_are_refused_with_busy(tmp_path) -> None:
+    client = TestClient(_app(tmp_path, max_calls=1))
+    with client.websocket_connect(WS_PATH) as first:
+        Phone(first).send(type="call.start", turn=0)
+        Phone(first).until("call.ready", 0)
+        with client.websocket_connect(WS_PATH) as second:
+            error = json.loads(second.receive_text())
+            assert second.receive()["type"] == "websocket.close"
+        assert (error["code"], error["retry"]) == ("busy", True)
+        first_phone = Phone(first)
+        first_phone.send(type="call.end", turn=0)
+        assert first_phone.closed_by_server()
+    with client.websocket_connect(WS_PATH) as again:  # 끝난 통화는 자리를 돌려준다
+        phone = Phone(again)
+        phone.send(type="call.start", turn=0)
+        assert phone.until("call.ready", 0)["turn"] == 0
+
+
+def test_bad_event_values_do_not_break_the_call(tmp_path) -> None:
+    client = TestClient(_app(tmp_path))
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.until("call.ready", 0)
+        phone.send(type="playback.done", turn=0, seq="1")
+        phone.send(type="client.metrics", turn=[0])
+        phone.played(0)
+        phone.say(1)
+        assert phone.until("bot.done", 1)["turn"] == 1
 
 
 def test_text_that_is_not_an_event_is_ignored(tmp_path) -> None:
