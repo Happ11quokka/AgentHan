@@ -128,9 +128,15 @@ def classify_turn_end(
     if not tokens:
         return TurnEndVerdict("end", "empty")
     verdict = _judge(text, tokens, question_kind, menu_names)
-    if all(t in BACKCHANNELS for t in tokens):
+    if is_backchannel(text):
         verdict = replace(verdict, backchannel=True)
     return verdict
+
+
+def is_backchannel(text: str) -> bool:
+    """맞장구로 보이는 말("네", "네네", "응", "음")인가. 듣는 중이면 답이고, 기록에만 쓴다."""
+    tokens = _tokens(text)
+    return bool(tokens) and all(t in BACKCHANNELS for t in tokens)
 
 
 def _judge(

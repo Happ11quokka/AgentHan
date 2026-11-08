@@ -50,7 +50,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from concurrent.futures import Executor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,6 +75,15 @@ from agenthan.voice.call.ports import (
     Tts,
 )
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
+from agenthan.voice.call.turn_end import (
+    MODEL_HIGH,
+    MODEL_LOW,
+    TurnDecision,
+    classify_turn_end,
+    combine_turn_end,
+    is_backchannel,
+    question_kind,
+)
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
@@ -88,6 +97,7 @@ __all__ = ["CUSTOMER_FATAL", "CUSTOMER_RETRY", "CallSession", "SessionSettings",
 
 NluChoice = Literal["fake", "hcx"]
 Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
+_CONT_POLL_S = 0.1  # 이어짐 대기 중 손님이 다시 말하고 있으면 이 간격으로 다시 본다
 
 
 @dataclass(frozen=True)
@@ -103,6 +113,13 @@ class SessionSettings:
     stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
     hold_max_s: float = 1.2  # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout)
     hold_cap_s: float = 3.0  # 이어진 말이 아직 열려 있어도 붙잡기는 여기까지
+    # 말 끝 판정 (3단계 티켓 02). 이어짐이면 마지막 말 끝(마지막 유성 프레임 도착)부터 이만큼까지
+    # 기다린다. 말이 다시 시작되면 다음 말 끝부터 다시 센다 (grilling Q3, `PHONE_CONT_WAIT_S`)
+    cont_wait_s: float = 2.0
+    # 이어짐 대기 전체 상한(처음 이어짐 판정부터). 배경 소리가 "말하는 중"을 안 풀어도 여기서 넘긴다
+    cont_max_s: float = 8.0
+    turn_model_low: float = MODEL_LOW  # Smart Turn 점수 대역 (티켓 03이 점수를 넣는다)
+    turn_model_high: float = MODEL_HIGH
     # `playback.done`이 안 와도(AudioContext 멈춤 등) 보낸 소리 길이 + 이만큼 뒤 듣기로 (리뷰 4번)
     play_done_grace_s: float = 3.0
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
@@ -213,6 +230,12 @@ class CallSession:
         self._hold_since: float | None = None  # 처음 붙잡은 때 (`hold_cap_s` 기준)
         self._hold_timer: asyncio.TimerHandle | None = None
         self._pending: list[_Utterance] = []
+        # 판정 중 국면 (티켓 02). 국면 값은 listening 그대로 두고(화면은 듣는 중) 이것으로 가른다
+        self._cont: _Utterance | None = None  # 이어짐 판정으로 기다리는 말
+        self._cont_decision: TurnDecision | None = None
+        self._cont_since: float | None = None  # 처음 이어짐 판정을 낸 때 (`cont_max_s`·대기 시간)
+        self._cont_timer: asyncio.TimerHandle | None = None  # 붙잡기 타이머와 따로 둔다
+        self._steps: list[dict[str, Any]] = []  # 이 말의 앞선 판정들 (턴 기록 `turn_end_steps`)
         self._commit = False  # "말 끝" 버튼: 다음 DATA에 epFlag
         self._forced = False  # "말 끝" 버튼: 다음 말 끝 결과는 붙잡지 않는다
         self._button_at: float | None = None
@@ -289,7 +312,9 @@ class CallSession:
                 self._phase = "thinking"
                 self._spawn(self._turn_loop(), "turns")
         elif kind == "user.end_of_speech":
-            if self._phase in ("listening", "thinking"):
+            if self._cont is not None and not (self._vad.in_speech or self._parts):
+                self._finish_waiting("button")  # 이어짐 대기 중 누름: 기다린 말로 끝낸다
+            elif self._phase in ("listening", "thinking"):
                 self._commit = True
                 self._forced = True
                 self._button_at = self._clock.monotonic()
@@ -486,7 +511,7 @@ class CallSession:
         reason = "ended" if self.done else ("terminal" if self._terminal else "speaking")
         record.fields.setdefault("dropped", []).append({
             "text": r.text, "epd_type": r.epd_type, "start_ms": r.start_ms, "end_ms": r.end_ms,
-            "ep_flag": r.ep_flag, "reason": reason,
+            "ep_flag": r.ep_flag, "reason": reason, "backchannel": is_backchannel(r.text),
         })
 
     def _release(self, r: SttResult, end_by: str) -> None:
@@ -505,7 +530,7 @@ class CallSession:
         )
         self._clear_hold()
         if self._phase == "listening":
-            self._dispatch(utterance)
+            self._decide(utterance)
         else:
             self._pending.append(utterance)
 
@@ -541,13 +566,128 @@ class CallSession:
             return
         self._release(held, "hold_timeout")
 
-    def _dispatch(self, u: _Utterance) -> None:
+    # ------------------------------------------------------------ 말 끝 판정 (티켓 02)
+
+    def _decide(self, u: _Utterance) -> None:
+        """손님 말 하나(조각을 합친 것)가 끝났나 본다. 이어짐 대기 중이면 기다리던 말과 합친다.
+
+        끝남·기다림 요청이면 바로 턴을 넘기고, 이어짐이면 판정 중 국면에서 기다린다
+        (`_wait_more`). 엔진(장바구니 변경)은 넘긴 뒤에만 돈다.
+        """
+        if self._cont is not None:
+            u = _Utterance.merge([self._cont, u])
+            self._cancel_cont_timer()
+            self._cont = self._cont_decision = None
+        decision = self._judge(u.text)
+        if u.end_by == "button" and decision.label == "continue":
+            decision = replace(decision, label="end", reason="button", path="button")
+        if decision.label == "continue":
+            self._wait_more(u, decision)
+            return
+        if decision.verdict.filler_only:  # 버튼으로 끝낸 필러만 있는 말
+            self._drop_fillers(u, decision)
+            return
+        self._dispatch(u, decision)
+
+    def _judge(self, text: str) -> TurnDecision:
+        engine = self._engine
+        assert engine is not None
+        ctx = engine.nlu_context()  # 듣는 중이라 엔진은 쉬고 있다
+        verdict = classify_turn_end(
+            text, state=ctx.state, question_kind=question_kind(ctx.last_question, ctx.state),
+            menu_names=ctx.menu_names,
+        )
+        settings = self._settings
+        # 턴 모델 점수는 티켓 03이 넣는다. 없으면 규칙만 쓴다
+        return combine_turn_end(verdict, None, low=settings.turn_model_low,
+                                high=settings.turn_model_high)
+
+    def _wait_more(self, u: _Utterance, decision: TurnDecision) -> None:
+        self._steps.append({"text": u.text, **decision.as_record()})
+        self._cont, self._cont_decision = u, decision
+        if self._cont_since is None:
+            self._cont_since = self._clock.monotonic()
+        self._on_cont_timer()
+
+    def _arm_cont(self, delay: float) -> None:
+        self._cont_timer = asyncio.get_running_loop().call_later(
+            max(delay, 0.0), self._on_cont_timer
+        )
+
+    def _cancel_cont_timer(self) -> None:
+        if self._cont_timer is not None:
+            self._cont_timer.cancel()
+            self._cont_timer = None
+
+    def _on_cont_timer(self) -> None:
+        """이어짐 마감: 마지막 말 끝 + `cont_wait_s`. 말하는 중이거나 아직 STT 글을 기다리면 미룬다.
+
+        조각 붙잡기(`_hold_timer`)와 다른 타이머라서 붙잡기가 이 마감을 덮어쓰지 않는다.
+        """
+        self._cont_timer = None
+        if self._cont is None or self.done or self._phase != "listening":
+            return
+        settings = self._settings
+        now = self._clock.monotonic()
+        assert self._cont_since is not None
+        left = settings.cont_max_s - (now - self._cont_since)
+        if left > 0 and (self._vad.in_speech or self._parts or self._ep_waiting()):
+            self._arm_cont(min(_CONT_POLL_S, left))  # 말이 다시 시작됐다. 그 말 끝부터 다시 센다
+            return
+        due = (self._voice_at if self._voice_at is not None else now) + settings.cont_wait_s
+        if left > 0 and now < due:
+            self._arm_cont(min(due - now, left))
+            return
+        self._finish_waiting("cap")
+
+    def _finish_waiting(self, path: Literal["cap", "button"]) -> None:
+        """이어짐 대기를 끝낸다. 말이 안 이어졌으니 기다린 말을 그대로 넘긴다."""
+        u, decision = self._cont, self._cont_decision
+        assert u is not None and decision is not None
+        self._cancel_cont_timer()
+        self._cont = self._cont_decision = None
+        self._steps.pop()  # 마지막 이어짐 판정은 아래 판정의 근거로 남긴다
+        decision = replace(decision, label="end", reason=f"{path}:{decision.reason}", path=path)
+        if decision.verdict.filler_only:
+            self._drop_fillers(u, decision)
+            return
+        self._dispatch(u, decision)
+
+    def _drop_fillers(self, u: _Utterance, decision: TurnDecision) -> None:
+        """필러만 있는 말("음…")은 엔진에 넘기지 않는다. 무응답처럼 다루고 실패로 세지 않는다.
+
+        지금 턴 기록의 `fillers`에 남긴다.
+        """
+        steps, self._steps = self._steps, []
+        self._cont_since = None
+        record = self._log.get(self._turn)
+        if record is not None:
+            record.fields.setdefault("fillers", []).append(
+                {"text": u.text, **decision.as_record(), "steps": steps}
+            )
+
+    def _clear_decision(self) -> None:
+        self._cancel_cont_timer()
+        self._cont = self._cont_decision = None
+        self._cont_since = None
+        self._steps = []
+
+    def _dispatch(self, u: _Utterance, decision: TurnDecision | None = None) -> None:
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
         self._flush_log(before=turn)
+        fields: dict[str, Any] = {}
+        if decision is not None:
+            fields["turn_end"] = decision.as_record()
+            if self._steps:
+                fields["turn_end_steps"] = self._steps
+            if self._cont_since is not None:
+                fields["cont_wait_ms"] = round((self._clock.monotonic() - self._cont_since) * 1000)
+        self._steps, self._cont_since = [], None
         self._log.begin(turn, text=u.text, epd_type=u.epd_type, fragments=u.fragments,
-                        splits=u.fragments - 1, utterances=u.utterances, end_by=u.end_by)
+                        splits=u.fragments - 1, utterances=u.utterances, end_by=u.end_by,
+                        **fields)
         for name, at in (("speech_end", u.speech_end), ("ep_sent", u.ep_sent),
                          ("button", u.button), ("stt_final", u.stt_final)):
             if at is not None:
@@ -590,6 +730,9 @@ class CallSession:
             # 이 뒤에 오는 결과는 버리므로, 붙잡아 둔 조각과 "말 끝" 표시가 다음 손님 말에
             # 붙지 않게 여기서 지운다(리뷰 3번). 이미 끝난 말(`_pending`)은 그대로 둔다
             self._clear_hold()
+            # 판정 중인 말도 지운다. 지금은 늘 비어 있다(엔진은 판정 뒤에만 돈다).
+            # 봇이 먼저 말하는 턴(티켓 04)이 생기면 여기에 걸린다
+            self._clear_decision()
             self._forced = self._commit = False
             self._button_at = None
             self._emit_state()
@@ -700,7 +843,7 @@ class CallSession:
         if self._pending:
             merged = _Utterance.merge(self._pending)
             self._pending = []
-            self._dispatch(merged)
+            self._decide(merged)
 
     # ------------------------------------------------------------ 내보내기·끝내기
 
@@ -748,6 +891,7 @@ class CallSession:
 
     def _end(self) -> None:
         self._cancel_hold()
+        self._cancel_cont_timer()
         self._cancel_play_timer()
         self._phase = "ended"
         self._ready = False
