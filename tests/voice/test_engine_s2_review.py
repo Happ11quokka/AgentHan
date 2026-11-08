@@ -73,3 +73,28 @@ def test_5_no_with_a_qty_after_anything_else_is_still_a_correction() -> None:
     r = talk(engine, "아니요, 두 개요")
     assert r.state is State.ORDERING
     assert lines(r) == [("m04", 2, [], "")]
+
+
+# ---------------------------------------------------------------- 6: B1 "사워크림은 빼 주세요"
+
+
+@pytest.mark.parametrize("text", [
+    "블린 하나요, 사워크림은 빼 주세요",  # 대본 B1 (쉼표 → 마지막 메뉴 뒤 꼬리)
+    "블린 하나요 사워크림은 빼 주세요",  # STT 글 (문장부호 없음)
+    "블린 사워크림은 빼고 하나요",
+    "블린 하나 사워크림 없이요",
+])
+def test_6_sour_cream_removal_after_the_item_keeps_the_option(text) -> None:
+    r = talk(make(), text)
+    assert lines(r) == [("m04", 1, ["사워크림 빼기"], "")]
+
+
+def test_6_a_request_after_the_last_item_goes_to_that_item() -> None:
+    r = talk(make(), "메도빅 하나랑 블린 하나요, 포장해 주세요")
+    assert [(m, q) for m, q, _, _ in lines(r)] == [("m01", 1), ("m04", 1)]
+    assert lines(r)[-1][3] == "포장해 주세요"
+
+
+def test_6_words_after_the_last_item_that_mean_nothing_add_nothing() -> None:
+    assert [a[0] for a in parse("메도빅 하나요, 감사합니다")] == ["add_item"]
+

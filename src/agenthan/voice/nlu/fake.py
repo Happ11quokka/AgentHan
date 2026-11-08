@@ -122,8 +122,10 @@ _UNLISTED_ITEM = re.compile(
 # 손님이 옵션을 부르는 말 (가짜 NLU용 어휘. 어느 옵션인지는 엔진의 options.py가 판정)
 _OPTION = re.compile(
     r"따뜻하게|따뜻한|따듯하게|따듯한|뜨겁게|뜨거운|차갑게|차가운|차게|아이스|시원하게|시원한"
-    r"|디카페인|샷\s*추가|사워크림\s*(?:빼|없이)|홀\s*케이크"
+    r"|디카페인|샷\s*추가|사워크림\s*(?:은|는|을|를|도)?\s*(?:빼|없이)|홀\s*케이크"
 )
+# 옵션 말 안의 조사는 뗀다: "사워크림은 빼" → "사워크림 빼" (엔진 `options.py`가 조사를 모른다)
+_OPTION_PARTICLE = re.compile(r"(사워크림)\s*(?:은|는|을|를|도)\s*")
 _CONNECTOR = re.compile(r"이랑|랑|하고|그리고|[,.]")
 _PARTICLE = re.compile(r"^(?:은|는|을|를|도|에는|에|이|가)?\s*")
 _REMOVE = re.compile(r"빼|취소|없애")
@@ -146,7 +148,10 @@ def _parse_qty(text: str) -> int | None:
 
 
 def _option_text(text: str) -> str:
-    return " ".join(re.sub(r"\s+", " ", m.group(0)) for m in _OPTION.finditer(text))
+    return " ".join(
+        re.sub(r"\s+", " ", _OPTION_PARTICLE.sub(r"\1 ", m.group(0)))
+        for m in _OPTION.finditer(text)
+    )
 
 
 def _clean(text: str) -> str:
@@ -174,6 +179,9 @@ def _split_head(segment: str) -> tuple[str, str]:
     m = _CONNECTOR.search(segment)
     return (segment, "") if m is None else (segment[: m.start()], segment[m.end() :])
 
+
+# 마지막 메뉴 뒤 꼬리에서 받는 act: 옵션·요청만. 수량·빼기·새 메뉴는 앞 말과 섞이기 쉬워 받지 않는다
+_TAIL_ACTS = frozenset({"set_option", "set_request"})
 
 _BARE_QTY = re.compile(rf"(?:{_QTY_PAT})\s*(?:이요|요|만요|만|으로요|로요)?")
 
@@ -215,6 +223,10 @@ def _items(text: str, ctx: NluContext) -> list[Act]:
         head, tail = _split_head(text[pos + len(name) : end])
         acts.append(_menu_act(name, prefix, head, ctx))
         prefix = tail
+    # 마지막 메뉴 뒤 연결어 다음 말("블린 하나요, 사워크림은 빼 주세요")은 메뉴 없는 말로 읽는다.
+    # 대상은 엔진이 직전 항목으로 정한다 (2단계 리뷰 6번)
+    if prefix.strip():
+        acts += [a for a in _no_menu_act(prefix, ctx) if a.type in _TAIL_ACTS]
     return acts
 
 
