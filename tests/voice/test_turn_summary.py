@@ -23,7 +23,7 @@ LINES = [
     _turn("c1", 3, 2_600, end_by="gap", empty=[{"start_ms": 0, "end_ms": 10}]),
     _turn("c2", 0),
     _turn("c2", 1, 1_200, end_by="vad", marks={"ep_sent": 100, "stt_final": 1_900}),
-    _turn("c2", 2, 1_400, end_by="button"),
+    _turn("c2", 2, 1_400, end_by="button", turn_end={"label": "end", "path": "rule"}),
     _turn("c2", 3, end_by="vad", queued=True),
     _turn("c2", 4, bot_turn="no_input"),
 ]
@@ -42,6 +42,7 @@ def test_voice_latency_percentiles_and_slow_turns_per_call() -> None:
 def test_paths_thinking_empty_and_bot_turns_are_counted() -> None:
     s = summarize(LINES)
     assert s["end_by"] == {"button": 1, "gap": 1, "vad": 4}
+    assert s["turn_end_path"] == {"rule": 1}  # 말 끝 판정 경로(규칙·모델·상한·버튼, 티켓 02)
     assert s["thinking_turns"] == 1
     assert s["thinking"] == {"n": 1, "p50_ms": 1_500, "p90_ms": 1_500}
     assert s["empty_turns"] == 1

@@ -84,7 +84,7 @@
 - 생각 중 효과음: 말 끝 + 1.5초(`thinking_after_s`)까지 봇 목소리가 없으면 `bot.thinking {turn}`을 한 번 보낸다. 첫 오디오를 보내면 타이머를 끈다. 브라우저(`web/src/screens/phone/thinkingCue.ts`)는 직접 만든 사인파 파일(`thinking-cue.wav`, `web/scripts/make-thinking-cue.mjs`로 생성, 목소리·TTS 아님)을 반복 재생하다가 봇 오디오가 오거나 턴이 넘어가면 멈춘다. 봇 재생 중 모아 둔 말로 연 턴은 재생이 끝나 넘긴 때부터 센다
 - 봇이 먼저 말하는 턴: `CallSession.bot_turn(reason, act)`가 듣는 중일 때만 새 턴 번호로 `act(engine, now)`를 엔진 스레드에서 돌린다(무음 되묻기·기다림 응답, 티켓 04·05). 손님 말을 붙잡거나 판정 중이면 `None`. JSONL `bot_turn`
 - JSONL 지표: `end_to_voice_ms`(말 끝 → 브라우저 `playback.started`, 둘 다 서버 도착 시각이라 올림 지연이 지워짐), `end_to_thinking_ms`와 `marks.thinking`, `queued`(봇 재생 중 모아 둔 말로 연 턴, 말 끝 기준 지연 없음), `empty`(말소리 뒤 글 없는 `epFlag` 응답, 합성 `eof` 제외), `tts_trim_ms`, `bot_turn`. 판정 경로는 `end_by`(무음 감지·버튼·gap·…)와 `turn_end.path`(rule·model·cap·button). 브라우저 `client.metrics`에 `thinking_ms`
-- 요약(숫자만, 글은 안 냄): `uv run python -m agenthan.voice.call.turn_summary logs/phone-YYYYMMDD.jsonl` → 말 끝 → 첫 목소리 P50·P90, 통화당 느린 턴(2.5초 초과) 수, 효과음 시각, `end_by`별 턴 수, 빈 턴, `stt_wait` P50·P90·P99
+- 요약(숫자만, 글은 안 냄): `uv run python -m agenthan.voice.call.turn_summary logs/phone-YYYYMMDD.jsonl` → 말 끝 → 첫 목소리 P50·P90, 통화당 느린 턴(2.5초 초과) 수, 효과음 시각, `end_by`·`turn_end.path`별 턴 수, 빈 턴, `stt_wait` P50·P90·P99
 - 테스트: `tests/voice/test_call_latency.py`(세션), `test_turn_summary.py`, `test_call_vad.py`, 웹 `phoneCall.test.ts`(효과음)
 
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
