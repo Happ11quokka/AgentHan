@@ -167,6 +167,28 @@ def test_background_sound_without_text_still_ends_the_wait_at_the_overall_limit(
     assert turn1["turn_end"]["path"] == "cap"
 
 
+# ---------------------------------------------------------------- P4 / C3
+
+
+def test_the_no_input_limit_does_not_reprompt_while_the_guest_is_speaking(tmp_path) -> None:
+    # 글 없는 소리가 마감을 밀어도 처음 마감 + `no_input_slack_s`에는 되묻는다. 그래도 손님이
+    # 말하는 중에는 끼어들지 않고, 그 말이 끝나면 바로 되묻는다
+    quiet = SessionSettings(no_input_s=0.3, no_input_slack_s=0.3)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=FakeSttStream(), settings=quiet) as c:
+            await c.start()
+            await c.feed(tone(200))  # 말하기 시작
+            await asyncio.sleep(0.9)  # 하드 마감(0.6초)을 넘겼다. 아직 말하는 중
+            assert c.out.of("bot.say", 1) == [], "말하는 중에 되묻지 않는다"
+            await c.feed(silence(500))
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    c = run(call())
+    assert c.out.of("bot.say", 1)[0]["text"] == "여보세요?"
+
+
 # ---------------------------------------------------------------- C2
 
 

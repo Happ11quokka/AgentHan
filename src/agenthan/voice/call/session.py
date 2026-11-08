@@ -39,7 +39,8 @@
 조각 붙잡기: 끝 후보 결과가 왔는데 그 끝 뒤에 새 말 구간이 시작됐으면 다음 결과와 합친다.
 epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 epFlag 응답을 기다리는
 중이어도 붙잡는다(티켓 10, `_continues_after`). 그때 턴은 epFlag 응답으로 넘어간다.
-`hold_max_s` 안에 새 결과가 없으면 그대로 턴을 넘긴다(`end_by: hold_timeout`, `_arm_hold` 앞 주석).
+`hold_max_s` 안에 새 결과가 없으면 그대로 턴을 넘긴다(`end_by: hold_timeout`,
+`_on_hold_timer` 앞 주석).
 처음 붙잡은 때부터 `hold_cap_s`를 넘겨 붙잡지는 않는다.
 버린 결과(반이중·확정 뒤·통화 끝)는 그 턴 기록의 `dropped`에 남긴다.
 
@@ -102,6 +103,7 @@ from agenthan.voice.call.ports import (
 )
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
 from agenthan.voice.call.spoken import SpokenTurn
+from agenthan.voice.call.timers import Deadline, OneShot
 from agenthan.voice.call.trim import TrimSettings, trim_leading_silence
 from agenthan.voice.call.turn_end import (
     MODEL_HIGH,
@@ -127,7 +129,6 @@ __all__ = ["CUSTOMER_FATAL", "CUSTOMER_RETRY", "CallSession", "SessionSettings",
 
 NluChoice = Literal["fake", "hcx"]
 Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
-_CONT_POLL_S = 0.1  # 이어짐 대기 중 손님이 다시 말하고 있으면 이 간격으로 다시 본다
 # 턴 모델(Smart Turn)이 보는 최근 오디오: 8초 = 256,000바이트 (원본 입력 규칙)
 TURN_AUDIO_BYTES = 8_000 * BYTES_PER_MS
 # 턴 모델 전용 스레드 수. 프로세스에 풀 하나, 세션(ONNX) 하나를 같이 쓴다. 2 vCPU 서버라 2개
@@ -326,9 +327,8 @@ class CallSession:
         self._last_seq: dict[int, int] = {}  # 턴 → 마지막 문장 seq
         self._parts: list[SttResult] = []
         self._held: SttResult | None = None  # 붙잡은 끝 후보 결과 (뒤에 말이 이어짐)
-        self._hold_at: float | None = None  # 마지막으로 붙잡은 때
         self._hold_since: float | None = None  # 처음 붙잡은 때 (`hold_cap_s` 기준)
-        self._hold_timer: asyncio.TimerHandle | None = None
+        self._hold_timer = Deadline(self._on_hold_timer)
         self._pending: list[_Utterance] = []
         # 판정 중 국면 (티켓 02). 국면 값은 listening 그대로 두고(화면은 듣는 중) 이것으로 가른다
         self._cont: _Utterance | None = None  # 이어짐 판정으로 기다리는 말
@@ -336,32 +336,33 @@ class CallSession:
         self._cont_since: float | None = None  # 처음 이어짐 판정을 낸 때 (대기 시간 기록)
         # 이어짐 대기 중 마지막으로 글이 들어온 때. 전체 상한(`cont_max_s`)은 여기부터 센다(리뷰 P3)
         self._cont_text_at: float | None = None
-        self._cont_timer: asyncio.TimerHandle | None = None  # 붙잡기 타이머와 따로 둔다
+        self._cont_timer = Deadline(self._on_cont_timer)  # 붙잡기 타이머와 따로 둔다
         self._steps: list[dict[str, Any]] = []  # 이 말의 앞선 판정들 (턴 기록 `turn_end_steps`)
         self._commit = False  # "말 끝" 버튼: 다음 DATA에 epFlag
         self._forced = False  # "말 끝" 버튼: 다음 말 끝 결과는 붙잡지 않는다
         self._button_at: float | None = None
-        self._voice_at: float | None = None
+        # 마지막 말소리 프레임이 온 때 = 마지막 말 끝. 이어짐 마감·무음 대기·지연 기록이 같이 쓴다
+        self._last_voice_at: float | None = None
         self._ep_at: float | None = None  # 마지막 epFlag 프레임을 쓰기 큐에 넣은 때
         self._ep_reply_at: float | None = None  # 마지막 epFlag 응답을 받은 때
         self._speak_from_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각 (반이중 기준)
         self._client_start: dict[str, Any] = {}
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
-        self._play_timer: asyncio.TimerHandle | None = None
-        self._thinking_timer: asyncio.TimerHandle | None = None
+        self._play_timer = OneShot(self._on_play_timeout)
+        self._thinking_timer = OneShot(self._on_thinking)
         self._speaking: asyncio.Task[int] | None = None  # 지금 문장을 보내는 작업 (말 끊기가 취소)
         self._spoken: SpokenTurn | None = None  # 마지막으로 말한 턴 (들은 만큼·복창 금액 끝)
         # 무응답 타이머 (티켓 04). 몇 번째 무응답인지는 엔진이 센다. 세션은 시간만 잰다
-        self._quiet_timer: asyncio.TimerHandle | None = None
+        self._quiet_timer = Deadline(self._on_quiet_timer)
         self._quiet_since: float | None = None  # 이번 무음 대기를 시작한 때 (재생 끝·끊김)
         self._quiet_delay = 0.0
         self._quiet_turn: int | None = None  # 그 대기를 연 봇 턴
-        self._speech_end_at: float | None = None  # 마지막 VAD 말 끝(무음 400ms)
-        self._hold_on = False  # 지난 손님 턴이 "잠깐만요"였다. 다음 무음 대기는 `wait_request_s`
+        # 지난 손님 턴이 "잠깐만요"였다. 다음 무음 대기는 `wait_request_s`
+        self._wait_requested = False
         self._voiced_ms = 0  # 이번 말 구간의 말소리 프레임 길이
         self._ep_voiced_ms = 0  # 마지막 epFlag 프레임까지의 말소리 길이 (빈 응답 되묻기 기준)
         self._end_reason: str | None = None  # 대화가 끝난 이유 (`call.end`)
-        self._not_heard_timer: asyncio.TimerHandle | None = None
+        self._not_heard_timer = OneShot(self._on_not_heard_timer)
         # 음성 끼어들기 (티켓 06). 설정이 켜져 있고 브라우저가 할 수 있다고 알린 통화만 만든다
         self._barge: BargeTracker | None = None
         self._windows: list[BotWindow] = []  # 최근 봇 말 구간들 (늦게 온 글을 말한 시각으로 가른다)
@@ -396,7 +397,7 @@ class CallSession:
         if self._ring is not None:
             self._keep_turn_audio(pcm, started=self._vad.in_speech and not was_speaking)
         if self._vad.last_voiced:
-            self._voice_at = now
+            self._last_voice_at = now
             self._voiced_ms += len(pcm) // BYTES_PER_MS
         # 조기 epFlag: 무음 250ms (턴 판정은 `ended`). `_cut_ep`는 봇 재생 끝 경계(티켓 06)
         ep = self._vad.ep_due or self._commit or self._cut_ep
@@ -408,8 +409,6 @@ class CallSession:
             self._ep_voiced_ms, self._voiced_ms = self._voiced_ms, 0
         elif not self._vad.in_speech and not self._vad.last_voiced:
             self._voiced_ms = 0  # 말 구간 밖 무음: 짧은 잡음은 쌓지 않는다
-        if ended:
-            self._speech_end_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
         if self._barge is not None:
             if self._phase == "speaking" and self._windows:
@@ -445,7 +444,7 @@ class CallSession:
         if (self.done or self._terminal or self._phase != "listening" or self._parts
                 or self._pending or self._cont is not None):
             return None
-        self._cancel_quiet()
+        self._quiet_timer.cancel()
         if self._ring is not None:
             self._ring.clear()  # 되묻기 앞의 글 없는 소리는 다음 손님 말 점수에 넣지 않는다
         self._turn += 1
@@ -647,12 +646,12 @@ class CallSession:
         elif self.done or self._terminal or self._spoken_over(r):
             self._log_dropped(r)  # 반이중: 봇 소리가 나간 뒤에 한 말의 결과는 버린다
             return
-        self._cancel_hold()
+        self._hold_timer.cancel()
         if r.text.strip():
             self._parts.append(r)
         if not r.ends_speech:
             if self._parts and self._held is not None:
-                self._arm_hold(self._settings.hold_max_s)  # 아직 끝 후보가 아니다. 계속 기다린다
+                self._hold_timer.arm(self._settings.hold_max_s)  # 아직 끝 후보가 아니다
             return
         if not self._parts:
             if r.ep_flag:
@@ -665,10 +664,9 @@ class CallSession:
         if not forced and self._continues_after(r):
             # 말이 이어진다. 다음 결과(보통 epFlag 응답)와 합친다. 안 오면 시간 제한으로 푼다
             self._held = r
-            self._hold_at = self._clock.monotonic()
             if self._hold_since is None:
-                self._hold_since = self._hold_at
-            self._arm_hold(self._settings.hold_max_s)
+                self._hold_since = self._clock.monotonic()
+            self._hold_timer.arm(self._settings.hold_max_s)
             return
         self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
 
@@ -705,7 +703,7 @@ class CallSession:
         held = self._held
         if held is None or not held.ep_flag or not self._parts or self._ep_waiting():
             return
-        self._cancel_hold()
+        self._hold_timer.cancel()
         self._release(held, "vad")
 
     def _ep_waiting(self) -> bool:
@@ -755,22 +753,14 @@ class CallSession:
         """
         voiced, self._ep_voiced_ms = self._ep_voiced_ms, 0
         if voiced >= self._settings.not_heard_min_ms:
-            self._cancel_not_heard()
-            self._not_heard_timer = asyncio.get_running_loop().call_later(
-                self._settings.not_heard_wait_s, self._on_not_heard_timer
-            )
+            self._not_heard_timer.arm(self._settings.not_heard_wait_s)
 
     def _on_not_heard_timer(self) -> None:
         """그사이 글 있는 결과가 왔거나(붙잡는 중·턴이 열림) 다시 말하는 중이면 되묻지 않는다."""
-        self._not_heard_timer = None
         if self._vad.in_speech:
             return  # 새 말이 제 결과를 낸다
         self.bot_turn("not_heard", lambda engine, now: engine.not_heard(now))
 
-    def _cancel_not_heard(self) -> None:
-        if self._not_heard_timer is not None:
-            self._not_heard_timer.cancel()
-            self._not_heard_timer = None
 
     def _release(self, r: SttResult, end_by: str) -> None:
         """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""
@@ -782,7 +772,7 @@ class CallSession:
             epd_type=r.epd_type,
             end_by=end_by,
             stt_final=self._clock.monotonic(),
-            speech_end=self._voice_at,
+            speech_end=self._last_voice_at,
             ep_sent=self._ep_at if r.ep_flag else None,
             button=self._button_at if forced else None,
             start_ms=self._parts[0].start_ms,
@@ -798,31 +788,25 @@ class CallSession:
     # 이어진 말 구간이 아직 열려 있거나 그 구간의 `epFlag` 응답을 기다리는 중이면 `hold_cap_s`까지
     # 늘린다. 그래야 "메도빅 두 개… 랑 아메리카노 하나요"처럼 긴 뒷말이 쪼개지지 않는다
 
-    def _arm_hold(self, delay: float) -> None:
-        self._hold_timer = asyncio.get_running_loop().call_later(delay, self._on_hold_timer)
 
-    def _cancel_hold(self) -> None:
-        if self._hold_timer is not None:
-            self._hold_timer.cancel()
-            self._hold_timer = None
 
     def _clear_hold(self) -> None:
         """붙잡아 둔 조각·시간 제한을 모두 지운다."""
-        self._cancel_hold()
+        self._hold_timer.cancel()
         self._parts = []
         self._held = None
-        self._hold_at = self._hold_since = None
+        self._hold_since = None
 
     def _on_hold_timer(self) -> None:
-        self._hold_timer = None
         held = self._held
         if held is None or not self._parts or self.done:
             return
         now = self._clock.monotonic()
-        assert self._hold_since is not None and self._hold_at is not None
-        left = self._settings.hold_cap_s - (now - self._hold_since)
-        if left > 0 and (self._vad.in_speech or self._ep_waiting()):
-            self._arm_hold(min(self._settings.hold_max_s, left))
+        assert self._hold_since is not None
+        settings = self._settings
+        if self._hold_timer.wait(now, due=now, cap=self._hold_since + settings.hold_cap_s,
+                                 busy=self._vad.in_speech or self._ep_waiting(),
+                                 poll=settings.hold_max_s):
             return
         self._release(held, "hold_timeout")
 
@@ -836,7 +820,7 @@ class CallSession:
         """
         if self._cont is not None:
             u = _Utterance.merge([self._cont, u])
-            self._cancel_cont_timer()
+            self._cont_timer.cancel()
             self._cont = self._cont_decision = None
         decision = self._judge(u.text)
         if u.end_by == "button" and decision.label == "continue":
@@ -932,42 +916,25 @@ class CallSession:
     def _submit(self, fn: Callable[[], None]) -> None:
         self._in_thread(fn).add_done_callback(_retrieve)
 
-    def _arm_cont(self, delay: float) -> None:
-        self._cont_timer = asyncio.get_running_loop().call_later(
-            max(delay, 0.0), self._on_cont_timer
-        )
 
-    def _cancel_cont_timer(self) -> None:
-        if self._cont_timer is not None:
-            self._cont_timer.cancel()
-            self._cont_timer = None
 
     def _on_cont_timer(self) -> None:
         """이어짐 마감: 마지막 말 끝 + `cont_wait_s`. 말하는 중이거나 아직 STT 글을 기다리면 미룬다.
 
         조각 붙잡기(`_hold_timer`)와 다른 타이머라서 붙잡기가 이 마감을 덮어쓰지 않는다.
+        이어진 말의 글을 붙잡는 중이면(조각 붙잡기가 `hold_cap_s` 안에 넘긴다) 미룬다. 전체 상한은
+        마지막 글부터 센다. 글이 계속 들어오는 긴 주문은 쪼개지 않고, 글 없는 배경 소리가 "말하는
+        중"을 붙잡을 때만 넘긴다 (리뷰 P3)
         """
-        self._cont_timer = None
         if self._cont is None or self.done or self._phase != "listening":
             return
-        settings = self._settings
         now = self._clock.monotonic()
-        if self._parts:
-            # 이어진 말의 글을 붙잡는 중이다. 조각 붙잡기가 `hold_cap_s` 안에 넘긴다
-            self._arm_cont(_CONT_POLL_S)
-            return
-        assert self._cont_text_at is not None
-        # 전체 상한은 마지막 글부터 센다. 글이 계속 들어오는 긴 주문은 쪼개지 않고, 글 없는 배경
-        # 소리가 "말하는 중"을 붙잡을 때만 넘긴다 (리뷰 P3)
-        left = settings.cont_max_s - (now - self._cont_text_at)
-        if left > 0 and (self._vad.in_speech or self._ep_waiting()):
-            self._arm_cont(min(_CONT_POLL_S, left))  # 말이 다시 시작됐다. 그 말 끝부터 다시 센다
-            return
-        assert self._cont_decision is not None
-        last_voice = self._voice_at if self._voice_at is not None else now
-        due = last_voice + self._cont_decision.wait_s
-        if left > 0 and now < due:
-            self._arm_cont(min(due - now, left))
+        assert self._cont_text_at is not None and self._cont_decision is not None
+        last_voice = self._last_voice_at if self._last_voice_at is not None else now
+        if self._cont_timer.wait(now, due=last_voice + self._cont_decision.wait_s,
+                                 cap=self._cont_text_at + self._settings.cont_max_s,
+                                 busy=self._vad.in_speech or self._ep_waiting(),
+                                 hold=bool(self._parts)):
             return
         self._finish_waiting("cap")
 
@@ -975,7 +942,7 @@ class CallSession:
         """이어짐 대기를 끝낸다. 말이 안 이어졌으니 기다린 말을 그대로 넘긴다."""
         u, decision = self._cont, self._cont_decision
         assert u is not None and decision is not None
-        self._cancel_cont_timer()
+        self._cont_timer.cancel()
         self._cont = self._cont_decision = None
         self._steps.pop()  # 마지막 이어짐 판정은 아래 판정의 근거로 남긴다
         decision = replace(decision, label="end", reason=f"{path}:{decision.reason}", path=path)
@@ -998,18 +965,18 @@ class CallSession:
             )
 
     def _clear_decision(self) -> None:
-        self._cancel_cont_timer()
+        self._cont_timer.cancel()
         self._cont = self._cont_decision = None
         self._cont_since = None
         self._steps = []
 
     def _dispatch(self, u: _Utterance, decision: TurnDecision | None = None) -> None:
         """손님 말 하나를 새 턴으로 넘긴다."""
-        self._cancel_quiet()
-        self._cancel_not_heard()
+        self._quiet_timer.cancel()
+        self._not_heard_timer.cancel()
         if decision is not None and decision.label == "wait_request":
             u = replace(u, wait_request=True)  # 엔진이 "천천히 말씀하세요"를 하고 오래 기다린다
-        self._hold_on = u.wait_request
+        self._wait_requested = u.wait_request
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
@@ -1053,20 +1020,12 @@ class CallSession:
     # `play_start`)와 따로 `thinking` 표시로 남긴다
 
     def _arm_thinking(self, turn: int, ref: float | None) -> None:
-        self._cancel_thinking()
         now = self._clock.monotonic()
-        delay = max(0.0, (now if ref is None else ref) + self._settings.thinking_after_s - now)
-        self._thinking_timer = asyncio.get_running_loop().call_later(
-            delay, self._on_thinking, turn
-        )
+        self._thinking_timer.arm((now if ref is None else ref) + self._settings.thinking_after_s
+                                 - now, turn)
 
-    def _cancel_thinking(self) -> None:
-        if self._thinking_timer is not None:
-            self._thinking_timer.cancel()
-            self._thinking_timer = None
 
     def _on_thinking(self, turn: int) -> None:
-        self._thinking_timer = None
         if self.done or turn != self._turn or self._phase != "thinking":
             return
         self._log.mark(turn, "thinking")
@@ -1113,7 +1072,7 @@ class CallSession:
             self._spoken = SpokenTurn(turn, sentences, readback=result.readback)
             audio_ms = await self._speak_until_cut(turn, sentences)  # 첫 소리를 보낼 때 speaking
         if self._turn == turn:  # 끊긴 뒤 벌써 다음 턴이 열렸으면 그 턴의 효과음 타이머다
-            self._cancel_thinking()  # 말할 문장이 없던 턴
+            self._thinking_timer.cancel()  # 말할 문장이 없던 턴
         done: dict[str, Any] = {"type": "bot.done", "turn": turn, "sentences": len(sentences)}
         if audio_ms is None:  # 말 끊기: 보낸 문장 수만 센다
             done.update(sentences=len(self._spoken.ms) if self._spoken else 0, interrupted=True)
@@ -1125,9 +1084,7 @@ class CallSession:
         elif self._phase == "speaking" and audio_ms is not None:
             # 서버 안전망: 재생 끝 보고가 안 와도 소리 길이 + 여유 뒤에는 듣기로 (리뷰 4번)
             delay = audio_ms / 1000 + self._settings.play_done_grace_s
-            self._play_timer = asyncio.get_running_loop().call_later(
-                delay, self._on_play_timeout, turn
-            )
+            self._play_timer.arm(delay, turn)
 
     def _start_speaking(self, turn: int) -> None:
         """첫 오디오를 보내기 직전. 여기서부터 "봇 말하는 중"이다 (3단계 티켓 01).
@@ -1138,7 +1095,7 @@ class CallSession:
         다음 손님 말에 붙지는 않는다(리뷰 3번). 그 뒷글이 늦게 와도 `_pending`에서 합쳐진다
         """
         self._phase = "speaking"
-        self._cancel_thinking()
+        self._thinking_timer.cancel()
         self._speak_from_ms = self._vad.offset_ms
         if self._spoken is not None and self._spoken.turn == turn:
             self._spoken.from_ms = self._speak_from_ms
@@ -1254,7 +1211,6 @@ class CallSession:
         self._after_playback(turn)
 
     def _on_play_timeout(self, turn: int) -> None:
-        self._play_timer = None
         if self._phase != "speaking" or turn != self._turn or self.done:
             return
         log.info("playback.done이 오지 않아 듣기로 돌아감 (%s, 턴 %d)", self.call_id, turn)
@@ -1263,10 +1219,6 @@ class CallSession:
             record.fields["play_done_timeout"] = True
         self._after_playback(turn)
 
-    def _cancel_play_timer(self) -> None:
-        if self._play_timer is not None:
-            self._play_timer.cancel()
-            self._play_timer = None
 
     # 말 끊기 (3단계 티켓 05). 기본은 반이중이라 봇이 말하는 동안 브라우저는 0 프레임을 보낸다.
     # 버튼을 누르면 브라우저가 재생을 멈추고 지금 턴 이하 오디오를 버리고 마이크를 연 뒤
@@ -1327,7 +1279,7 @@ class CallSession:
 
     def _after_playback(self, turn: int, *, mark: str = "play_done") -> None:
         """재생이 끝났거나(`playback.done`·안전망) 끊겼다. 듣기로 가고 무음 타이머를 건다."""
-        self._cancel_play_timer()
+        self._play_timer.cancel()
         self._log.mark(turn, mark)
         if self._barge is not None:
             self._close_window(turn)
@@ -1377,45 +1329,37 @@ class CallSession:
 
     # 무응답 타이머 (티켓 04, grilling Q6). 봇 재생이 끝나거나 끊긴 때(`_after_playback`)부터
     # `no_input_s`(지난 손님 말이 "잠깐만요"면 `wait_request_s`)를 센다. 손님 말 턴이나 봇 턴이
-    # 열리면 끈다. VAD 말 구간 중에는 멈추고, 그 말 끝(`_speech_end_at`)부터 다시 센다. 그 말이
+    # 열리면 끈다. VAD 말 구간 중에는 멈추고, 그 말 끝(`_last_voice_at`)부터 다시 센다. 그 말이
     # 턴이 되면(받아들인 말) 엔진이 횟수를 0으로 돌린다. 글 없는 소리가 계속 와도 처음 마감 +
-    # `no_input_slack_s`에는 되묻는다. 무엇을 말할지(되묻기·마지막 인사)는 엔진 `no_input`이 정한다
+    # `no_input_slack_s`에는 되묻는다(손님이 말하는 중이면 그 말이 끝나자마자, 리뷰 P4).
+    # 무엇을 말할지(되묻기·마지막 인사)는 엔진 `no_input`이 정한다
 
     def _start_quiet(self, turn: int) -> None:
-        self._cancel_quiet()
-        self._quiet_delay = (self._settings.wait_request_s if self._hold_on
+        self._quiet_timer.cancel()
+        self._quiet_delay = (self._settings.wait_request_s if self._wait_requested
                              else self._settings.no_input_s)
-        self._hold_on = False
+        self._wait_requested = False
         self._quiet_since = self._clock.monotonic()
         self._quiet_turn = turn
-        self._arm_quiet(self._quiet_delay)
+        self._quiet_timer.arm(self._quiet_delay)
 
-    def _arm_quiet(self, delay: float) -> None:
-        self._quiet_timer = asyncio.get_running_loop().call_later(
-            max(delay, 0.0), self._on_quiet_timer
-        )
 
-    def _cancel_quiet(self) -> None:
-        if self._quiet_timer is not None:
-            self._quiet_timer.cancel()
-            self._quiet_timer = None
 
     def _on_quiet_timer(self) -> None:
-        self._quiet_timer = None
         if self.done or self._terminal or self._phase != "listening" or self._quiet_since is None:
             return
         if self._turn != self._quiet_turn:
             return  # 그 사이 다른 턴이 열렸다(그 턴이 끝나면 다시 건다)
         now = self._clock.monotonic()
         start, delay = self._quiet_since, self._quiet_delay
-        cap = start + delay + self._settings.no_input_slack_s
-        if self._parts or self._held is not None or self._cont is not None or self._pending:
-            self._arm_quiet(_CONT_POLL_S)  # 손님 말을 붙잡거나 판정하는 중이다. 그 말이 먼저다
-            return
-        busy = self._vad.in_speech or self._ep_waiting()
-        due = max(start, self._speech_end_at or start) + delay
-        if now < cap and (busy or now < due):
-            self._arm_quiet(_CONT_POLL_S if busy else min(due, cap) - now)
+        # 손님 말을 붙잡거나 판정하는 중이면 그 말이 먼저다. 손님이 지금 말하는 중이면 상한이
+        # 지나도 끼어들지 않는다(리뷰 P4). 글 없는 소리가 마감을 밀어도 상한에는 되묻는다
+        handling = bool(self._parts or self._held is not None or self._cont is not None
+                        or self._pending)
+        if self._quiet_timer.wait(now, due=max(start, self._last_voice_at or start) + delay,
+                                  cap=start + delay + self._settings.no_input_slack_s,
+                                  busy=self._ep_waiting(),
+                                  hold=handling or self._vad.in_speech):
             return
         self.bot_turn("no_input", lambda engine, at: engine.no_input(at))
 
@@ -1599,12 +1543,12 @@ class CallSession:
         self._end()
 
     def _end(self) -> None:
-        self._cancel_quiet()
-        self._cancel_not_heard()
-        self._cancel_hold()
-        self._cancel_thinking()
-        self._cancel_cont_timer()
-        self._cancel_play_timer()
+        self._quiet_timer.cancel()
+        self._not_heard_timer.cancel()
+        self._hold_timer.cancel()
+        self._thinking_timer.cancel()
+        self._cont_timer.cancel()
+        self._play_timer.cancel()
         self._phase = "ended"
         self._ready = False
         self._done.set()
