@@ -87,6 +87,18 @@
 - 요약(숫자만, 글은 안 냄): `uv run python -m agenthan.voice.call.turn_summary logs/phone-YYYYMMDD.jsonl` → 말 끝 → 첫 목소리 P50·P90, 통화당 느린 턴(2.5초 초과) 수, 효과음 시각, `end_by`·`turn_end.path`별 턴 수, 빈 턴, `stt_wait` P50·P90·P99
 - 테스트: `tests/voice/test_call_latency.py`(세션), `test_turn_summary.py`, `test_call_vad.py`, 웹 `phoneCall.test.ts`(효과음)
 
+## 3단계: 말 끊기 버튼 (티켓 05)
+
+- 기본은 반이중 그대로다. 봇이 말하는 동안 브라우저는 0 프레임을 보낸다
+- 아래로: `state`에 `interruptible`(봇 소리가 나가는 중이고 막는 턴이 아니면 참). `bot.done`에 끊긴 턴이면 `interrupted: true`(그때 `sentences`는 보낸 문장 수)
+- 위로: `user.interrupt {turn}`(버튼), `playback.interrupted {turn, seq, played_ms}`(브라우저가 멈춘 자리. `played_ms`는 그 문장 첫 소리부터, 스피커 지연을 뺀 값)
+- 막는 턴: 최종 복창(CONFIRM으로 끝나는 턴), 마무리·사장님 연결 안내·취소(TERMINAL). 인사는 허용. 서버도 막는 턴의 끊기를 받지 않아서, 복창 중 버튼 + "네"로 총액을 못 듣고 확정되는 길이 없다
+- 서버: 끊으면 문장 보내기 작업(`_speak`)을 취소해 남은 TTS 합성과 `bot.say`를 멈추고, 송신 큐에 남은 그 턴 오디오·자막을 버리고, 바로 듣기로 간다. 문장 보내기는 턴 작업과 따로 돌아서 끼어든 말의 엔진 호출이 남은 TTS를 기다리지 않는다. 엔진은 되돌리지 않는다(소리가 나간 턴은 들었다고 본다)
+- 브라우저(`phoneCall.interrupt`, `Player.interrupt`): 재생을 멈추고, 그 턴 이하 오디오를 헤더 `turn`으로 버리고, 마이크를 서버 답 없이 바로 연다. 끊은 턴의 `playback.done`은 보내지 않는다
+- JSONL: `interrupt {by, seq, played_ms, heard: [{seq, heard(heard·partial·unheard), ms, played_ms, chars}]}`, `marks.interrupted`. `ms`는 보낸 문장 소리 길이(보내기 전에 끊긴 문장은 `null`), `chars`는 일부 들은 문장의 들은 글자 수 어림(글자 비율)
+- 무응답 타이머는 이 티켓에 없다. 티켓 04가 `playback.done`과 `playback.interrupted`에 건다
+- 테스트: `tests/voice/test_call_interrupt.py`, 웹 `callState.test.ts`·`phoneCall.test.ts`
+
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
 - 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`

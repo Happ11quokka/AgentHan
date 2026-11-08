@@ -5,6 +5,7 @@ import {
   type ServerEvent,
   callReducer,
   canEndSpeech,
+  canInterrupt,
   initialCallState,
   micLive,
 } from './callState.ts'
@@ -16,13 +17,49 @@ function run(...actions: CallAction[]): CallState {
 const dial: CallAction = { type: 'dial' }
 const micReady: CallAction = { type: 'mic.ready', settings: { echoCancellation: 'all', sampleRate: 16000 } }
 const ready: CallAction = { type: 'server', event: { type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000 } }
-const speaking = (turn: number): CallAction => ({
+const speaking = (turn: number, interruptible = true): CallAction => ({
   type: 'server',
-  event: { type: 'state', turn, phase: 'speaking', dialog: 'ordering', cart: [], total: 0 },
+  event: { type: 'state', turn, phase: 'speaking', interruptible, dialog: 'ordering', cart: [], total: 0 },
 })
 const listening = (turn: number): CallAction => ({
   type: 'server',
-  event: { type: 'state', turn, phase: 'listening', dialog: 'ordering', cart: [], total: 0 },
+  event: { type: 'state', turn, phase: 'listening', interruptible: false, dialog: 'ordering', cart: [], total: 0 },
+})
+const interrupt: CallAction = { type: 'interrupt' }
+
+describe('말 끊기 button (ticket 05)', () => {
+  it('is offered only while the bot speaks a turn the server marks interruptible', () => {
+    expect(canInterrupt(run(dial, micReady, ready, speaking(1)))).toBe(true)
+    expect(canInterrupt(run(dial, micReady, ready, speaking(3, false)))).toBe(false) // 최종 복창
+    expect(canInterrupt(run(dial, micReady, ready, listening(1)))).toBe(false)
+    expect(canInterrupt(run(dial, micReady, ready, speaking(1), { type: 'hangup' }))).toBe(false)
+  })
+
+  it('opens the mic at once on press, without waiting for the server', () => {
+    const s = run(dial, micReady, ready, speaking(1), interrupt)
+    expect(micLive(s)).toBe(true)
+    expect(canInterrupt(s)).toBe(false)
+    expect(s.cutTurn).toBe(1)
+  })
+
+  it('does nothing when the turn is not interruptible (readback stays half duplex)', () => {
+    const talking = run(dial, micReady, ready, speaking(3, false))
+    const pressed = callReducer(talking, interrupt)
+    expect(pressed).toBe(talking)
+    expect(micLive(pressed)).toBe(false)
+  })
+
+  it('keeps the mic open if a stale speaking state of the cut turn arrives', () => {
+    const s = run(dial, micReady, ready, speaking(1), interrupt, speaking(1))
+    expect(micLive(s)).toBe(true)
+    expect(canInterrupt(s)).toBe(false)
+  })
+
+  it('goes back to half duplex when the next turn speaks', () => {
+    const s = run(dial, micReady, ready, speaking(1), interrupt, listening(1), speaking(2))
+    expect(micLive(s)).toBe(false)
+    expect(canInterrupt(s)).toBe(true)
+  })
 })
 
 describe('callReducer', () => {
@@ -72,6 +109,7 @@ describe('callReducer', () => {
         type: 'state',
         turn: 2,
         phase: 'thinking',
+        interruptible: false,
         dialog: 'ordering',
         cart: [{ menu_id: 'm1', name: '메도빅', qty: 2, options: [], request: null, subtotal: 15000 }],
         total: 15000,
