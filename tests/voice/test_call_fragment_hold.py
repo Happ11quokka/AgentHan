@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from call_harness import Call, silence, tone
 from test_call_session import GatedNlu
@@ -102,3 +103,52 @@ def test_a_button_pressed_while_thinking_does_not_mark_the_next_utterance(tmp_pa
     assert [(f["text"], f["end_by"]) for f in finals[1:]] == [
         ("나폴레옹 하나랑 블린 하나요", "vad")
     ]
+
+
+# ---------------------------------------------------------------- 버린 결과 기록 (티켓 10 #1)
+
+
+def _lines(c) -> list[dict]:
+    path = c.log_dir / "phone-20261108.jsonl"
+    return [json.loads(s) for s in path.read_text().splitlines()]
+
+
+def test_a_result_dropped_while_the_bot_speaks_is_logged_on_that_turn(tmp_path) -> None:
+    stt = FakeSttStream(replies=["봇 목소리 메아리", "메도빅 하나요"])
+
+    async def call():
+        async with Call(tmp_path, stt=stt) as c:
+            await c.session.feed_event({"type": "call.start", "turn": 0})
+            await c.out.wait_for("bot.done", turn=0)
+            await c.say()  # 인사를 재생하는 중 → 반이중으로 버린다
+            await asyncio.sleep(0.05)
+            await c.played(0)
+            await c.say()
+            await c.out.wait_for("bot.done", turn=1)
+        return c
+
+    c = run(call())
+    greeting, first = _lines(c)[:2]
+    (dropped,) = greeting["dropped"]
+    assert (dropped["text"], dropped["epd_type"], dropped["ep_flag"], dropped["reason"]) == (
+        "봇 목소리 메아리", "endPoint", True, "speaking"
+    )
+    assert dropped["start_ms"] < dropped["end_ms"]
+    assert "dropped" not in first
+    (metrics,) = c.out.of("metrics", 0)
+    assert metrics["dropped"] == greeting["dropped"]
+
+
+def test_a_result_after_the_call_ended_is_logged_as_dropped(tmp_path) -> None:
+    stt = FakeSttStream()
+
+    async def call():
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.session.feed_event({"type": "call.end", "turn": 0})
+            stt.push(SttResult("늦게 온 말", 0, 500, "gap"))
+            await asyncio.sleep(0.05)
+        return c
+
+    (greeting,) = _lines(run(call()))
+    assert [(d["text"], d["reason"]) for d in greeting["dropped"]] == [("늦게 온 말", "ended")]

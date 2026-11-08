@@ -420,7 +420,8 @@ class CallSession:
 
     def _on_result(self, r: SttResult) -> None:
         if self.done or self._terminal or self._phase == "speaking":
-            return  # 반이중: 봇 말하는 중 결과는 버린다
+            self._log_dropped(r)  # 반이중: 봇 말하는 중 결과는 버린다
+            return
         self._cancel_hold()
         if r.text.strip():
             self._parts.append(r)
@@ -442,6 +443,22 @@ class CallSession:
             self._arm_hold(self._settings.hold_max_s)
             return
         self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
+
+    def _log_dropped(self, r: SttResult) -> None:
+        """버린 결과를 지금 턴 기록의 `dropped`에 남긴다 (티켓 10 #1).
+
+        말 중간 조각으로 턴을 넘긴 뒤 뒷조각이 반이중에 걸려 사라지는 일("나폴" 잘림)을
+        기록으로 확인하려고 둔다.
+        `reason`: speaking(봇 말하는 중) · terminal(확정·handoff 뒤) · ended(통화 끝)
+        """
+        record = self._log.get(self._turn)
+        if record is None:
+            return
+        reason = "ended" if self.done else ("terminal" if self._terminal else "speaking")
+        record.fields.setdefault("dropped", []).append({
+            "text": r.text, "epd_type": r.epd_type, "start_ms": r.start_ms, "end_ms": r.end_ms,
+            "ep_flag": r.ep_flag, "reason": reason,
+        })
 
     def _release(self, r: SttResult, end_by: str) -> None:
         """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""

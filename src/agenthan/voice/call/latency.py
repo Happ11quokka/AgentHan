@@ -10,6 +10,8 @@
      "output_latency": 0.02, "client": {...}}
 
 - `marks`는 그 일이 있었을 때만 들어간다 (인사 턴 0에는 `speech_end`·`stt_final`이 없다)
+- `dropped`(있을 때만): 그 턴에 버린 STT 결과 `[{text, epd_type, start_ms, end_ms, ep_flag,
+  reason}]`. reason은 speaking(반이중) · terminal(확정·handoff 뒤) · ended(통화 끝) (티켓 10)
 - `client`는 그 턴의 `client.metrics` 이벤트 내용을 합친 것(`turn`·`type` 뺌).
   턴 0에는 `call.start`의 값(마이크 실제 설정값 등)도 들어간다
 - 줄은 다음 턴이 시작될 때나 통화가 끝날 때 쓴다.
