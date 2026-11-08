@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from agenthan.rag.clova_embedding import (
+from agenthan.core.embedding import (
     ClovaEmbeddingError,
     embed_text,
     validate_embedding,

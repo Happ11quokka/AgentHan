@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from agenthan.agent import owner_assistant as owner
+from agenthan.agent import place_matcher as matcher
 from agenthan.agent.clova_chat import ClovaChatError, chat
-from agenthan.rag import place_matcher as matcher
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore, DummyStoreError
 from agenthan.tools.feature_tools import DELEGATED_FEATURES
 from agenthan.tools.owner_tools import TOOL_NAMES, execute_tool, tool_schema
@@ -90,7 +90,7 @@ def test_schemas_follow_catalog():
             assert field["name_ko"] in schema["properties"][field["id"]]["description"]
     assert tool_schema("menu")["function"]["parameters"]["required"] == ["name", "price"]
     with pytest.raises(ValueError):
-        tool_schema("review_reply")  # delegated to review_tools
+        tool_schema("review_reply")  # delegated to agenthan.agent.review
 
 
 def test_missing_price_then_followup_saves(tmp_path, mock_index):

@@ -1,1 +1,1 @@
-"""사장님 데이터와 네이버 기능 문서 검색."""
+"""[Part B 가게 지식] 정제·인덱싱과 사장님 RAG. core.contracts.StoreKnowledge를 구현한다."""

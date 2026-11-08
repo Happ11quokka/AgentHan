@@ -1,6 +1,6 @@
-"""Delegate review features (review_reply, ai_review) to review_tools.
+"""Delegate review features (review_reply, ai_review) to agenthan.agent.review.
 
-OwnerAssistant matches the feature; this module wraps review_tools.agent.run_turn so the
+OwnerAssistant matches the feature; this module wraps agenthan.agent.review.agent.run_turn so the
 owner assistant only sees handle(utterance, session) -> {"text", "blocks"}.
 
 - One ReviewSession per owner conversation keeps the ReviewToolbox (listed reviews,
@@ -14,14 +14,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from agenthan.agent.clova_chat import CHAT_MODEL, ClovaChatError, make_client
+from agenthan.agent.review.agent import LANG_NAMES, ReviewToolbox, run_turn, system_prompt
+from agenthan.agent.review.report import ReportSettingsStore
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.review_adapters import (
     DummyStoreMenuCatalog,
     DummyStoreReplyStore,
     DummyStoreReviewRepo,
 )
-from review_tools.agent import LANG_NAMES, ReviewToolbox, run_turn, system_prompt
-from review_tools.report import ReportSettingsStore
 
 REVIEW_FEATURES = frozenset({"review_reply", "ai_review"})
 
@@ -77,7 +77,7 @@ def new_session(
     today = today or date.today()
     shop = store.read()["shop"]
     if writer is None:
-        from review_tools.hcx_llm import HCXReviewLLM
+        from agenthan.agent.review.hcx_llm import HCXReviewLLM
 
         client = client or make_client()
         writer = HCXReviewLLM(model, client=client)

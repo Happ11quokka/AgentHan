@@ -9,7 +9,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from review_tools import MenuCatalog, SnapshotRepo, analyze_reviews
+from agenthan.agent.review import MenuCatalog, SnapshotRepo, analyze_reviews
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,7 +35,7 @@ args = {
 }
 extra = {}
 if a.llm == "hcx":
-    from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 
     llm = HCXReviewLLM(a.model, cache_path=ROOT / "models" / f"hcx_review_cache_{a.model}.jsonl")
     extra = {"llm": llm, "sentiment": HCXSentiment(llm)}

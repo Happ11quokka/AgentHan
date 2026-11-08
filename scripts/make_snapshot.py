@@ -17,8 +17,8 @@ from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
-from naver_review_clf import dataset, get_backend
-from naver_review_clf.dataset import _parse_visit
+from agenthan.tools.review_clf import dataset, get_backend
+from agenthan.tools.review_clf.dataset import _parse_visit
 
 ROOT = Path(__file__).resolve().parents[1]
 

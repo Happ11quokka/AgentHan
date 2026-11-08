@@ -8,8 +8,8 @@ import copy
 import os
 from pathlib import Path
 
-from hcx import make_client
-from review_tools.specs import ANALYZE_REVIEWS
+from agenthan.agent.review.specs import ANALYZE_REVIEWS
+from agenthan.core.llm import make_client
 
 ROOT = Path(__file__).resolve().parents[1]
 

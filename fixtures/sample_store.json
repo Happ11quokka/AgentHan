@@ -1,0 +1,37 @@
+{
+  "_note": "더미 샘플 가게. 실제 데이터가 아니다. 레포·발표에는 이 더미만 쓴다.",
+  "store": {"id": "sample", "name": "샘플 러시안 베이커리", "owner_language": "ru"},
+  "menu": [
+    {
+      "id": "m01", "name_ko": "메도빅", "name_native": "Медовик", "price": 7500,
+      "category": "케이크", "description": "꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크",
+      "aliases": ["꿀케이크", "허니케이크", "메도비크"],
+      "options": [{"name": "홀케이크 변경", "available": true, "extra_price": 38000}],
+      "allergens": ["밀", "우유", "계란"]
+    },
+    {
+      "id": "m02", "name_ko": "나폴레옹", "name_native": "Наполеон", "price": 7000,
+      "category": "케이크", "description": "바삭한 페이스트리 사이에 커스터드 크림을 넣은 케이크",
+      "aliases": ["나폴레옹케이크"],
+      "allergens": ["밀", "우유", "계란"]
+    },
+    {
+      "id": "m03", "name_ko": "아메리카노", "price": 4500, "category": "커피",
+      "options": [
+        {"name": "디카페인 변경", "available": true, "extra_price": 500},
+        {"name": "샷 추가", "available": true, "extra_price": 500}
+      ]
+    },
+    {
+      "id": "m04", "name_ko": "블린", "name_native": "Блины", "price": 9000,
+      "category": "식사", "description": "얇은 러시아식 팬케이크. 연어·사워크림 토핑",
+      "aliases": ["러시아 팬케이크", "블리니"],
+      "options": [{"name": "사워크림 빼기", "available": true}]
+    }
+  ],
+  "reviews": [
+    {"id": "r01", "text": "메도빅이 너무 달지 않고 촉촉해요. 또 올게요!", "rating": 5, "author": "손님***1", "created_at": "2026-11-01T14:10:00", "menu_ids": ["m01"]},
+    {"id": "r02", "text": "주말에 웨이팅이 길었어요. 전화 주문이 됐으면 좋겠네요.", "rating": 3, "author": "손님***2", "created_at": "2026-11-03T12:30:00"},
+    {"id": "r03", "text": "블린 양이 생각보다 적었지만 맛은 좋아요.", "rating": 4, "author": "손님***3", "created_at": "2026-11-05T18:45:00", "menu_ids": ["m04"]}
+  ]
+}

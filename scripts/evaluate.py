@@ -9,8 +9,8 @@ import json
 import random
 from pathlib import Path
 
-from naver_review_clf import dataset, get_backend
-from naver_review_clf.evaluate import evaluate, format_table
+from agenthan.tools.review_clf import dataset, get_backend
+from agenthan.tools.review_clf.evaluate import evaluate, format_table
 
 ROOT = Path(__file__).resolve().parents[1]
 

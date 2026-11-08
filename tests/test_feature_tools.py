@@ -2,8 +2,8 @@ import json
 
 import pytest
 
+from agenthan.agent import place_matcher as matcher
 from agenthan.eval import tool_selection as ev
-from agenthan.rag import place_matcher as matcher
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore
 from agenthan.tools.feature_tools import (
     DELEGATED_FEATURES,
@@ -65,7 +65,7 @@ def test_every_catalog_feature_has_one_tool():
     assert len(names) == len(set(names)) == 16
     features = {f["id"] for f in matcher.load_features()}
     assert {TOOL_FEATURES[n] for n in names} == features - DELEGATED_FEATURES
-    assert DELEGATED_FEATURES < features  # review features go to review_tools
+    assert DELEGATED_FEATURES < features  # review features go to agenthan.agent.review
     for schema in schemas:
         params = schema["function"]["parameters"]
         assert params["additionalProperties"] is False

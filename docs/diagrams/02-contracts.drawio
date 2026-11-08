@@ -1,0 +1,107 @@
+<mxfile host="localhost">
+  <diagram id="o5thyzti-hv1c" name="Page-1">
+    <mxGraphModel dx="1354" dy="704" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mi" parent="1" style="swimlane;fontStyle=1;align=center;startSize=26;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;horizontal=1;whiteSpace=wrap;html=1;" value="MenuItem" vertex="1">
+          <mxGeometry height="155" width="230" x="20" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="mi_a" parent="mi" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- id: str&lt;br&gt;- name_ko: str&lt;br&gt;- name_native: str &amp;nbsp;(원어 이름)&lt;br&gt;- aliases: 별칭·표기 변형&lt;br&gt;- price: int&lt;br&gt;- options: MenuOption[]&lt;br&gt;- sold_out: bool" vertex="1">
+          <mxGeometry height="129" width="230" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="sk" parent="1" style="swimlane;fontStyle=1;align=center;startSize=40;fillColor=#03C75A;strokeColor=#00873C;fontFamily=Pretendard;fontSize=13;fontColor=#ffffff;collapsible=0;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" value="«Protocol» StoreKnowledge&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;Part B 제공 · Part A·C 사용&lt;/span&gt;" vertex="1">
+          <mxGeometry height="126" width="230" x="300" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="sk_m" parent="sk" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="+ search_menu(query, k): MenuHit[]&lt;br&gt;+ get_menu(id): MenuItem&lt;br&gt;+ list_menu(): MenuItem[]&lt;br&gt;+ recent_reviews(limit, since): Review[]" vertex="1">
+          <mxGeometry height="80" width="230" y="44" as="geometry" />
+        </mxCell>
+        <mxCell id="rv" parent="1" style="swimlane;fontStyle=1;align=center;startSize=26;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;horizontal=1;whiteSpace=wrap;html=1;" value="Review" vertex="1">
+          <mxGeometry height="138" width="230" x="580" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="rv_a" parent="rv" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- id: str&lt;br&gt;- text: str&lt;br&gt;- rating: float&lt;br&gt;- author: str &amp;nbsp;(마스킹)&lt;br&gt;- created_at: datetime&lt;br&gt;- menu_ids: str[]" vertex="1">
+          <mxGeometry height="112" width="230" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="mh" parent="1" style="swimlane;fontStyle=1;align=center;startSize=26;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;horizontal=1;whiteSpace=wrap;html=1;" value="MenuHit" vertex="1">
+          <mxGeometry height="87" width="230" x="20" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="mh_a" parent="mh" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- item: MenuItem&lt;br&gt;- score: 0~1&lt;br&gt;- matched_by: exact | alias | vector …" vertex="1">
+          <mxGeometry height="61" width="230" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fk" parent="1" style="swimlane;fontStyle=1;align=center;startSize=40;fillColor=#F6F9F7;strokeColor=#8A94A3;dashed=1;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" value="FakeStoreKnowledge&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;core/fakes.py · 지금 바로 사용&lt;/span&gt;" vertex="1">
+          <mxGeometry height="104" width="230" x="300" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="fk_a" parent="fk" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- fixtures/sample_store.json" vertex="1">
+          <mxGeometry height="24" width="230" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="fk_s" parent="fk" style="line;strokeWidth=1;fillColor=none;strokeColor=#A9E8C2;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="8" width="230" y="66" as="geometry" />
+        </mxCell>
+        <mxCell id="fk_m" parent="fk" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="+ from_fixture(): FakeStoreKnowledge" vertex="1">
+          <mxGeometry height="26" width="230" y="74" as="geometry" />
+        </mxCell>
+        <mxCell id="rl" parent="1" style="swimlane;fontStyle=1;align=center;startSize=40;dashed=1;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;swimlaneFillColor=#ffffff;strokeColor=#03C75A;fillColor=#EAF9F0;whiteSpace=wrap;html=1;" value="진짜 구현 (Part B)&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;rag/ · 합칠 때 교체&lt;/span&gt;" vertex="1">
+          <mxGeometry height="88" width="230" x="580" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="rl_a" parent="rl" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- 인덱스: Chroma 등 (방향)&lt;br&gt;- 임베딩: CLOVA 임베딩 v2" vertex="1">
+          <mxGeometry height="44" width="230" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="ol" parent="1" style="swimlane;fontStyle=1;align=center;startSize=26;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;horizontal=1;whiteSpace=wrap;html=1;" value="OrderLine" vertex="1">
+          <mxGeometry height="104" width="230" x="20" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="ol_a" parent="ol" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- menu_id: str&lt;br&gt;- quantity: int&lt;br&gt;- options: str[]&lt;br&gt;- request: str &amp;nbsp;(&quot;고수 빼 주세요&quot;)" vertex="1">
+          <mxGeometry height="78" width="230" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="od" parent="1" style="swimlane;fontStyle=1;align=center;startSize=26;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontColor=#14171C;collapsible=0;horizontal=1;whiteSpace=wrap;html=1;" value="Order &amp;nbsp;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;Part C가 만듦&lt;/span&gt;" vertex="1">
+          <mxGeometry height="138" width="230" x="300" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="od_a" parent="od" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="- id: str&lt;br&gt;- lines: OrderLine[]&lt;br&gt;- pickup_time: str&lt;br&gt;- customer_phone: str &amp;nbsp;(마스킹)&lt;br&gt;- status: draft | confirmed | handoff&lt;br&gt;- transcript: str[]" vertex="1">
+          <mxGeometry height="112" width="230" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="os" parent="1" style="swimlane;fontStyle=1;align=center;startSize=40;fillColor=#03C75A;strokeColor=#00873C;fontFamily=Pretendard;fontSize=13;fontColor=#ffffff;collapsible=0;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" value="«Protocol» OrderSink&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;사장님 화면이 받음&lt;/span&gt;" vertex="1">
+          <mxGeometry height="76" width="230" x="580" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="os_m" parent="os" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="+ submit(order: Order): None" vertex="1">
+          <mxGeometry height="28" width="230" y="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="sk" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#4B5563;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;endArrow=open;endSize=10;exitX=0;exitY=0.4;entryX=1;entryY=0.323;html=1;" target="mi" value="반환">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="sk" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#4B5563;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;endArrow=open;endSize=10;exitX=1;exitY=0.4;entryX=0;entryY=0.365;html=1;" target="rv" value="반환">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="sk" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#4B5563;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;endArrow=open;endSize=10;exitX=0;exitY=0.85;entryX=1;entryY=0.5;html=1;" target="mh" value="search_menu 결과">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="275" y="127" />
+              <mxPoint x="275" y="293" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="mh" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#4B5563;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;endArrow=none;startArrow=diamondThin;startFill=0;startSize=14;exitX=0.5;exitY=0;entryX=0.5;entryY=1;html=1;" target="mi" value="item">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="fk" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#03C75A;strokeWidth=1.5;dashed=1;endArrow=block;endFill=0;endSize=12;fontFamily=Pretendard;fontSize=11;fontColor=#00873C;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.5;entryY=1;html=1;" target="sk" value="구현">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="rl" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#03C75A;strokeWidth=1.5;dashed=1;endArrow=block;endFill=0;endSize=12;fontFamily=Pretendard;fontSize=11;fontColor=#00873C;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.75;entryY=1;html=1;" target="sk" value="구현">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="695" y="205" />
+              <mxPoint x="472" y="205" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="od" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#4B5563;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;endArrow=none;startArrow=diamondThin;startFill=1;startSize=14;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="ol" value="1..*">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="od" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#4B5563;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;endArrow=open;endSize=10;exitX=1;exitY=0.3;entryX=0;entryY=0.5;html=1;" target="os" value="submit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lg" parent="1" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" value="초록 머리 = 파트 사이 계약(Protocol) · 점선 화살표 = 구현 · 바꿀 때는 카톡 공지" vertex="1">
+          <mxGeometry height="20" width="560" x="20" y="540" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

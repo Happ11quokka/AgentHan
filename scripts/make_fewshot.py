@@ -5,9 +5,9 @@ import json
 import random
 from pathlib import Path
 
-from naver_review_clf import dataset
-from naver_review_clf.schema import FEATURES
-from naver_review_clf.segment import split_clauses
+from agenthan.tools.review_clf import dataset
+from agenthan.tools.review_clf.schema import FEATURES
+from agenthan.tools.review_clf.segment import split_clauses
 
 ROOT = Path(__file__).resolve().parents[1]
 

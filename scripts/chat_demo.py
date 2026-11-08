@@ -24,12 +24,12 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from hcx import make_client
-from review_tools import MenuCatalog, SnapshotRepo
-from review_tools.agent import ReviewToolbox, run_turn, system_prompt
-from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
-from review_tools.replies import MockReplyStore
-from review_tools.report import ReportSettingsStore
+from agenthan.agent.review import MenuCatalog, SnapshotRepo
+from agenthan.agent.review.agent import ReviewToolbox, run_turn, system_prompt
+from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
+from agenthan.agent.review.replies import MockReplyStore
+from agenthan.agent.review.report import ReportSettingsStore
+from agenthan.core.llm import make_client
 
 ROOT = Path(__file__).resolve().parents[1]
 

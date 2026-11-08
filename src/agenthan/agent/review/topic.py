@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-# 네이버 [특징] 클래스 → 사장님이 쓸 법한 표현 (한/영/러). 범위는 naver_review_clf.FEATURE_GUIDE
+# 네이버 [특징] 클래스 → 사장님이 쓸 법한 표현 (한/영/러). 범위는 review_clf.FEATURE_GUIDE
 # 기준
 ASPECT_KEYWORDS: dict[str, list[str]] = {
     "맛": [

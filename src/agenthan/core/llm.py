@@ -1,6 +1,7 @@
-"""CLOVA Studio HCX 공용 설정: OpenAI 호환 클라이언트와 모델별 요청 옵션.
+"""CLOVA Studio HCX 공용 클라이언트(PRD §2.1): OpenAI 호환 클라이언트와 모델별 요청 옵션.
 
-agenthan(사장님 비서), review_tools(리뷰 도구), naver_review_clf(분류기)가 모두 여기서 가져간다.
+세 파트(사장님 비서·가게 지식·전화 주문)가 같이 쓴다. 지금은 openai SDK로 OpenAI 호환
+엔드포인트를 부른다. PRD 방향(sdk.md 네이티브 REST v3)으로 바꿀 때는 이 파일만 고친다.
 
 CLOVA Studio 실측 제약 (2026-11-07, scripts/hcx_check.py):
 - 요청당 system 메시지 1개만 받는다

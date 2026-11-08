@@ -1,8 +1,8 @@
-"""Synthetic review fixtures for review_tools tests (no real review text: the repo is public).
+"""Synthetic review fixtures for agent.review tests (no real review text: the repo is public).
 
     python tests/fixtures/make_fixtures.py tests/fixtures
 
-Stores and reviews are made up. The dates and counts are chosen so the review_tools tests
+Stores and reviews are made up. The dates and counts are chosen so the agenthan.agent.review tests
 (written against the real 명동 snapshot) keep their meaning: 연습떡집 has 4 reviews in the
 last 30 days (biweekly report), 3 unanswered under the 14-day demo rule with the negative
 딸기모찌 review r00732 first; 연습반점 has 3 reviews a day (daily report); 연습돈까스 has a

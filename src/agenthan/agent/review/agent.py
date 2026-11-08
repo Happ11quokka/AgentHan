@@ -10,7 +10,7 @@ import json
 import re
 from datetime import date, datetime
 
-from hcx import tool_call_options
+from agenthan.core.llm import tool_call_options
 
 from .analyze import analyze_reviews
 from .replies import (

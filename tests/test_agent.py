@@ -5,8 +5,8 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-from review_tools import MenuCatalog, SnapshotRepo
-from review_tools.agent import ReviewToolbox, run_turn, system_prompt
+from agenthan.agent.review import MenuCatalog, SnapshotRepo
+from agenthan.agent.review.agent import ReviewToolbox, run_turn, system_prompt
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -196,7 +196,7 @@ class KoreanAnswerHCX(FakeHCX):
 
 
 def test_answer_rewritten_in_owner_language():
-    from review_tools.agent import _mostly_korean
+    from agenthan.agent.review.agent import _mostly_korean
 
     assert _mostly_korean('리뷰 3건이 있습니다. "맛이 없어요..."')
     assert not _mostly_korean(
@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
 
 def test_analysis_answer_cleanup():
-    from review_tools.agent import expand_notice, model_view, strip_confirm
+    from agenthan.agent.review.agent import expand_notice, model_view, strip_confirm
 
     # 답글용 확인 질문이 분석 답변에 섞이던 문제 (2026-11-07 실측, 시나리오 1·2·3)
     text = (
@@ -261,7 +261,7 @@ def test_dropped_period_removed_from_history():
 
 
 def test_period_phrases_removed_when_notice_added():
-    from review_tools.agent import PERIOD_PHRASE
+    from agenthan.agent.review.agent import PERIOD_PHRASE
 
     # 기간을 30일로 넓혔는데 본문이 '지난 7일 동안'이라고 말함 (2026-11-07 실측, 시나리오 2)
     body = "지난 7일 동안 총 4건의 리뷰 중 3건이 딸기모찌에 대한 내용입니다."

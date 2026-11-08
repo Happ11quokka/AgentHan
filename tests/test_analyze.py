@@ -3,7 +3,13 @@
 from datetime import date
 from pathlib import Path
 
-from review_tools import MenuCatalog, RuleSentiment, SnapshotRepo, analyze_reviews, resolve_topic
+from agenthan.agent.review import (
+    MenuCatalog,
+    RuleSentiment,
+    SnapshotRepo,
+    analyze_reviews,
+    resolve_topic,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,7 +74,7 @@ def test_few_reviews_not_generalized():
 
 
 def test_topic_recovered_from_utterance():
-    from review_tools.topic import resolve_from_utterance
+    from agenthan.agent.review.topic import resolve_from_utterance
 
     assert resolve_from_utterance("Что говорят о клубничном моти?", "연습떡집", CAT)["menus"] == [
         "딸기모찌"
@@ -133,7 +139,7 @@ class _FakeClient:
 
 
 def test_hcx_wiring_with_fake_client():
-    from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 
     fc = _FakeClient()
     llm = HCXReviewLLM("HCX-DASH-002", client=fc, min_interval=0)
@@ -158,7 +164,7 @@ def test_hcx_wiring_with_fake_client():
 
 
 def test_batch_uses_global_numbering():
-    from review_tools.hcx_llm import HCXReviewLLM
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM
 
     seen = {}
 
@@ -186,7 +192,7 @@ def test_satisfaction_and_report_ideas():
 
 def test_batch_miss_falls_back_to_single():
     """묶음 답에서 빠진 리뷰는 단건으로 다시 판단한다."""
-    from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 
     class Partial(_FakeClient):
         def _create(self, **kw):
@@ -207,7 +213,7 @@ def test_batch_miss_falls_back_to_single():
 
 
 def test_missed_reviews_get_second_batch():
-    from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 
     class SkipFirstPass(_FakeClient):  # 첫 묶음(리뷰 6개)은 아무것도 답하지 않고, 두 번째부터 정상
         n = 0

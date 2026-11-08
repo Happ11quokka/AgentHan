@@ -7,7 +7,7 @@ and errors are sanitized so a server body or key is never shown.
 import json
 import os
 
-import hcx
+from agenthan.core import llm as hcx
 
 CHAT_MODEL = "HCX-005"
 REQUEST_TIMEOUT = 45

@@ -1,7 +1,7 @@
 """네이버 플레이스 리뷰 [특징] 분류 복제기.
 
 사용 예
-    from naver_review_clf import get_backend
+    from agenthan.tools.review_clf import get_backend
     clf = get_backend("baseline")          # 로컬 모델 (키 불필요)
     clf = get_backend("hcx")               # HyperCLOVA X (CLOVASTUDIO_API_KEY 필요)
     result = clf.classify("음식이 빨리 나오고 직원분들도 친절하세요")
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .schema import FEATURE_GUIDE, FEATURES, ClassifyResult, FeatureResult, Span
 
-_ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[4]
 
 
 def get_backend(name: str = "baseline", **kwargs):

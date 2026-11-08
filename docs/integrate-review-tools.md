@@ -17,7 +17,7 @@
  → OwnerAssistant (기능 매칭)                         ← 종현
      ├ menu                     → upsert_menu
      ├ review_reply, ai_review  → review_delegate.handle(utterance, session)
-     │                              → review_tools.agent.run_turn + ReviewToolbox  ← 근형님 코드
+     │                              → agenthan.agent.review.agent.run_turn + ReviewToolbox  ← 근형님 코드
      └ 그 밖의 15개 기능          → 이름·설명 안내 (도구는 정의만, 아직 미연결)
 ```
 
@@ -99,7 +99,7 @@ uv run --env-file .env pytest -q -m network   # 실제 CLOVA 호출
 
 ## 7. 확인 부탁드릴 결정
 
-1. **C-1 지원 언어**: 지금은 발화 문자로 ko/en/ru/vi/zh를 판별해 `owner_lang`으로 넘깁니다(`review_tools.agent.LANG_NAMES`와 같은 범위). 줄이거나 늘릴지.
+1. **C-1 지원 언어**: 지금은 발화 문자로 ko/en/ru/vi/zh를 판별해 `owner_lang`으로 넘깁니다(`agenthan.agent.review.agent.LANG_NAMES`와 같은 범위). 줄이거나 늘릴지.
 2. **C-2 메뉴 원어명 입력 주체**: 메뉴에 `aliases` 필드는 생겼지만 입력 경로는 아직 없습니다(새 메뉴는 `aliases: []`, 정식명으로만 매칭). 사장님이 직접 넣을지, 번역으로 채울지.
 3. **C-3 답글 약속 허용 범위**: `OWNER_PROMISES_ALLOWED = True`(사장님이 지시한 약속만 ⚠ 표시 후 허용) 그대로 두었습니다.
 4. **`upstream/feature/assistant-core`**(032517f, `assistant.py` 804줄): 이번 통합에는 넣지 않았습니다. 쓸지, 정리할지.

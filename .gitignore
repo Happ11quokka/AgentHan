@@ -7,23 +7,55 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-.agenthan/
+
+# 프론트엔드 (web/)
+node_modules/
+web/dist/
 
 # 비밀 정보
 .env
 .env.*
 !.env.example
 
-# 로컬 산출물: 비공개 원본과 인덱스는 올리지 않는다
+# 팀 내부 전용: 실제 가게 데이터·수집 코드·내부 문서. 절대 커밋·푸시 금지 (카톡으로만 공유)
+# .githooks/pre-commit 이 한 번 더 막는다
 data/
+private/
+crawler/
+**/crawler/
+*crawl*
+*.private.*
 chroma_store/
 faiss_index/
+*.sqlite3
 
-# 팀 내부에서 따로 전달하는 문서와 개인 지침
+# 팀 내부에서 따로 전달하는 문서 (각자 docs/sdk.md 에 두고 쓴다)
 docs/sdk.md
-CLAUDE.local.md
 
-# 공개용으로 새로 작성한 기능 매칭 평가 문장
+# 개인 에이전트 지침·설정: 각자 개발 스타일이 달라 공유하지 않는다
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude/
+.codex/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.aider*
+.continue/
+GEMINI.md
+.gemini/
+
+# OS·에디터
+.DS_Store
+.idea/
+.vscode/
+
+# 사장님 비서 로컬 더미 저장소 (실행 중 생성)
+.agenthan/
+
+# tests/data/는 공개용으로 새로 쓴 평가 문장만 올린다
 !tests/data/
 tests/data/*
 !tests/data/place_request_cases.jsonl

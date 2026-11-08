@@ -1,0 +1,98 @@
+<mxfile host="localhost">
+  <diagram id="w3femlfi-hbg9" name="Page-1">
+    <mxGraphModel dx="1354" dy="648" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;fontFamily=Pretendard;fontSize=20;fontStyle=1;fontColor=#14171C;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;" value="Part A · 사장님 한마디가 도는 순서 (먼저 고르고 나중에 붙이기)" vertex="1">
+          <mxGeometry height="34" width="840" x="20" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" parent="1" style="swimlane;horizontal=0;startSize=38;fillColor=#F6F9F7;strokeColor=#D8E0DB;fontStyle=1;fontSize=13;fontColor=#14171C;fontFamily=Pretendard;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" value="사장님" vertex="1">
+          <mxGeometry height="150" width="840" x="20" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" parent="1" style="swimlane;horizontal=0;startSize=38;fillColor=#F6F9F7;strokeColor=#D8E0DB;fontStyle=1;fontSize=13;fontColor=#14171C;fontFamily=Pretendard;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" value="오케스트레이터" vertex="1">
+          <mxGeometry height="170" width="840" x="20" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="l3" parent="1" style="swimlane;horizontal=0;startSize=38;fillColor=#F6F9F7;strokeColor=#D8E0DB;fontStyle=1;fontSize=13;fontColor=#14171C;fontFamily=Pretendard;swimlaneFillColor=#ffffff;whiteSpace=wrap;html=1;" value="워커 · tool" vertex="1">
+          <mxGeometry height="170" width="840" x="20" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="start" parent="1" style="ellipse;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;html=1;" value="요청 (모국어 · 사진)" vertex="1">
+          <mxGeometry height="40" width="40" x="120" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="end1" parent="1" style="ellipse;fillColor=#EAF9F0;strokeColor=#00873C;strokeWidth=3;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;labelPosition=center;verticalLabelPosition=top;align=center;verticalAlign=bottom;html=1;" value="기능 안내로 끝" vertex="1">
+          <mxGeometry height="40" width="40" x="425" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="hitl" parent="1" style="rounded=1;arcSize=12;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;fillColor=#FFF4E5;strokeColor=#F08C00;whiteSpace=wrap;html=1;" value="&lt;b&gt;사장님 승인&lt;/b&gt;&lt;br&gt;interrupt() · HITL" vertex="1">
+          <mxGeometry height="56" width="120" x="535" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="end2" parent="1" style="ellipse;fillColor=#EAF9F0;strokeColor=#00873C;strokeWidth=3;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;labelPosition=center;verticalLabelPosition=top;align=center;verticalAlign=bottom;html=1;" value="완료 (사장님 언어로 정리)" vertex="1">
+          <mxGeometry height="40" width="40" x="775" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t1" parent="1" style="rounded=1;arcSize=12;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="&lt;b&gt;① 후보 고르기&lt;/b&gt;&lt;br&gt;규칙 · bge-m3 상위 5" vertex="1">
+          <mxGeometry height="60" width="120" x="80" y="255" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" parent="1" style="rounded=1;arcSize=12;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="&lt;b&gt;② 기능 하나 고르기&lt;/b&gt;&lt;br&gt;HCX-DASH-002&lt;br&gt;select_feature" vertex="1">
+          <mxGeometry height="66" width="130" x="240" y="252" as="geometry" />
+        </mxCell>
+        <mxCell id="gw1" parent="1" style="rhombus;fillColor=#FFFBEA;strokeColor=#9C7A00;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;labelPosition=right;verticalLabelPosition=middle;align=left;verticalAlign=middle;spacingLeft=4;html=1;" value="대표 기능?" vertex="1">
+          <mxGeometry height="50" width="50" x="420" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="t3" parent="1" style="rounded=1;arcSize=12;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="&lt;b&gt;③ 그 기능 도구 1~3개만&lt;/b&gt;&lt;br&gt;HCX-005 · 서브에이전트" vertex="1">
+          <mxGeometry height="60" width="130" x="380" y="425" as="geometry" />
+        </mxCell>
+        <mxCell id="gw2" parent="1" style="rhombus;fillColor=#FFFBEA;strokeColor=#9C7A00;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;html=1;" value="쓰기 작업?" vertex="1">
+          <mxGeometry height="50" width="50" x="570" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="t4" parent="1" style="rounded=1;arcSize=12;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;whiteSpace=wrap;html=1;" value="&lt;b&gt;④ 저장 tool&lt;/b&gt;&lt;br&gt;upsert_menu 등" vertex="1">
+          <mxGeometry height="52" width="120" x="690" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="nt" parent="1" style="shape=note;size=10;fillColor=#FFFBEA;strokeColor=#E0B84A;align=left;spacingLeft=10;spacingRight=6;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;whiteSpace=wrap;html=1;" value="리뷰 요약 · 통계 보고서는 &lt;b&gt;서브에이전트&lt;/b&gt;: 질문 하나를 받고 마지막 답만 돌려준다. 오케스트레이터 맥락이 깨끗하게 유지된다." vertex="1">
+          <mxGeometry height="74" width="270" x="70" y="418" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="t1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="t2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" edge="1" parent="1" source="t2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="gw1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4" edge="1" parent="1" source="gw1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=0.5;exitY=0;entryX=0.5;entryY=1;html=1;" target="end1" value="아니요: 설명 · 위치 안내">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5" edge="1" parent="1" source="gw1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="t3" value="예">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f6" edge="1" parent="1" source="t3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="gw2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f7" edge="1" parent="1" source="gw2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=0.5;exitY=0;entryX=0.5;entryY=1;html=1;" target="hitl" value="예">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f8" edge="1" parent="1" source="hitl" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0.5;entryY=0;html=1;" target="t4" value="승인">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="750" y="123" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f9" edge="1" parent="1" source="gw2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0.5;entryY=1;html=1;" target="end2" value="아니요: 조회 · 요약">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="795" y="455" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f10" edge="1" parent="1" source="t4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;jumpStyle=arc;exitX=1;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="end2" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="838" y="496" />
+              <mxPoint x="838" y="120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

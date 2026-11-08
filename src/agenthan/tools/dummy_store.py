@@ -94,7 +94,7 @@ class DummyStore:
                     or any(not isinstance(a, str) for a in record["aliases"])
                 ):
                     raise ValueError
-            # Reviews use the review_tools row schema:
+            # Reviews use the agenthan.agent.review row schema:
             # {review_id, visit_date, rating, text, features, has_owner_reply[, owner_reply]}
             for record in data["reviews"]:
                 _migrate_review(record)

@@ -17,9 +17,9 @@ import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from review_tools import MenuCatalog, SnapshotRepo
-from review_tools.replies import MockReplyStore, ReplyAwareRepo
-from review_tools.report import ReportSettingsStore, check_alerts, next_run, run_report
+from agenthan.agent.review import MenuCatalog, SnapshotRepo
+from agenthan.agent.review.replies import MockReplyStore, ReplyAwareRepo
+from agenthan.agent.review.report import ReportSettingsStore, check_alerts, next_run, run_report
 
 ROOT = Path(__file__).resolve().parents[1]
 SETTING_KEYS = ["enabled", "frequency", "weekday", "time", "focus", "alert"]
@@ -53,7 +53,7 @@ repo = ReplyAwareRepo(
 st = store.get(a.store)
 extra = {}
 if a.analysis == "hcx":
-    from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 
     llm = HCXReviewLLM(a.model, cache_path=ROOT / "models" / f"hcx_review_cache_{a.model}.jsonl")
     extra = {"llm": llm, "sentiment": HCXSentiment(llm)}

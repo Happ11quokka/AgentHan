@@ -18,9 +18,9 @@ import random
 from collections import Counter
 from pathlib import Path
 
-from review_tools import RuleSentiment, SnapshotRepo
-from review_tools.analyze import _spans
-from review_tools.sentiment import prefetch_reviews
+from agenthan.agent.review import RuleSentiment, SnapshotRepo
+from agenthan.agent.review.analyze import _spans
+from agenthan.agent.review.sentiment import prefetch_reviews
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,7 +37,7 @@ ap.add_argument(
 a = ap.parse_args()
 
 if a.backend == "hcx":
-    from review_tools.hcx_llm import HCXReviewLLM, HCXSentiment
+    from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 
     sent = HCXSentiment(
         HCXReviewLLM(a.model, cache_path=ROOT / "models" / f"hcx_review_cache_{a.model}.jsonl"),

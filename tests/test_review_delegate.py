@@ -1,4 +1,4 @@
-"""OwnerAssistant → review_tools delegation over the DummyStore (offline, fake HCX)."""
+"""OwnerAssistant → agenthan.agent.review delegation over the DummyStore (offline, fake HCX)."""
 
 import json
 from datetime import date
@@ -7,15 +7,15 @@ from types import SimpleNamespace as NS
 import pytest
 
 from agenthan.agent import owner_assistant as owner
+from agenthan.agent import place_matcher as matcher
 from agenthan.agent import review_delegate
-from agenthan.rag import place_matcher as matcher
+from agenthan.agent.review.topic import resolve_from_utterance
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore
 from agenthan.tools.review_adapters import (
     DummyStoreMenuCatalog,
     DummyStoreReplyStore,
     DummyStoreReviewRepo,
 )
-from review_tools.topic import resolve_from_utterance
 
 TODAY = date(2026, 11, 7)
 
@@ -37,7 +37,7 @@ def mock_index(monkeypatch):
 
 
 class SilentHCX:
-    """Never calls a tool: the review_tools router must carry the reply flow."""
+    """Never calls a tool: the agenthan.agent.review router must carry the reply flow."""
 
     def __init__(self):
         self.calls = []

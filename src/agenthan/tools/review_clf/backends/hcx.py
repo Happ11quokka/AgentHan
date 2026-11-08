@@ -21,8 +21,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from hcx import DEFAULT_BASE_URL, make_client
-from hcx import request_options as _hcx_request_options
+from agenthan.core.llm import DEFAULT_BASE_URL, make_client
+from agenthan.core.llm import request_options as _hcx_request_options
 
 from ..schema import FEATURE_GUIDE, FEATURES, ClassifyResult, FeatureResult, Span
 from ..segment import merge_adjacent, split_clauses
@@ -128,7 +128,7 @@ class HCXBackend(Backend):
 
     @staticmethod
     def _load_fewshot(path) -> list[dict]:
-        path = Path(path) if path else Path(__file__).resolve().parents[3] / "data" / "fewshot.json"
+        path = Path(path) if path else Path(__file__).resolve().parents[5] / "data" / "fewshot.json"
         if not path.exists():
             return []
         msgs = []

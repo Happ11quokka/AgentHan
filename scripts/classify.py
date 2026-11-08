@@ -8,7 +8,7 @@ import argparse
 import json
 from pathlib import Path
 
-from naver_review_clf import get_backend
+from agenthan.tools.review_clf import get_backend
 
 ap = argparse.ArgumentParser()
 ap.add_argument("text", nargs="?")

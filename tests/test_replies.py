@@ -5,9 +5,9 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-from review_tools import MenuCatalog, SnapshotRepo
-from review_tools.agent import ReviewToolbox, run_turn
-from review_tools.replies import MockReplyStore, check_reply
+from agenthan.agent.review import MenuCatalog, SnapshotRepo
+from agenthan.agent.review.agent import ReviewToolbox, run_turn
+from agenthan.agent.review.replies import MockReplyStore, check_reply
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -230,7 +230,7 @@ def test_rereview_request_is_blocked():
 
 
 def test_fixed_messages():
-    from review_tools.agent import reply_message
+    from agenthan.agent.review.agent import reply_message
 
     assert reply_message(
         "get_unanswered_reviews", {"total": 3, "negative_count": 1}, "ko"
@@ -245,7 +245,7 @@ def test_fixed_messages():
 
 
 def test_high_risk_detection_avoids_false_positives():
-    from review_tools.replies import risk_of
+    from agenthan.agent.review.replies import risk_of
 
     assert risk_of("식탁 위에서 바퀴벌레 기어다녀요", "negative")["words"] == ["바퀴", "벌레"]
     assert risk_of("오코노미야끼에서 머리카락 나옴. 환불해줌", "negative")["words"] == [
@@ -283,7 +283,7 @@ def test_escalate_route_for_cockroach_review():
     assert d["route"] == "escalate" and d["owner_check"] and "바퀴" in d["risk"]["words"]
     call = tb.writer.calls[-1]
     assert call["route"] == "escalate" and call["profile"]["name"].startswith("연습돈까스")
-    from review_tools.agent import reply_message
+    from agenthan.agent.review.agent import reply_message
 
     msg = reply_message("draft_review_reply", {"drafts": [d]}, "ko")
     assert msg.startswith("위생·안전과 관련된 리뷰(감지: 바퀴, 벌레")  # 위생상태도 함께 감지됨
@@ -426,7 +426,7 @@ def test_owner_requested_promise_is_warning_not_block():
 
 
 def test_checklist_in_owner_language():
-    from review_tools.agent import render_block
+    from agenthan.agent.review.agent import render_block
 
     cat = MenuCatalog({"연습떡집": [{"name": "딸기모찌", "aliases": ["Mochi dâu"]}]})
     tb = ReviewToolbox(

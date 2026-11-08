@@ -16,9 +16,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from hcx import make_client, request_options
-from naver_review_clf.backends.hcx import _extract_json
-from naver_review_clf.schema import FEATURE_GUIDE
+from agenthan.core.llm import make_client, request_options
+from agenthan.tools.review_clf.backends.hcx import _extract_json
+from agenthan.tools.review_clf.schema import FEATURE_GUIDE
 
 from .sentiment import RuleSentiment
 

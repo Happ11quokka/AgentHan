@@ -3,8 +3,8 @@
 from datetime import date, datetime
 from pathlib import Path
 
-from review_tools import MenuCatalog, SnapshotRepo
-from review_tools.report import (
+from agenthan.agent.review import MenuCatalog, SnapshotRepo
+from agenthan.agent.review.report import (
     ReportSettingsStore,
     check_alerts,
     next_run,
@@ -12,7 +12,7 @@ from review_tools.report import (
     set_review_report,
     suggest_frequency,
 )
-from review_tools.report_parse import parse_report_request
+from agenthan.agent.review.report_parse import parse_report_request
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -116,7 +116,7 @@ def test_conversation_with_silent_model():
     """HCX가 도구를 전혀 안 불러도 보고 설정 대화가 규칙으로 끝까지 흐른다."""
     from types import SimpleNamespace as NS
 
-    from review_tools.agent import ReviewToolbox, run_turn
+    from agenthan.agent.review.agent import ReviewToolbox, run_turn
 
     silent = NS(
         chat=NS(

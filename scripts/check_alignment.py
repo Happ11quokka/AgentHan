@@ -2,7 +2,7 @@
 
 import re
 
-from naver_review_clf import dataset, segment
+from agenthan.tools.review_clf import dataset, segment
 
 P = re.compile(r"[\s.!?~,^ㅎㅋㅠㅜ]+$")
 

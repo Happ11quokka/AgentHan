@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# 실제 가게 데이터·수집 코드가 커밋되지 않게 막는다.
+# 처음 한 번: git config core.hooksPath .githooks
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+bad_paths=$(printf '%s\n' "$staged" | grep -E -i '(^|/)(data|private|crawler)/|crawl|\.private\.' || true)
+
+# 추가되는 줄에 네이버 지도·플레이스 주소가 있으면 수집 코드나 실제 데이터로 본다
+bad_lines=$(git diff --cached -U0 --diff-filter=ACMR -- . ':(exclude).githooks' \
+  | grep -E '^\+[^+]' | grep -E -i '(map|place|pcmap\.place|m\.place)\.naver\.com|naver\.me/' || true)
+
+if [ -n "$bad_paths" ] || [ -n "$bad_lines" ]; then
+  echo "✋ 커밋을 막았습니다: 실제 가게 데이터나 수집 코드는 레포에 올리지 않습니다."
+  [ -n "$bad_paths" ] && printf '  파일: %s\n' $bad_paths
+  [ -n "$bad_lines" ] && echo "  네이버 지도·플레이스 주소가 들어간 줄이 있습니다:" && printf '%s\n' "$bad_lines" | head -5
+  echo "  → private/ 또는 data/ 로 옮기고, 공개 자료에는 fixtures/ 더미 데이터를 쓰세요."
+  exit 1
+fi

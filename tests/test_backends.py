@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from naver_review_clf import FEATURES, get_backend
-from naver_review_clf.backends.hcx import HCXBackend
-from naver_review_clf.segment import split_clauses
+from agenthan.tools.review_clf import FEATURES, get_backend
+from agenthan.tools.review_clf.backends.hcx import HCXBackend
+from agenthan.tools.review_clf.segment import split_clauses
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -66,7 +66,7 @@ def test_hcx_parsing_and_retry():
 
 
 def test_hcx007_options():
-    from naver_review_clf.backends.hcx import request_options
+    from agenthan.tools.review_clf.backends.hcx import request_options
 
     o = request_options("HCX-007")
     assert o["response_format"]["type"] == "json_schema" and "max_tokens" not in o

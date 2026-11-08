@@ -1,6 +1,6 @@
 """Measure whether HCX-005 picks the right tool when all 16 agenthan tools are exposed.
 
-Review features are delegated to review_tools and evaluated there.
+Review features are delegated to agenthan.agent.review and evaluated there.
 
 Each case is one owner utterance sent once (per repeat) with every tool schema.
 Arguments of the chosen tool run against a throwaway copy of the dummy store, so

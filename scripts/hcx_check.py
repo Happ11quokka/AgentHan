@@ -16,8 +16,8 @@ import json
 import time
 from pathlib import Path
 
-from hcx import make_client
-from review_tools.specs import ANALYZE_REVIEWS, GET_SALES_STATS
+from agenthan.agent.review.specs import ANALYZE_REVIEWS, GET_SALES_STATS
+from agenthan.core.llm import make_client
 
 ROOT = Path(__file__).resolve().parents[1]
 

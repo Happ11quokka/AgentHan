@@ -1,22 +1,22 @@
-"""DummyStore → review_tools adapters: one shop data source for both sides.
+"""DummyStore → agenthan.agent.review adapters: one shop data source for both sides.
 
-- DummyStoreReviewRepo: review_tools.ReviewRepo over the store's reviews
-- DummyStoreMenuCatalog: review_tools.MenuCatalog over the store's menus (read live, so a
+- DummyStoreReviewRepo: agenthan.agent.review.ReviewRepo over the store's reviews
+- DummyStoreMenuCatalog: agenthan.agent.review.MenuCatalog over the store's menus (read live, so a
   menu registered with upsert_menu is matched in review questions right away)
-- DummyStoreReplyStore: review_tools MockReplyStore whose post() saves into the store
+- DummyStoreReplyStore: agenthan.agent.review MockReplyStore whose post() saves into the store
   (status saved_not_sent; nothing is sent to Naver)
 
-Store review row (same as review_tools snapshots, also the target schema for crawled data):
+Store review row (same as agenthan.agent.review snapshots, also the target schema for crawled data):
     {review_id, visit_date, rating, text, features, has_owner_reply[, owner_reply]}
 The adapter adds "store" (shop name) and "category" (shop category).
 """
 
 from datetime import date, datetime
 
+from agenthan.agent.review.replies import MockReplyStore
+from agenthan.agent.review.repo import ReviewRepo
+from agenthan.agent.review.topic import MenuCatalog
 from agenthan.tools.dummy_store import DummyStore
-from review_tools.replies import MockReplyStore
-from review_tools.repo import ReviewRepo
-from review_tools.topic import MenuCatalog
 
 
 class DummyStoreReviewRepo(ReviewRepo):

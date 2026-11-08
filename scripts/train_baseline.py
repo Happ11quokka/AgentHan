@@ -5,9 +5,9 @@ import json
 import sys
 from pathlib import Path
 
-from naver_review_clf import dataset
-from naver_review_clf.backends.baseline import BaselineBackend
-from naver_review_clf.evaluate import evaluate, format_table
+from agenthan.tools.review_clf import dataset
+from agenthan.tools.review_clf.backends.baseline import BaselineBackend
+from agenthan.tools.review_clf.evaluate import evaluate, format_table
 
 ROOT = Path(__file__).resolve().parents[1]
 data = ROOT / "data" / "reviews.jsonl"

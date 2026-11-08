@@ -20,7 +20,7 @@ uv run pytest -q
 import sys
 
 sys.path.insert(0, "src")
-from naver_review_clf import get_backend
+from agenthan.tools.review_clf import get_backend
 
 clf = get_backend("baseline")  # 로컬 모델, 키 불필요
 # clf = get_backend("hcx")      # HyperCLOVA X, CLOVASTUDIO_API_KEY 필요

@@ -2,7 +2,7 @@
 
 Feature matching picks one feature per request:
 - menu → upsert_menu (agenthan tool)
-- review_reply, ai_review → review_tools (ReviewToolbox + run_turn) via review_delegate
+- review_reply, ai_review → agenthan.agent.review (ReviewToolbox + run_turn) via review_delegate
 - other features → name and summary only (their tools are not connected yet)
 """
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from agenthan.agent import review_delegate
 from agenthan.agent.clova_chat import ClovaChatError, chat, parse_message
-from agenthan.rag.place_matcher import get_feature, match_features
+from agenthan.agent.place_matcher import get_feature, match_features
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError
 from agenthan.tools.owner_tools import execute_tool, tool_schema
 

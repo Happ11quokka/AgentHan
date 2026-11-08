@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from agenthan.rag import clova_embedding as clova
-from agenthan.rag import place_matcher as matcher
+from agenthan.agent import place_matcher as matcher
+from agenthan.core import embedding as clova
 
 CASES_PATH = Path(__file__).parent / "data" / "place_request_cases.jsonl"
 SUPPORTED = {"menu", "review_reply"}

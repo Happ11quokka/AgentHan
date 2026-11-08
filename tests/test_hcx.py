@@ -2,7 +2,7 @@
 
 import pytest
 
-import hcx
+from agenthan.core import llm as hcx
 
 
 def test_options_by_model():

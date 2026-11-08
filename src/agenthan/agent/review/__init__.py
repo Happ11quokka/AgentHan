@@ -1,6 +1,6 @@
-"""리뷰 도구 (리뷰 분석·요약 등). 분류기(naver_review_clf)의 출력 형식에만 의존한다.
+"""리뷰 도구 (리뷰 분석·요약 등). 분류기(agenthan.tools.review_clf)의 출력 형식에만 의존한다.
 
-from review_tools import analyze_reviews, SnapshotRepo, MenuCatalog
+from agenthan.agent.review import analyze_reviews, SnapshotRepo, MenuCatalog
 """
 
 from .analyze import analyze_reviews
