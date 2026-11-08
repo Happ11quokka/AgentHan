@@ -78,6 +78,7 @@ from agenthan.voice.call.ports import (
     Tts,
 )
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
+from agenthan.voice.call.trim import TrimSettings, trim_leading_silence
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
@@ -101,6 +102,7 @@ class SessionSettings:
     turn_timeout_s: float = 20.0
     tts_concurrency: int = 2
     sentence_limit: int = TTS_LIMIT
+    tts_trim: TrimSettings = field(default_factory=TrimSettings)  # 첫 문장 앞 무음 자르기
     chunk_bytes: int = CHUNK_BYTES  # 내리는 오디오 조각 ≈ 200ms
     stt_backlog_ms: int = 3_000  # STT 쓰기가 이만큼 밀리면 통화를 끝낸다 (stt_backlog)
     stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
@@ -691,9 +693,14 @@ class CallSession:
         try:
             for seq, (job, text) in enumerate(zip(jobs, sentences, strict=True)):
                 pcm = await job
-                audio_bytes += len(pcm)
                 if seq == 0:
+                    # 첫 문장 앞 무음은 손님이 기다리는 시간일 뿐이라 잘라 보낸다 (`trim.py`)
+                    pcm, trimmed_ms = trim_leading_silence(pcm, self._settings.tts_trim)
+                    record = self._log.get(turn)
+                    if record is not None:
+                        record.fields["tts_trim_ms"] = trimmed_ms
                     self._start_speaking(turn)
+                audio_bytes += len(pcm)
                 self._emit({"type": "bot.say", "turn": turn, "seq": seq, "text": text})
                 for i, (chunk, last) in enumerate(chunk_pcm(pcm, self._settings.chunk_bytes)):
                     frame = pack_audio_frame(AudioFrame(turn, seq, chunk, last))

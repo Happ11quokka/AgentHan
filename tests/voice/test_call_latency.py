@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import asyncio
+import math
+import struct
 
 from call_harness import Call, silence, tone
 
@@ -133,3 +135,54 @@ def test_an_early_ep_flag_reply_waits_for_the_400ms_turn_silence(tmp_path) -> No
     early, final = run(call())
     assert early == []
     assert (final["text"], final["end_by"]) == ("메도빅 하나요", "vad")
+
+
+# ------------------------------------------------------ TTS 첫 문장 앞 무음 자르기
+
+
+def _pcm(*parts: tuple[int, int]) -> bytes:
+    """(ms, 진폭) 구간들 → PCM16LE 16kHz. 진폭 0은 무음, 나머지는 440Hz 사인."""
+    out = b""
+    for ms, amplitude in parts:
+        n = ms * 16
+        out += struct.pack(f"<{n}h", *(int(amplitude * math.sin(2 * math.pi * 440 * i / 16_000))
+                                       for i in range(n)))
+    return out
+
+
+async def _greeting_only(c: Call) -> None:
+    await c.start()
+    await c.session.feed_event({"type": "call.end", "turn": 0})
+
+
+def test_leading_silence_of_the_first_sentence_is_cut_before_it_goes_out(tmp_path) -> None:
+    # 앞 300ms: 무음 200ms + 문턱(RMS 0.01 FS ≈ 328) 아래 잡음 100ms. 그 뒤 말소리 200ms.
+    # 첫 가청 소리 20ms 앞까지 자른다. 둘째 문장은 그대로
+    pcm = _pcm((200, 0), (100, 200), (200, 8_000))
+
+    async def call() -> Call:
+        async with Call(tmp_path, tts=FakeTts(pcm)) as c:
+            await _greeting_only(c)
+        return c
+
+    c = run(call())
+    sent = {seq: sum(len(f.pcm) for f in c.out.frames if f.seq == seq) for seq in (0, 1)}
+    assert sent == {0: len(pcm) - 280 * 32, 1: len(pcm)}
+    first = next(f for f in c.out.frames if f.seq == 0)
+    assert first.pcm == pcm[280 * 32:280 * 32 + len(first.pcm)]
+    (metrics,) = c.out.of("metrics", 0)
+    assert metrics["tts_trim_ms"] == 280
+
+
+def test_a_sentence_that_starts_loud_is_not_cut(tmp_path) -> None:
+    pcm = _pcm((300, 8_000))
+
+    async def call() -> Call:
+        async with Call(tmp_path, tts=FakeTts(pcm)) as c:
+            await _greeting_only(c)
+        return c
+
+    c = run(call())
+    assert sum(len(f.pcm) for f in c.out.frames if f.seq == 0) == len(pcm)
+    (metrics,) = c.out.of("metrics", 0)
+    assert metrics["tts_trim_ms"] == 0
