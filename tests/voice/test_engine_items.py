@@ -57,20 +57,20 @@ def questions(r: TurnResult) -> int:
 def test_add_two_then_remove_one_in_one_utterance(engine: DialogEngine) -> None:
     r = talk(engine, "아메리카노 둘이랑 블린 하나, 아 블린 빼 주세요")
     assert lines(r) == [("m03", 2, ())]
-    assert r.utterances == ["아메리카노 두 잔요.", TEMP_Q]
+    assert r.utterances == ["아메리카노 두 잔이요.", TEMP_Q]
     assert r.state is State.CLARIFY
 
 
 def test_required_option_is_asked_then_applied(engine: DialogEngine) -> None:
     r = talk(engine, "아메리카노 하나요")
     assert r.state is State.CLARIFY
-    assert r.utterances == ["아메리카노 한 잔요.", TEMP_Q]
+    assert r.utterances == ["아메리카노 한 잔이요.", TEMP_Q]
     assert questions(r) == 1
 
     r = talk(engine, "차갑게요")
     assert r.state is State.ORDERING
     assert lines(r) == [("m03", 1, ("차갑게",))]
-    assert r.utterances == [f"아메리카노 차갑게 한 잔요. {MORE_Q}"]
+    assert r.utterances == [f"아메리카노 차갑게 한 잔이요. {MORE_Q}"]
     assert questions(r) == 1
 
 
@@ -93,7 +93,7 @@ def test_multi_item_readback_is_one_sentence(engine: DialogEngine) -> None:
 
 def test_multi_item_with_required_option_asks_once(engine: DialogEngine) -> None:
     r = talk(engine, "메도빅 둘이랑 아메리카노 하나요")
-    assert r.utterances == ["메도빅 두 개, 아메리카노 한 잔요.", TEMP_Q]
+    assert r.utterances == ["메도빅 두 개, 아메리카노 한 잔이요.", TEMP_Q]
     assert questions(r) == 1
 
 
@@ -162,14 +162,14 @@ def test_required_option_said_up_front_is_not_asked(engine: DialogEngine) -> Non
     r = talk(engine, "아이스 아메리카노 두 잔이요")
     assert r.state is State.ORDERING
     assert lines(r) == [("m03", 2, ("차갑게",))]
-    assert r.utterances == [f"아메리카노 차갑게 두 잔요. {MORE_Q}"]
+    assert r.utterances == [f"아메리카노 차갑게 두 잔이요. {MORE_Q}"]
 
 
 def test_non_choice_answer_is_applied_and_question_repeats(engine: DialogEngine) -> None:
     r = talk(engine, "아메리카노 하나요", "디카페인으로요")
     assert r.state is State.CLARIFY
     assert lines(r) == [("m03", 1, ("디카페인 변경",))]
-    assert r.utterances == ["아메리카노 디카페인 변경 한 잔요.", TEMP_Q]
+    assert r.utterances == ["아메리카노 디카페인 변경 한 잔이요.", TEMP_Q]
 
 
 def test_unintelligible_answer_reasks_option(engine: DialogEngine) -> None:
@@ -191,10 +191,10 @@ def test_different_temperature_makes_separate_lines(engine: DialogEngine) -> Non
 def test_done_ordering_waits_for_required_option(engine: DialogEngine) -> None:
     r = talk(engine, "아메리카노 하나요, 그게 다예요")
     assert r.state is State.CLARIFY
-    assert r.utterances == ["아메리카노 한 잔요.", TEMP_Q]
+    assert r.utterances == ["아메리카노 한 잔이요.", TEMP_Q]
     r = talk(engine, "차갑게요")
     assert r.state is State.ASK_PICKUP
-    assert r.utterances == ["아메리카노 차갑게 한 잔요.", "몇 시쯤 오세요?"]
+    assert r.utterances == ["아메리카노 차갑게 한 잔이요.", "몇 시쯤 오세요?"]
 
 
 class ScriptNlu:
@@ -226,7 +226,7 @@ def test_several_missing_required_options_are_asked_in_turn() -> None:
     r = talk(engine, "차갑게요")
     assert r.state is State.CLARIFY
     assert r.utterances == [
-        "아메리카노 차갑게 한 잔요.",
+        "아메리카노 차갑게 한 잔이요.",
         "아메리카노는 톨 드릴까요, 그란데 드릴까요?",
     ]
     r = talk(engine, "그란데요")

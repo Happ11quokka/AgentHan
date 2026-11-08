@@ -185,13 +185,16 @@ def test_unknown_menu_lists_menu_and_stays_ordering(text: str) -> None:
     r = _engine().handle(text, NOW)
     assert r.state is State.ORDERING
     assert r.cart.is_empty()
-    assert r.utterances == [f"죄송해요, 그 메뉴는 없어요. {MENU_LIST}"]
+    assert r.utterances == [f"죄송해요, 그 메뉴는 없어요. {MENU_LIST}", "어떤 걸로 드릴까요?"]
 
 
 def test_menu_list_skips_sold_out_items() -> None:
     menu = [replace(m, sold_out=m.id == "m03") for m in MENU]
     r = _engine(menu).handle("티라미수 하나요", NOW)
-    assert r.utterances == ["죄송해요, 그 메뉴는 없어요. 저희는 메도빅, 나폴레옹, 블린이 있어요."]
+    assert r.utterances == [
+        "죄송해요, 그 메뉴는 없어요. 저희는 메도빅, 나폴레옹, 블린이 있어요.",
+        "어떤 걸로 드릴까요?",
+    ]
 
 
 # ---------------------------------------------------------------- 품절 (sold_out)
@@ -357,9 +360,9 @@ def test_confirmed_menu_then_asks_required_option() -> None:
     assert r.utterances == ["혹시 아메리카노 말씀하신 거 맞으세요?"]
     r = engine.handle("네", NOW)
     assert r.state is State.CLARIFY
-    assert r.utterances == ["아메리카노 한 잔요.", TEMP_Q]
+    assert r.utterances == ["아메리카노 한 잔이요.", TEMP_Q]
     r = engine.handle("차갑게요", NOW)
-    assert r.utterances == ["아메리카노 차갑게 한 잔요. 더 필요하신 거 있으세요?"]
+    assert r.utterances == ["아메리카노 차갑게 한 잔이요. 더 필요하신 거 있으세요?"]
     r = engine.handle("그게 다예요", NOW)
     assert r.state is State.ASK_PICKUP
 
@@ -373,7 +376,7 @@ def test_deferred_done_and_pickup_wait_for_required_option() -> None:
     r = engine.handle("전부", NOW)
     assert r.utterances == ["혹시 메도빅 말씀하신 거 맞으세요?"]
     r = engine.handle("네", NOW)
-    assert r.utterances == ["메도빅 하나, 아메리카노 한 잔요.", TEMP_Q]
+    assert r.utterances == ["메도빅 하나, 아메리카노 한 잔이요.", TEMP_Q]
     r = engine.handle("차갑게요", NOW)
     assert r.state is State.CONFIRM
     assert r.utterances[-1].startswith("메도빅 하나, 아메리카노 차갑게 한 잔, 6시 반 픽업")

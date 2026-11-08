@@ -119,7 +119,8 @@ def test_unknown_menu_lists_menu_and_stays_ordering(engine: DialogEngine) -> Non
     assert r.state is State.ORDERING
     assert r.cart.is_empty()
     assert r.utterances == [
-        "죄송해요, 그 메뉴는 없어요. 저희는 메도빅, 나폴레옹, 아메리카노, 블린이 있어요."
+        "죄송해요, 그 메뉴는 없어요. 저희는 메도빅, 나폴레옹, 아메리카노, 블린이 있어요.",
+        "어떤 걸로 드릴까요?",
     ]
 
 

@@ -151,7 +151,7 @@ def test_correction_adding_menu_with_required_option(engine: DialogEngine) -> No
     to_confirm(engine, "메도빅 하나요")
     r = talk(engine, "아메리카노도 하나 주세요")
     assert r.state is State.CLARIFY
-    assert r.utterances == ["아메리카노 한 잔요.", TEMP_Q]  # 새로 담은 건 "바꿨어요"가 아니다
+    assert r.utterances == ["아메리카노 한 잔이요.", TEMP_Q]  # 새로 담은 건 "바꿨어요"가 아니다
     r = talk(engine, "따뜻하게요")
     assert r.state is State.CONFIRM
     assert r.utterances[-1] == (

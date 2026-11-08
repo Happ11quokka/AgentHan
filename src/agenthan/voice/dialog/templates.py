@@ -108,8 +108,8 @@ def ask_order() -> str:
 
 
 def items_noted(phrases: Sequence[str]) -> str:
-    """항목을 받았다고 되받기만 한다. 예: "메도빅 하나요."."""
-    return f"{_join(phrases)}요."
+    """항목을 받았다고 되받기만 한다. 예: "메도빅 하나요.", "아메리카노 한 잔이요."."""
+    return f"{_josa(_join(phrases), '이요', '요')}."
 
 
 def item_accepted(phrases: Sequence[str]) -> str:
