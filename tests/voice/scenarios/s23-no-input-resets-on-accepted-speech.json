@@ -1,0 +1,54 @@
+{
+  "id": "s23-no-input-resets-on-accepted-speech",
+  "title": "3단계: 받아들인 말에 무응답 횟수가 0으로. 복창 중 되묻기는 지금 장바구니 복창",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [{"menu_id": "m01", "qty": 1}]
+    },
+    {
+      "event": "no_input",
+      "expect_say": ["여보세요?", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_say": ["여보세요?", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup",
+      "expect_say": ["몇 시쯤 오세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ask_pickup",
+      "expect_say": ["여보세요?", "몇 시쯤 오세요?"]
+    },
+    {
+      "guest": "여섯시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "event": "no_input",
+      "expect_state": "confirm",
+      "expect_say": ["여보세요?", "메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "confirm",
+      "expect_say": ["여보세요?", "메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"]
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing",
+      "expect_say": ["6시 반에 준비해 둘게요. 감사합니다."]
+    }
+  ],
+  "expect_order": {
+    "lines": [{"menu_id": "m01", "quantity": 1}],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

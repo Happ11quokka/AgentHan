@@ -1,0 +1,60 @@
+{
+  "id": "s24-wait-request-and-not-heard",
+  "title": "3단계: 잠깐만요 → 천천히 말씀하세요(무응답 횟수 0). 말했는데 글 없음은 실패로 세지 않음",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [{"menu_id": "m01", "qty": 1}]
+    },
+    {
+      "event": "no_input",
+      "expect_say": ["여보세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_say": ["여보세요?"]
+    },
+    {
+      "guest": "잠깐만요",
+      "wait_request": true,
+      "expect_state": "ordering",
+      "expect_say": ["네, 천천히 말씀하세요."]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ordering",
+      "expect_say": ["여보세요?", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "event": "not_heard",
+      "expect_state": "ordering",
+      "expect_say": ["죄송해요, 잘 못 들었어요. 다시 말씀해 주세요."]
+    },
+    {
+      "guest": "음",
+      "expect_say": ["죄송해요, 잘 못 알아들었어요."]
+    },
+    {
+      "event": "not_heard",
+      "expect_say": ["죄송해요, 잘 못 들었어요. 다시 말씀해 주세요."]
+    },
+    {
+      "guest": "음",
+      "expect_state": "ordering",
+      "expect_say": ["죄송해요, 잘 못 알아들었어요."]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ordering",
+      "expect_say": ["여보세요?", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "done",
+      "expect_say": ["연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요."]
+    }
+  ],
+  "expect_order": null
+}

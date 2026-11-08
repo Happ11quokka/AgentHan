@@ -16,7 +16,10 @@
          "expect_state": "ordering",                        # 선택
          "expect_cart": [{"menu_id": "m01", "qty": 1}],     # 선택. options·request 기본값은 빈 값
                                                             # 없으면 직전 턴과 같아야 한다
-         "expect_say": ["메도빅 하나요"]}  # 선택. 이번 턴 대사에 들어 있어야 할 조각
+         "expect_say": ["메도빅 하나요"]},  # 선택. 이번 턴 대사에 들어 있어야 할 조각
+        {"event": "no_input"},                  # 손님 말 대신 엔진 진입점 (3단계 티켓 04):
+                                                # no_input(무응답) · not_heard(말했는데 글 없음)
+        {"guest": "잠깐만요", "wait_request": true}  # 끝말 규칙이 기다림 요청으로 본 말
       ],
       "expect_order": {"lines": [{"menu_id": "m01", "quantity": 1}],
                        "pickup_time": "2026-11-08T18:30:00+09:00", "status": "confirmed"}
@@ -24,7 +27,8 @@
     }
 
 금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
-150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴.
+150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴. 무응답 되묻기 앞의 "여보세요?"는 질문으로
+세지 않는다(부르는 말이다).
 """
 
 from __future__ import annotations
@@ -52,6 +56,7 @@ _TOTAL = re.compile(r"총 ([\d,]+)원")
 # CONFIRM으로 끝나는 턴의 질문: 최종 복창, 또는 그 자리에서 받은 "주문 취소할까요?"
 _CONFIRM_QUESTION = re.compile(r"총 [\d,]+원이에요\..*맞으세요\?|주문 취소할까요\?")
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
+_HELLO = "여보세요?"  # 무응답 되묻기의 부르는 말 (질문 수에 넣지 않는다)
 # 괄호·마크다운 기호. TTS가 읽지 않거나 이상하게 읽는다 (spec §7)
 _MARKUP = re.compile(r"[()\[\]{}<>（）【】*#_`~|]")
 _EMOJI = re.compile(
@@ -79,7 +84,7 @@ def forbidden(view: TurnView) -> list[str]:
 
     if not said:
         problems.append("대답 없는 턴")
-    if text.count("?") >= 2:
+    if text.replace(_HELLO, "").count("?") >= 2:
         problems.append(f"한 턴 두 질문: {text}")
     if view.result.state is State.CONFIRM and not _CONFIRM_QUESTION.search(text):
         problems.append(f"복창 없는 CONFIRM: {text}")
@@ -208,11 +213,20 @@ def run(scenario: Scenario) -> Run:
     out.transcript += [f"AI: {u}" for u in before.utterances]
     last = len(scenario.turns) - 1
     for i, turn in enumerate(scenario.turns):
-        guest = turn["guest"]
-        result = engine.handle(guest, scenario.now)
-        out.transcript.append(f"손님: {guest}")
+        event = turn.get("event")
+        guest = turn.get("guest", "")
+        if event == "no_input":
+            result = engine.no_input(scenario.now)
+        elif event == "not_heard":
+            result = engine.not_heard(scenario.now)
+        elif turn.get("wait_request"):
+            result = engine.handle(guest, scenario.now, wait_request=True)
+            out.transcript.append(f"손님: {guest}")
+        else:
+            result = engine.handle(guest, scenario.now)
+            out.transcript.append(f"손님: {guest}")
         out.transcript += [f"AI: {u}" for u in result.utterances]
-        where = f"턴 {i + 1} ({guest!r})"
+        where = f"턴 {i + 1} ({event or guest!r})"
 
         out.failures += [f"{where}: {p}" for p in forbidden(TurnView(guest, result, before))]
         if "expect_state" in turn and result.state.value != turn["expect_state"]:

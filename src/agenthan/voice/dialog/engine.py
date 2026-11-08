@@ -25,6 +25,7 @@ UTC 등 다른 시간대여도 되고, 시간대가 없는(naive) 값은 이미 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -36,7 +37,7 @@ from agenthan.voice.dialog.cart import Cart, CartLine
 from agenthan.voice.dialog.menu_info import answer_menu_question
 from agenthan.voice.dialog.options import find_options
 from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
-from agenthan.voice.dialog.rules import apply_rules
+from agenthan.voice.dialog.rules import apply_rules, wait_request_rest
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
@@ -46,12 +47,16 @@ from agenthan.voice.timeparse import PickupParse, parse_pickup
 OrderStatus = Literal["draft", "confirmed", "handoff"]
 
 MAX_FAILURES = 3  # 같은 슬롯에서 이만큼 연속으로 못 알아들으면 사장님께 넘긴다 (spec §5)
+# 무응답(3단계 티켓 04): 이만큼째 무응답이면 마지막 인사를 하고 끝낸다. 그 전에는 되묻는다
+# (두 번 되묻고 세 번째에 끝냄, CLOVA AiCall 시나리오 가이드와 같다)
+MAX_NO_INPUT = 3
 MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hcx.py` `_qty`)와 같다
 
 # 손님과 대화 중인 상태. 전역 규칙(취소·사장님 연결·메뉴 질문)을 받는다.
 _ACTIVE = (State.ORDERING, State.CLARIFY, State.ASK_PICKUP, State.CONFIRM)
 # "더 필요하신 거?"에 "아니요, ~"의 뒷말이 이것뿐이면 "아니요"는 주문 끝이다 (`_no_means_done`)
 _AFTER_DONE: frozenset[ActType] = frozenset({"set_pickup_time", "set_name", "done_ordering"})
+_SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 
 
 @dataclass(frozen=True)
@@ -152,6 +157,7 @@ class DialogEngine:
         self._cancel_resume: str | None = None  # "주문 취소할까요?" 답을 기다리는 중. 돌아갈 질문
         self._fail_key = ""  # 연속으로 실패한 슬롯과 횟수
         self._fail_count = 0
+        self._no_input = 0  # 연속 무응답 횟수 (3단계 티켓 04). 받아들인 말이 오면 0
 
     # ------------------------------------------------------------ 진입점
 
@@ -161,19 +167,90 @@ class DialogEngine:
         self._state = State.ORDERING
         return self._result(turn)
 
-    def handle(self, text: str, now: datetime) -> TurnResult:
+    def handle(self, text: str, now: datetime, *, wait_request: bool = False) -> TurnResult:
+        """손님 말 하나. `wait_request`는 끝말 규칙이 기다림 요청("잠깐만요")으로 본 말이다.
+
+        기다림 요청이면(3단계 티켓 04) 앞부분만 해석한다. 앞부분이 없으면 NLU를 부르지 않고
+        "네, 천천히 말씀하세요"만 한다(실패로 세지 않음). 앞부분이 있으면 평소처럼 처리한 뒤
+        `_take_time`이 대답 끝을 고친다. 무엇을 기다리는지(직전 질문)는 그대로 둔다.
+        """
         if self._state is State.GREETING:
             raise RuntimeError("start()를 먼저 불러야 해요")
         turn = _Turn(self._local(now), cart_before=self._cart)
         if self._state is State.DONE:
             return self._result(turn)
         self._transcript.append(f"손님: {text}")
-        for act in self._parse(text):
+        rest = wait_request_rest(text) if wait_request else None
+        if rest == "":
+            self._no_input = 0
+            self._say(turn, templates.take_your_time())
+            return self._result(turn)
+        acts = self._parse(text if rest is None else rest)
+        if any(a.type != "unknown" for a in acts):
+            self._no_input = 0  # 받아들인 말. 못 알아들은 말(unknown)만이면 그대로 둔다
+        for act in acts:
             self._dispatch(turn, act)
             if self._state in TERMINAL:
                 break
         self._finish(turn)
         self._count_failure(turn)
+        if rest is not None:
+            self._take_time(turn)
+        return self._result(turn)
+
+    def _take_time(self, turn: _Turn) -> None:
+        """항목 + "잠시만요"의 대답 끝. 주문 중이면 다음 질문 문장을 빼고 "천천히 말씀하세요".
+
+        주문 중의 질문("더 필요하신 거 있으세요?")은 손님이 기다려 달라고 했으니 하지 않는다.
+        직전 질문(`_last_question`)으로는 남아서 다음 무응답 되묻기가 다시 한다. 다른 상태의
+        질문(되묻기·시각)은 그대로 하고 뒤에 붙인다. 복창(CONFIRM)과 끝난 대화는 손대지 않는다
+        (복창 불변식: 복창이 그 턴의 마지막 말이어야 한다).
+        """
+        if self._state in TERMINAL or self._state is State.CONFIRM:
+            return
+        at = turn.question_at
+        if self._state is State.ORDERING and at is not None:
+            kept = [s for s in _SENTENCE_END.split(turn.utterances[at]) if not s.endswith("?")]
+            if kept:
+                turn.utterances[at] = " ".join(kept)
+            else:
+                del turn.utterances[at]
+            turn.question_at = None
+        self._say(turn, templates.take_your_time(after_reply=bool(turn.utterances)))
+
+    def not_heard(self, now: datetime) -> TurnResult:
+        """말소리는 있었는데 STT 글이 없었다(세션이 불렀다, 3단계 티켓 04). 다시 말해 달라고 한다.
+
+        못 알아들음 실패로 세지 않고, 무응답 횟수도 그대로 둔다. 직전 질문은 바꾸지 않는다.
+        """
+        if self._state is State.GREETING:
+            raise RuntimeError("start()를 먼저 불러야 해요")
+        turn = _Turn(self._local(now), cart_before=self._cart)
+        if self._state is not State.DONE:
+            self._say(turn, templates.not_heard())
+        return self._result(turn)
+
+    def no_input(self, now: datetime) -> TurnResult:
+        """손님이 말이 없다(세션의 무음 타이머가 불렀다, 3단계 티켓 04). 장바구니는 안 바꾼다.
+
+        `MAX_NO_INPUT`번째 전까지는 "여보세요?" + 직전 질문(복창 중이면 지금 장바구니 복창)을
+        다시 하고, 그다음은 마지막 인사를 하고 DONE으로 끝낸다(Order 없음). 횟수는 받아들인 손님 말
+        (`handle`)에 0으로 돌아간다. 못 알아들음 실패 횟수(`_count_failure`)와는 따로 센다.
+        """
+        if self._state is State.GREETING:
+            raise RuntimeError("start()를 먼저 불러야 해요")
+        turn = _Turn(self._local(now), cart_before=self._cart)
+        if self._state is State.DONE:
+            return self._result(turn)
+        self._no_input += 1
+        if self._no_input >= MAX_NO_INPUT:
+            self._pending = None
+            self._cancel_resume = None
+            self._state = State.DONE
+            self._say(turn, templates.no_input_goodbye())
+            return self._result(turn)
+        self._say(turn, templates.hello_again())
+        self._ask(turn, self._question_again())
         return self._result(turn)
 
     def nlu_context(self) -> NluContext:

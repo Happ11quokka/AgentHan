@@ -369,3 +369,26 @@ def too_many_failures() -> str:
 
 def handoff() -> str:
     return "사장님께 메모 남겨 드릴게요."
+
+
+# ---------------------------------------------------------------- 무응답·되묻기 (3단계 티켓 04)
+
+
+def hello_again() -> str:
+    """무음 되묻기의 부르는 말. 뒤에 직전 질문을 다시 한다 (CLOVA AiCall처럼)."""
+    return "여보세요?"
+
+
+def no_input_goodbye() -> str:
+    """두 번 되물어도 말이 없을 때 마지막 인사. 이 말 뒤에 통화를 끝낸다."""
+    return "연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요."
+
+
+def take_your_time(*, after_reply: bool = False) -> str:
+    """"잠깐만요"에. 앞에 다른 대답(담은 항목 되받기 등)이 있으면 "네,"를 뗀다."""
+    return "천천히 말씀하세요." if after_reply else "네, 천천히 말씀하세요."
+
+
+def not_heard() -> str:
+    """말소리는 있었는데 STT 글이 없을 때. 실패로 세지 않는다."""
+    return "죄송해요, 잘 못 들었어요. 다시 말씀해 주세요."

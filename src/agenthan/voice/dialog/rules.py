@@ -46,6 +46,31 @@ _REPEAT = re.compile(
 )
 
 
+# 기다림 요청("잠깐만요"). 말 끝에 있으면 앞에 항목이 있어도 기다림 요청이다
+# ("아메리카노 한 잔이랑, 잠시만요"). 끝말 규칙(`call/turn_end.py`)도 이 식을 쓴다
+WAIT_REQUEST = re.compile(
+    r"(?:잠깐|잠시)\s*만?\s*(?:요|기다려\s*(?:주세요|줘요|주실래요|줘)?)?$"
+)
+_PUNCT = re.compile(r"[.,!?~…·]+")
+# 기다림 요청 앞에 붙어도 내용이 아닌 말("음 잠깐만요", "네 잠시만요")
+_WAIT_LEAD = frozenset({"음", "으음", "어", "어어", "아", "그", "저", "저기", "잠깐", "잠시"})
+
+
+def wait_request_rest(text: str) -> str | None:
+    """기다림 요청으로 끝나는 말이면 그 앞의 내용(없으면 ""), 아니면 None (3단계 티켓 04).
+
+    앞부분이 예/아니요·필러뿐이면 내용이 없다고 본다. 복창 중 "네, 잠시만요"가 확정이 되지 않게.
+    """
+    t = " ".join(_PUNCT.sub(" ", text).split())
+    found = WAIT_REQUEST.search(t)
+    if found is None:
+        return None
+    rest = t[: found.start()].strip()
+    if yes_or_no(rest) is not None or all(w in _WAIT_LEAD for w in rest.split()):
+        return ""
+    return rest
+
+
 def yes_or_no(text: str) -> str | None:
     """발화 전체가 예/아니요 말이면 "yes"·"no", 아니면 None.
 

@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Literal
 
-from agenthan.voice.dialog.rules import yes_or_no
+from agenthan.voice.dialog.rules import WAIT_REQUEST, yes_or_no
 from agenthan.voice.hangul import BLANK, decompose
 
 Label = Literal["end", "continue", "wait_request"]
@@ -44,10 +44,6 @@ _BARE_NUMBERS = frozenset({
     "스무", "열한", "열두", "열세", "열네",
 })
 _DIGITS_AT_END = re.compile(r"\d+$")
-# 기다림 요청. 말 끝에 있으면 앞에 항목이 있어도 기다림 요청이다("아메리카노 한 잔이랑, 잠시만요")
-_WAIT_REQUEST = re.compile(
-    r"(?:잠깐|잠시)\s*만?\s*(?:요|기다려\s*(?:주세요|줘요|주실래요|줘)?)?$"
-)
 # 맞장구 목록 (spec: 하나로 둔다). 듣는 중이면 답, 봇이 말하는 중이면 맞장구로 본다
 BACKCHANNELS = frozenset({"네", "예", "응", "어", "아", "음", "그래요", "네네"})
 # 해요체 '요'가 연결어미·명사 뒤에 붙은 꼴과 -는데·-거든요. 나열 중간일 때가 많아 애매로 둔다
@@ -155,7 +151,7 @@ def _judge(
     text: str, tokens: list[str], question_kind: str, menu_names: tuple[str, ...]
 ) -> TurnEndVerdict:
     last = tokens[-1]
-    if _WAIT_REQUEST.search(" ".join(tokens)):
+    if WAIT_REQUEST.search(" ".join(tokens)):
         return TurnEndVerdict("wait_request", "wait_request", firm=True)
     if all(t in _FILLERS for t in tokens):
         return TurnEndVerdict("continue", "filler_only", firm=True, filler_only=True)

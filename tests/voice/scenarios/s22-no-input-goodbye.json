@@ -1,0 +1,29 @@
+{
+  "id": "s22-no-input-goodbye",
+  "title": "3단계: 무응답 두 번 되묻기(여보세요? + 직전 질문) 뒤 세 번째에 인사하고 끝냄",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [{"menu_id": "m01", "qty": 1}],
+      "expect_say": ["메도빅 하나요.", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ordering",
+      "expect_say": ["여보세요?", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ordering",
+      "expect_say": ["여보세요?", "더 필요하신 거 있으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "done",
+      "expect_say": ["연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요."]
+    }
+  ],
+  "expect_order": null
+}
