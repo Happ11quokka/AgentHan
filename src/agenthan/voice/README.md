@@ -96,7 +96,7 @@
 - 서버: 끊으면 문장 보내기 작업(`_speak`)을 취소해 남은 TTS 합성과 `bot.say`를 멈추고, 송신 큐에 남은 그 턴 오디오·자막을 버리고, 바로 듣기로 간다. 문장 보내기는 턴 작업과 따로 돌아서 끼어든 말의 엔진 호출이 남은 TTS를 기다리지 않는다. 엔진은 되돌리지 않는다(소리가 나간 턴은 들었다고 본다)
 - 브라우저(`phoneCall.interrupt`, `Player.interrupt`): 재생을 멈추고, 그 턴 이하 오디오를 헤더 `turn`으로 버리고, 마이크를 서버 답 없이 바로 연다. 끊은 턴의 `playback.done`은 보내지 않는다
 - JSONL: `interrupt {by, seq, played_ms, heard: [{seq, heard(heard·partial·unheard), ms, played_ms, chars}]}`, `marks.interrupted`. `ms`는 보낸 문장 소리 길이(보내기 전에 끊긴 문장은 `null`), `chars`는 일부 들은 문장의 들은 글자 수 어림(글자 비율)
-- 무응답 타이머(티켓 04)는 `playback.interrupted`에서도 시작한다
+- 무응답 타이머는 이 티켓에 없다. 티켓 04가 `playback.done`과 `playback.interrupted`에 건다
 - 테스트: `tests/voice/test_call_interrupt.py`, 웹 `callState.test.ts`·`phoneCall.test.ts`
 
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
