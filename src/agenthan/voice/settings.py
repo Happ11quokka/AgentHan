@@ -16,6 +16,7 @@
 | `PHONE_VAD_END_SILENCE_MS` | 말 끝으로 볼 무음 길이(ms, 100 이상) | `VadSettings` 기본값 |
 | `PHONE_MAX_CALLS` | 동시 통화 상한. 넘으면 `error{code: "busy"}` (CLOVA 도메인당 15) | `10` |
 | `PHONE_MAX_CALL_S` | 통화 하나의 최대 길이(초). 넘으면 `call_too_long` | `600` |
+| `PHONE_CONT_WAIT_S` | 이어질 모양("-하고", "음")이면 마지막 말 끝부터 기다리는 초 | `2.0` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -59,6 +60,7 @@ class VoiceSettings:
     vad: VadSettings = field(default_factory=VadSettings)
     max_calls: int = 10  # 동시 통화 상한 (리뷰 17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이
+    cont_wait_s: float = 2.0  # 이어짐 대기 상한 (3단계 티켓 02, `SessionSettings.cont_wait_s`)
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -118,6 +120,7 @@ class VoiceSettings:
             vad=vad,
             max_calls=int(max_calls),
             max_call_s=_number("PHONE_MAX_CALL_S", get("PHONE_MAX_CALL_S", ""), 600.0),
+            cont_wait_s=_number("PHONE_CONT_WAIT_S", get("PHONE_CONT_WAIT_S", ""), 2.0),
             env=env,
         )
 

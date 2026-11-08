@@ -120,7 +120,8 @@ def phone_router(
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             log_dir=settings.log_dir,
-            settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s),
+            settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s,
+                                     cont_wait_s=settings.cont_wait_s),
             executor=engine_pool,
         )
         await session.open()
