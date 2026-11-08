@@ -48,6 +48,7 @@ def profile():
 
 def test_store_adapter_and_missing_neighborhood(tmp_path):
     data = DummyStore(tmp_path / "store.json").read()
+    data["shop"]["address"] = "가상시 연습구 연습로 3"
     profile = profile_from_store(data)
     assert profile.name == data["shop"]["name"]
     assert profile.menus == [m["name"] for m in data["menus"]]
@@ -63,7 +64,8 @@ def test_store_adapter_and_missing_neighborhood(tmp_path):
     profile = profile_from_store(data)
     assert profile.area == "연습동"
     assert profile.road_address == "가상시 연습로 3"
-    assert profile.native_menus == ["Медовик"]
+    assert profile.native_menus == [m["name_native"] for m in data["menus"] if m.get("name_native")]
+    assert profile.native_menus[0] == "Медовик"
     assert profile_from_store({"shop": {"name": "가상"}}).area == ""
 
 
@@ -254,3 +256,11 @@ def test_cli_api_and_save_errors_are_clean(tmp_path, monkeypatch, capsys):
     Path("data/existing").mkdir(parents=True)
     assert visibility.main(["--name", "가상 가게", "--save", "data/existing"]) == 1
     assert capsys.readouterr().err == "검색 결과 파일을 저장할 수 없습니다.\n"
+
+
+def test_seed_store_has_neighborhood(tmp_path):
+    profile = profile_from_store(DummyStore(tmp_path / "store.json").read())
+    assert profile.area == "이태원동"
+    assert {"area_category", "area_menu", "store_area"} <= {
+        q.kind for q in candidate_queries(profile)
+    }
