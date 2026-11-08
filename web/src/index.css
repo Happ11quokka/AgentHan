@@ -1,0 +1,13 @@
+:root {
+  font-family: system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', sans-serif;
+  line-height: 1.5;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  padding: 24px 16px;
+}
