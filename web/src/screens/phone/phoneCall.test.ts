@@ -27,6 +27,54 @@ class FakeAudioContext {
   createGain() {
     return { gain: { value: 1 }, connect: (next: unknown) => next, disconnect() {} }
   }
+  sources: FakeSource[] = []
+  async decodeAudioData(data: ArrayBuffer) {
+    return { decodedFrom: data }
+  }
+  createBuffer(_channels: number, length: number) {
+    return { length, copyToChannel() {} }
+  }
+  createBufferSource() {
+    const source = new FakeSource()
+    this.sources.push(source)
+    return source
+  }
+}
+
+class FakeSource {
+  buffer: unknown = null
+  loop = false
+  started = false
+  stopped = false
+  onended: (() => void) | null = null
+  connect(next: unknown) {
+    return next
+  }
+  disconnect() {}
+  start() {
+    this.started = true
+  }
+  /** 실제처럼 `when`이 미래면 예약만 한다(그때까지는 울린다). */
+  stop(when?: number) {
+    if (when === undefined || when <= 0) this.stopped = true
+  }
+}
+
+const CUE_BYTES = new ArrayBuffer(16) // 가짜 효과음 파일 내용
+
+/** 효과음 파일로 만든(디코드한) 재생 소스들. 봇 음성 조각 소스와 구별한다. */
+function cueSources(ctx: FakeAudioContext): FakeSource[] {
+  return ctx.sources.filter((s) => (s.buffer as { decodedFrom?: unknown })?.decodedFrom === CUE_BYTES)
+}
+
+/** 서버가 내리는 오디오 프레임(8바이트 헤더 + PCM 100샘플). */
+function audioFrame(turn: number, seq: number): ArrayBuffer {
+  const buf = new ArrayBuffer(8 + 200)
+  const view = new DataView(buf)
+  view.setUint8(0, 1)
+  view.setUint16(2, seq, true)
+  view.setUint32(4, turn, true)
+  return buf
 }
 
 class FakeWorkletNode {
@@ -101,6 +149,7 @@ beforeEach(() => {
   vi.stubGlobal('AudioContext', FakeAudioContext)
   vi.stubGlobal('AudioWorkletNode', FakeWorkletNode)
   vi.stubGlobal('WebSocket', FakeSocket)
+  vi.stubGlobal('fetch', async () => ({ ok: true, arrayBuffer: async () => CUE_BYTES }))
 })
 
 afterEach(() => {
@@ -159,5 +208,55 @@ describe('PhoneCall', () => {
     FakeWorkletNode.last!.port.onmessage!({ data: frame })
     expect(call.getState().slowLink).toBe(false)
     expect(ws.sent.filter((m) => m instanceof ArrayBuffer)).toHaveLength(2)
+  })
+})
+
+describe('thinking cue (bot.thinking)', () => {
+  const thinking = (turn: number) => ({ type: 'state', turn, phase: 'thinking', dialog: 'ordering', cart: [], total: 0 })
+
+  it('plays the generated cue on a loop when the server says the answer is late', async () => {
+    const { ws } = await liveCall()
+    await flush() // 효과음 파일을 받아 디코드한다
+    ws.server(thinking(1))
+    ws.server({ type: 'bot.thinking', turn: 1 })
+    const ctx = FakeAudioContext.instances[0]
+    const [cue] = cueSources(ctx)
+    expect(cue.started).toBe(true)
+    expect(cue.loop).toBe(true)
+    expect(cue.stopped).toBe(false)
+  })
+
+  it('stops the cue as soon as the bot voice for that turn arrives', async () => {
+    const { ws } = await liveCall()
+    await flush()
+    ws.server(thinking(1))
+    ws.server({ type: 'bot.thinking', turn: 1 })
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    const [cue] = cueSources(FakeAudioContext.instances[0])
+    expect(cue.stopped).toBe(true)
+  })
+
+  it('stops the cue when the turn moves on without a voice and on hang-up', async () => {
+    const { call, ws } = await liveCall()
+    await flush()
+    ws.server(thinking(1))
+    ws.server({ type: 'bot.thinking', turn: 1 })
+    ws.server({ type: 'state', turn: 1, phase: 'listening', dialog: 'ordering', cart: [], total: 0 })
+    ws.server(thinking(2))
+    ws.server({ type: 'bot.thinking', turn: 2 })
+    const ctx = FakeAudioContext.instances[0]
+    const [first, second] = cueSources(ctx)
+    expect(first.stopped).toBe(true)
+    expect(second.stopped).toBe(false)
+    call.hangup()
+    expect(second.stopped).toBe(true)
+  })
+
+  it('ignores a late bot.thinking from an older turn', async () => {
+    const { ws } = await liveCall()
+    await flush()
+    ws.server(thinking(2))
+    ws.server({ type: 'bot.thinking', turn: 1 })
+    expect(cueSources(FakeAudioContext.instances[0])).toHaveLength(0)
   })
 })

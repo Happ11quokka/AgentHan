@@ -19,6 +19,7 @@ import { parseAudioFrame } from './frames.ts'
 import { CAPTURE_PROCESSOR, FRAME_SAMPLES, WIRE_RATE } from './pcm.ts'
 import { Player } from './player.ts'
 import { micReopenDelayMs } from './schedule.ts'
+import { ThinkingCue } from './thinkingCue.ts'
 import { TurnPlayback } from './turnPlayback.ts'
 
 export const WS_PATH = '/api/phone/ws'
@@ -36,6 +37,7 @@ const SILENT_FRAME = new ArrayBuffer(FRAME_SAMPLES * 2) // 반이중 중 보내�
 type CaptureMode = 'context-16k' | 'downsample'
 
 interface TurnClock {
+  thinking?: number // 생각 중 효과음을 시작한 때
   firstAudio?: number
   playStart?: number
   playEnd?: number
@@ -50,6 +52,7 @@ export class PhoneCall {
   private node: AudioWorkletNode | null = null
   private ws: WebSocket | null = null
   private player: Player | null = null
+  private cue: ThinkingCue | null = null
   private playback = new TurnPlayback()
   private wakeLock: WakeLockSentinel | null = null
   private timers = new Set<number>()
@@ -222,9 +225,25 @@ export class PhoneCall {
       return
     }
     this.dispatch({ type: 'server', event })
+    this.onCueEvent(event)
     if (event.type === 'bot.done') {
       const progress = this.playback.botDone(event.turn, event.sentences)
       if (progress === 'turn-finished') this.finishTurn(event.turn, event.sentences - 1)
+    }
+  }
+
+  /** 생각 중 효과음: `bot.thinking`에 켜고, 그 턴이 목소리 없이 넘어가거나 끝나면 끈다. */
+  private onCueEvent(event: ServerEvent): void {
+    const cue = this.cue
+    if (!cue) return
+    if (event.type === 'bot.thinking') {
+      if (event.turn !== this.state.turn || this.state.phase !== 'thinking') return
+      const at = cue.play(event.turn)
+      if (at !== null) this.clock(event.turn).thinking = at
+    } else if (event.type === 'state') {
+      if (event.phase !== 'thinking' || event.turn !== cue.playingTurn) cue.stop()
+    } else if (event.type === 'error') {
+      cue.stop()
     }
   }
 
@@ -236,6 +255,7 @@ export class PhoneCall {
       console.warn(err)
       return
     }
+    this.cue?.stop() // 봇 목소리가 왔다
     const clock = this.clock(frame.turn)
     clock.firstAudio ??= performance.now()
     this.player?.enqueue(frame)
@@ -261,6 +281,7 @@ export class PhoneCall {
       this.send({
         type: 'client.metrics',
         turn,
+        thinking_ms: clock.thinking,
         first_audio_ms: clock.firstAudio,
         play_start_ms: clock.playStart,
         play_end_ms: clock.playEnd,
@@ -292,6 +313,8 @@ export class PhoneCall {
 
   private useContext(ctx: AudioContext): void {
     this.ctx = ctx
+    this.cue?.close()
+    this.cue = new ThinkingCue(ctx)
     this.player?.stop()
     this.player = new Player(ctx, {
       sentenceStarted: (turn, seq) => this.onSentenceStarted(turn, seq),
@@ -366,6 +389,8 @@ export class PhoneCall {
     this.playback = new TurnPlayback()
     this.player?.stop()
     this.player = null
+    this.cue?.close()
+    this.cue = null
     if (this.node) {
       this.node.port.onmessage = null
       this.node.disconnect()
