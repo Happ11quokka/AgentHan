@@ -5,11 +5,16 @@ description = "네이버 클라우드 기반 소상공인 AI 비서"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "httpx>=0.28.1",
     "korean-datetime==1.0.0",
 ]
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = [
+    "pytest",
+    "pytest-recording>=0.14.1",
+    "ruff",
+]
 
 [build-system]
 requires = ["hatchling"]
