@@ -9,11 +9,11 @@ import re
 from dataclasses import dataclass, replace
 from typing import Literal
 
+from agenthan.voice.call.defaults import CONT_WAIT_S, MODEL_HIGH, MODEL_LOW
 from agenthan.voice.dialog.rules import WAIT_REQUEST, yes_or_no
 from agenthan.voice.hangul import BLANK, decompose
 
 Label = Literal["end", "continue", "wait_request"]
-CONT_WAIT_S = 2.0  # 이어짐 상한 기본값(초): 마지막 말 끝부터 (grilling Q3)
 # 직전 질문 종류 (Raux & Eskenazi 2008): 확인(예/아니요) · 닫힌(고르기·시각) · 열린
 QuestionKind = Literal["confirm", "closed", "open"]
 
@@ -182,8 +182,6 @@ def _judge(
 # ---------------------------------------------------------------- 규칙 + 턴 모델 합치기
 
 Path = Literal["rule", "model", "cap", "button"]
-MODEL_LOW = 0.3  # 턴 모델(Smart Turn) 끝남 확률이 이 값 이하면 이어짐 쪽
-MODEL_HIGH = 0.7  # 이 값 이상이면 끝남 쪽. 그 사이는 끝말 규칙이 정한다
 
 
 @dataclass(frozen=True)

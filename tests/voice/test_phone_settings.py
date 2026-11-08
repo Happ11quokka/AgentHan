@@ -111,12 +111,28 @@ def test_smart_turn_is_on_by_default_and_can_be_switched_off() -> None:
     default = VoiceSettings.from_env({}, env_file=None)
     assert default.turn_model == "smart_turn"
     assert default.turn_model_path == Path("/app/models/smart-turn-v3.2-cpu.onnx")
-    assert (default.turn_low, default.turn_high) == (0.3, 0.7)
+    assert (default.turn_model_low, default.turn_model_high) == (0.3, 0.7)
     s = VoiceSettings.from_env({"PHONE_TURN_MODEL": "off", "PHONE_TURN_MODEL_PATH": "m.onnx",
                                 "PHONE_TURN_LOW": "0.2", "PHONE_TURN_HIGH": "0.8"},
                                env_file=None)
     assert (s.turn_model, s.turn_model_path) == ("off", Path("m.onnx"))
-    assert (s.turn_low, s.turn_high) == (0.2, 0.8)
+    assert (s.turn_model_low, s.turn_model_high) == (0.2, 0.8)
+
+
+def test_the_call_session_gets_the_server_settings_under_the_same_names() -> None:
+    # 리뷰 S12: 서버 설정 → 세션 설정을 필드마다 이름을 바꿔 옮기지 않는다
+    from agenthan.voice.call.barge import BargeSettings
+    from agenthan.voice.call.session import SessionSettings
+
+    voice = VoiceSettings(vad=VadSettings(threshold=900.0), max_call_s=120.0, cont_wait_s=1.5,
+                          no_input_s=8.0, wait_request_s=20.0, turn_model_low=0.2,
+                          turn_model_high=0.8, barge=BargeSettings(mode="shadow"))
+    assert voice.session_settings() == SessionSettings(
+        vad=VadSettings(threshold=900.0), max_call_s=120.0, cont_wait_s=1.5, no_input_s=8.0,
+        wait_request_s=20.0, turn_model_low=0.2, turn_model_high=0.8,
+        barge=BargeSettings(mode="shadow"),
+    )
+    assert VoiceSettings().session_settings() == SessionSettings()  # 기본값이 한 곳에서 온다
 
 
 def test_keys_do_not_show_in_repr(tmp_path) -> None:

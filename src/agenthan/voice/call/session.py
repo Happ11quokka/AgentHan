@@ -80,6 +80,13 @@ from agenthan.voice.call.barge import (
     WindowKind,
     is_early_yes,
 )
+from agenthan.voice.call.defaults import (
+    CONT_WAIT_S,
+    MODEL_HIGH,
+    MODEL_LOW,
+    NO_INPUT_S,
+    WAIT_REQUEST_S,
+)
 from agenthan.voice.call.frames import (
     BYTES_PER_MS,
     CHUNK_BYTES,
@@ -106,8 +113,6 @@ from agenthan.voice.call.spoken import SpokenTurn
 from agenthan.voice.call.timers import Deadline, OneShot
 from agenthan.voice.call.trim import TrimSettings, trim_leading_silence
 from agenthan.voice.call.turn_end import (
-    MODEL_HIGH,
-    MODEL_LOW,
     TurnDecision,
     classify_turn_end,
     combine_turn_end,
@@ -131,15 +136,15 @@ NluChoice = Literal["fake", "hcx"]
 Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
 # 턴 모델(Smart Turn)이 보는 최근 오디오: 8초 = 256,000바이트 (원본 입력 규칙)
 TURN_AUDIO_BYTES = 8_000 * BYTES_PER_MS
-# 턴 모델 전용 스레드 수. 프로세스에 풀 하나, 세션(ONNX) 하나를 같이 쓴다. 2 vCPU 서버라 2개
-# (연구 노트 Q11-3). 엔진 풀은 HCX를 기다리는 스레드로 찰 수 있어 따로 둔다
+# 턴 모델 전용 스레드 수. 프로세스에 풀 하나, 세션(ONNX) 하나를 모든 통화가 같이 쓴다.
+# 2 vCPU 서버라 2개(연구 노트 Q11-3). 엔진 풀은 HCX를 기다리는 스레드로 찰 수 있어 따로 둔다
 TURN_THREADS = 2
 TURN_THREAD_PREFIX = "phone-turn"
 _turn_pool: ThreadPoolExecutor | None = None
 
 
-def default_turn_pool() -> ThreadPoolExecutor:
-    """실행기를 따로 받지 않은 세션이 같이 쓰는 턴 모델 풀 (처음 부를 때 만든다)."""
+def turn_pool() -> ThreadPoolExecutor:
+    """프로세스의 턴 모델 풀 하나 (처음 부를 때 만든다). 라우터와 세션 기본값이 같이 쓴다 (C8)."""
     global _turn_pool
     if _turn_pool is None:
         _turn_pool = ThreadPoolExecutor(TURN_THREADS, thread_name_prefix=TURN_THREAD_PREFIX)
@@ -171,7 +176,7 @@ class SessionSettings:
     hold_cap_s: float = 3.0  # 이어진 말이 열려 있어도 마지막 글부터 붙잡기는 여기까지 (리뷰 C4)
     # 말 끝 판정 (3단계 티켓 02). 이어짐이면 마지막 말 끝(마지막 유성 프레임 도착)부터 이만큼까지
     # 기다린다. 말이 다시 시작되면 다음 말 끝부터 다시 센다 (grilling Q3, `PHONE_CONT_WAIT_S`)
-    cont_wait_s: float = 2.0
+    cont_wait_s: float = CONT_WAIT_S
     # 이어짐 대기 전체 상한(대기 중 마지막 글부터, 리뷰 P3). 글 없는 배경 소리가 "말하는 중"을
     # 안 풀어도 여기서 넘긴다. 글이 계속 들어오는 긴 주문은 쪼개지 않는다
     cont_max_s: float = 8.0
@@ -180,6 +185,10 @@ class SessionSettings:
     prefetch_timeout_s: float = 5.0
     turn_model_low: float = MODEL_LOW  # Smart Turn 점수 대역 (티켓 03이 점수를 넣는다)
     turn_model_high: float = MODEL_HIGH
+    # 말 끝(무음 400ms) 전에 온 epFlag 응답을 말 끝에서 넘길 때 턴 모델 점수를 이만큼까지 기다린다
+    # (리뷰 C5). 점수 작업은 같은 순간에 내서 그냥 넘기면 늘 `late`다. 맥 1스레드 약 50ms,
+    # 연구 노트 Q11 제안 150ms
+    turn_score_wait_s: float = 0.15
     # `playback.done`이 안 와도(AudioContext 멈춤 등) 보낸 소리 길이 + 이만큼 뒤 듣기로 (리뷰 4번)
     play_done_grace_s: float = 3.0
     # 말 끝 + 이만큼까지 봇 목소리가 없으면 `bot.thinking`(생각 중 효과음). PRD 1.5초 (grilling Q13)
@@ -187,10 +196,10 @@ class SessionSettings:
     # 무응답 (3단계 티켓 04, grilling Q6). 봇 재생 끝(`playback.done`·말 끊기)부터 이만큼
     # 말이 없으면 엔진 무응답 진입점이 되묻는다(`PHONE_NO_INPUT_S`). AiCall 5초·Lex 4초보다
     # 조금 길게: 주문 중에는 메뉴를 고르며 생각한다 (`research/s3-turn-end.md` 결정 6)
-    no_input_s: float = 6.0
-    wait_request_s: float = 15.0  # "잠깐만요" 뒤 첫 대기 (`PHONE_WAIT_REQUEST_S`, 결정 5)
+    no_input_s: float = NO_INPUT_S
+    wait_request_s: float = WAIT_REQUEST_S  # "잠깐만요" 뒤 첫 대기 (`PHONE_WAIT_REQUEST_S`, 결정 5)
     # 글 없는 말소리(배경 소리)가 마감을 계속 밀어도 처음 마감 + 이만큼에는 되묻는다 (검증 결정 6)
-    no_input_slack_s: float = 6.0
+    no_input_slack_s: float = NO_INPUT_S
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
     not_heard_min_ms: int = 500
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
@@ -329,6 +338,7 @@ class CallSession:
         self._held: SttResult | None = None  # 붙잡은 끝 후보 결과 (뒤에 말이 이어짐)
         self._hold_text_at: float | None = None  # 마지막으로 글을 붙잡은 때 (`hold_cap_s` 기준)
         self._hold_timer = Deadline(self._on_hold_timer)
+        self._score_timer = OneShot(self._release_held_reply)  # 말 끝에서 점수 기다리기 (C5)
         self._pending: list[_Utterance] = []
         # 판정 중 국면 (티켓 02). 국면 값은 listening 그대로 두고(화면은 듣는 중) 이것으로 가른다
         self._cont: _Utterance | None = None  # 이어짐 판정으로 기다리는 말
@@ -447,6 +457,7 @@ class CallSession:
         self._quiet_timer.cancel()
         if self._ring is not None:
             self._ring.clear()  # 되묻기 앞의 글 없는 소리는 다음 손님 말 점수에 넣지 않는다
+            self._drop_score()
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
@@ -700,10 +711,37 @@ class CallSession:
         return self._vad.in_speech or self._ep_waiting()
 
     def _on_speech_end(self) -> None:
-        """무음이 턴 판정 길이(400ms)에 닿았다. 그 전에 와서 붙잡아 둔 epFlag 응답이면 넘긴다."""
-        held = self._held
-        if held is None or not held.ep_flag or not self._parts or self._ep_waiting():
+        """무음이 턴 판정 길이(400ms)에 닿았다. 그 전에 와서 붙잡아 둔 epFlag 응답이면 넘긴다.
+
+        방금 낸 턴 모델 점수가 아직이면 `turn_score_wait_s`까지 기다렸다 넘긴다(리뷰 C5)
+        """
+        if not self._held_reply_due():
             return
+        score = self._score
+        if score is not None and not score.done():
+            loop = asyncio.get_running_loop()
+            self._score_timer.arm(self._settings.turn_score_wait_s)
+            score.add_done_callback(
+                lambda _: loop.call_soon_threadsafe(self._on_score_ready, score))
+            return
+        self._release_held_reply()
+
+    def _on_score_ready(self, score: Future[tuple[float, float]]) -> None:
+        if self._score_timer.armed and score is self._score:
+            self._score_timer.cancel()
+            self._release_held_reply()
+
+    def _held_reply_due(self) -> bool:
+        """말 끝에 넘길 붙잡은 epFlag 응답이 있나."""
+        held = self._held
+        return (held is not None and held.ep_flag and bool(self._parts)
+                and not self._ep_waiting() and not self._vad.in_speech)
+
+    def _release_held_reply(self) -> None:
+        if self.done or not self._held_reply_due():
+            return  # 기다리는 사이 말이 다시 시작됐거나 다른 길로 넘어갔다
+        held = self._held
+        assert held is not None
         self._hold_timer.cancel()
         self._release(held, "vad")
 
@@ -795,6 +833,7 @@ class CallSession:
     def _clear_hold(self) -> None:
         """붙잡아 둔 조각·시간 제한을 모두 지운다."""
         self._hold_timer.cancel()
+        self._score_timer.cancel()
         self._parts = []
         self._held = None
         self._hold_text_at = None
@@ -857,7 +896,7 @@ class CallSession:
         """
         assert self._ring is not None
         if started:
-            self._score = None
+            self._drop_score()
         if self._phase == "speaking":
             return
         self._ring += pcm
@@ -873,8 +912,15 @@ class CallSession:
         model, ring = self._turn_model, self._ring
         if model is None or ring is None or self._phase == "speaking" or not ring:
             return
-        executor = self._turn_executor or default_turn_pool()
+        executor = self._turn_executor or turn_pool()
+        self._drop_score()
         self._score = executor.submit(_timed_score, model, bytes(ring))
+
+    def _drop_score(self) -> None:
+        """낡은 점수 작업을 버린다. 아직 줄을 서 있으면 취소해 공유 풀(다른 통화)을 비운다 (C7)."""
+        if self._score is not None:
+            self._score.cancel()
+            self._score = None
 
     def _take_score(self) -> tuple[float | None, dict[str, Any] | None]:
         """판정에 쓸 점수. 기다리지 않는다: 말 끝(400ms)부터 STT 확정 글(말 끝 + 0.9~1.1초)까지가
@@ -886,6 +932,7 @@ class CallSession:
         if future is None:
             return None, {"src": "none"}  # 말 끝 없이 넘어온 말(버튼·붙잡기 시간 제한)
         if not future.done():
+            future.cancel()  # 아직 줄을 서 있으면 공유 풀에서 뺀다 (리뷰 C7)
             return None, {"src": "late"}
         err = future.exception()
         if err is not None:

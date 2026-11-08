@@ -41,12 +41,22 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from pathlib import Path
-from typing import Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agenthan.voice.call.barge import BargeSettings
+from agenthan.voice.call.defaults import (
+    CONT_WAIT_S,
+    MODEL_HIGH,
+    MODEL_LOW,
+    NO_INPUT_S,
+    WAIT_REQUEST_S,
+)
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.store_config import KST
+
+if TYPE_CHECKING:
+    from agenthan.voice.call.session import SessionSettings
 
 NluName = Literal["fake", "hcx"]
 AdapterName = Literal["fake", "clova"]
@@ -75,14 +85,15 @@ class VoiceSettings:
     vad: VadSettings = field(default_factory=VadSettings)
     max_calls: int = 10  # 동시 통화 상한 (리뷰 17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이
-    cont_wait_s: float = 2.0  # 이어짐 대기 상한 (3단계 티켓 02, `SessionSettings.cont_wait_s`)
-    no_input_s: float = 6.0  # 무응답 되묻기 대기 (3단계 티켓 04, `SessionSettings.no_input_s`)
-    wait_request_s: float = 15.0  # "잠깐만요" 뒤 첫 대기 (`SessionSettings.wait_request_s`)
+    # 아래 턴 관리 값은 통화 세션 설정과 이름이 같다(`session_settings`, 리뷰 S12)
+    cont_wait_s: float = CONT_WAIT_S  # 이어짐 대기 상한 (3단계 티켓 02)
+    no_input_s: float = NO_INPUT_S  # 무응답 되묻기 대기 (3단계 티켓 04)
+    wait_request_s: float = WAIT_REQUEST_S  # "잠깐만요" 뒤 첫 대기
     # 오디오 턴 모델 (3단계 티켓 03). 기본 켬(사용자 결정 2026-11-08), 끄면 끝말 규칙만
     turn_model: TurnModelName = "smart_turn"
     turn_model_path: Path = DEFAULT_TURN_MODEL_PATH
-    turn_low: float = 0.3
-    turn_high: float = 0.7
+    turn_model_low: float = MODEL_LOW
+    turn_model_high: float = MODEL_HIGH
     # 음성 끼어들기 (3단계 티켓 06). None이면 꺼짐(기본, 반이중 + 말 끊기 버튼)
     barge: BargeSettings | None = None
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
@@ -92,13 +103,19 @@ class VoiceSettings:
         _check("PHONE_STT", self.stt, get_args(AdapterName))
         _check("PHONE_TTS", self.tts, get_args(AdapterName))
         _check("PHONE_TURN_MODEL", self.turn_model, get_args(TurnModelName))
-        if not 0 < self.turn_low <= self.turn_high < 1:
+        if not 0 < self.turn_model_low <= self.turn_model_high < 1:
             raise SettingsError(
                 "PHONE_TURN_LOW ≤ PHONE_TURN_HIGH이고 둘 다 0과 1 사이여야 해요: "
-                f"{self.turn_low!r} / {self.turn_high!r}"
+                f"{self.turn_model_low!r} / {self.turn_model_high!r}"
             )
         if self.now is not None and self.now.tzinfo is None:
             raise SettingsError("PHONE_NOW에 시간대를 붙여 주세요. 예: 2026-11-08T16:00:00+09:00")
+
+    def session_settings(self) -> SessionSettings:
+        """통화 세션 설정. 같은 이름의 값만 옮기고 나머지는 세션 기본값이다 (리뷰 S12)."""
+        from agenthan.voice.call.session import SessionSettings  # 엔진까지 끌어오므로 쓸 때만
+
+        return SessionSettings(**{name: getattr(self, name) for name in _SESSION_FIELDS})
 
     @classmethod
     def from_env(
@@ -157,16 +174,22 @@ class VoiceSettings:
             vad=vad,
             max_calls=int(max_calls),
             max_call_s=_number("PHONE_MAX_CALL_S", get("PHONE_MAX_CALL_S", ""), 600.0),
-            cont_wait_s=_number("PHONE_CONT_WAIT_S", get("PHONE_CONT_WAIT_S", ""), 2.0),
-            no_input_s=_number("PHONE_NO_INPUT_S", get("PHONE_NO_INPUT_S", ""), 6.0),
-            wait_request_s=_number("PHONE_WAIT_REQUEST_S", get("PHONE_WAIT_REQUEST_S", ""), 15.0),
+            cont_wait_s=_number("PHONE_CONT_WAIT_S", get("PHONE_CONT_WAIT_S", ""), CONT_WAIT_S),
+            no_input_s=_number("PHONE_NO_INPUT_S", get("PHONE_NO_INPUT_S", ""), NO_INPUT_S),
+            wait_request_s=_number("PHONE_WAIT_REQUEST_S", get("PHONE_WAIT_REQUEST_S", ""),
+                                   WAIT_REQUEST_S),
             turn_model=get("PHONE_TURN_MODEL", "smart_turn"),  # type: ignore[arg-type]
             turn_model_path=Path(get("PHONE_TURN_MODEL_PATH", str(DEFAULT_TURN_MODEL_PATH))),
-            turn_low=_fraction("PHONE_TURN_LOW", get("PHONE_TURN_LOW", ""), 0.3),
-            turn_high=_fraction("PHONE_TURN_HIGH", get("PHONE_TURN_HIGH", ""), 0.7),
+            turn_model_low=_fraction("PHONE_TURN_LOW", get("PHONE_TURN_LOW", ""), MODEL_LOW),
+            turn_model_high=_fraction("PHONE_TURN_HIGH", get("PHONE_TURN_HIGH", ""), MODEL_HIGH),
             barge=_barge(get),
             env=env,
         )
+
+
+# 서버 설정에서 통화 세션 설정으로 그대로 옮기는 값 (`SessionSettings`와 이름이 같다)
+_SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "no_input_s", "wait_request_s",
+                   "turn_model_low", "turn_model_high", "barge")
 
 
 def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:

@@ -34,6 +34,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agenthan.voice.call.defaults import CONT_WAIT_S, MODEL_HIGH, MODEL_LOW
 from agenthan.voice.call.frames import BYTES_PER_MS
 from agenthan.voice.call.turn_end import classify_turn_end, combine_turn_end, question_kind
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
@@ -65,9 +66,9 @@ class Policy:
     name: str
     rules: bool
     model: bool
-    low: float = 0.3
-    high: float = 0.7
-    cap: float = 2.0
+    low: float = MODEL_LOW
+    high: float = MODEL_HIGH
+    cap: float = CONT_WAIT_S
     threshold: float = 0.5  # 모델만 쓸 때 이 값 미만이면 이어짐 (원본 기본값)
 
 

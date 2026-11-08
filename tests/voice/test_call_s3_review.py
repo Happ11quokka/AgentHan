@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 
 import pytest
 from call_harness import Call, silence, tone
@@ -192,6 +194,74 @@ def test_the_fragment_hold_limit_restarts_when_new_text_arrives(tmp_path) -> Non
     assert [e["text"] for e in c.out.of("stt.final")] == [
         "메도빅 두 개 블린 하나 아메리카노 하나요"
     ]
+
+
+# ---------------------------------------------------------------- C5
+
+
+class SlowTurnModel:
+    """점수를 내는 데 `delay_s`가 걸리는 턴 모델 (실제 스레드 풀에서 돈다)."""
+
+    def __init__(self, score: float, delay_s: float) -> None:
+        self.score, self.delay_s = score, delay_s
+
+    def p_complete(self, pcm16: bytes) -> float:
+        time.sleep(self.delay_s)
+        return self.score
+
+
+def test_a_fast_stt_reply_still_waits_briefly_for_the_turn_model(tmp_path) -> None:
+    # 조기 epFlag 응답이 무음 400ms 전에 오면 말 끝에서 바로 넘긴다. 같은 틱에 낸 점수 작업은
+    # 아직 안 끝나서 늘 `late`였다. 잠깐(수십 ms) 기다려 점수를 쓴다
+    stt = FakeSttStream(replies=["메도빅 두 개랑"], lag_ms=0)
+    pool = ThreadPoolExecutor(1)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, settings=SessionSettings(cont_wait_s=2.0),
+                        turn_model=SlowTurnModel(0.95, 0.03), turn_executor=pool) as c:
+            await c.start()
+            await c.feed(tone(800) + silence(300))  # epFlag(250ms) 응답이 무음 400ms 전에 온다
+            await asyncio.sleep(0.05)
+            await c.feed(silence(900))
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    try:
+        c = run(call())
+    finally:
+        pool.shutdown()
+    turn1 = next(line for line in lines(c) if line["turn"] == 1)
+    assert turn1["turn_model"]["src"] == "model", json.dumps(turn1, ensure_ascii=False)
+    assert (turn1["turn_end"]["path"], turn1["turn_end"]["label"]) == ("model", "end")
+
+
+class QueuedExecutor(Executor):
+    """받은 작업을 돌리지 않고 쌓아 둔다(바쁜 공유 풀). 낡은 작업이 취소되는지 본다."""
+
+    def __init__(self) -> None:
+        self.futures: list[Future] = []
+
+    def submit(self, fn, /, *args, **kwargs):  # type: ignore[override]
+        self.futures.append(Future())
+        return self.futures[-1]
+
+
+def test_a_stale_turn_model_job_is_cancelled_when_new_speech_starts(tmp_path) -> None:
+    # 리뷰 C7: 낡은 점수 작업이 공유 2스레드 풀에 쌓이면 다른 통화의 점수가 늦는다
+    stt = FakeSttStream(replies=["메도빅 두 개랑", "블린 하나요"])
+    pool = QueuedExecutor()
+
+    async def call() -> None:
+        async with Call(tmp_path, stt=stt, settings=SessionSettings(cont_wait_s=2.0),
+                        turn_model=SlowTurnModel(0.5, 0.0), turn_executor=pool) as c:
+            await c.start()
+            await c.say()  # 말 끝 → 점수 작업 1 (쌓임)
+            await c.say()  # 새 말 구간 → 작업 1은 낡았다. 말 끝 → 작업 2
+            await c.out.wait_for("bot.done", turn=1)
+
+    run(call())
+    assert len(pool.futures) == 2
+    assert pool.futures[0].cancelled()
 
 
 # ---------------------------------------------------------------- P4 / C3

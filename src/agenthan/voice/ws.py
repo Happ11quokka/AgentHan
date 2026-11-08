@@ -43,12 +43,7 @@ from agenthan.voice.call.ports import (
     Tts,
     TurnModel,
 )
-from agenthan.voice.call.session import (
-    TURN_THREAD_PREFIX,
-    TURN_THREADS,
-    CallSession,
-    SessionSettings,
-)
+from agenthan.voice.call.session import CallSession, turn_pool
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smart_turn import load_turn_model
 from agenthan.voice.store_config import StoreConfig
@@ -103,11 +98,7 @@ def phone_router(
     )
     if turn_model is None and settings.turn_model == "smart_turn":
         turn_model = load_turn_model(settings.turn_model_path)  # 실패면 None(규칙만), 경고 로그
-    turn_pool = (
-        ThreadPoolExecutor(max_workers=TURN_THREADS, thread_name_prefix=TURN_THREAD_PREFIX)
-        if turn_model is not None
-        else None
-    )
+    session_settings = settings.session_settings()
     log.info("말 끝 판정: %s", "끝말 규칙 + Smart Turn" if turn_model else "끝말 규칙만")
     router = APIRouter()
     active = 0  # 지금 열린 통화 수 (이벤트 루프 하나라 잠금이 필요 없다)
@@ -146,16 +137,10 @@ def phone_router(
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             log_dir=settings.log_dir,
-            settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s,
-                                     cont_wait_s=settings.cont_wait_s,
-                                     no_input_s=settings.no_input_s,
-                                     wait_request_s=settings.wait_request_s,
-                                     turn_model_low=settings.turn_low,
-                                     turn_model_high=settings.turn_high,
-                                     barge=settings.barge),
+            settings=session_settings,
             executor=engine_pool,
             turn_model=turn_model,
-            turn_executor=turn_pool,
+            turn_executor=turn_pool() if turn_model is not None else None,
         )
         await session.open()
         reader = asyncio.create_task(_read(ws, session))
