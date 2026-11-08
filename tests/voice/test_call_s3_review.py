@@ -91,6 +91,38 @@ def test_a_correction_said_while_the_readback_is_being_synthesized_is_kept(tmp_p
     assert "15,000원" in " ".join(e["text"] for e in c.out.of("bot.say", 4))
 
 
+# ---------------------------------------------------------------- C2
+
+
+def test_how_much_was_heard_stays_on_a_cut_turn_even_when_a_queued_word_opens_the_next(
+    tmp_path,
+) -> None:
+    # 첫 소리 전에 한 말이 대기 중이면 끊는 순간 다음 턴이 열린다. 그래도 그 뒤에 온
+    # `playback.interrupted`의 들은 만큼은 끊긴 턴 기록에 남는다
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요"])
+    tts = FakeTts(delays={"메도빅 하나요.": 0.4, "더 필요하신 거 있으세요?": 5.0})
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, tts=tts) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=1)
+            await c.say()  # 첫 문장 합성 중
+            await c.out.wait_for("bot.say", turn=1)
+            await c.session.feed_event({"type": "user.interrupt", "turn": 1})
+            await c.out.wait_for("stt.final", turn=2)
+            await c.session.feed_event({"type": "playback.interrupted", "turn": 1, "seq": 0,
+                                        "played_ms": 200})
+            await c.out.wait_for("bot.done", turn=2)
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+            return c
+
+    c = run(call())
+    record = next(line for line in lines(c) if line["turn"] == 1)
+    assert record["interrupt"]["seq"] == 0 and record["interrupt"]["played_ms"] == 200
+    assert record["interrupt"]["heard"][0]["heard"] == "partial"
+
+
 # ---------------------------------------------------------------- C6
 
 

@@ -366,6 +366,7 @@ class CallSession:
         self._stop_sent_at: float | None = None  # 마지막 `bot.stop`을 보낸 때 (멈춤 지연 T7)
         self._listen_rms: dict[str, list[float]] = {"voiced": [], "quiet": []}
         self._broken = False
+        self._report_due: int | None = None  # 끊겨서 들은 만큼 보고를 기다리는 턴 (리뷰 C2)
 
     # ------------------------------------------------------------ 바깥 진입점
 
@@ -447,7 +448,7 @@ class CallSession:
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
-        self._flush_log(before=turn)
+        self._flush_before(turn)
         self._log.begin(turn, text="", bot_turn=reason)
         self._emit_state()
         self._turns.put_nowait((turn, _BotTurn(reason, act)))
@@ -1000,7 +1001,7 @@ class CallSession:
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
-        self._flush_log(before=turn)
+        self._flush_before(turn)
         fields: dict[str, Any] = {}
         if u.queued:
             fields["queued"] = True
@@ -1276,6 +1277,7 @@ class CallSession:
         record = self._log.get(turn)
         if record is not None:
             record.fields["interrupt"] = {"by": by}
+            self._report_due = turn  # 들은 만큼 보고가 올 때까지 이 기록을 닫지 않는다
         self._after_playback(turn, mark="interrupted")
 
     def _drop_queued(self, turn: int) -> None:
@@ -1307,6 +1309,9 @@ class CallSession:
             return
         cut.pop("est", None)  # 서버 어림보다 브라우저가 잰 자리가 정확하다
         cut.update(seq=seq, played_ms=round(played_ms), heard=spoken.heard(seq, played_ms))
+        if self._report_due == turn and self._turn > turn:
+            self._report_due = None
+            self._flush_log(before=self._turn)  # 다음 턴이 이미 열렸다. 끊긴 턴 기록을 닫는다
 
     def _after_playback(self, turn: int, *, mark: str = "play_done") -> None:
         """재생이 끝났거나(`playback.done`·안전망) 끊겼다. 듣기로 가고 무음 타이머를 건다."""
@@ -1548,6 +1553,15 @@ class CallSession:
         result = self._last
         return (self._phase == "speaking" and result is not None
                 and result.state not in TERMINAL and not result.readback)
+
+    def _flush_before(self, turn: int) -> None:
+        """새 턴 `turn`을 열기 전에 앞 턴 기록을 쓴다.
+
+        바로 앞 턴이 끊겼고 브라우저의 `playback.interrupted`(들은 만큼)를 아직 못 받았으면 그
+        턴은 한 턴 더 열어 둔다(리뷰 C2). 끊는 순간 대기 중이던 말이 다음 턴을 열기 때문이다
+        """
+        due, self._report_due = self._report_due, None
+        self._flush_log(before=turn - 1 if due == turn - 1 else turn)
 
     def _flush_log(self, before: int | None = None) -> None:
         for line in self._log.flush(before):
