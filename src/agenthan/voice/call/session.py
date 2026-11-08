@@ -26,7 +26,12 @@
 - listening에 말 끝 결과가 오면 바로 다음 턴
 - thinking에 온 결과는 모아 두었다가 재생이 끝나면 하나로 합쳐 다음 턴 하나로 넣는다
   (대답 두 번 방지)
-- speaking에 온 결과는 버린다(반이중). 마지막 문장의 `playback.done`이 오면 listening
+- speaking에 온 결과는 버린다(반이중). 마지막 문장의 `playback.done`이 오면 listening.
+  안 오면 보낸 소리 길이 + `play_done_grace_s` 뒤 서버가 스스로 listening으로 간다.
+  speaking에 들어갈 때 붙잡아 둔 조각과 "말 끝" 표시를 지운다
+
+조각 붙잡기: 끝 후보 결과가 왔는데 그 끝 뒤에 새 말 구간이 시작됐으면 다음 결과와 합친다.
+`hold_max_s` 안에 새 결과가 없으면 그대로 턴을 넘긴다(`end_by: hold_timeout`, `_arm_hold` 앞 주석).
 
 엔진 시간 제한(`turn_timeout_s`)을 넘으면 `error`를 내고 통화를 끝낸다. 다음 턴은 시작하지 않는다
 (스레드는 취소되지 않아서, 다음 턴이 같은 엔진을 동시에 건드리게 되기 때문, verify-web D5).
