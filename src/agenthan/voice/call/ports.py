@@ -5,6 +5,7 @@
 - `Tts`: CLOVA Voice(티켓 03)가 구현한다. 문장 하나 → PCM16LE 16kHz mono (WAV 헤더 없음)
 - `Clock`: 가게 시각(KST, 시간대 있음)과 지연 측정용 단조 시각
 - `Outbound`: WS 라우터(티켓 04)가 구현한다. JSON 이벤트와 오디오 프레임을 내보낸다
+- `TurnModel`: 오디오 턴 모델(3단계 티켓 03, `voice/smart_turn.py`). 최근 오디오 → 끝남 확률
 - `OrderSink`: `agenthan.core.contracts.OrderSink` 그대로 (계약)
 
 어댑터는 실패를 `PortError`(또는 하위 클래스)로 올린다.
@@ -34,6 +35,7 @@ __all__ = [
     "SttStream",
     "SystemClock",
     "Tts",
+    "TurnModel",
 ]
 
 # 이 끝난 이유로 온 결과만 "말 끝" 후보다 (spec 조각 합치기).
@@ -155,4 +157,16 @@ class Outbound(Protocol):
 
     async def send_audio(self, frame: bytes) -> None:
         """`frames.pack_audio_frame` 결과(8바이트 헤더 + PCM)를 binary 메시지 하나로."""
+        ...
+
+
+class TurnModel(Protocol):
+    """오디오로 말이 끝났는지 보는 모델 (Smart Turn, 3단계 티켓 03)."""
+
+    def p_complete(self, pcm16: bytes) -> float:
+        """PCM16LE 16kHz mono(최근 오디오, 마지막 8초만 본다) → 끝남 확률 0~1.
+
+        동기 함수다. 세션이 전용 스레드 풀에서 부른다. 실패하면 아무 예외나 올려도 된다
+        (세션은 그 판정을 규칙만으로 한다).
+        """
         ...

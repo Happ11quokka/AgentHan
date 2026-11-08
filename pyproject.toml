@@ -9,6 +9,8 @@ dependencies = [
     "grpcio>=1.85.1",
     "httpx>=0.28.1",
     "korean-datetime==1.0.0",
+    "numpy>=2.4.6",
+    "onnxruntime>=1.31.1",
     "protobuf>=7.36.2",
     "uvicorn[standard]>=0.54.0",
 ]

@@ -8,6 +8,9 @@
   소켓을 닫는다
 - 동시 통화가 `max_calls`를 넘으면 세션 없이 `error{code: "busy"}`를 보내고 닫는다 (리뷰 17번).
   통화 길이(`max_call_s`)와 `call.start` 대기(10초)는 세션이 지킨다
+- 턴 모델(Smart Turn, 3단계 티켓 03)은 라우터를 만들 때 한 번 연다(체크섬 확인). 없거나 틀리면
+  경고를 남기고 끝말 규칙만으로 뜬다. 모델 세션 하나와 전용 2스레드 풀(`phone-turn-*`)을 모든
+  통화가 같이 쓴다
 - 엔진(NLU 만들기·엔진 생성·턴)은 라우터 하나가 가진 전용 스레드 풀에서 돈다 (티켓 09).
   루프 기본 풀은 2 vCPU에서 6개뿐이고 DNS 조회(`getaddrinfo`) 등과 같이 쓴다. 시간을 넘긴
   엔진 스레드는 취소되지 않고 남으므로 통화당 2개(`ENGINE_THREADS_PER_CALL`)를 잡는다
@@ -32,9 +35,22 @@ from agenthan.core.contracts import OrderSink, StoreKnowledge
 from agenthan.voice import adapters
 from agenthan.voice.adapters import SttFactory, TtsFactory
 from agenthan.voice.call.fakes import FakeClock
-from agenthan.voice.call.ports import CUSTOMER_RETRY, Clock, PortError, SystemClock, Tts
-from agenthan.voice.call.session import CallSession, SessionSettings
+from agenthan.voice.call.ports import (
+    CUSTOMER_RETRY,
+    Clock,
+    PortError,
+    SystemClock,
+    Tts,
+    TurnModel,
+)
+from agenthan.voice.call.session import (
+    TURN_THREAD_PREFIX,
+    TURN_THREADS,
+    CallSession,
+    SessionSettings,
+)
 from agenthan.voice.settings import VoiceSettings
+from agenthan.voice.smart_turn import load_turn_model
 from agenthan.voice.store_config import StoreConfig
 from agenthan.voice.stt.boost import menu_boost_words
 
@@ -66,10 +82,12 @@ def phone_router(
     settings: VoiceSettings,
     stt_factory: SttFactory | None = None,
     tts_factory: TtsFactory | None = None,
+    turn_model: TurnModel | None = None,
 ) -> APIRouter:
     """`settings.stt`·`tts`가 `clova`인데 어댑터가 없으면 여기서 `AdapterMissing`.
 
     `stt_factory`·`tts_factory`를 주면 설정 대신 그것으로 통화마다 포트를 만든다.
+    `turn_model`을 주면 설정(`PHONE_TURN_MODEL`) 대신 그 턴 모델을 쓴다.
     """
     if stt_factory is None:
         # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
@@ -83,6 +101,14 @@ def phone_router(
         max_workers=settings.max_calls * ENGINE_THREADS_PER_CALL,
         thread_name_prefix=ENGINE_THREAD_PREFIX,
     )
+    if turn_model is None and settings.turn_model == "smart_turn":
+        turn_model = load_turn_model(settings.turn_model_path)  # 실패면 None(규칙만), 경고 로그
+    turn_pool = (
+        ThreadPoolExecutor(max_workers=TURN_THREADS, thread_name_prefix=TURN_THREAD_PREFIX)
+        if turn_model is not None
+        else None
+    )
+    log.info("말 끝 판정: %s", "끝말 규칙 + Smart Turn" if turn_model else "끝말 규칙만")
     router = APIRouter()
     active = 0  # 지금 열린 통화 수 (이벤트 루프 하나라 잠금이 필요 없다)
 
@@ -123,8 +149,12 @@ def phone_router(
             settings=SessionSettings(vad=settings.vad, max_call_s=settings.max_call_s,
                                      cont_wait_s=settings.cont_wait_s,
                                      no_input_s=settings.no_input_s,
-                                     wait_request_s=settings.wait_request_s),
+                                     wait_request_s=settings.wait_request_s,
+                                     turn_model_low=settings.turn_low,
+                                     turn_model_high=settings.turn_high),
             executor=engine_pool,
+            turn_model=turn_model,
+            turn_executor=turn_pool,
         )
         await session.open()
         reader = asyncio.create_task(_read(ws, session))

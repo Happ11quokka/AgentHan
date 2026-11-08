@@ -69,11 +69,25 @@
   - 끝남(확실): 확인 질문 뒤 예/아니요(`dialog/rules.yes_or_no`와 같은 목록), 끝 마침표, 종결어미 -요·-다·-까·-죠. 애매(-고요·-이고요·-는데)는 끝남이지만 확실하지 않다(턴 모델이 가를 자리)
   - 기다림 요청: 말 끝의 잠깐만(요)·잠시만(요). 엔진에 `wait_request=True`로 넘긴다(응답 문장·15초 대기는 아래 티켓 04)
   - 반례 표는 `tests/voice/test_turn_end.py`(아무거나·뭐라고·짜장면·여기서·김민서·"2"·나폴)
-- 규칙 + 턴 모델 합치기(`combine_turn_end`): 점수 ≥ 0.7이면 끝남, ≤ 0.3이면 이어짐, 그 사이와 점수 없음은 규칙. 확실한 판정은 모델보다 앞선다. 티켓 02에서는 점수가 늘 없다(Smart Turn은 티켓 03)
+- 규칙 + 턴 모델 합치기(`combine_turn_end`): 점수 ≥ 0.7이면 끝남, ≤ 0.3이면 이어짐, 그 사이와 점수 없음은 규칙. 확실한 판정은 모델보다 앞선다. 점수는 Smart Turn(아래, 티켓 03)이 낸다
 - 필러만 있는 말("음…")이 상한까지 안 이어지면 엔진에 넘기지 않는다(실패로 세지 않음). 지금 턴 기록의 `fillers`에 남는다
 - 미리 해석(`nlu/prefetch.py`): 이어짐 대기를 시작할 때 붙잡은 글과 `engine.nlu_context()`로 NLU를 미리 부른다(규칙 단계에 걸리는 글·필러는 안 부름). 엔진이 같은 `(글, NluContext)`로 `parse`하면 그 결과를 쓰고, 다르면 새로 부른다. 요청 본문은 같아서 HCX 녹화본을 다시 만들지 않는다. 미리 부른 호출 시간 제한 5초(`prefetch_timeout_s`). 엔진(장바구니 변경)은 턴을 넘긴 뒤에만 돈다(스냅숏 없음)
 - JSONL: `turn_end {label, reason, path(rule·model·cap·button), score, backchannel}`, 앞선 판정 `turn_end_steps`, 이어짐 대기 `cont_wait_ms`, `nlu_prefetch {prefetched, used, discarded, miss, wait_ms}`, 버린 결과 `dropped[].backchannel`
 - 테스트: `tests/voice/test_turn_end.py`(표), `test_call_turn_end.py`(세션), `test_engine_nlu_context.py`
+
+## 3단계: Smart Turn (`smart_turn.py`, 티켓 03)
+
+- 무엇: 손님 오디오만 보고 "말이 끝났을 확률"을 내는 오디오 턴 모델. Pipecat Smart Turn v3.2 CPU int8 ONNX(8.7MB, 약 8M 파라미터, Whisper Tiny 인코더 + 작은 분류 머리). **서버 안에서 돌리는 자체 호스팅 오픈 모델이다. 외부 모델 API(Whisper API 등)는 부르지 않는다.** NCP에 같은 기능이 없고 직접 만들기 어려워서 쓴다(사용자 결정 2026-11-08)
+- onnxruntime 공식 빌드는 리눅스에서도 1DS로 Microsoft에 사용 기록을 보내는 것이 기본이다(휠의 `Privacy.md`). `smart_turn.py`가 런타임이 뜨기 전에 `ORT_DISABLE_TELEMETRY=1`을 두고 `disable_telemetry_events()`를 부른다. 이미지에도 같은 ENV가 있다
+- 라이선스: Smart Turn 코드·모델 BSD-2-Clause(Daily), 바탕 `openai/whisper-tiny` Apache-2.0, 평가 데이터 LiveKit EoT-Bench CC-BY-4.0(평가에만 쓰고 저장소에 넣지 않는다). 이미지에는 `deploy/phone/NOTICE-smart-turn.txt`가 모델 옆(`/app/models/`)에 같이 들어간다
+- 언제 도나: 무음 감지가 말 끝(무음 400ms)을 볼 때마다 한 번. 통화마다 최근 8초 링 버퍼(봇이 말하는 동안 들어온 프레임은 넣지 않음)의 사본을 전용 2스레드 풀(`phone-turn-*`, 프로세스에 하나)에서 점수 낸다. ONNX 세션 하나를 모든 통화가 같이 쓰고 intra_op 1. 새 말 구간이 시작되면 앞 점수는 버리고, 이어짐 대기 중에는 버퍼를 비우지 않아 다음 말 끝에서 턴 전체를 다시 본다. 턴을 넘기면 비운다
+- 판정: `combine_turn_end`에 점수를 넘긴다(0.7 이상 끝남, 0.3 이하 이어짐, 그 사이 규칙, 확실한 규칙이 먼저). 판정 때 점수가 아직 없으면(`late`)·실패면(`error`) 규칙만. 기다리지 않는다: 말 끝(400ms)부터 STT 확정 글(말 끝 + 0.9~1.1초)까지가 모델의 시간이다(맥 1스레드 약 50ms)
+- 입력 규칙은 원본과 같다: 16kHz mono, 8초보다 길면 앞을 자르고 짧으면 앞에 0을 채움, 8초 전체로 정규화. 특징(Whisper 로그 멜)은 `transformers` 없이 numpy로 만든다. 런타임 의존성은 `onnxruntime`·`numpy`
+- 설정: `PHONE_TURN_MODEL`(기본 `smart_turn`, `off`로 끔), `PHONE_TURN_MODEL_PATH`(기본 `/app/models/smart-turn-v3.2-cpu.onnx`), `PHONE_TURN_LOW`/`PHONE_TURN_HIGH`(0.3/0.7). 라우터를 만들 때 모델을 한 번 열고 SHA-256을 고정값과 비교한다. 파일이 없거나 틀리거나 못 열면 경고 로그를 남기고 끝말 규칙만으로 뜬다(통화는 막지 않음). 로컬에서 쓰려면 모델을 받아 `PHONE_TURN_MODEL_PATH`에 경로를 적는다(받는 URL·체크섬은 `smart_turn.py`의 `MODEL_URL`·`MODEL_SHA256`). 모델 파일은 커밋하지 않는다(`.gitignore`의 `models/`·`*.onnx`)
+- 배포: `deploy/phone/Dockerfile`이 Hugging Face 고정 리비전에서 `ADD --checksum`으로 받는다(틀리면 빌드 실패). 이미지가 약 150MB 커진다(의존성 + 모델 8.7MB)
+- JSONL: `turn_end.score`, `turn_model {src: model·late·error·none, ms}`(모델이 꺼져 있으면 없음)
+- 오프라인 평가(CI 밖): `uv run --with pyarrow python -m agenthan.voice.turn_eval --model <onnx> --eot data/eot-bench/ko.parquet --recordings private/recordings/<이름>/wav --manifest private/recordings/<이름>/turn-eval.json --out private/turn-eval`. 멈춤마다 그때까지의 글·오디오로 지금(2단계)·규칙만·Smart Turn만·합친 판정의 오끊김률과 평균 대기를 직전 질문 종류별로, 대역·상한 훑기와 함께 낸다. 결과는 저장소의 `data/`·`private/` 아래에만 쓰고 받아 적은 글은 쓰지 않는다. 결과를 공개할 때는 "LiveKit EoT-Bench" 출처를 적는다. 자체 벤치의 한국어 정확도(합성 음성 위주)는 발표에 쓰지 않는다
+- 테스트: `tests/voice/test_smart_turn.py`(입력 규칙, 특징 = `WhisperFeatureExtractor`에서 따로 뽑은 값, 체크섬. 실제 모델 테스트는 `PHONE_TURN_MODEL_PATH`에 파일이 있을 때만), `test_call_smart_turn.py`(세션, `FakeTurnModel`), `test_turn_eval.py`(평가 시간 모델)
 
 ## 3단계: 지연 개선 묶음 (티켓 01)
 
