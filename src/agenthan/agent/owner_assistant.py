@@ -3,6 +3,7 @@
 Feature matching picks one feature per request:
 - menu → upsert_menu (agenthan tool)
 - review_reply, ai_review → agenthan.agent.review (ReviewToolbox + run_turn) via review_delegate
+- statistics → report_explainer (R1 facts + rule-based insights, no tools)
 - other features → name and summary only (their tools are not connected yet)
 
 Menu photo (A-1, Korean in/out): ask_photo() reads a menu board into drafts
@@ -19,7 +20,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from agenthan.agent import menu_photo, review_delegate
+from agenthan.agent import menu_photo, report_explainer, review_delegate
 from agenthan.agent.clova_chat import ClovaChatError, chat, parse_message
 from agenthan.agent.place_matcher import get_feature, match_features
 from agenthan.core.contracts import StoreKnowledge
@@ -118,6 +119,7 @@ class OwnerAssistant:
         self.owner_lang = owner_lang
         self._review_factory = review_session or review_delegate.new_session
         self.review: review_delegate.ReviewSession | None = None
+        self.last_report: report_explainer.ReportAnswer | None = None
         # Part B 가게 지식. 진짜 구현 전에는 fixtures 더미 (app/에서 바꿔 끼운다)
         self.knowledge = knowledge or FakeStoreKnowledge.from_fixture()
         self.clova_v3 = clova_v3 or menu_photo.chat_v3
@@ -154,6 +156,12 @@ class OwnerAssistant:
             return self._finish(HELP, [], [])
         if feature["id"] in review_delegate.REVIEW_FEATURES:
             return self._delegate_review(feature["id"], text)
+        if feature["id"] == "statistics":
+            self.pending_feature = None
+            self.last_report = report_explainer.explain(
+                text, chat=self.chat, shop=self.store.read()
+            )
+            return self._finish(self.last_report.text, [], [])
         if not feature["input_supported"]:
             self.pending_feature = None
             return self._finish(
