@@ -50,6 +50,8 @@ MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hc
 
 # 손님과 대화 중인 상태. 전역 규칙(취소·사장님 연결·메뉴 질문)을 받는다.
 _ACTIVE = (State.ORDERING, State.CLARIFY, State.ASK_PICKUP, State.CONFIRM)
+# "더 필요하신 거?"에 "아니요, ~"의 뒷말이 이것뿐이면 "아니요"는 주문 끝이다 (`_no_means_done`)
+_AFTER_DONE: frozenset[ActType] = frozenset({"set_pickup_time", "set_name", "done_ordering"})
 
 
 @dataclass(frozen=True)
@@ -196,6 +198,9 @@ class DialogEngine:
                 state=self._state.value,
             )
             acts = self._nlu.parse(text, ctx)
+        if self._no_means_done(acts):
+            # "더 필요하신 거?" → "아니요, 지금 바로 갈게요": 아니요가 답이다 (2단계 리뷰 5번)
+            acts = [Act("done_ordering"), *acts[1:]]
         if any(a.type not in ("yes", "no") for a in acts):
             keep_yes = self._awaiting_menu_yes() and not any(a.type == "add_item" for a in acts)
             while acts and acts[0].type in ("yes", "no"):
@@ -203,6 +208,18 @@ class DialogEngine:
                     break  # "혹시 메도빅 맞으세요?" → "네, 두 개요": 네가 답이다 (리뷰 C9)
                 acts = acts[1:]
         return acts
+
+    def _no_means_done(self, acts: list[Act]) -> bool:
+        """주문 중 "더 필요하신 거?" 바로 뒤, 맨 앞 "아니요" + 장바구니를 안 건드리는 말.
+
+        뒤에 픽업 시간·이름만 오면 "아니요"는 주문 끝이다. 뒤가 장바구니를 고치는 말이면
+        ("아니요, 두 개요") 지금처럼 정정으로 보고 "아니요"를 뗀다.
+        """
+        if self._state is not State.ORDERING or not self._asked_anything_else():
+            return False
+        if len(acts) < 2 or acts[0].type != "no":
+            return False
+        return all(a.type in _AFTER_DONE for a in acts[1:])
 
     def _awaiting_menu_yes(self) -> bool:
         """CLARIFY가 후보 하나짜리 메뉴 확인("맞으세요?")의 답을 기다린다."""
@@ -226,6 +243,10 @@ class DialogEngine:
                     self._say_corrections(turn)
                 elif turn.accepted:
                     self._say(turn, templates.items_noted(turn.accepted))
+                if turn.pickup_note and self._missing_required() is None:
+                    # "아니요, 지금 갈게요" → 복창 앞에 준비 시간 안내 (2단계 리뷰 5번).
+                    # 필수 옵션을 먼저 물을 때는 그 질문만 한다
+                    self._say(turn, turn.pickup_note)
                 self._advance(turn)
             elif (missing := self._missing_required()) is not None:
                 if turn.accepted:
