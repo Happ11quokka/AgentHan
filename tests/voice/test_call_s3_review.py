@@ -167,6 +167,33 @@ def test_background_sound_without_text_still_ends_the_wait_at_the_overall_limit(
     assert turn1["turn_end"]["path"] == "cap"
 
 
+# ---------------------------------------------------------------- C4
+
+
+def test_the_fragment_hold_limit_restarts_when_new_text_arrives(tmp_path) -> None:
+    # 조기 epFlag(무음 250ms)로 짧은 쉼마다 글이 오고, 손님은 그 사이 계속 말한다. 붙잡기 상한
+    # (`hold_cap_s`)을 첫 붙잡기부터 세면 셋째 부분을 말하는 중에 앞 두 부분만 턴이 된다
+    stt = FakeSttStream(replies=["메도빅 두 개", "블린 하나", "아메리카노 하나요"])
+    hold = SessionSettings(hold_max_s=0.3, hold_cap_s=0.8)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, settings=hold) as c:
+            await c.start()
+            await c.feed(tone(400) + silence(300) + tone(700))  # 첫 글이 둘째 부분 중에 온다
+            await asyncio.sleep(0.4)
+            await c.feed(silence(300) + tone(700))  # 둘째 글이 셋째 부분 중에 온다
+            await asyncio.sleep(0.6)  # 첫 붙잡기부터 1.0초(상한 0.8초), 둘째 글부터 0.6초
+            assert c.out.of("stt.final") == [], "말하는 중에 붙잡은 조각을 풀면 안 된다"
+            await c.feed(silence(1_000))
+            await c.out.wait_for("bot.done", turn=1)
+            return c
+
+    c = run(call())
+    assert [e["text"] for e in c.out.of("stt.final")] == [
+        "메도빅 두 개 블린 하나 아메리카노 하나요"
+    ]
+
+
 # ---------------------------------------------------------------- P4 / C3
 
 

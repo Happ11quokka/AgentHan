@@ -41,7 +41,7 @@ epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중
 중이어도 붙잡는다(티켓 10, `_continues_after`). 그때 턴은 epFlag 응답으로 넘어간다.
 `hold_max_s` 안에 새 결과가 없으면 그대로 턴을 넘긴다(`end_by: hold_timeout`,
 `_on_hold_timer` 앞 주석).
-처음 붙잡은 때부터 `hold_cap_s`를 넘겨 붙잡지는 않는다.
+마지막으로 글을 붙잡은 때부터 `hold_cap_s`를 넘겨 붙잡지는 않는다(리뷰 C4).
 버린 결과(반이중·확정 뒤·통화 끝)는 그 턴 기록의 `dropped`에 남긴다.
 
 무응답 (3단계 티켓 04): 봇 재생이 끝나거나 끊기면(`_after_playback`) 무음 타이머를 건다.
@@ -168,7 +168,7 @@ class SessionSettings:
     # `stt_wait_ms`(턴 기록의 `ep_sent` → `stt_final`)를 30턴 이상 모아 p99로 바꾼다.
     # 전 값 1.2초는 짐작이었다
     hold_max_s: float = 1.8
-    hold_cap_s: float = 3.0  # 이어진 말이 아직 열려 있어도 붙잡기는 여기까지
+    hold_cap_s: float = 3.0  # 이어진 말이 열려 있어도 마지막 글부터 붙잡기는 여기까지 (리뷰 C4)
     # 말 끝 판정 (3단계 티켓 02). 이어짐이면 마지막 말 끝(마지막 유성 프레임 도착)부터 이만큼까지
     # 기다린다. 말이 다시 시작되면 다음 말 끝부터 다시 센다 (grilling Q3, `PHONE_CONT_WAIT_S`)
     cont_wait_s: float = 2.0
@@ -327,7 +327,7 @@ class CallSession:
         self._last_seq: dict[int, int] = {}  # 턴 → 마지막 문장 seq
         self._parts: list[SttResult] = []
         self._held: SttResult | None = None  # 붙잡은 끝 후보 결과 (뒤에 말이 이어짐)
-        self._hold_since: float | None = None  # 처음 붙잡은 때 (`hold_cap_s` 기준)
+        self._hold_text_at: float | None = None  # 마지막으로 글을 붙잡은 때 (`hold_cap_s` 기준)
         self._hold_timer = Deadline(self._on_hold_timer)
         self._pending: list[_Utterance] = []
         # 판정 중 국면 (티켓 02). 국면 값은 listening 그대로 두고(화면은 듣는 중) 이것으로 가른다
@@ -649,6 +649,8 @@ class CallSession:
         self._hold_timer.cancel()
         if r.text.strip():
             self._parts.append(r)
+            if self._held is not None:
+                self._hold_text_at = self._clock.monotonic()  # 말이 이어진다. 상한을 다시 센다
         if not r.ends_speech:
             if self._parts and self._held is not None:
                 self._hold_timer.arm(self._settings.hold_max_s)  # 아직 끝 후보가 아니다
@@ -664,8 +666,7 @@ class CallSession:
         if not forced and self._continues_after(r):
             # 말이 이어진다. 다음 결과(보통 epFlag 응답)와 합친다. 안 오면 시간 제한으로 푼다
             self._held = r
-            if self._hold_since is None:
-                self._hold_since = self._clock.monotonic()
+            self._hold_text_at = self._clock.monotonic()
             self._hold_timer.arm(self._settings.hold_max_s)
             return
         self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
@@ -786,7 +787,8 @@ class CallSession:
 
     # 붙잡기 시간 제한 (리뷰 2번). 붙잡은 뒤 `hold_max_s` 동안 새 결과가 없으면 푼다. 다만 그때
     # 이어진 말 구간이 아직 열려 있거나 그 구간의 `epFlag` 응답을 기다리는 중이면 `hold_cap_s`까지
-    # 늘린다. 그래야 "메도빅 두 개… 랑 아메리카노 하나요"처럼 긴 뒷말이 쪼개지지 않는다
+    # 늘린다(마지막 글부터 센다). 그래야 "메도빅 두 개… 랑 아메리카노 하나요"처럼 긴 뒷말이
+    # 쪼개지지 않는다
 
 
 
@@ -795,16 +797,16 @@ class CallSession:
         self._hold_timer.cancel()
         self._parts = []
         self._held = None
-        self._hold_since = None
+        self._hold_text_at = None
 
     def _on_hold_timer(self) -> None:
         held = self._held
         if held is None or not self._parts or self.done:
             return
         now = self._clock.monotonic()
-        assert self._hold_since is not None
+        assert self._hold_text_at is not None
         settings = self._settings
-        if self._hold_timer.wait(now, due=now, cap=self._hold_since + settings.hold_cap_s,
+        if self._hold_timer.wait(now, due=now, cap=self._hold_text_at + settings.hold_cap_s,
                                  busy=self._vad.in_speech or self._ep_waiting(),
                                  poll=settings.hold_max_s):
             return
