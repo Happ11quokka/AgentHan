@@ -124,6 +124,21 @@
 - 대화가 끝나 서버가 통화를 끝낼 때 `call.end {turn, reason}`을 보낸다(reason: confirmed · handoff · cancelled · no_input). 그 턴 JSONL에 `end_reason`. 브라우저는 이 이벤트를 몰라도 소켓이 닫혀 끝난다
 - 테스트: 시나리오 `s22`~`s25`(`scenario_runner`에 `{"event": "no_input"|"not_heard"}`·`"wait_request": true` 턴), `test_engine_no_input.py`, `test_call_no_input.py`(세션)
 
+## 3단계: 음성 끼어들기 (`call/barge.py`, 티켓 06)
+
+- 스위치 `PHONE_VOICE_BARGE_IN`: `off`(기본) · `shadow` · `on`. 꺼져 있으면 2단계·티켓 05와 똑같다(반이중 + 말 끊기 버튼, `call.ready`에 새 필드도 없다). 실기기 시험 전에는 켜지 않는다
+- 켜도 브라우저가 `call.start.voice_barge_in: true`를 보낸 통화만 쓴다. 웹 `bargeIn.ts`가 안드로이드 크롬이고 마이크에 에코 제거가 걸렸을 때만 참으로 보낸다(삼성 인터넷·웨일·엣지·인앱 WebView·아이폰·데스크톱은 거짓). 서버가 켜면 `call.ready.voice_barge_in`(`on`·`shadow`)을 보내고, 그 통화의 브라우저는 봇이 말하는 동안에도 진짜 마이크 소리를 보낸다
+- `shadow`: 판정과 기록만 하고 줄이기·멈춤을 보내지 않는다. 봇 말 중에 한 말은 반이중처럼 버린다(손님 경험은 그대로, 시험 T1~T3용)
+- 판정(서버, 시각은 모두 오디오 시각): 봇 말 중 `PHONE_BARGE_THRESHOLD`(RMS 1,500) 이상 소리가 0.25초(`PHONE_BARGE_DUCK_MS`) 이어지면 `bot.duck`, 1.0초(`PHONE_BARGE_STOP_MS`, 1,000 아래로는 못 둔다. 한국어 맞장구가 최대 2.4초) 이어지거나 맞장구가 아닌 STT 글이 오면 `bot.stop`. 맞장구·빈 글·에코 글이거나 소리가 끝나고 2초 안에 글이 없으면 `bot.unduck`. 끼어들기를 정리한 뒤 1초는 다시 줄이지 않는다. 헛 끼어들기마다 그 통화의 멈춤 문턱을 0.25초씩 올린다(2.5초까지)
+- 위치 규칙: 인사·마무리·사장님 연결·취소 안내는 음성 끼어들기를 막는다(인사는 버튼만). 남은 봇 말이 2초보다 짧으면 소리만으로는 멈추지 않는다. 최종 복창은 소리로 멈추지 않고, 금액 문장이 끝나기 전(마지막 "맞으세요?"가 시작하기 전, 말한 시각 기준)의 "네"·맞장구는 무시한다. 정정 글이면 멈추고 1단계처럼 마지막에 담은 줄을 고친다. "맞으세요?" 도중의 "네"는 답이다
+- 거르기: STT 글은 도착 시각이 아니라 `start_ms`(말한 시각)로 봇 말 구간(첫 소리 ~ 재생 끝 보고·끊긴 때)과 비교한다. 구간 안에서 시작한 말만 판정하고, 맞장구는 구간 끝 + 150ms까지 구간 안으로 본다. 봇 문장과 두 글자 조각이 60% 이상 겹치면 에코 글이다. 재생이 끝날 때 무음 감지가 말하는 중(대개 에코)이면 그 프레임에 `epFlag`를 붙여 STT 구간을 끊고 무음 감지를 비운다. 문장 위치는 `playback.started`를 받은 순간의 오디오 시각이다
+- 멈추면 버튼과 같은 자리에서 끊는다(남은 TTS·`bot.say` 취소, 듣기로, 무음 타이머 시작). 끼어든 말은 진행 중인 말이라 무음 타이머는 그 말 끝까지 기다린다. 들은 만큼은 서버가 오디오 시각으로 어림해 두고(`interrupt.est`), 브라우저 `playback.interrupted`가 오면 그 값으로 바꾼다
+- 아래로: `bot.duck {turn}`, `bot.unduck {turn}`, `bot.stop {turn}`. 브라우저는 봇 목소리를 GainNode로 약 -18 dB 페이드(약 150ms, 되돌리기 약 80ms)하고, 다음 턴 소리가 오면 원래 크기로 돌린다. `bot.stop`이면 재생을 멈추고 그 턴 이하 오디오를 버리고 `playback.interrupted`를 보낸다(복창처럼 버튼이 막힌 턴에서도)
+- JSONL: 봇 말 턴마다 `barge {kind(blocked·open·readback), stop_ms, rms{frames,p50,p95,max}, events[{act, by(sound·text), at_ms, shadow?}], results[{start_ms, end_ms, text, verdict}]}`. 버린 결과 `dropped[].barge`에 판정. 음성으로 끊은 턴은 `interrupt {by: voice, reason, seq, played_ms, heard, report_ms}`(`report_ms`는 `bot.stop` → 브라우저 보고)
+- 측정 요약: `uv run python -m agenthan.voice.call.barge_summary logs/phone-YYYYMMDD.jsonl`(숫자만). 실기기 시험 순서표는 `.scratch/phone-s3-turn-management/device-check.md`
+- 실기기 시험용 웹 선택: 주소 뒤 `?mic_first=1`(재생 컨텍스트를 마이크 허용 뒤에 만듦, T4), `?agc=0`(자동 음량 끔, T5). `call.start.ctx_order`에 남는다
+- 테스트: `tests/voice/test_call_barge_in.py`(세션), `test_barge_summary.py`, 웹 `bargeIn.test.ts`·`callState.test.ts`·`phoneCall.test.ts`
+
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
 - 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`
