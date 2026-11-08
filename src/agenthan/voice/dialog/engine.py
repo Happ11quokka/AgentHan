@@ -10,6 +10,14 @@
 처리기 추가는 `@on("act 종류", State.X, ...)`를 붙인 메서드 하나를 쓰면 된다. 공용 코드는 안 고친다.
 질문은 한 턴에 하나만 한다: 질문은 `_ask`로만 하고, `_Turn.asked`가 이미 참이면 더 묻지 않는다.
 
+시각 (`now`): 엔진은 받은 `now`를 가게 시간대(`StoreConfig.tz`, 기본 KST)로 바꿔서 쓴다.
+UTC 등 다른 시간대여도 되고, 시간대가 없는(naive) 값은 이미 가게 시각이라고 보고 tz만 붙인다.
+영업시간·당일 판단·`Order.pickup_time`(+09:00)이 모두 이 시각 기준이다.
+
+복창 불변식: CONFIRM으로 끝나는 턴의 질문은 늘 지금 장바구니로 만든 최종 복창이다 (spec D6, §5).
+다른 질문이 먼저 나갔으면 복창으로 바꾼다(`_ask(force=True)`). 그래서 손님이 복창을 듣지 않고
+"네"로 확정하는 길이 없다.
+
 전역 규칙 (spec §5, 티켓 05): `cancel_order` → "주문 취소할까요?" → 네면 DONE(Order 없음),
 `want_owner` → FALLBACK, 같은 슬롯에 실패 3번 → FALLBACK. 메뉴 질문은 어느 상태에서든 답하고
 상태를 바꾸지 않는다.
@@ -19,21 +27,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
-from typing import Any, Literal
+from datetime import datetime, timedelta
+from typing import Literal
 
 from agenthan.core.contracts import MenuItem, MenuOption, Order, StoreKnowledge
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.cart import Cart, CartLine
 from agenthan.voice.dialog.menu_info import answer_menu_question
 from agenthan.voice.dialog.options import find_options
-from agenthan.voice.dialog.pickup import judge_pickup, today_at
+from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
 from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
 from agenthan.voice.store_config import RequiredOption, StoreConfig
-from agenthan.voice.timeparse import parse_pickup
+from agenthan.voice.timeparse import PickupParse, parse_pickup
 
 OrderStatus = Literal["draft", "confirmed", "handoff"]
 
@@ -60,6 +68,7 @@ class _Turn:
     accepted: list[str] = field(default_factory=list)  # 이번 턴에 담은 항목 문구
     done_ordering: bool = False
     asked: bool = False
+    question_at: int | None = None  # 이번 턴 질문이 `utterances`의 몇 번째인지 (`_ask`)
     unhandled: bool = False
     order: Order | None = None
     order_status: OrderStatus | None = None  # 채워지면 `_result`가 Order를 만든다
@@ -75,6 +84,17 @@ class _Turn:
     time_said: bool = False  # 주문 중에 시각을 말했다 (못 읽었어도 대답은 한다)
     # 티켓 06. 없는 메뉴·대안 없는 품절을 안내했다. 다른 질문이 없으면 주문 질문을 붙인다
     menu_listed: bool = False
+    # 리뷰 C10. 픽업 시각을 묻는 중에 항목을 고쳤다. `_finish`가 되받고 시각을 다시 묻는다
+    pickup_items: bool = False
+
+    @property
+    def question(self) -> str:
+        return "" if self.question_at is None else self.utterances[self.question_at]
+
+    @property
+    def responded(self) -> bool:
+        """이번 턴에 이미 손님에게 답할 거리가 생겼다 (질문·담기·고치기·안내)."""
+        return self.asked or bool(self.accepted or self.touched) or self.changed
 
 
 @dataclass(frozen=True)
@@ -95,6 +115,8 @@ def on(act_type: ActType, *states: State) -> Callable[[Handler], Handler]:
 
     def register(fn: Handler) -> Handler:
         for state in states:
+            if (state, act_type) in _HANDLERS:
+                raise ValueError(f"처리기가 이미 있어요: ({state.value}, {act_type})")
             _HANDLERS[(state, act_type)] = fn
         return fn
 
@@ -114,11 +136,12 @@ class DialogEngine:
         self._cart = Cart()
         self._pickup: datetime | None = None
         self._pickup_offer: datetime | None = None  # ASK_PICKUP에서 "네"를 기다리는 시각
+        self._pickup_offer_question = ""  # 그 시각을 물은 말. 항목을 고친 뒤 다시 묻는다
         self._pickup_text = ""  # 주문 중에 말했지만 되물어야 하는 시각 원문
         self._last_question = ""
         self._transcript: list[str] = []
         # CLARIFY가 무엇을 기다리는지. 티켓 02(메뉴 확인)·03(옵션)이 자기 타입을 넣는다.
-        self._pending: Any = None
+        self._pending: _MenuClarify | _OptionPending | None = None
         # 메뉴 이름 없이 "두 개로 바꿔 주세요"라고 하면 고칠 줄 (마지막에 담거나 고친 줄)
         self._focus: CartLine | None = None
         # 티켓 05
@@ -130,7 +153,7 @@ class DialogEngine:
     # ------------------------------------------------------------ 진입점
 
     def start(self, now: datetime) -> TurnResult:
-        turn = _Turn(now)
+        turn = _Turn(self._local(now))
         self._say(turn, templates.greeting(self._config.store_name))
         self._state = State.ORDERING
         return self._result(turn)
@@ -138,7 +161,7 @@ class DialogEngine:
     def handle(self, text: str, now: datetime) -> TurnResult:
         if self._state is State.GREETING:
             raise RuntimeError("start()를 먼저 불러야 해요")
-        turn = _Turn(now, cart_before=self._cart)
+        turn = _Turn(self._local(now), cart_before=self._cart)
         if self._state is State.DONE:
             return self._result(turn)
         self._transcript.append(f"손님: {text}")
@@ -149,6 +172,11 @@ class DialogEngine:
         self._finish(turn)
         self._count_failure(turn)
         return self._result(turn)
+
+    def _local(self, now: datetime) -> datetime:
+        """`now` → 가게 시각. naive면 가게 시각으로 보고 tz만 붙인다 (모듈 설명 참고)."""
+        tz = self._config.tz
+        return now.replace(tzinfo=tz) if now.tzinfo is None else now.astimezone(tz)
 
     # ------------------------------------------------------------ 턴 골격
 
@@ -211,10 +239,33 @@ class DialogEngine:
                     self._ask(turn, templates.ask_order())
                 else:
                     self._ask(turn, templates.anything_else())
+        if turn.pickup_items and self._state is not State.ORDERING:
+            self._finish_pickup_items(turn)
+        if turn.unhandled and not turn.asked and self._state not in TERMINAL:
+            self._say(turn, templates.not_understood())
+            self._ask(turn, self._question_again())
         if turn.answered and not turn.asked and self._state not in TERMINAL:
             self._ask(turn, self._question_again())
+        if self._state is State.CONFIRM and self._cancel_resume is None:
+            if turn.question not in self._readbacks():  # 복창 불변식 (모듈 설명)
+                self._ask_readback(turn)
 
-    def _say_corrections(self, turn: _Turn) -> None:
+    def _finish_pickup_items(self, turn: _Turn) -> None:
+        """픽업 시각을 묻는 중에 고친 항목을 되받는다 (C10). 질문이 이미 있으면 그 앞에 넣는다.
+
+        같은 턴에 시각도 받았으면 처리기가 이미 복창했다. 아니면 다음 빈 슬롯을 묻는다
+        (필수 옵션 → 시각). 기다리던 제안 시각("5시 25분 괜찮으세요?")은 그대로 다시 묻는다.
+        """
+        if not turn.asked and self._state is State.ASK_PICKUP:
+            if self._cart.is_empty() or self._missing_required() is not None:
+                self._advance(turn)
+            elif self._pickup_offer is not None:
+                self._ask(turn, self._pickup_offer_question)
+            else:
+                self._advance(turn)
+        self._say_corrections(turn, before_question=True)
+
+    def _say_corrections(self, turn: _Turn, *, before_question: bool = False) -> None:
         """정정한 줄만 되받는다. 원래 있던 메뉴는 "~로 바꿨어요", 새로 담은 메뉴는 "~요"."""
         changed: list[str] = []
         added: list[str] = []
@@ -227,10 +278,17 @@ class DialogEngine:
             line = self._cart.lines[index]
             was_there = bool(turn.cart_before.indices_for(line.item.id))
             (changed if was_there else added).append(line.phrase())
+        notes = []
         if changed:
-            self._say(turn, templates.changed_to(changed))
+            notes.append(templates.changed_to(changed))
         if added:
-            self._say(turn, templates.items_noted(added))
+            notes.append(templates.items_noted(added))
+        for note in notes:
+            if before_question and turn.question_at is not None:
+                turn.utterances.insert(turn.question_at, note)
+                turn.question_at += 1
+            else:
+                self._say(turn, note)
 
     def _advance(self, turn: _Turn) -> None:
         """주문이 끝났을 때 빈 슬롯을 차례로 보고 다음 상태와 질문을 정한다."""
@@ -242,17 +300,35 @@ class DialogEngine:
         elif self._pickup is None:
             self._state = State.ASK_PICKUP
             self._ask_pickup(turn)
+        elif self._pickup < turn.now + timedelta(minutes=self._config.prep_minutes):
+            # 주문 중에 받은 시각이 그새 준비 시간 안으로 들어왔다 (C16). 가게 규칙대로 다시 본다
+            stale, self._pickup = self._pickup, None
+            self._state = State.ASK_PICKUP
+            self._apply_verdict(turn, judge_pickup(PickupParse(stale), turn.now, self._config))
         else:
             self._state = State.CONFIRM
             self._fixing = False
-            readback = templates.final_readback(
-                self._cart.summary(),
-                self._pickup,
-                self._cart.total(),
-                requests=self._cart.requests(),
-                after_fix=turn.correcting,
-            )
-            self._ask(turn, readback)
+            self._ask_readback(turn)
+
+    def _readback(self, *, after_fix: bool) -> str:
+        assert self._pickup is not None
+        return templates.final_readback(
+            self._cart.summary(),
+            self._pickup,
+            self._cart.total(),
+            requests=self._cart.requests(),
+            after_fix=after_fix,
+        )
+
+    def _readbacks(self) -> tuple[str, ...]:
+        """지금 장바구니로 만든 복창 (앞에 "그럼"이 붙은 것과 안 붙은 것). 시각이 없으면 없음."""
+        if self._pickup is None:
+            return ()
+        return self._readback(after_fix=False), self._readback(after_fix=True)
+
+    def _ask_readback(self, turn: _Turn) -> None:
+        """최종 복창. 이번 턴에 다른 질문을 이미 했으면 그 질문을 지우고 복창으로 바꾼다."""
+        self._ask(turn, self._readback(after_fix=turn.correcting), force=True)
 
     def _result(self, turn: _Turn) -> TurnResult:
         self._transcript.extend(f"AI: {text}" for text in turn.utterances)
@@ -269,28 +345,43 @@ class DialogEngine:
         """대사는 턴이 끝날 때 `_result`가 transcript에 옮긴다 (FALLBACK이 바꿀 수 있게)."""
         turn.utterances.append(text)
 
-    def _ask(self, turn: _Turn, question: str) -> None:
+    def _ask(self, turn: _Turn, question: str, *, force: bool = False) -> None:
+        """이번 턴의 질문 하나. 이미 물었으면 무시한다. `force`면 앞 질문을 지우고 이것을 묻는다."""
         if turn.asked:
-            return
+            if not force:
+                return
+            if turn.question_at is not None:
+                del turn.utterances[turn.question_at]
         turn.asked = True
         self._last_question = question
+        turn.question_at = len(turn.utterances)
         self._say(turn, question)
 
     def _on_unhandled(self, turn: _Turn, act: Act) -> None:
-        """이 상태에서 받지 않는 act. 직전 질문을 다시 하고 실패로 센다."""
-        if turn.unhandled or turn.accepted or turn.asked or turn.touched or turn.changed:
+        """이 상태에서 받지 않는 act. 실패로 세고, 턴 끝에(`_finish`) 직전 질문을 다시 한다.
+
+        바로 묻지 않는 이유: 같은 발화 뒤쪽 act가 진전을 만들 수 있다("어, 6시 반이요").
+        그때는 그 act의 질문(복창 등)이 이긴다 (리뷰 C1).
+        """
+        if turn.unhandled or turn.responded:
             return
         turn.unhandled = True
         self._fail(turn)
-        self._say(turn, templates.not_understood())
-        self._ask(turn, self._question_again())
 
     def _question_again(self) -> str:
-        """다시 할 질문. ORDERING에서는 되받기("메도빅 하나요.")를 빼고 질문만 한다."""
-        if self._state is State.ORDERING and self._cancel_resume is None:
-            if self._fixing:  # 복창에 "아니요" 뒤. 고칠 것을 다시 묻는다 (티켓 06)
-                return templates.ask_what_to_fix()
-            return templates.ask_order() if self._cart.is_empty() else templates.anything_else()
+        """다시 할 질문. ORDERING에서는 되받기("메도빅 하나요.")를 빼고 질문만 한다.
+
+        CONFIRM에서는 늘 지금 장바구니로 만든 복창이다 (리뷰 C2, P1).
+        """
+        if self._cancel_resume is None:
+            if self._state is State.ORDERING:
+                if self._fixing:  # 복창에 "아니요" 뒤. 고칠 것을 다시 묻는다 (티켓 06)
+                    return templates.ask_what_to_fix()
+                if self._cart.is_empty():
+                    return templates.ask_order()
+                return templates.anything_else()
+            if self._state is State.CONFIRM and self._pickup is not None:
+                return self._readback(after_fix=False)
         return self._last_question or templates.ask_order()
 
     # ------------------------------------------------------------ 실패 카운터·FALLBACK (티켓 05)
@@ -733,20 +824,25 @@ class DialogEngine:
             self._correct_pickup(turn, act)
             return
         turn.time_said = True
-        verdict = judge_pickup(parse_pickup(act.time_text, turn.now), turn.now, self._config)
+        turn.pickup_note = self._remember_pickup(turn, act.time_text)
+
+    def _remember_pickup(self, turn: _Turn, time_text: str) -> str:
+        """`ASK_PICKUP` 전에 들은 시각. 잡았으면 되받을 말, 아니면 "".
+
+        못 읽은 말이면 이미 받은 시각을 그대로 둔다(리뷰 C14). 되물어야 하는 시각은 원문을 둔다.
+        """
+        verdict = judge_pickup(parse_pickup(time_text, turn.now), turn.now, self._config)
         if verdict.kind in ("accept", "asap"):
             assert verdict.at is not None
             self._pickup = verdict.at
             self._pickup_text = ""
-            prep = self._config.prep_minutes
-            turn.pickup_note = (
-                templates.pickup_noted(verdict.at)
-                if verdict.kind == "accept"
-                else templates.pickup_asap(prep, verdict.at)
-            )
-        elif verdict.kind != "unclear":  # 나중에 말한 시각이 앞의 것을 대신한다
+            if verdict.kind == "accept":
+                return templates.pickup_noted(verdict.at)
+            return templates.pickup_asap(self._config.prep_minutes, verdict.at)
+        if verdict.kind != "unclear":  # 나중에 말한 시각이 앞의 것을 대신한다
             self._pickup = None
-            self._pickup_text = act.time_text
+            self._pickup_text = time_text
+        return ""
 
     @on("set_pickup_time", State.ASK_PICKUP)
     def _on_pickup(self, turn: _Turn, act: Act) -> None:
@@ -770,18 +866,41 @@ class DialogEngine:
         self._fail(turn)  # 제안 시각을 거절. 계속 안 맞으면 사장님께 넘긴다
         self._ask(turn, templates.ask_pickup_again())
 
+    @on("add_item", State.ASK_PICKUP)
+    @on("change_qty", State.ASK_PICKUP)
+    @on("remove_item", State.ASK_PICKUP)
+    @on("set_option", State.ASK_PICKUP)
+    @on("set_request", State.ASK_PICKUP)
+    def _on_item_while_asking_pickup(self, turn: _Turn, act: Act) -> None:
+        """시각을 묻는 중에 항목을 더하거나 고친다 (리뷰 C10). ORDERING 처리기로 고친 뒤
+        ASK_PICKUP으로 돌아온다. 같은 발화의 시각·"네"는 그대로 픽업 처리기가 받는다.
+
+        메뉴 되묻기가 열리면 CLARIFY에 남고, 답을 받으면 정정처럼 다음 단계로 간다.
+        """
+        self._state = State.ORDERING
+        self._dispatch(turn, act)
+        if self._state is State.ORDERING:
+            self._state = State.ASK_PICKUP
+            turn.pickup_items = True
+        elif isinstance(self._pending, _MenuClarify):
+            self._pending.correcting = True
+
     def _ask_pickup(self, turn: _Turn) -> None:
         """`ASK_PICKUP`에 들어갈 때. 주문 중에 말해 둔 시각이 있으면 그걸 먼저 판단한다."""
         if self._pickup_text:
             text, self._pickup_text = self._pickup_text, ""
             self._apply_pickup(turn, text)
         else:
+            self._pickup_offer = None
             self._ask(turn, templates.ask_pickup())
 
     def _apply_pickup(self, turn: _Turn, time_text: str) -> None:
+        verdict = judge_pickup(parse_pickup(time_text, turn.now), turn.now, self._config)
+        self._apply_verdict(turn, verdict)
+
+    def _apply_verdict(self, turn: _Turn, verdict: PickupVerdict) -> None:
         """가게 규칙(`dialog/pickup.py`)의 판정대로 잡거나, 제안하거나, 다시 묻는다."""
         self._pickup_offer = None
-        verdict = judge_pickup(parse_pickup(time_text, turn.now), turn.now, self._config)
         prep = self._config.prep_minutes
         if verdict.kind in ("unclear", "before_open", "after_close"):
             self._fail(turn)
@@ -795,12 +914,10 @@ class DialogEngine:
             self._ask(turn, templates.pickup_after_close(close))
         elif verdict.kind == "too_early":
             assert verdict.at is not None
-            self._pickup_offer = verdict.at
-            self._ask(turn, templates.pickup_too_early(prep, verdict.at))
+            self._offer_pickup(turn, verdict.at, templates.pickup_too_early(prep, verdict.at))
         elif verdict.kind == "confirm":
             assert verdict.at is not None
-            self._pickup_offer = verdict.at
-            self._ask(turn, templates.confirm_pickup(verdict.at))
+            self._offer_pickup(turn, verdict.at, templates.confirm_pickup(verdict.at))
         else:  # accept, asap
             assert verdict.at is not None
             if verdict.kind == "asap":
@@ -809,6 +926,12 @@ class DialogEngine:
                 self._say(turn, templates.pickup_changed(verdict.at))
             self._pickup = verdict.at
             self._advance(turn)
+
+    def _offer_pickup(self, turn: _Turn, at: datetime, question: str) -> None:
+        """시각을 제안하거나 확인한다. "네"를 받으면 그 시각으로 잡는다."""
+        self._pickup_offer = at
+        self._pickup_offer_question = question
+        self._ask(turn, question)
 
     # ------------------------------------------------------------ CONFIRM
 
@@ -844,9 +967,15 @@ class DialogEngine:
                     act = replace(act, type="change_qty")
                 elif act.option_text:
                     act = replace(act, type="set_option")
+                else:
+                    # "메도빅이요": 복창을 듣고 이름만 되풀이했다. 더 담지 않고 복창을 다시 한다
+                    # (리뷰 C5). 더 담으려면 수량을 말한다("메도빅 두 개로요").
+                    return
         self._start_correction(turn)
         self._dispatch(turn, act)
-        if turn.unhandled:  # 못 고쳤다. `_on_unhandled`가 복창을 다시 했으니 CONFIRM에 남는다
+        if turn.unhandled:
+            # 못 고쳤다. CONFIRM에 남고, `_finish`가 "못 알아들었어요" + 복창을 다시 한다.
+            # 상태를 먼저 되돌려야 재질문이 ORDERING의 "더 필요하세요?"가 되지 않는다 (C2, P1).
             self._state = State.CONFIRM
             turn.done_ordering = turn.correcting = False
 
@@ -942,7 +1071,7 @@ class DialogEngine:
         self._fail(turn)  # 메뉴 슬롯을 못 채웠다. 다음 턴에 메뉴를 말하면 횟수가 지워진다
         self._say(turn, templates.menu_declined(self._available_names()))
         self._close_menu_clarify(turn, pending, None)
-        if not (turn.asked or turn.accepted or turn.touched or turn.changed or turn.done_ordering):
+        if not (turn.responded or turn.done_ordering):
             self._ask(turn, templates.ask_order())
 
     @on("add_item", State.CLARIFY)
@@ -985,7 +1114,7 @@ class DialogEngine:
             if act.type == "done_ordering":
                 self._pending = replace(self._pending, then_advance=True)
             else:
-                self._pickup, self._pickup_text = None, act.time_text
+                self._remember_pickup(turn, act.time_text)
             self._ask(turn, self._last_question)
             return
         pending = self._menu_clarify(turn, act)

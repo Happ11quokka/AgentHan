@@ -34,13 +34,16 @@ def judge_pickup(parsed: PickupParse, now: datetime, config: StoreConfig) -> Pic
     if parsed.time is None:
         return PickupVerdict("unclear")
     earliest = earliest_pickup(now, config)
+    open_at = today_at(now, config.open_time)
     close = today_at(now, config.close_time)
-    if parsed.asap:
+    if parsed.asap:  # 준비 끝나는 시각에도 영업시간 규칙을 똑같이 쓴다
+        if earliest < open_at:
+            return PickupVerdict("before_open")
         if earliest > close:
             return PickupVerdict("after_close")
         return PickupVerdict("asap", earliest)
     t = parsed.time
-    if t < today_at(now, config.open_time):
+    if t < open_at:
         return PickupVerdict("before_open")
     if t > close:
         return PickupVerdict("after_close")

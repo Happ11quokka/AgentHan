@@ -42,7 +42,10 @@ def main(
     stdout: TextIO | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description="텍스트 주문 대화")
-    parser.add_argument("--now", help="고정 시각 ISO 8601. 없으면 지금 시각(KST)")
+    parser.add_argument(
+        "--now",
+        help="고정 시각 ISO 8601. 시간대가 없으면 가게 시각(KST)으로 본다. 없으면 지금 시각",
+    )
     parser.add_argument(
         "--nlu", choices=("fake", "hcx"), default="fake", help="fake: 규칙 기반(기본), hcx: HCX"
     )
