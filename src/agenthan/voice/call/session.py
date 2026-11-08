@@ -23,13 +23,16 @@
 
 턴 번호: 인사가 0, 손님 말 하나(합친 것)마다 1씩 는다. 나가는 메시지 모두에 `turn`이 있다.
 
-국면(phase): listening(듣는 중) → thinking(엔진 도는 중) → speaking(봇 말하는 중) → listening.
+국면(phase): listening(듣는 중) → thinking(엔진·첫 문장 TTS 도는 중) → speaking(봇 말하는 중)
+→ listening.
 - listening에 말 끝 결과가 오면 바로 다음 턴
 - thinking에 온 결과는 모아 두었다가 재생이 끝나면 하나로 합쳐 다음 턴 하나로 넣는다
   (대답 두 번 방지)
-- speaking에 온 결과는 버린다(반이중). 마지막 문장의 `playback.done`이 오면 listening.
+- speaking은 첫 오디오를 보낼 때부터다(3단계 티켓 01). 그 뒤에 시작한 말의 결과는 버린다
+  (반이중, 말한 시각 기준). 첫 소리 전에 한 말은 결과가 늦게 와도 다음 턴으로 받는다.
+  마지막 문장의 `playback.done`이 오면 listening.
   안 오면 보낸 소리 길이 + `play_done_grace_s` 뒤 서버가 스스로 listening으로 간다.
-  speaking에 들어갈 때 붙잡아 둔 조각과 "말 끝" 표시를 지운다
+  speaking에 들어갈 때 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다
 
 조각 붙잡기: 끝 후보 결과가 왔는데 그 끝 뒤에 새 말 구간이 시작됐으면 다음 결과와 합친다.
 epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 epFlag 응답을 기다리는
@@ -219,6 +222,7 @@ class CallSession:
         self._voice_at: float | None = None
         self._ep_at: float | None = None  # 마지막 epFlag 프레임을 쓰기 큐에 넣은 때
         self._ep_reply_at: float | None = None  # 마지막 epFlag 응답을 받은 때
+        self._speak_from_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각 (반이중 기준)
         self._client_start: dict[str, Any] = {}
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer: asyncio.TimerHandle | None = None
@@ -426,8 +430,8 @@ class CallSession:
     def _on_result(self, r: SttResult) -> None:
         if r.ep_flag:
             self._ep_reply_at = self._clock.monotonic()
-        if self.done or self._terminal or self._phase == "speaking":
-            self._log_dropped(r)  # 반이중: 봇 말하는 중 결과는 버린다
+        if self.done or self._terminal or self._spoken_over(r):
+            self._log_dropped(r)  # 반이중: 봇 소리가 나간 뒤에 한 말의 결과는 버린다
             return
         self._cancel_hold()
         if r.text.strip():
@@ -450,6 +454,14 @@ class CallSession:
             self._arm_hold(self._settings.hold_max_s)
             return
         self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
+
+    def _spoken_over(self, r: SttResult) -> bool:
+        """봇 소리가 나간 뒤에 시작한 말의 결과인가 (반이중으로 버린다).
+
+        도착 시각이 아니라 말한 시각(오디오 시각)으로 본다. 첫 소리 전에 한 말은 결과가 봇 소리
+        뒤에 와도 다음 턴으로 받는다(3단계 티켓 01). 그 전 오디오에는 봇 목소리가 섞일 수 없다
+        """
+        return self._phase == "speaking" and r.start_ms >= self._speak_from_ms
 
     def _continues_after(self, r: SttResult) -> bool:
         """말 끝 후보 결과 `r` 뒤에 손님 말이 이어지나 (붙잡을지).
@@ -531,7 +543,7 @@ class CallSession:
     def _on_hold_timer(self) -> None:
         self._hold_timer = None
         held = self._held
-        if held is None or not self._parts or self.done or self._phase == "speaking":
+        if held is None or not self._parts or self.done:
             return
         now = self._clock.monotonic()
         assert self._hold_since is not None and self._hold_at is not None
@@ -586,14 +598,7 @@ class CallSession:
         audio_ms = 0
         if sentences:
             self._last_seq[turn] = len(sentences) - 1
-            self._phase = "speaking"
-            # 이 뒤에 오는 결과는 버리므로, 붙잡아 둔 조각과 "말 끝" 표시가 다음 손님 말에
-            # 붙지 않게 여기서 지운다(리뷰 3번). 이미 끝난 말(`_pending`)은 그대로 둔다
-            self._clear_hold()
-            self._forced = self._commit = False
-            self._button_at = None
-            self._emit_state()
-            audio_ms = await self._speak(turn, sentences)
+            audio_ms = await self._speak(turn, sentences)  # 첫 소리를 보낼 때 speaking
         self._emit({"type": "bot.done", "turn": turn, "sentences": len(sentences)})
         self._bot_done_turn = turn
         self._log.mark(turn, "bot_done")
@@ -605,6 +610,23 @@ class CallSession:
             self._play_timer = asyncio.get_running_loop().call_later(
                 delay, self._on_play_timeout, turn
             )
+
+    def _start_speaking(self, turn: int) -> None:
+        """첫 오디오를 보내기 직전. 여기서부터 "봇 말하는 중"이다 (3단계 티켓 01).
+
+        전에는 엔진이 끝나자마자 speaking이 돼서 TTS 합성 중(첫 소리 전)에 한 말이 버려졌다.
+        이 오디오 시각 뒤에 시작한 말만 반이중으로 버린다(`_spoken_over`).
+        붙잡아 둔 조각은 첫 소리 전에 한 말이므로 버리지 않고 `_pending`(다음 턴)에 넣는다.
+        다음 손님 말에 붙지는 않는다(리뷰 3번). 그 뒷글이 늦게 와도 `_pending`에서 합쳐진다
+        """
+        self._phase = "speaking"
+        self._speak_from_ms = self._vad.offset_ms
+        if self._parts:
+            self._release(self._held or self._parts[-1], "bot_start")
+        self._clear_hold()
+        self._forced = self._commit = False
+        self._button_at = None
+        self._emit_state()
 
     def _in_thread(
         self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any
@@ -649,6 +671,8 @@ class CallSession:
             for seq, (job, text) in enumerate(zip(jobs, sentences, strict=True)):
                 pcm = await job
                 audio_bytes += len(pcm)
+                if seq == 0:
+                    self._start_speaking(turn)
                 self._emit({"type": "bot.say", "turn": turn, "seq": seq, "text": text})
                 for i, (chunk, last) in enumerate(chunk_pcm(pcm, self._settings.chunk_bytes)):
                     frame = pack_audio_frame(AudioFrame(turn, seq, chunk, last))
