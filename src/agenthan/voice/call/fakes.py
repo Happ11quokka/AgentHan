@@ -4,6 +4,8 @@
   - `replies`: `epFlag`가 붙은 DATA가 올 때마다 다음 글을 `lag_ms` 뒤(오디오 시각)에
     `endPoint` 결과로 낸다. 다 쓰면 빈 글 + `epFlag` 응답(CLOVA 실측과 같음)
   - `script`: `Scripted(at_ms, result)` — 세션이 `at_ms`만큼 오디오를 쓴 순간 그 결과를 낸다
+  - `voiced_start`: 참이면 `epFlag` 응답의 `start_ms`가 지난 `epFlag` 뒤 처음 0이 아닌 프레임의
+    시각이다(CLOVA처럼 말한 시각). 거짓(기본)이면 지난 `epFlag`의 시각이다
 - `FakeTts`: 고정 PCM을 돌려준다. 문장별 지연·실패를 줄 수 있고 동시 호출 수를 센다
 - `FakeClock`: 고정 가게 시각 + (기본) 실제 단조 시각
 - `FakeTurnModel`: 턴 모델(Smart Turn) 가짜. 정해 둔 점수를 차례로 내고, 본 오디오 길이를 남긴다
@@ -48,6 +50,7 @@ class FakeSttStream:
         *,
         lag_ms: int = STT_LAG_MS,
         fail_start: Exception | None = None,
+        voiced_start: bool = False,
     ) -> None:
         self.writes: list[SttWrite] = []
         self.started = False
@@ -58,6 +61,8 @@ class FakeSttStream:
         self._fail_start = fail_start
         self._offset = 0
         self._utter_start = 0
+        self._voiced_start = voiced_start
+        self._first_voiced: int | None = None
         self._queue: asyncio.Queue[SttResult | Exception | None] = asyncio.Queue()
 
     @property
@@ -71,12 +76,18 @@ class FakeSttStream:
 
     async def write(self, pcm: bytes, *, ep_flag: bool = False, seq_id: int = 0) -> None:
         self.writes.append(SttWrite(self._offset, len(pcm), ep_flag, seq_id))
+        if self._first_voiced is None and any(pcm):
+            self._first_voiced = self._offset
         self._offset += len(pcm) // BYTES_PER_MS
         if ep_flag:
             text = self._replies.popleft() if self._replies else ""
-            result = SttResult(text, self._utter_start, self._offset, "endPoint", True, seq_id)
+            start = self._utter_start
+            if self._voiced_start and self._first_voiced is not None:
+                start = self._first_voiced
+            result = SttResult(text, start, self._offset, "endPoint", True, seq_id)
             self._pending.append(Scripted(self._offset + self._lag_ms, result))
             self._utter_start = self._offset
+            self._first_voiced = None
         due = [s for s in self._pending if s.at_ms <= self._offset]
         self._pending = [s for s in self._pending if s.at_ms > self._offset]
         for item in due:

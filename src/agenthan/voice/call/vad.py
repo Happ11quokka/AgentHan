@@ -64,6 +64,7 @@ class SilenceDetector:
     offset_ms: int = 0  # 지금까지 넣은 오디오 길이
     segment_starts: list[int] = field(default_factory=list)  # 말 시작으로 본 구간의 시작 시각
     last_voiced: bool = False  # 마지막으로 넣은 프레임이 말소리였나
+    last_rms: float = 0.0  # 마지막으로 넣은 프레임의 RMS (음성 끼어들기가 다시 쓴다)
     ep_due: bool = False  # 마지막으로 넣은 프레임에 epFlag를 붙인다 (쉼이 `ep_silence_ms`에 닿음)
     _ep_sent: bool = False  # 이번 쉼에 epFlag를 이미 냈다
     _voiced_ms: int = 0
@@ -75,7 +76,8 @@ class SilenceDetector:
         ms = len(pcm) // BYTES_PER_MS
         start = self.offset_ms
         self.offset_ms += ms
-        voiced = rms(pcm) >= self.settings.threshold
+        self.last_rms = rms(pcm)
+        voiced = self.last_rms >= self.settings.threshold
         self.last_voiced = voiced
         self.ep_due = False
         if voiced:

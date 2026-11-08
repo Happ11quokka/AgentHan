@@ -70,6 +70,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from agenthan.core.contracts import Order, OrderSink, StoreKnowledge
+from agenthan.voice.call.barge import Action, BargeSettings, BargeTracker, Verdict, WindowKind
 from agenthan.voice.call.frames import (
     BYTES_PER_MS,
     CHUNK_BYTES,
@@ -188,6 +189,9 @@ class SessionSettings:
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
     # 응답보다 늦게 낼 수 있다(티켓 10 조각 붙잡기 시험). 그 글이 오면 되묻지 않는다
     not_heard_wait_s: float = 1.0
+    # 음성 끼어들기 (티켓 06, `PHONE_VOICE_BARGE_IN`). None이면 꺼짐(반이중 + 버튼). 켜도 브라우저가
+    # `call.start.voice_barge_in`(안드로이드 크롬)을 알린 통화만 쓴다
+    barge: BargeSettings | None = None
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
@@ -281,6 +285,57 @@ class _Spoken:
                 entry["chars"] = round(len(text) * got / ms)
             out.append(entry)
         return out
+
+
+@dataclass
+class _Window:
+    """봇 말 구간 하나 (음성 끼어들기, 티켓 06). 시각은 모두 오디오 시각(`vad.offset_ms`)이다.
+
+    브라우저 오디오와 `playback.started`가 같은 소켓으로 순서대로 오므로, 보고를 받은 순간의
+    오디오 시각이 손님 귀에 그 문장이 들린 시각이다(`s3-verify-barge-in` 4-4 ③).
+    """
+
+    turn: int
+    from_ms: int  # 첫 소리를 보낸 때
+    kind: WindowKind
+    spoken: _Spoken
+    to_ms: int | None = None  # 재생 끝 보고·끊긴 때. None이면 아직 말하는 중
+    cut: bool = False  # 음성 끼어들기로 멈췄다
+    marks: dict[int, int] = field(default_factory=dict)  # 문장 → `playback.started`를 받은 때
+    log: dict[str, Any] = field(default_factory=dict)  # 그 턴 기록의 `barge`
+
+    def holds(self, start_ms: int, gap_ms: int = 0) -> bool:
+        """이 구간에 시작한 말인가. 끝이 열려 있으면 지금도 말하는 중이다."""
+        return start_ms >= self.from_ms and (self.to_ms is None or start_ms < self.to_ms + gap_ms)
+
+    def starts(self) -> list[int]:
+        """보낸 문장마다 손님 귀에 들리기 시작한 때. 보고가 없으면 앞 문장 끝으로 어림한다."""
+        out: list[int] = []
+        for s, _ in enumerate(self.spoken.ms):
+            prev = self.from_ms if s == 0 else out[-1] + self.spoken.ms[s - 1]
+            out.append(self.marks.get(s, prev))
+        return out
+
+    def remaining_ms(self, at_ms: int) -> float:
+        """남은 봇 말 길이. 아직 안 보낸(TTS 중인) 문장이 있으면 모른다(무한대)."""
+        ms = self.spoken.ms
+        if len(ms) < len(self.spoken.texts) or not ms:
+            return math.inf
+        return self.starts()[-1] + ms[-1] - at_ms
+
+    def amount_end_ms(self) -> float:
+        """최종 복창에서 금액(과 요청) 문장이 끝난 때 = 마지막 문장("맞으세요?")이 시작한 때."""
+        last = len(self.spoken.texts) - 1
+        starts = self.starts()
+        return starts[last] if last < len(starts) else math.inf
+
+    def position(self, at_ms: int) -> tuple[int, int]:
+        """그때 듣던 문장과 그 문장에서 들은 ms (서버 어림. 브라우저 보고가 오면 그것을 쓴다)."""
+        spot = (0, 0)
+        for s, start in enumerate(self.starts()):
+            if start <= at_ms:
+                spot = (s, at_ms - start)
+        return spot
 
 
 class _EngineTimeout(Exception):
@@ -380,6 +435,11 @@ class CallSession:
         self._ep_voiced_ms = 0  # 마지막 epFlag 프레임까지의 말소리 길이 (빈 응답 되묻기 기준)
         self._end_reason: str | None = None  # 대화가 끝난 이유 (`call.end`)
         self._not_heard_timer: asyncio.TimerHandle | None = None
+        # 음성 끼어들기 (티켓 06). 설정이 켜져 있고 브라우저가 할 수 있다고 알린 통화만 만든다
+        self._barge: BargeTracker | None = None
+        self._windows: list[_Window] = []  # 최근 봇 말 구간들 (늦게 온 글을 말한 시각으로 가른다)
+        self._cut_ep = False  # 봇 재생 끝 경계: 다음 DATA에 epFlag (`_close_window`)
+        self._stop_sent_at: float | None = None  # 마지막 `bot.stop`을 보낸 때 (멈춤 지연 T7)
         self._broken = False
 
     # ------------------------------------------------------------ 바깥 진입점
@@ -401,6 +461,7 @@ class CallSession:
         if not self._ready or self.done:
             return
         was_speaking = self._vad.in_speech
+        frame_from = self._vad.offset_ms
         ended = self._vad.feed(pcm)
         now = self._clock.monotonic()
         if self._ring is not None:
@@ -408,11 +469,12 @@ class CallSession:
         if self._vad.last_voiced:
             self._voice_at = now
             self._voiced_ms += len(pcm) // BYTES_PER_MS
-        ep = self._vad.ep_due or self._commit  # 조기 epFlag: 무음 250ms (턴 판정은 `ended`)
+        # 조기 epFlag: 무음 250ms (턴 판정은 `ended`). `_cut_ep`는 봇 재생 끝 경계(티켓 06)
+        ep = self._vad.ep_due or self._commit or self._cut_ep
         if ep:
             if self._commit:
                 self._vad.end_speech()
-            self._commit = False
+            self._commit = self._cut_ep = False
             self._ep_at = now
             self._ep_voiced_ms, self._voiced_ms = self._voiced_ms, 0
         elif not self._vad.in_speech and not self._vad.last_voiced:
@@ -420,6 +482,8 @@ class CallSession:
         if ended:
             self._speech_end_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
+        if self._barge is not None and self._phase == "speaking" and self._windows:
+            self._barge_frame(frame_from)
         if ended:
             self._score_turn()
             self._on_speech_end()
@@ -480,6 +544,9 @@ class CallSession:
         if kind == "call.start":
             if self._phase == "idle" and not self.done:
                 self._client_start = {k: v for k, v in event.items() if k not in ("type", "turn")}
+                barge = self._settings.barge
+                if barge is not None and event.get("voice_barge_in") is True:
+                    self._barge = BargeTracker(barge)  # 브라우저가 봇 말 중에도 진짜 소리를 보낸다
                 self._phase = "thinking"
                 self._spawn(self._turn_loop(), "turns")
         elif kind == "user.end_of_speech":
@@ -491,6 +558,10 @@ class CallSession:
                 self._button_at = self._clock.monotonic()
         elif kind == "playback.started":
             self._log.mark(turn, "play_start")
+            window = self._windows[-1] if self._windows else None
+            if (window is not None and window.turn == turn and window.to_ms is None
+                    and seq is not None):
+                window.marks.setdefault(seq, self._vad.offset_ms)  # 말한 시각 기준 (티켓 06)
         elif kind == "playback.done":
             self._on_playback_done(turn, seq, event.get("output_latency"))
         elif kind == "user.interrupt":  # 말 끊기 버튼 (티켓 05)
@@ -587,8 +658,11 @@ class CallSession:
         self._spawn(self._read_stt(), "stt")
         self._spawn(self._write_stt(), "stt-write")
         self._ready = True
-        self._emit({"type": "call.ready", "turn": 0, "call": self.call_id,
-                    "sample_rate": SAMPLE_RATE})
+        ready: dict[str, Any] = {"type": "call.ready", "turn": 0, "call": self.call_id,
+                                 "sample_rate": SAMPLE_RATE}
+        if self._barge is not None:  # 꺼져 있으면 2단계와 같은 모양 (필드 없음)
+            ready["voice_barge_in"] = self._barge.settings.mode
+        self._emit(ready)
 
     async def _write_stt(self) -> None:
         """STT 쓰기 주체는 이 작업 하나다. `close()`가 이 작업을 취소한 뒤 STT를 닫는다."""
@@ -628,7 +702,14 @@ class CallSession:
     def _on_result(self, r: SttResult) -> None:
         if r.ep_flag:
             self._ep_reply_at = self._clock.monotonic()
-        if self.done or self._terminal or self._spoken_over(r):
+        if self._barge is not None:  # 음성 끼어들기: 봇 말 중에 한 말은 판정한다 (티켓 06)
+            if self.done or self._terminal:
+                self._log_dropped(r)
+                return
+            window = self._window_of(r)
+            if window is not None and not self._barge_take(window, r):
+                return
+        elif self.done or self._terminal or self._spoken_over(r):
             self._log_dropped(r)  # 반이중: 봇 소리가 나간 뒤에 한 말의 결과는 버린다
             return
         self._cancel_hold()
@@ -698,21 +779,25 @@ class CallSession:
             return False
         return self._ep_reply_at is None or self._ep_reply_at < self._ep_at
 
-    def _log_dropped(self, r: SttResult) -> None:
+    def _log_dropped(self, r: SttResult, verdict: Verdict | None = None) -> None:
         """버린 결과를 지금 턴 기록의 `dropped`에 남긴다 (티켓 10 #1).
 
         말 중간 조각으로 턴을 넘긴 뒤 뒷조각이 반이중에 걸려 사라지는 일("나폴" 잘림)을
         기록으로 확인하려고 둔다.
-        `reason`: speaking(봇 말하는 중) · terminal(확정·handoff 뒤) · ended(통화 끝)
+        `reason`: speaking(봇 말하는 중) · terminal(확정·handoff 뒤) · ended(통화 끝).
+        음성 끼어들기면 `barge`에 판정(에코·맞장구 등, 티켓 06)을 붙인다
         """
         record = self._log.get(self._turn)
         if record is None:
             return
         reason = "ended" if self.done else ("terminal" if self._terminal else "speaking")
-        record.fields.setdefault("dropped", []).append({
+        entry = {
             "text": r.text, "epd_type": r.epd_type, "start_ms": r.start_ms, "end_ms": r.end_ms,
             "ep_flag": r.ep_flag, "reason": reason, "backchannel": is_backchannel(r.text),
-        })
+        }
+        if verdict is not None:
+            entry["barge"] = verdict
+        record.fields.setdefault("dropped", []).append(entry)
 
     def _log_empty(self, r: SttResult) -> None:
         """빈 턴: 무음 감지가 말로 봐서 epFlag를 보냈는데 글 없는 응답만 왔다 (지표).
@@ -1118,6 +1203,8 @@ class CallSession:
         self._clear_decision()
         self._forced = self._commit = False
         self._button_at = None
+        if self._barge is not None:
+            self._open_window(turn)
         self._emit_state()
 
     def _in_thread(
@@ -1243,6 +1330,10 @@ class CallSession:
         """봇 말을 끊는다. 지금 턴이고 끊기를 받는 때만. 두 번 불러도 한 번만 끊는다."""
         if self.done or turn != self._turn or not self._interruptible():
             return
+        self._cut(turn, by)
+
+    def _cut(self, turn: int, by: str) -> None:
+        """지금 말하는 턴을 끊는다. 음성 끼어들기(`by: voice`)는 버튼 막기와 따로 판정한다."""
         if self._speaking is not None:
             self._speaking.cancel()  # 남은 문장 TTS·`bot.say`. `_speak`의 finally가 TTS를 취소한다
         self._drop_queued(turn)
@@ -1266,19 +1357,27 @@ class CallSession:
         self._interrupt(turn, "playback")  # 버튼 신호 없이 온 보고도 같은 자리에서 끊는다
         record = self._log.get(turn)
         spoken = self._spoken
-        if (record is None or "interrupt" not in record.fields or spoken is None
-                or spoken.turn != turn or "heard" in record.fields["interrupt"]):
+        if record is None or "interrupt" not in record.fields or spoken is None \
+                or spoken.turn != turn:
             return  # 끊지 않은 턴(막는 턴·지난 턴)의 보고는 남기지 않는다
+        cut = record.fields["interrupt"]
+        if cut.get("by") == "voice" and self._stop_sent_at is not None and "report_ms" not in cut:
+            # `bot.stop`을 보낸 뒤 브라우저가 멈췄다고 알리기까지 (판정 → 소리 꺼짐의 위 한계, T7)
+            cut["report_ms"] = round((self._clock.monotonic() - self._stop_sent_at) * 1000)
+        if "heard" in cut and not cut.get("est"):
+            return
         if seq is None or not _is_number(played_ms):
             log.info("값이 틀린 playback.interrupted를 버림 (%s)", self.call_id)
             return
-        record.fields["interrupt"].update(seq=seq, played_ms=round(played_ms),
-                                          heard=spoken.heard(seq, played_ms))
+        cut.pop("est", None)  # 서버 어림보다 브라우저가 잰 자리가 정확하다
+        cut.update(seq=seq, played_ms=round(played_ms), heard=spoken.heard(seq, played_ms))
 
     def _after_playback(self, turn: int, *, mark: str = "play_done") -> None:
         """재생이 끝났거나(`playback.done`·안전망) 끊겼다. 듣기로 가고 무음 타이머를 건다."""
         self._cancel_play_timer()
         self._log.mark(turn, mark)
+        if self._barge is not None:
+            self._close_window(turn)
         if self._terminal:
             self._say_call_end(turn)
             self._end()
@@ -1342,6 +1441,119 @@ class CallSession:
             self._arm_quiet(_CONT_POLL_S if busy else min(due, cap) - now)
             return
         self.bot_turn("no_input", lambda engine, at: engine.no_input(at))
+
+    # ------------------------------------------------------------ 음성 끼어들기 (티켓 06)
+    # 플래그(`barge`)가 켜져 있고 브라우저가 알린 통화만. 봇이 말하는 동안에도 진짜 마이크 소리가
+    # 올라온다. 판정 규칙은 `barge.py`에 있고, 여기서는 봇 말 구간(`_Window`)을 오디오 시각으로
+    # 기억하고 판정 결과를 `bot.duck`·`bot.unduck`·`bot.stop`으로 내보낸다.
+    # - 거르기: STT 글은 도착 시각이 아니라 말한 시각(`start_ms`)으로 봇 말 구간과 비교한다.
+    #   구간 안에서 시작한 말이면 판정하고, 진짜 끼어들기만 손님 말로 받는다. 에코·맞장구·빈 글은
+    #   버린다(`dropped`에 판정과 함께 남긴다). 재생이 끝나면 그때 말소리가 이어지던 구간(에코)에
+    #   epFlag를 붙여 STT 구간을 끊고 무음 감지를 비운다(봇 말 끝 경계)
+    # - 멈춤은 버튼과 같은 자리(`_cut`)에서 끊는다. 들은 만큼은 서버가 오디오 시각으로 어림해
+    #   두고(`est`), 브라우저 `playback.interrupted`가 오면 그 값으로 바꾼다
+
+    def _window_kind(self, turn: int) -> WindowKind:
+        result = self._last
+        if turn == 0 or result is None or result.state in TERMINAL:
+            return "blocked"  # 인사(에코 제거가 아직 덜 적응)·마무리·사장님 연결·취소
+        return "readback" if result.state is State.CONFIRM else "open"
+
+    def _open_window(self, turn: int) -> None:
+        assert self._barge is not None and self._spoken is not None
+        window = _Window(turn, self._vad.offset_ms, self._window_kind(turn), self._spoken)
+        window.log.update(kind=window.kind, stop_ms=self._barge.stop_ms, events=[], results=[])
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["barge"] = window.log
+        self._windows = [*self._windows[-2:], window]
+        self._barge.begin()
+
+    def _close_window(self, turn: int) -> None:
+        """재생이 끝났거나 끊겼다. 봇 말 구간을 닫고 에코 바닥(RMS)을 기록한다."""
+        barge = self._barge
+        window = self._windows[-1] if self._windows else None
+        if barge is None or window is None or window.turn != turn or window.to_ms is not None:
+            return
+        window.to_ms = self._vad.offset_ms
+        window.log["rms"] = _rms_stats(barge.rms)
+        if self._vad.in_speech:
+            # 봇 말 끝 경계: 에코로 열린 STT 구간·무음 감지를 끊는다. 아니면 늦게 온 에코 글이
+            # 손님 말이 되고, 에코로 켜진 말 상태가 다음 손님 말을 붙잡는다
+            # (`s3-verify-barge-in` 4-4).
+            # 손님이 말하던 중이면 앞부분은 구간 안 글로 판정되고, 뒷부분은 조각 붙잡기가 합친다
+            self._vad.end_speech()
+            self._cut_ep = True
+
+    def _window_of(self, r: SttResult) -> _Window | None:
+        """그 말을 시작한 봇 말 구간. 봇 말 끝 바로 뒤(`answer_gap_ms`)의 맞장구도 구간 안이다."""
+        assert self._barge is not None
+        gap = self._barge.settings.answer_gap_ms if is_backchannel(r.text) else 0
+        for window in reversed(self._windows):
+            if window.holds(r.start_ms, gap):
+                return window
+        return None
+
+    def _barge_frame(self, frame_from: int) -> None:
+        barge, window = self._barge, self._windows[-1]
+        assert barge is not None
+        at = self._vad.offset_ms
+        action = barge.frame(self._vad.last_rms, frame_from, at, kind=window.kind,
+                             remaining_ms=window.remaining_ms(at))
+        if action is not None:
+            self._barge_act(window, action, "sound")
+
+    def _barge_act(self, window: _Window, action: Action, by: str) -> None:
+        assert self._barge is not None
+        on = self._barge.settings.mode == "on"
+        window.log["events"].append({"act": action, "by": by, "at_ms": self._vad.offset_ms,
+                                     **({} if on else {"shadow": True})})
+        if not on:
+            return  # 그림자 측정: 판정만 남긴다
+        if action == "stop":
+            self._voice_stop(window, by)
+        else:
+            self._emit({"type": f"bot.{action}", "turn": window.turn})
+
+    def _voice_stop(self, window: _Window, by: str) -> None:
+        """음성 끼어들기로 봇 말을 멈춘다. 브라우저가 소리를 먼저 끄도록 `bot.stop`부터 보낸다."""
+        turn = window.turn
+        if self.done or turn != self._turn or self._phase != "speaking":
+            return
+        at = self._vad.offset_ms
+        self._emit({"type": "bot.stop", "turn": turn})
+        self._stop_sent_at = self._clock.monotonic()
+        window.to_ms, window.cut = at, True
+        window.log["rms"] = _rms_stats(self._barge.rms if self._barge else [])
+        seq, played = window.position(at)
+        self._cut(turn, "voice")
+        record = self._log.get(turn)
+        if record is not None and "interrupt" in record.fields:
+            record.fields["interrupt"].update(reason=by, seq=seq, played_ms=played, est=True,
+                                              heard=window.spoken.heard(seq, played))
+
+    def _barge_take(self, window: _Window, r: SttResult) -> bool:
+        """봇 말 중에 시작한 말의 글. 진짜 끼어들기면 참(손님 말로 받는다), 아니면 버린다."""
+        barge = self._barge
+        assert barge is not None
+        verdict = barge.judge(r.text, kind=window.kind,
+                              before_amount_end=r.start_ms < window.amount_end_ms(),
+                              bot_texts=window.spoken.texts)
+        window.log["results"].append({"start_ms": r.start_ms, "end_ms": r.end_ms,
+                                      "text": r.text, "verdict": verdict})
+        latest = window is self._windows[-1]
+        if latest:
+            action = barge.settle(verdict, r.end_ms, self._vad.offset_ms)
+            if action is not None:
+                self._barge_act(window, action, "text")
+        if verdict == "accept" and latest and window.to_ms is None and not barge.stopped:
+            # 아직 말하는 중: 글로 멈춘다 (그림자 측정은 소리로 멈춘 셈이면 다시 남기지 않는다)
+            barge.stop_by_text(self._vad.offset_ms)
+            self._barge_act(window, "stop", "text")
+        if verdict != "accept" or barge.settings.mode != "on":
+            self._log_dropped(r, verdict)  # 그림자 측정은 반이중처럼 버린다
+            return False
+        return True
 
     # ------------------------------------------------------------ 내보내기·끝내기
 
@@ -1424,6 +1636,18 @@ def _timed_score(model: TurnModel, pcm: bytes) -> tuple[float, float]:
     if not (math.isfinite(score) and 0.0 <= score <= 1.0):
         raise ValueError(f"턴 모델 점수가 0~1 밖: {score!r}")
     return score, (time.perf_counter() - start) * 1000
+
+
+def _rms_stats(values: list[float]) -> dict[str, int]:
+    """봇 말 구간 프레임 RMS의 p50·p95·최대 (에코 바닥, 실기기 시험 T1)."""
+    if not values:
+        return {"frames": 0}
+    ordered = sorted(values)
+
+    def pct(p: float) -> int:
+        return round(ordered[min(len(ordered) - 1, int(p * len(ordered)))])
+
+    return {"frames": len(ordered), "p50": pct(0.5), "p95": pct(0.95), "max": round(ordered[-1])}
 
 
 def _is_int(value: Any) -> bool:
