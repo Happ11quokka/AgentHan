@@ -264,3 +264,10 @@ def test_seed_store_has_neighborhood(tmp_path):
     assert {"area_category", "area_menu", "store_area"} <= {
         q.kind for q in candidate_queries(profile)
     }
+
+
+@pytest.mark.parametrize("category", ["베이커리·카페", "베이커리, 카페"])
+def test_category_uses_first_part(profile, category):
+    queries = candidate_queries(replace(profile, area="이태원동", category=category))
+    assert Query("이태원동 베이커리", "area_category") in queries
+    assert all("·" not in q.text and "," not in q.text for q in queries)

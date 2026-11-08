@@ -28,7 +28,17 @@ from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError
 from agenthan.tools.image_cutout import ImageCutoutError
+from agenthan.tools.naver_search import ApiHubSearch, FixtureSearch, NaverSearchError
 from agenthan.tools.owner_tools import execute_tool, tool_schema
+from agenthan.tools.place_report import load_report, report_facts
+from agenthan.tools.search_visibility import (
+    Query,
+    VisibilityReport,
+    candidate_queries,
+    diagnose,
+    profile_from_store,
+    summarize,
+)
 
 HELP = (
     "메뉴 이름·가격 등록/수정, 메뉴판 사진으로 메뉴 등록(/photo 사진경로), "
@@ -124,6 +134,9 @@ class OwnerAssistant:
         self._review_factory = review_session or review_delegate.new_session
         self.review: review_delegate.ReviewSession | None = None
         self.last_report: report_explainer.ReportAnswer | None = None
+        self.last_search: VisibilityReport | None = None
+        self._detail_subject: str | None = None
+        self._missing_search_keyword: str | None = None
         # Part B 가게 지식. 진짜 구현 전에는 fixtures 더미 (app/에서 바꿔 끼운다)
         self.knowledge = knowledge or FakeStoreKnowledge.from_fixture()
         self.clova_v3 = clova_v3 or menu_photo.chat_v3
@@ -146,10 +159,36 @@ class OwnerAssistant:
             return HELP
         if self.menu_drafts is not None:
             return self._menu_photo_reply(text)
-        matches = match_features(text, embed=self.embed)
+        glossary = report_explainer.glossary_lookup(text)
+        review_question = bool(re.search(r"리뷰|후기|댓글", text))
+        keyword_edit = bool(
+            re.search(r"검색\s*(?:어|키워드)|키워드", text)
+            and re.search(r"바꿔|바꾸|등록|추가|수정|삭제", text)
+        )
+        search_question = not keyword_edit and bool(
+            re.search(r"검색.*(?:어떻게|나와|나오|노출)|(?:어떻게|어디서).*찾아(?:와|오)", text)
+        )
+        follow_question = bool(
+            not review_question
+            and (
+                re.search(r"왜.*(?:늘|줄|증가|감소)|어디서.*(?:왔|와|오)", text)
+                or re.search(r"^(?:언제|누가)(?:[?!\.\s]*$|.*(?:조회|봤|보|찾|왔|와))", text)
+                or (self.last_report is not None and re.search(r"비\s*(?:와|왔|때문)|날씨", text))
+            )
+        )
+        details = bool(re.fullmatch(r"자세히(?:\s*(?:보여\s*줘|알려\s*줘))?[.!?]?", text))
+        report_route = not review_question and (
+            search_question or follow_question or (details and self._detail_subject is not None)
+        )
+        matches = [] if glossary or report_route else match_features(text, embed=self.embed)
         self.history.append({"role": "user", "content": text})
+        if glossary:
+            self.pending_feature = None
+            return self._finish(glossary, [], [])
         candidates = [m.feature_id for m in matches]
-        if self.pending_feature and (not candidates or self.pending_feature in candidates):
+        if report_route:
+            feature = get_feature("statistics")
+        elif self.pending_feature and (not candidates or self.pending_feature in candidates):
             # While asking for missing input, answers such as "5000원" or a reply
             # mentioning "예약" stay in the same feature unless the owner clearly
             # switches to another one.
@@ -163,10 +202,23 @@ class OwnerAssistant:
             return self._delegate_review(feature["id"], text)
         if feature["id"] == "statistics":
             self.pending_feature = None
+            if search_question:
+                return self._finish(self._search_visibility(), [], [])
+            if follow_question and self.last_report is not None:
+                self._detail_subject = "report"
+                return self._finish(report_explainer.follow_up(text, self.last_report), [], [])
+            if details and self._detail_subject == "search" and self.last_search is not None:
+                return self._finish(summarize(self.last_search), [], [])
+            if details and self.last_report is not None:
+                return self._finish(self.last_report.text, [], [])
             self.last_report = report_explainer.explain(
                 text, chat=self.chat, shop=self.store.read()
             )
-            return self._finish(self.last_report.text, [], [])
+            self._detail_subject = "report"
+            card = report_explainer.make_card(
+                self.last_report, chat=self.chat, missing_keyword=self._missing_search_keyword
+            )
+            return self._finish(card.render(), [], [])
         if not feature["input_supported"]:
             self.pending_feature = None
             return self._finish(
@@ -226,6 +278,91 @@ class OwnerAssistant:
                 self.pending_feature = None
                 return self._finish(TOOL_LIMIT_MESSAGE, saved, missing)
             count += len(calls)
+
+    def _search_visibility(self) -> str:
+        self._missing_search_keyword = None
+        self.last_search = None
+        self._detail_subject = None
+        profile = profile_from_store(self.store.read())
+        live = os.environ.get("AGENTHAN_SEARCH_LIVE") == "1" and all(
+            os.environ.get(key)
+            for key in ("NAVER_API_HUB_CLIENT_ID", "NAVER_API_HUB_CLIENT_SECRET")
+        )
+        client = (
+            ApiHubSearch()
+            if live
+            else FixtureSearch(
+                Path(__file__).parent.parent / "tools" / "search_fixture_sample.json"
+            )
+        )
+        facts = self.last_report.facts if self.last_report else report_facts(load_report())
+        queries = candidate_queries(profile)
+
+        def compact(value):
+            return re.sub(r"\s+", "", value).casefold()
+
+        known = {compact(q.text) for q in queries}
+        queries.extend(
+            Query(k.name, "inflow_keyword")
+            for k in facts.top_keywords
+            if compact(k.name) not in known
+        )
+        try:
+            report = diagnose(profile, client, queries)
+        except NaverSearchError as error:
+            return str(error)
+        self.last_search = report
+        self._detail_subject = "search"
+        missing = {compact(r.query.text) for r in report.local_results if r.rank is None}
+        registered = {compact(k) for k in self.store.read().get("shop", {}).get("keywords", [])}
+        self._missing_search_keyword = next(
+            (
+                k.name
+                for k in facts.top_keywords
+                if compact(k.name) in missing and compact(k.name) not in registered
+            ),
+            None,
+        )
+        found = [row for row in report.local_results if row.rank is not None]
+        missing_rows = [row for row in report.local_results if row.rank is None]
+        inflow_order = {compact(k.name): i for i, k in enumerate(facts.top_keywords)}
+        missing_rows.sort(
+            key=lambda row: inflow_order.get(compact(row.query.text), len(inflow_order))
+        )
+        found_text = ", ".join(f"{row.query.text}: {row.rank}위" for row in found[:3])
+        lines = [
+            ("가상 검색 결과 · " if not live else "")
+            + (f"나오는 검색어: {found_text}" if found else "상위 5개에 나오는 검색어가 없어요"),
+            "안 나오는 검색어: "
+            + (
+                ", ".join(row.query.text for row in missing_rows[:3])
+                or ("없어요" if report.local_results else "확인된 검색어가 없어요")
+            ),
+        ]
+        # A ranked result reveals the exact number ahead; for missing results R3
+        # retains at most four competitors, so only a lower bound is available.
+        ranked = next((row for row in found if row.rank > 1), None)
+        if ranked:
+            lines.append(f"‘{ranked.query.text}’에서 다른 가게 {ranked.rank - 1}곳이 먼저 나와요")
+        else:
+            ahead = next((row for row in missing_rows if row.competitors), None)
+            if ahead:
+                lines.append(
+                    f"‘{ahead.query.text}’에서 다른 가게가 "
+                    f"최소 {len(ahead.competitors)}곳 먼저 나와요"
+                )
+            else:
+                lines.append("확인한 검색어에서 다른 가게가 먼저 나온 결과가 없어요")
+        if self._missing_search_keyword:
+            action = (
+                f"이번 주 할 일: ‘{self._missing_search_keyword}’"
+                f"{report_explainer.subject_particle(self._missing_search_keyword)} "
+                "실제 메뉴와 맞으면 대표키워드에 추가해 보세요 (가게를 나타내는 등록 검색어)."
+            )
+        else:
+            action = "이번 주 할 일: 가게 정보와 대표키워드가 맞는지 확인해 보세요."
+        lines.extend([action, "개인화 없는 검색 기준이며 실제 화면과 다를 수 있음"])
+        return "\n".join(lines)
 
     # ------------------------------------------------------------ A-1 menu photo
 

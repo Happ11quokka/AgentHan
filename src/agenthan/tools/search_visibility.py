@@ -103,6 +103,7 @@ def candidate_queries(profile: StoreProfile, limit: int = 12) -> list[Query]:
     if limit <= 0:
         return []
     area, category, name = (_text(s) for s in (profile.area, profile.category, profile.name))
+    category = _text(re.split(r"[·,]", category, maxsplit=1)[0])
     menus = [_text(m) for m in profile.menus if _text(m)]
     groups = [
         [Query(f"{area} {category}", "area_category")] if area and category else [],
