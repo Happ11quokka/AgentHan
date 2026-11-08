@@ -55,5 +55,5 @@ GEMINI.md
 .vscode/
 
 # 모델 파일 (Smart Turn ONNX 등). 이미지 빌드 때 고정 리비전에서 받는다. 커밋하지 않는다
-models/
+/models/
 *.onnx
