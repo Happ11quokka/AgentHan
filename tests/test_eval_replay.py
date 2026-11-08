@@ -3,6 +3,7 @@ import os
 import socket
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
@@ -313,3 +314,11 @@ def test_live_sample_replays_saved_metrics_without_network(offline):
         ):
             assert metrics[key] == baseline["results"][mode][key]
     assert all(group["total"] >= 2 for group in results["all_tools"]["per_kind"].values())
+
+
+def test_saved_summaries_have_no_local_absolute_paths():
+    for path in run.BASELINES.glob("*.json"):
+        text = path.read_text(encoding="utf-8")
+        assert "/Users/" not in text and "/home/" not in text, path.name
+    assert run.display_path(run.TOOL_CASES) == "tests/data/tool_selection_cases.jsonl"
+    assert run.display_path(Path("/tmp/elsewhere/summary.json")) == "summary.json"

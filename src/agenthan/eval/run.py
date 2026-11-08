@@ -24,6 +24,17 @@ ROOT = Path(__file__).resolve().parents[3]
 TOOL_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
 MATCH_CASES = ROOT / "tests/data/place_request_cases.jsonl"
 REPLAY_PATH = ROOT / "tests/fixtures/replay/m0.json"
+
+
+def display_path(path: Path) -> str:
+    """Repo-relative path for summaries, so saved baselines never carry a local home path."""
+    path = Path(path).resolve()
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
 BASELINES = Path(__file__).with_name("baselines")
 
 
@@ -199,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "case_sets": {
                 mode: {
-                    "path": str(path),
+                    "path": display_path(path),
                     "file_sha256": sha256(path.read_bytes()),
                     "selected_ids": [c.id for c in case_sets[mode]],
                 }
@@ -220,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         "results": results,
         "by_split": by_split,
         "extra_summaries": [
-            {"path": str(path), "summary": json.loads(path.read_text(encoding="utf-8"))}
+            {"path": display_path(path), "summary": json.loads(path.read_text(encoding="utf-8"))}
             for path in args.extra_summary
         ],
     }

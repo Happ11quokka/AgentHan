@@ -10,7 +10,7 @@
     "case_set_sha256": "e60b2f93defe5f8b06bb6da198ab011c29358e4cd0232bdf0594d9ce9cc5d362",
     "case_sets": {
       "all_tools": {
-        "path": "/Users/nojonghyeon/.local/state/geass/worktrees/jongrionro-debug-AgentHan-21/tests/data/tool_selection_cases.jsonl",
+        "path": "tests/data/tool_selection_cases.jsonl",
         "file_sha256": "81dd82a69489963e681e7fd372089157f3f93f40ad511dcf3062fc09ccc2c19b",
         "selected_ids": [
           "upsert_menu-1",
@@ -28,7 +28,7 @@
         ]
       },
       "match": {
-        "path": "/Users/nojonghyeon/.local/state/geass/worktrees/jongrionro-debug-AgentHan-21/tests/data/place_request_cases.jsonl",
+        "path": "tests/data/place_request_cases.jsonl",
         "file_sha256": "8000b706fcb6b3ed9f07cf34764866c02d115bfe3a61e4596bfdf0ae06a2f3fe",
         "selected_ids": [
           "place_request_cases-001",
