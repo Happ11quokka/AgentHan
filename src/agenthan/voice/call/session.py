@@ -62,6 +62,7 @@ from agenthan.core.contracts import Order, OrderSink, StoreKnowledge
 from agenthan.voice.call.frames import (
     BYTES_PER_MS,
     CHUNK_BYTES,
+    HEADER,
     SAMPLE_RATE,
     AudioFrame,
     chunk_pcm,
@@ -93,7 +94,7 @@ from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
 from agenthan.voice.dialog.rules import apply_rules
-from agenthan.voice.dialog.states import TERMINAL
+from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.nlu.base import Nlu
 from agenthan.voice.nlu.prefetch import PrefetchNlu
 from agenthan.voice.store_config import StoreConfig
@@ -105,6 +106,10 @@ __all__ = ["CUSTOMER_FATAL", "CUSTOMER_RETRY", "CallSession", "SessionSettings",
 NluChoice = Literal["fake", "hcx"]
 Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
 _CONT_POLL_S = 0.1  # 이어짐 대기 중 손님이 다시 말하고 있으면 이 간격으로 다시 본다
+# 말 끊기 버튼을 막는 턴 (3단계 티켓 05, grilling Q10). 최종 복창(CONFIRM으로 끝나는 턴은 늘
+# 복창이다, 엔진 복창 불변식)을 끊고 "네"라고 하면 총액을 못 듣고 확정된다. 마무리·사장님 연결
+# 안내·취소(TERMINAL)는 주문이 이미 갔거나 통화가 끝난다. 인사는 막지 않는다
+_NO_INTERRUPT = TERMINAL | {State.CONFIRM}
 
 
 @dataclass(frozen=True)
@@ -204,6 +209,38 @@ class _BotTurn:
     act: Callable[[DialogEngine, datetime], TurnResult]  # 엔진 스레드에서 부른다
 
 
+@dataclass
+class _Spoken:
+    """봇이 말하는 턴의 문장과 보낸 문장 길이 (말 끊기의 들은 만큼 기록, 3단계 티켓 05)."""
+
+    turn: int
+    texts: list[str]
+    ms: list[int] = field(default_factory=list)  # 보낸 문장마다 소리 길이(ms). 보낸 것만
+
+    def heard(self, seq: int, played_ms: float) -> list[dict[str, Any]]:
+        """문장마다 들음(heard)·일부(partial)·안 들음(unheard).
+
+        브라우저가 `seq` 문장의 `played_ms`까지 틀고 멈췄다. 그 앞은 들음, 뒤와 보내기 전에 끊긴
+        문장은 안 들음이다. CLOVA Voice는 단어 시각을 주지 않아 일부 들은 문장은 글자 비율로
+        들은 글자 수(`chars`)를 어림한다(`s3-barge-in` Q2-2 4번)
+        """
+        out: list[dict[str, Any]] = []
+        for i, text in enumerate(self.texts):
+            ms = self.ms[i] if i < len(self.ms) else None
+            if ms is None or i > seq:
+                status, got = "unheard", 0
+            elif i < seq:
+                status, got = "heard", ms
+            else:
+                got = max(0, min(round(played_ms), ms))
+                status = "unheard" if got == 0 else ("heard" if got >= ms else "partial")
+            entry: dict[str, Any] = {"seq": i, "heard": status, "ms": ms, "played_ms": got}
+            if status == "partial" and ms:
+                entry["chars"] = round(len(text) * got / ms)
+            out.append(entry)
+        return out
+
+
 class _EngineTimeout(Exception):
     pass
 
@@ -280,6 +317,8 @@ class CallSession:
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer: asyncio.TimerHandle | None = None
         self._thinking_timer: asyncio.TimerHandle | None = None
+        self._speaking: asyncio.Task[int] | None = None  # 지금 문장을 보내는 작업 (말 끊기가 취소)
+        self._spoken: _Spoken | None = None  # 마지막으로 말한 턴의 문장 (들은 만큼 기록)
         self._broken = False
 
     # ------------------------------------------------------------ 바깥 진입점
@@ -380,6 +419,10 @@ class CallSession:
             self._log.mark(turn, "play_start")
         elif kind == "playback.done":
             self._on_playback_done(turn, seq, event.get("output_latency"))
+        elif kind == "user.interrupt":  # 말 끊기 버튼 (티켓 05)
+            self._interrupt(turn, "button")
+        elif kind == "playback.interrupted":
+            self._on_playback_interrupted(turn, seq, event.get("played_ms"))
         elif kind == "client.metrics":
             record = self._log.get(turn)
             if record is not None:
@@ -875,17 +918,22 @@ class CallSession:
             s for text in result.utterances
             for s in split_sentences(text, self._settings.sentence_limit)
         ]
-        audio_ms = 0
+        audio_ms: int | None = 0
         if sentences:
             self._last_seq[turn] = len(sentences) - 1
-            audio_ms = await self._speak(turn, sentences)  # 첫 소리를 보낼 때 speaking
-        self._cancel_thinking()  # 말할 문장이 없던 턴
-        self._emit({"type": "bot.done", "turn": turn, "sentences": len(sentences)})
+            self._spoken = _Spoken(turn, sentences)
+            audio_ms = await self._speak_until_cut(turn, sentences)  # 첫 소리를 보낼 때 speaking
+        if self._turn == turn:  # 끊긴 뒤 벌써 다음 턴이 열렸으면 그 턴의 효과음 타이머다
+            self._cancel_thinking()  # 말할 문장이 없던 턴
+        done: dict[str, Any] = {"type": "bot.done", "turn": turn, "sentences": len(sentences)}
+        if audio_ms is None:  # 말 끊기: 보낸 문장 수만 센다
+            done.update(sentences=len(self._spoken.ms) if self._spoken else 0, interrupted=True)
+        self._emit(done)
         self._bot_done_turn = turn
         self._log.mark(turn, "bot_done")
         if not sentences:
             self._after_playback(turn)
-        elif self._phase == "speaking":
+        elif self._phase == "speaking" and audio_ms is not None:
             # 서버 안전망: 재생 끝 보고가 안 와도 소리 길이 + 여유 뒤에는 듣기로 (리뷰 4번)
             delay = audio_ms / 1000 + self._settings.play_done_grace_s
             self._play_timer = asyncio.get_running_loop().call_later(
@@ -930,6 +978,26 @@ class CallSession:
             raise _EngineTimeout  # 스레드는 계속 돈다. 이 엔진은 다시 부르지 않는다
         return task.result()
 
+    async def _speak_until_cut(self, turn: int, sentences: list[str]) -> int | None:
+        """`_speak`를 따로 작업으로 돌린다. 말 끊기가 그 작업을 취소하면 `None`.
+
+        `_speak`를 턴 작업 안에서 그냥 await하면 끊긴 뒤에도 남은 문장 TTS가 끝날 때까지 다음 손님
+        말의 엔진 호출이 밀리고 `bot.say` 자막이 계속 나간다(`s3-verify-barge-in` 4-3).
+        턴 작업 자체를 취소하면 `_turn_loop`가 죽으니 안쪽 작업만 취소한다.
+        """
+        task = asyncio.create_task(self._speak(turn, sentences), name=f"{self.call_id}-speak")
+        self._speaking = task
+        try:
+            await asyncio.wait({task})
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        finally:
+            self._speaking = None
+        if task.cancelled():
+            return None
+        return task.result()
+
     async def _speak(self, turn: int, sentences: list[str]) -> int:
         """문장마다 TTS를 동시에 `tts_concurrency`개까지 부르고, 보내는 건 문장 순서대로.
 
@@ -965,6 +1033,8 @@ class CallSession:
                         record.fields["tts_trim_ms"] = trimmed_ms
                     self._start_speaking(turn)
                 audio_bytes += len(pcm)
+                if self._spoken is not None and self._spoken.turn == turn:
+                    self._spoken.ms.append(len(pcm) // BYTES_PER_MS)  # 들은 만큼 계산용
                 self._emit({"type": "bot.say", "turn": turn, "seq": seq, "text": text})
                 for i, (chunk, last) in enumerate(chunk_pcm(pcm, self._settings.chunk_bytes)):
                     frame = pack_audio_frame(AudioFrame(turn, seq, chunk, last))
@@ -1005,9 +1075,52 @@ class CallSession:
             self._play_timer.cancel()
             self._play_timer = None
 
-    def _after_playback(self, turn: int) -> None:
+    # 말 끊기 (3단계 티켓 05). 기본은 반이중이라 봇이 말하는 동안 브라우저는 0 프레임을 보낸다.
+    # 버튼을 누르면 브라우저가 재생을 멈추고 지금 턴 이하 오디오를 버리고 마이크를 연 뒤
+    # `user.interrupt`와 `playback.interrupted {turn, seq, played_ms}`를 보낸다. 서버는 남은 문장
+    # TTS와 `bot.say`를 멈추고, 송신 큐에 남은 그 턴 오디오를 버리고, 듣기로 간다.
+    # 소리가 나간 턴은 들었다고 본다(엔진은 되돌리지 않는다, grilling Q12). 복창·마무리·사장님
+    # 연결 안내 턴은 막는다(`_NO_INTERRUPT`). 확정·취소로 끝난 턴은 그래서 끊기지 않는다
+
+    def _interrupt(self, turn: int, by: str) -> None:
+        """봇 말을 끊는다. 지금 턴이고 끊기를 받는 때만. 두 번 불러도 한 번만 끊는다."""
+        if self.done or turn != self._turn or not self._interruptible():
+            return
+        if self._speaking is not None:
+            self._speaking.cancel()  # 남은 문장 TTS·`bot.say`. `_speak`의 finally가 TTS를 취소한다
+        self._drop_queued(turn)
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["interrupt"] = {"by": by}
+        self._after_playback(turn, mark="interrupted")
+
+    def _drop_queued(self, turn: int) -> None:
+        """송신 큐에 남은 그 턴의 오디오·자막을 버린다. 이미 소켓으로 나간 것은 브라우저가 버린다."""
+        kept = []
+        while not self._out.empty():
+            item = self._out.get_nowait()
+            if item is None or not _of_turn(item, turn):
+                kept.append(item)
+        for item in kept:
+            self._out.put_nowait(item)
+
+    def _on_playback_interrupted(self, turn: int, seq: Any, played_ms: Any) -> None:
+        """브라우저가 재생을 멈춘 자리. 문장마다 들음·일부·안 들음을 그 턴 기록에 남긴다."""
+        self._interrupt(turn, "playback")  # 버튼 신호 없이 온 보고도 같은 자리에서 끊는다
+        record = self._log.get(turn)
+        spoken = self._spoken
+        if (record is None or "interrupt" not in record.fields or spoken is None
+                or spoken.turn != turn or "heard" in record.fields["interrupt"]):
+            return  # 끊지 않은 턴(막는 턴·지난 턴)의 보고는 남기지 않는다
+        if seq is None or not _is_number(played_ms):
+            log.info("값이 틀린 playback.interrupted를 버림 (%s)", self.call_id)
+            return
+        record.fields["interrupt"].update(seq=seq, played_ms=round(played_ms),
+                                          heard=spoken.heard(seq, played_ms))
+
+    def _after_playback(self, turn: int, *, mark: str = "play_done") -> None:
         self._cancel_play_timer()
-        self._log.mark(turn, "play_done")
+        self._log.mark(turn, mark)
         if self._terminal:
             self._end()
             return
@@ -1034,10 +1147,17 @@ class CallSession:
             "type": "state",
             "turn": self._turn,
             "phase": self._phase,
+            "interruptible": self._interruptible(),
             "dialog": result.state.value if result else None,
             "cart": _cart_json(result.cart if result else Cart()),
             "total": result.cart.total() if result else 0,
         })
+
+    def _interruptible(self) -> bool:
+        """지금 말 끊기 버튼을 받나. 봇 소리가 나가는 중이고, 막는 턴이 아닐 때만."""
+        result = self._last
+        return (self._phase == "speaking" and result is not None
+                and result.state not in _NO_INTERRUPT)
 
     def _flush_log(self, before: int | None = None) -> None:
         for line in self._log.flush(before):
@@ -1074,6 +1194,18 @@ class CallSession:
 
 def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and value >= 0
+
+
+def _of_turn(item: tuple[str, Any, Any], turn: int) -> bool:
+    """송신 큐 항목이 그 턴의 봇 소리(오디오 프레임·문장 자막·문장 끝)인가."""
+    kind, payload, _ = item
+    if kind == "audio":
+        return HEADER.unpack_from(payload)[3] == turn
+    return payload.get("turn") == turn and payload.get("type") in ("bot.say", "bot.audio.end")
 
 
 def _retrieve(task: asyncio.Future[Any]) -> None:
