@@ -177,6 +177,11 @@
   color: #fff;
 }
 
+.phone-btn-interrupt {
+  border-color: var(--phone-accent);
+  color: var(--phone-accent);
+}
+
 .phone-btn-warn {
   flex: none;
   min-height: 44px;

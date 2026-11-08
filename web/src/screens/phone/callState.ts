@@ -25,10 +25,19 @@ export interface OrderJson {
 export type ServerEvent =
   | { type: 'call.ready'; turn: number; call: string; sample_rate: number }
   | { type: 'stt.final'; turn: number; text: string; epd_type: string; fragments: number; end_by: string }
-  | { type: 'state'; turn: number; phase: Phase; dialog: string | null; cart: CartLine[]; total: number }
+  | {
+      type: 'state'
+      turn: number
+      phase: Phase
+      /** 말 끊기 버튼을 받나. 봇이 말하는 중이고 최종 복창·마무리·사장님 연결 안내가 아닐 때 (티켓 05) */
+      interruptible: boolean
+      dialog: string | null
+      cart: CartLine[]
+      total: number
+    }
   | { type: 'bot.say'; turn: number; seq: number; text: string }
   | { type: 'bot.audio.end'; turn: number; seq: number }
-  | { type: 'bot.done'; turn: number; sentences: number }
+  | { type: 'bot.done'; turn: number; sentences: number; interrupted?: boolean }
   | { type: 'bot.thinking'; turn: number }
   | { type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number }
   | { type: 'metrics'; turn: number; [key: string]: unknown }
@@ -48,6 +57,10 @@ export interface CallState {
   turn: number
   /** 봇 소리를 내는 중(서버 speaking ~ 이 턴 재생 끝 + 여유). 이 동안 마이크 대신 0을 보낸다. */
   botTalking: boolean
+  /** 서버가 지금 턴의 말 끊기를 받는다(state.interruptible) */
+  interruptible: boolean
+  /** 말 끊기로 멈춘 마지막 턴. 이 턴 이하의 봇 오디오는 버린다(8바이트 헤더의 turn). 없으면 -1 */
+  cutTurn: number
   captions: Caption[]
   cart: CartLine[]
   total: number
@@ -71,6 +84,7 @@ export type CallAction =
   | { type: 'mic.failed'; reason: MicFailure }
   | { type: 'server'; event: ServerEvent }
   | { type: 'playback.finished'; turn: number }
+  | { type: 'interrupt' }
   | { type: 'audio.state'; state: string }
   | { type: 'link.slow'; slow: boolean }
   | { type: 'socket.closed' }
@@ -81,6 +95,8 @@ export const initialCallState: CallState = {
   phase: null,
   turn: 0,
   botTalking: false,
+  interruptible: false,
+  cutTurn: -1,
   captions: [],
   cart: [],
   total: 0,
@@ -112,6 +128,12 @@ export function callReducer(state: CallState, action: CallAction): CallState {
       return onServer(state, action.event)
     case 'playback.finished':
       return action.turn === state.turn ? { ...state, botTalking: false } : state
+    case 'interrupt':
+      // 서버 왕복을 기다리지 않고 마이크를 바로 연다. 아니면 누르자마자 한 말 앞부분이 0이 된다
+      // (s3-verify-barge-in 4-1). 남은 스피커 소리(outputLatency)는 에코 제거가 맡고, 서버 무음
+      // 감지는 200ms 넘게 이어진 소리만 말로 본다
+      if (!canInterrupt(state)) return state
+      return { ...state, botTalking: false, interruptible: false, cutTurn: state.turn }
     case 'audio.state': {
       const audioBlocked = action.state === 'suspended' || action.state === 'interrupted'
       return audioBlocked === state.audioBlocked ? state : { ...state, audioBlocked }
@@ -138,8 +160,16 @@ function onServer(state: CallState, event: ServerEvent): CallState {
     case 'call.ready':
       return { ...state, status: 'live' }
     case 'state': {
-      const next = { ...state, phase: event.phase, turn: event.turn, cart: event.cart, total: event.total }
-      if (event.phase === 'speaking') next.botTalking = true
+      const cut = event.turn <= state.cutTurn // 끊은 턴의 늦은 상태는 마이크를 다시 닫지 않는다
+      const next = {
+        ...state,
+        phase: event.phase,
+        turn: event.turn,
+        cart: event.cart,
+        total: event.total,
+        interruptible: event.interruptible === true && !cut,
+      }
+      if (event.phase === 'speaking' && !cut) next.botTalking = true
       if (event.phase === 'listening') next.botTalking = false
       return next
     }
@@ -154,6 +184,7 @@ function onServer(state: CallState, event: ServerEvent): CallState {
         ...state,
         status: 'failed',
         botTalking: false,
+        interruptible: false,
         error: { message: event.message, retry: event.retry },
       }
     default:
@@ -169,4 +200,15 @@ export function micLive(state: CallState): boolean {
 /** "말 끝" 버튼(user.end_of_speech)을 받을 수 있는 국면인가. 서버도 listening·thinking만 받는다. */
 export function canEndSpeech(state: CallState): boolean {
   return state.status === 'live' && (state.phase === 'listening' || state.phase === 'thinking')
+}
+
+/** "말 끊기" 버튼을 보이고 받을 수 있나. 서버가 허용한 턴의 봇 소리가 나는 중일 때만. */
+export function canInterrupt(state: CallState): boolean {
+  return (
+    state.status === 'live' &&
+    state.phase === 'speaking' &&
+    state.interruptible &&
+    state.botTalking &&
+    state.turn > state.cutTurn
+  )
 }
