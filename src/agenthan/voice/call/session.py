@@ -104,7 +104,14 @@ class SessionSettings:
     chunk_bytes: int = CHUNK_BYTES  # 내리는 오디오 조각 ≈ 200ms
     stt_backlog_ms: int = 3_000  # STT 쓰기가 이만큼 밀리면 통화를 끝낸다 (stt_backlog)
     stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
-    hold_max_s: float = 1.2  # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout)
+    # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout). STT 결과 대기라서
+    # "epFlag 송신 → 글 있는 응답"의 p99로 정한다(Pipecat `ttfs_p99`, 3단계 티켓 01).
+    # 임시값 1.8초: 2단계 가짜 휴대폰 실측(2026-11-08 net59k, 녹음 17개 중 무음 감지로 끝난 턴
+    # 8개)은 p50 0.56 / p90 1.05 / 최대 1.78초였다. 8개로는 p99를 못 내서 최대값을 덮게 잡았다.
+    # 회선 병목이던 실행(`NETWORK-BOUND-invalid`)은 뺐다. 다시 잴 때는 `turn_summary`의
+    # `stt_wait_ms`(턴 기록의 `ep_sent` → `stt_final`)를 30턴 이상 모아 p99로 바꾼다.
+    # 전 값 1.2초는 짐작이었다
+    hold_max_s: float = 1.8
     hold_cap_s: float = 3.0  # 이어진 말이 아직 열려 있어도 붙잡기는 여기까지
     # `playback.done`이 안 와도(AudioContext 멈춤 등) 보낸 소리 길이 + 이만큼 뒤 듣기로 (리뷰 4번)
     play_done_grace_s: float = 3.0
