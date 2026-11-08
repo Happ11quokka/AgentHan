@@ -4,9 +4,11 @@
 - `inside`: 녹음 안(뒤 잡음 구간)에서 말 끝을 잡았나. 거짓이면 실제 폰에서는(0 프레임이 없으니)
   무음 감지가 말 끝을 못 잡고 STT gap700 안전망이나 "말 끝" 버튼에 기댄다
 - `end_to_ep_ms`: 기준 말 끝(`audio.speech_end_s`) → 그 뒤 첫 `epFlag` 프레임
+- `ep_ms`: `epFlag`를 붙인 프레임 끝(조기 epFlag, 무음 `ep_silence_ms`). `end_ms`: 말 끝(턴 판정)
+  프레임 끝. 기준 말 끝 전의 `epFlag`는 말 중간 쉼에서 나간 것이다(조각이 는다)
 
     uv run python -m agenthan.voice.fake_phone.vad_check private/recordings/donghyeon/wav \\
-        500/200/500 1500/200/400
+        1500/200/400/400 1500/200/400/250    # 임계값/말 시작/말 끝 무음[/epFlag 무음]
 """
 
 from __future__ import annotations
@@ -30,32 +32,40 @@ def check_clip(pcm: bytes, settings: VadSettings, *, tail_ms: int = TAIL_MS) -> 
     clip_ms = len(audio) // FRAME_BYTES * FRAME_MS
     audio += bytes(tail_ms // FRAME_MS * FRAME_BYTES)
     vad = SilenceDetector(settings)
-    eps = []
+    eps, ends = [], []
     for i in range(len(audio) // FRAME_BYTES):
         if vad.feed(audio[i * FRAME_BYTES:(i + 1) * FRAME_BYTES]):
+            ends.append((i + 1) * FRAME_MS)
+        if vad.ep_due:
             eps.append((i + 1) * FRAME_MS)
     after = [ep for ep in eps if speech_end is not None and ep >= speech_end]
+    ended = [end for end in ends if speech_end is not None and end >= speech_end]
     return {
         "speech_end_ms": speech_end,
         "ep_ms": eps,
-        "inside": bool(after) and after[0] <= clip_ms,
+        "end_ms": ends,
+        "inside": bool(ended) and ended[0] <= clip_ms,
         "end_to_ep_ms": after[0] - speech_end if after and speech_end is not None else None,
     }
 
 
-def _settings(text: str) -> VadSettings:
-    threshold, start, end = text.split("/")
-    return VadSettings(threshold=float(threshold), start_ms=int(start), end_silence_ms=int(end))
+def parse_candidate(text: str) -> VadSettings:
+    """`임계값/말 시작ms/말 끝 무음ms[/epFlag 무음ms]` → 설정. epFlag 무음이 없으면 기본값."""
+    threshold, start, end, *ep = text.split("/")
+    extra = {"ep_silence_ms": int(ep[0])} if ep else {}
+    return VadSettings(threshold=float(threshold), start_ms=int(start), end_silence_ms=int(end),
+                       **extra)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="무음 감지 오프라인 점검")
     parser.add_argument("wav_dir", type=Path)
-    parser.add_argument("candidates", nargs="+", help="임계값/말 시작ms/말 끝 무음ms")
+    parser.add_argument("candidates", nargs="+",
+                        help="임계값/말 시작ms/말 끝 무음ms[/epFlag 무음ms]")
     args = parser.parse_args(argv)
     clips = {p.stem: read_pcm(p) for p in sorted(args.wav_dir.glob("*.wav"))}
     for text in args.candidates:
-        settings = _settings(text)
+        settings = parse_candidate(text)
         rows = {k: check_clip(pcm, settings) for k, pcm in clips.items()}
         inside = sum(r["inside"] for r in rows.values())
         early = sum(sum(1 for ep in r["ep_ms"] if r["speech_end_ms"] and ep < r["speech_end_ms"])

@@ -23,13 +23,16 @@
 
 턴 번호: 인사가 0, 손님 말 하나(합친 것)마다 1씩 는다. 나가는 메시지 모두에 `turn`이 있다.
 
-국면(phase): listening(듣는 중) → thinking(엔진 도는 중) → speaking(봇 말하는 중) → listening.
+국면(phase): listening(듣는 중) → thinking(엔진·첫 문장 TTS 도는 중) → speaking(봇 말하는 중)
+→ listening.
 - listening에 말 끝 결과가 오면 바로 다음 턴
 - thinking에 온 결과는 모아 두었다가 재생이 끝나면 하나로 합쳐 다음 턴 하나로 넣는다
   (대답 두 번 방지)
-- speaking에 온 결과는 버린다(반이중). 마지막 문장의 `playback.done`이 오면 listening.
+- speaking은 첫 오디오를 보낼 때부터다(3단계 티켓 01). 그 뒤에 시작한 말의 결과는 버린다
+  (반이중, 말한 시각 기준). 첫 소리 전에 한 말은 결과가 늦게 와도 다음 턴으로 받는다.
+  마지막 문장의 `playback.done`이 오면 listening.
   안 오면 보낸 소리 길이 + `play_done_grace_s` 뒤 서버가 스스로 listening으로 간다.
-  speaking에 들어갈 때 붙잡아 둔 조각과 "말 끝" 표시를 지운다
+  speaking에 들어갈 때 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다
 
 조각 붙잡기: 끝 후보 결과가 왔는데 그 끝 뒤에 새 말 구간이 시작됐으면 다음 결과와 합친다.
 epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 epFlag 응답을 기다리는
@@ -51,6 +54,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import Executor
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,6 +79,7 @@ from agenthan.voice.call.ports import (
     Tts,
 )
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
+from agenthan.voice.call.trim import TrimSettings, trim_leading_silence
 from agenthan.voice.call.turn_end import (
     MODEL_HIGH,
     MODEL_LOW,
@@ -110,10 +115,18 @@ class SessionSettings:
     turn_timeout_s: float = 20.0
     tts_concurrency: int = 2
     sentence_limit: int = TTS_LIMIT
+    tts_trim: TrimSettings = field(default_factory=TrimSettings)  # 첫 문장 앞 무음 자르기
     chunk_bytes: int = CHUNK_BYTES  # 내리는 오디오 조각 ≈ 200ms
     stt_backlog_ms: int = 3_000  # STT 쓰기가 이만큼 밀리면 통화를 끝낸다 (stt_backlog)
     stt_batch_ms: int = 1_000  # 밀린 프레임을 DATA 하나로 묶는 최대 길이
-    hold_max_s: float = 1.2  # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout)
+    # 붙잡은 뒤 새 결과 없이 이만큼 지나면 턴을 넘긴다 (hold_timeout). STT 결과 대기라서
+    # "epFlag 송신 → 글 있는 응답"의 p99로 정한다(Pipecat `ttfs_p99`, 3단계 티켓 01).
+    # 임시값 1.8초: 2단계 가짜 휴대폰 실측(2026-11-08 net59k, 녹음 17개 중 무음 감지로 끝난 턴
+    # 8개)은 p50 0.56 / p90 1.05 / 최대 1.78초였다. 8개로는 p99를 못 내서 최대값을 덮게 잡았다.
+    # 회선 병목이던 실행(`NETWORK-BOUND-invalid`)은 뺐다. 다시 잴 때는 `turn_summary`의
+    # `stt_wait_ms`(턴 기록의 `ep_sent` → `stt_final`)를 30턴 이상 모아 p99로 바꾼다.
+    # 전 값 1.2초는 짐작이었다
+    hold_max_s: float = 1.8
     hold_cap_s: float = 3.0  # 이어진 말이 아직 열려 있어도 붙잡기는 여기까지
     # 말 끝 판정 (3단계 티켓 02). 이어짐이면 마지막 말 끝(마지막 유성 프레임 도착)부터 이만큼까지
     # 기다린다. 말이 다시 시작되면 다음 말 끝부터 다시 센다 (grilling Q3, `PHONE_CONT_WAIT_S`)
@@ -127,6 +140,8 @@ class SessionSettings:
     turn_model_high: float = MODEL_HIGH
     # `playback.done`이 안 와도(AudioContext 멈춤 등) 보낸 소리 길이 + 이만큼 뒤 듣기로 (리뷰 4번)
     play_done_grace_s: float = 3.0
+    # 말 끝 + 이만큼까지 봇 목소리가 없으면 `bot.thinking`(생각 중 효과음). PRD 1.5초 (grilling Q13)
+    thinking_after_s: float = 1.5
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
@@ -160,6 +175,9 @@ class _Utterance:
     ep_sent: float | None = None
     button: float | None = None
     utterances: int = 1  # 엔진 도는 중에 와서 합친 말 수
+    # 봇이 말하는 동안 모아 둔 말(`_pending`)로 연다. 말 끝이 봇 재생 전이라 말 끝 기준 지연을
+    # 재지 않는다(3단계 티켓 01). 합치면 마지막 말을 따른다(뒤에 새로 한 말이면 다시 잰다)
+    queued: bool = False
 
     @staticmethod
     def merge(items: list[_Utterance]) -> _Utterance:
@@ -174,7 +192,16 @@ class _Utterance:
             ep_sent=last.ep_sent,
             button=last.button,
             utterances=sum(u.utterances for u in items),
+            queued=last.queued,
         )
+
+
+@dataclass(frozen=True)
+class _BotTurn:
+    """봇이 먼저 말하는 턴 (무음 되묻기·기다림 요청 응답 등, 3단계 티켓 04·05가 쓴다)."""
+
+    reason: str  # 턴 기록 `bot_turn`에 남는다
+    act: Callable[[DialogEngine, datetime], TurnResult]  # 엔진 스레드에서 부른다
 
 
 class _EngineTimeout(Exception):
@@ -215,7 +242,7 @@ class CallSession:
         self._out: asyncio.Queue[tuple[str, Any, Callable[[], None] | None] | None] = (
             asyncio.Queue()
         )
-        self._turns: asyncio.Queue[tuple[int, _Utterance]] = asyncio.Queue()
+        self._turns: asyncio.Queue[tuple[int, _Utterance | _BotTurn]] = asyncio.Queue()
         self._stt_q: asyncio.Queue[tuple[bytes, bool, int]] = asyncio.Queue()
         self._stt_backlog = 0  # 큐에 있거나 쓰는 중인 바이트
         self._done = asyncio.Event()
@@ -248,9 +275,11 @@ class CallSession:
         self._voice_at: float | None = None
         self._ep_at: float | None = None  # 마지막 epFlag 프레임을 쓰기 큐에 넣은 때
         self._ep_reply_at: float | None = None  # 마지막 epFlag 응답을 받은 때
+        self._speak_from_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각 (반이중 기준)
         self._client_start: dict[str, Any] = {}
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer: asyncio.TimerHandle | None = None
+        self._thinking_timer: asyncio.TimerHandle | None = None
         self._broken = False
 
     # ------------------------------------------------------------ 바깥 진입점
@@ -275,13 +304,15 @@ class CallSession:
         now = self._clock.monotonic()
         if self._vad.last_voiced:
             self._voice_at = now
-        ep = ended or self._commit
+        ep = self._vad.ep_due or self._commit  # 조기 epFlag: 무음 250ms (턴 판정은 `ended`)
         if ep:
             if self._commit:
                 self._vad.end_speech()
             self._commit = False
             self._ep_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
+        if ended:
+            self._on_speech_end()
         self._stt_backlog += len(pcm)
         backlog_ms = self._stt_backlog // BYTES_PER_MS
         record = self._log.get(self._turn)
@@ -293,6 +324,27 @@ class CallSession:
                                           "잠시 후 다시 걸어 주세요."), "stt")
             return
         await asyncio.sleep(0)  # 쓰기 작업에 차례를 준다. STT를 기다리지는 않는다
+
+    def bot_turn(
+        self, reason: str, act: Callable[[DialogEngine, datetime], TurnResult]
+    ) -> int | None:
+        """봇이 먼저 말하는 턴을 새 턴 번호로 연다. 듣는 중일 때만 받는다. 연 턴 번호를 돌려준다.
+
+        `act(engine, now)`가 엔진에서 할 말을 정한다(예: 무응답 진입점). 이 턴도 손님 턴처럼
+        국면·턴 번호·지난 오디오 버리기·반이중·재생 끝 처리를 그대로 탄다. 생각 중 효과음은 없다.
+        손님 말을 붙잡는 중(조각·말 끝 표시)이면 받지 않는다. 그 말이 먼저다
+        """
+        if (self.done or self._terminal or self._phase != "listening" or self._parts
+                or self._pending or self._cont is not None):
+            return None
+        self._turn += 1
+        turn = self._turn
+        self._phase = "thinking"
+        self._flush_log(before=turn)
+        self._log.begin(turn, text="", bot_turn=reason)
+        self._emit_state()
+        self._turns.put_nowait((turn, _BotTurn(reason, act)))
+        return turn
 
     async def drain_audio(self) -> None:
         """받은 오디오를 STT에 다 쓸 때까지(또는 통화가 끝날 때까지) 기다린다. 테스트용."""
@@ -459,8 +511,8 @@ class CallSession:
     def _on_result(self, r: SttResult) -> None:
         if r.ep_flag:
             self._ep_reply_at = self._clock.monotonic()
-        if self.done or self._terminal or self._phase == "speaking":
-            self._log_dropped(r)  # 반이중: 봇 말하는 중 결과는 버린다
+        if self.done or self._terminal or self._spoken_over(r):
+            self._log_dropped(r)  # 반이중: 봇 소리가 나간 뒤에 한 말의 결과는 버린다
             return
         self._cancel_hold()
         if r.text.strip():
@@ -471,6 +523,8 @@ class CallSession:
             return
         if not self._parts:
             if r.ep_flag:
+                if not self._forced and r.epd_type != "eof" and not self._vad.in_speech:
+                    self._log_empty(r)
                 self._forced = False  # 말 없이 누른 버튼
             return
         forced = self._forced
@@ -483,6 +537,14 @@ class CallSession:
             self._arm_hold(self._settings.hold_max_s)
             return
         self._release(r, "button" if forced else ("vad" if r.ep_flag else r.epd_type))
+
+    def _spoken_over(self, r: SttResult) -> bool:
+        """봇 소리가 나간 뒤에 시작한 말의 결과인가 (반이중으로 버린다).
+
+        도착 시각이 아니라 말한 시각(오디오 시각)으로 본다. 첫 소리 전에 한 말은 결과가 봇 소리
+        뒤에 와도 다음 턴으로 받는다(3단계 티켓 01). 그 전 오디오에는 봇 목소리가 섞일 수 없다
+        """
+        return self._phase == "speaking" and r.start_ms >= self._speak_from_ms
 
     def _continues_after(self, r: SttResult) -> bool:
         """말 끝 후보 결과 `r` 뒤에 손님 말이 이어지나 (붙잡을지).
@@ -498,7 +560,19 @@ class CallSession:
         """
         if self._vad.speech_since(r.end_ms):
             return True
-        return not r.ep_flag and (self._vad.in_speech or self._ep_waiting())
+        if r.ep_flag:
+            # 조기 epFlag(무음 250ms)의 응답인데 무음이 아직 턴 판정(400ms)에 못 닿았거나 말이 다시
+            # 시작됐다. 턴은 무음 감지가 말 끝을 볼 때(`_on_speech_end`)나 다음 응답으로 넘긴다
+            return self._vad.in_speech
+        return self._vad.in_speech or self._ep_waiting()
+
+    def _on_speech_end(self) -> None:
+        """무음이 턴 판정 길이(400ms)에 닿았다. 그 전에 와서 붙잡아 둔 epFlag 응답이면 넘긴다."""
+        held = self._held
+        if held is None or not held.ep_flag or not self._parts or self._ep_waiting():
+            return
+        self._cancel_hold()
+        self._release(held, "vad")
 
     def _ep_waiting(self) -> bool:
         """마지막으로 쓴 epFlag 프레임의 응답을 아직 못 받았나."""
@@ -521,6 +595,19 @@ class CallSession:
             "text": r.text, "epd_type": r.epd_type, "start_ms": r.start_ms, "end_ms": r.end_ms,
             "ep_flag": r.ep_flag, "reason": reason, "backchannel": is_backchannel(r.text),
         })
+
+    def _log_empty(self, r: SttResult) -> None:
+        """빈 턴: 무음 감지가 말로 봐서 epFlag를 보냈는데 글 없는 응답만 왔다 (지표).
+
+        재연결 때 어댑터가 만든 빈 응답(`eof`)과 말 없이 누른 버튼은 세지 않는다.
+        되묻기("잘 못 들었어요")는 3단계 티켓 04가 이 자리에서 한다
+        """
+        record = self._log.get(self._turn)
+        if record is not None:
+            record.fields.setdefault("empty", []).append({
+                "start_ms": r.start_ms, "end_ms": r.end_ms, "epd_type": r.epd_type,
+                "ep_flag": r.ep_flag,
+            })
 
     def _release(self, r: SttResult, end_by: str) -> None:
         """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""
@@ -564,7 +651,7 @@ class CallSession:
     def _on_hold_timer(self) -> None:
         self._hold_timer = None
         held = self._held
-        if held is None or not self._parts or self.done or self._phase == "speaking":
+        if held is None or not self._parts or self.done:
             return
         now = self._clock.monotonic()
         assert self._hold_since is not None and self._hold_at is not None
@@ -699,11 +786,14 @@ class CallSession:
         self._steps = []
 
     def _dispatch(self, u: _Utterance, decision: TurnDecision | None = None) -> None:
+        """손님 말 하나를 새 턴으로 넘긴다."""
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
         self._flush_log(before=turn)
         fields: dict[str, Any] = {}
+        if u.queued:
+            fields["queued"] = True
         if decision is not None:
             fields["turn_end"] = decision.as_record()
             if self._steps:
@@ -721,11 +811,39 @@ class CallSession:
         self._emit({"type": "stt.final", "turn": turn, "text": u.text, "epd_type": u.epd_type,
                     "fragments": u.fragments, "end_by": u.end_by})
         self._emit_state()
+        # 모아 둔 말은 말 끝이 봇 재생 전이라, 재생이 끝나 넘긴 지금부터 센다
+        ref = None if u.queued else (u.speech_end or u.button)
+        self._arm_thinking(turn, ref)
         self._turns.put_nowait((turn, u))
+
+    # 생각 중 효과음 (3단계 티켓 01, grilling Q13). 말 끝 + `thinking_after_s`까지 봇 목소리가
+    # 없으면 `bot.thinking`을 한 번 보낸다. 브라우저가 짧은 비음성 효과음을 낸다. 첫 오디오를
+    # 보내거나(`_start_speaking`) 말 없이 턴이 끝나면 타이머를 끈다. 지표는 목소리(`audio_first`·
+    # `play_start`)와 따로 `thinking` 표시로 남긴다
+
+    def _arm_thinking(self, turn: int, ref: float | None) -> None:
+        self._cancel_thinking()
+        now = self._clock.monotonic()
+        delay = max(0.0, (now if ref is None else ref) + self._settings.thinking_after_s - now)
+        self._thinking_timer = asyncio.get_running_loop().call_later(
+            delay, self._on_thinking, turn
+        )
+
+    def _cancel_thinking(self) -> None:
+        if self._thinking_timer is not None:
+            self._thinking_timer.cancel()
+            self._thinking_timer = None
+
+    def _on_thinking(self, turn: int) -> None:
+        self._thinking_timer = None
+        if self.done or turn != self._turn or self._phase != "thinking":
+            return
+        self._log.mark(turn, "thinking")
+        self._emit({"type": "bot.thinking", "turn": turn})
 
     # ------------------------------------------------------------ 한 턴
 
-    async def _run_turn(self, turn: int, u: _Utterance | None) -> None:
+    async def _run_turn(self, turn: int, u: _Utterance | _BotTurn | None) -> None:
         engine = self._engine
         assert engine is not None
         if u is None:  # 인사 턴. 마이크 실제 설정값(`call.start`)을 이 줄의 client에 남긴다
@@ -735,8 +853,12 @@ class CallSession:
         self._log.mark(turn, "engine_start")
         if u is None:
             result = await self._call_engine(lambda: engine.start(now))
+        elif isinstance(u, _BotTurn):
+            act = u.act
+            result = await self._call_engine(lambda: act(engine, now))
         else:
-            result = await self._call_engine(lambda: engine.handle(u.text, now))
+            text = u.text
+            result = await self._call_engine(lambda: engine.handle(text, now))
         self._log.mark(turn, "engine_end")
         stats = self._prefetch.take_stats() if self._prefetch is not None else None
         record = self._log.get(turn)
@@ -756,17 +878,8 @@ class CallSession:
         audio_ms = 0
         if sentences:
             self._last_seq[turn] = len(sentences) - 1
-            self._phase = "speaking"
-            # 이 뒤에 오는 결과는 버리므로, 붙잡아 둔 조각과 "말 끝" 표시가 다음 손님 말에
-            # 붙지 않게 여기서 지운다(리뷰 3번). 이미 끝난 말(`_pending`)은 그대로 둔다
-            self._clear_hold()
-            # 판정 중인 말도 지운다. 지금은 늘 비어 있다(엔진은 판정 뒤에만 돈다).
-            # 봇이 먼저 말하는 턴(티켓 04)이 생기면 여기에 걸린다
-            self._clear_decision()
-            self._forced = self._commit = False
-            self._button_at = None
-            self._emit_state()
-            audio_ms = await self._speak(turn, sentences)
+            audio_ms = await self._speak(turn, sentences)  # 첫 소리를 보낼 때 speaking
+        self._cancel_thinking()  # 말할 문장이 없던 턴
         self._emit({"type": "bot.done", "turn": turn, "sentences": len(sentences)})
         self._bot_done_turn = turn
         self._log.mark(turn, "bot_done")
@@ -778,6 +891,29 @@ class CallSession:
             self._play_timer = asyncio.get_running_loop().call_later(
                 delay, self._on_play_timeout, turn
             )
+
+    def _start_speaking(self, turn: int) -> None:
+        """첫 오디오를 보내기 직전. 여기서부터 "봇 말하는 중"이다 (3단계 티켓 01).
+
+        전에는 엔진이 끝나자마자 speaking이 돼서 TTS 합성 중(첫 소리 전)에 한 말이 버려졌다.
+        이 오디오 시각 뒤에 시작한 말만 반이중으로 버린다(`_spoken_over`).
+        붙잡아 둔 조각은 첫 소리 전에 한 말이므로 버리지 않고 `_pending`(다음 턴)에 넣는다.
+        다음 손님 말에 붙지는 않는다(리뷰 3번). 그 뒷글이 늦게 와도 `_pending`에서 합쳐진다
+        """
+        self._phase = "speaking"
+        self._cancel_thinking()
+        self._speak_from_ms = self._vad.offset_ms
+        if self._parts:
+            self._release(self._held or self._parts[-1], "bot_start")
+        self._clear_hold()
+        # 판정 중인 말(티켓 02)도 첫 소리 전에 한 말이다. 지금은 늘 비어 있다(엔진은 판정 뒤에만
+        # 돌고, 봇이 먼저 말하는 턴은 판정 중이면 열지 않는다). 있으면 다음 턴으로 넘긴다
+        if self._cont is not None:
+            self._pending.append(self._cont)
+        self._clear_decision()
+        self._forced = self._commit = False
+        self._button_at = None
+        self._emit_state()
 
     def _in_thread(
         self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any
@@ -821,6 +957,13 @@ class CallSession:
         try:
             for seq, (job, text) in enumerate(zip(jobs, sentences, strict=True)):
                 pcm = await job
+                if seq == 0:
+                    # 첫 문장 앞 무음은 손님이 기다리는 시간일 뿐이라 잘라 보낸다 (`trim.py`)
+                    pcm, trimmed_ms = trim_leading_silence(pcm, self._settings.tts_trim)
+                    record = self._log.get(turn)
+                    if record is not None:
+                        record.fields["tts_trim_ms"] = trimmed_ms
+                    self._start_speaking(turn)
                 audio_bytes += len(pcm)
                 self._emit({"type": "bot.say", "turn": turn, "seq": seq, "text": text})
                 for i, (chunk, last) in enumerate(chunk_pcm(pcm, self._settings.chunk_bytes)):
@@ -873,7 +1016,7 @@ class CallSession:
         if self._pending:
             merged = _Utterance.merge(self._pending)
             self._pending = []
-            self._decide(merged)
+            self._decide(replace(merged, queued=True))
 
     # ------------------------------------------------------------ 내보내기·끝내기
 
@@ -921,6 +1064,7 @@ class CallSession:
 
     def _end(self) -> None:
         self._cancel_hold()
+        self._cancel_thinking()
         self._cancel_cont_timer()
         self._cancel_play_timer()
         self._phase = "ended"

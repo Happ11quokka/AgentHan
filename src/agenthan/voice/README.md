@@ -40,8 +40,8 @@
   - `playback.done`이 안 와도 보낸 소리 길이 + 3초 뒤에는 서버가 듣기로 돌아간다(JSONL `play_done_timeout`)
 - 내리는 오디오: `call/frames.py` (8바이트 헤더 kind·flags·seq·turn + PCM16LE 16kHz, 약 200ms 조각). TTS PCM을 200ms로 자르는 것은 세션이 한다
 - 대사 → TTS 문장(150자 이하) 나누기, TTS 동시 2개·문장 순서 보내기도 세션이 한다(`call/sentences.py`)
-- 무음 감지(`call/vad.py`): RMS 임계값 1,500, 말 시작 200ms, 말 끝 무음 400ms (티켓 07에서 녹음 17개로 맞춤, 시작값은 500/200/500). 근거는 `VadSettings` 주석. 시작값 500에서는 배경 소리(RMS 400~1,900) 때문에 17개 중 12개가 녹음 안에서 말 끝을 못 잡았고, 지금 값은 17개 모두 잡는다. 코드에서는 `SessionSettings(vad=VadSettings(...))`, 서버에서는 `PHONE_VAD_THRESHOLD`·`PHONE_VAD_START_MS`·`PHONE_VAD_END_SILENCE_MS`로 바꾼다
-- 조각 합치기: 결과가 왔을 때 결과 끝 뒤에 **새로 시작한** 말 구간(200ms 이상)이 있으면 붙잡는다. epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 써 둔 epFlag의 응답을 기다리는 중이어도 붙잡고, 턴은 epFlag 응답으로 넘긴다(티켓 10: CLOVA는 90ms 쉼에서도 gap 조각을 낸다. 07 실측 "나폴|레옹도", "맥도비 두개랑|아이스…"). 배경 소리 때문에 "말하는 중"이 안 풀려도 3초(`hold_cap_s`) 안에 넘긴다. 버린 결과(반이중·확정 뒤·통화 끝)는 JSONL `dropped`에 남는다. 붙잡은 뒤 1.2초(`hold_max_s`) 안에 새 결과가 없으면 턴을 넘긴다(`end_by: hold_timeout`). 그때 이어진 말이 아직 열려 있거나 그 `epFlag` 응답을 기다리는 중이면 3초(`hold_cap_s`)까지 기다린다. 봇이 말하기 시작하면 붙잡아 둔 조각과 "말 끝" 표시를 지운다. 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이면 다음 턴에 합쳐지고, 봇이 말하는 중이면 버려진다). 3단계 끝남/이어짐 판정이 이어짐 글("-랑" 등)이면 합친다(아래 3단계)
+- 무음 감지(`call/vad.py`): RMS 임계값 1,500, 말 시작 200ms, 말 끝 무음 400ms (티켓 07에서 녹음 17개로 맞춤, 시작값은 500/200/500). 근거는 `VadSettings` 주석. 시작값 500에서는 배경 소리(RMS 400~1,900) 때문에 17개 중 12개가 녹음 안에서 말 끝을 못 잡았고, 지금 값은 17개 모두 잡는다. 3단계부터 `epFlag`는 무음 250ms(`ep_silence_ms`)에 먼저 보내고 턴 판정은 400ms에 한다(아래 3단계 지연 개선). 코드에서는 `SessionSettings(vad=VadSettings(...))`, 서버에서는 `PHONE_VAD_THRESHOLD`·`PHONE_VAD_START_MS`·`PHONE_VAD_END_SILENCE_MS`·`PHONE_VAD_EP_SILENCE_MS`로 바꾼다
+- 조각 합치기: 결과가 왔을 때 결과 끝 뒤에 **새로 시작한** 말 구간(200ms 이상)이 있으면 붙잡는다. epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 써 둔 epFlag의 응답을 기다리는 중이어도 붙잡고, 턴은 epFlag 응답으로 넘긴다(티켓 10: CLOVA는 90ms 쉼에서도 gap 조각을 낸다. 07 실측 "나폴|레옹도", "맥도비 두개랑|아이스…"). 배경 소리 때문에 "말하는 중"이 안 풀려도 3초(`hold_cap_s`) 안에 넘긴다. 버린 결과(반이중·확정 뒤·통화 끝)는 JSONL `dropped`에 남는다. 붙잡은 뒤 1.8초(`hold_max_s`, 3단계 임시 실측값) 안에 새 결과가 없으면 턴을 넘긴다(`end_by: hold_timeout`). 그때 이어진 말이 아직 열려 있거나 그 `epFlag` 응답을 기다리는 중이면 3초(`hold_cap_s`)까지 기다린다. 봇 첫 소리가 나가면 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다. 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이거나 첫 소리 전이면 다음 턴에 합쳐지고, 봇 소리가 나간 뒤에 한 말이면 버려진다). 3단계 끝남/이어짐 판정이 이어짐 글("-랑" 등)이면 합친다(아래 3단계)
 - STT 오인식 대응(티켓 10): 메뉴 매처는 자모 혼동 비용 표(`hangul.confusable_distance`)로 잰다(맥도빅 0.94, 맥도비 0.89, 나폴내용 0.92). 거절 경계는 0.6 → 0.7(맥도날드·블루베리 거절). 옵션은 대상어 퍼지 창 + 빼는 말(`dialog/options.py`, "샤워크림은 빼 주세요" → 사워크림 빼기, "빼지 마세요"는 거름). CLOVA CONFIG에 가게 메뉴 이름·별칭·옵션 대상어를 `keywordBoosting` weight 3으로 넣는다(`stt/boost.py`). 4분 30초 재연결 때 앞 연결은 epFlag 응답을 받은 뒤 쓰기를 닫는다
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
@@ -75,6 +75,18 @@
 - JSONL: `turn_end {label, reason, path(rule·model·cap·button), score, backchannel}`, 앞선 판정 `turn_end_steps`, 이어짐 대기 `cont_wait_ms`, `nlu_prefetch {prefetched, used, discarded, miss, wait_ms}`, 버린 결과 `dropped[].backchannel`
 - 테스트: `tests/voice/test_turn_end.py`(표), `test_call_turn_end.py`(세션), `test_engine_nlu_context.py`
 
+## 3단계: 지연 개선 묶음 (티켓 01)
+
+- "봇 말하는 중"(speaking)은 첫 오디오를 보낼 때부터다. 엔진이 끝나고 첫 문장 TTS를 합성하는 동안은 thinking이라, 그 사이 한 말은 다음 턴으로 들어간다(2단계 버그 수정). 반이중으로 버리는 것은 봇 소리가 나간 뒤에 **시작한** 말의 결과뿐이다(결과 도착 시각이 아니라 오디오 시각 `start_ms`로 본다)
+- 조기 `epFlag`: 무음이 250ms(`VadSettings.ep_silence_ms`, `PHONE_VAD_EP_SILENCE_MS`)에 닿는 프레임에 `epFlag`를 붙이고, 턴 판정은 그대로 무음 400ms(`end_silence_ms`)에서 한다. 250~400ms 쉼 뒤 말이 다시 시작되면 받은 글을 붙잡아 다음 글과 합친다. 응답이 400ms 전에 오면 무음 400ms 프레임에서 턴을 넘긴다. 100ms 프레임이라 실제로는 무음 300ms 프레임에 나간다. 녹음 17개(`vad_check … 1500/200/400/400` 대 `…/250`): 말 끝 → `epFlag` 중앙값 400 → 300ms, 말 중간 쉼의 `epFlag` 3 → 5개, 녹음 안 말 끝 17/17 그대로
+- `hold_max_s` 1.8초: "epFlag 송신 → 글 있는 응답" p99로 정하는 값이다. 2단계 유효 실측이 8턴뿐이라(p50 0.56, p90 1.05, 최대 1.78초) 최대값을 덮는 임시값이다. 다시 잴 때는 아래 `turn_summary`의 `stt_wait`를 30턴 이상 모은다
+- TTS 첫 문장 앞 무음 자르기(`call/trim.py`, Coval TTFA 방식): 10ms 창을 1ms씩 옮겨 RMS가 풀스케일 1%(≈328) 이상인 첫 창을 찾고, 그 안의 첫 가청 샘플 20ms 앞에서 1ms 단위로 자른다. 1초 안에 소리가 없으면 자르지 않는다. 값은 `SessionSettings(tts_trim=TrimSettings(...))`. 자른 길이는 JSONL `tts_trim_ms`. CLOVA Voice 앞 무음은 아직 재지 않았다
+- 생각 중 효과음: 말 끝 + 1.5초(`thinking_after_s`)까지 봇 목소리가 없으면 `bot.thinking {turn}`을 한 번 보낸다. 첫 오디오를 보내면 타이머를 끈다. 브라우저(`web/src/screens/phone/thinkingCue.ts`)는 직접 만든 사인파 파일(`thinking-cue.wav`, `web/scripts/make-thinking-cue.mjs`로 생성, 목소리·TTS 아님)을 반복 재생하다가 봇 오디오가 오거나 턴이 넘어가면 멈춘다. 봇 재생 중 모아 둔 말로 연 턴은 재생이 끝나 넘긴 때부터 센다
+- 봇이 먼저 말하는 턴: `CallSession.bot_turn(reason, act)`가 듣는 중일 때만 새 턴 번호로 `act(engine, now)`를 엔진 스레드에서 돌린다(무음 되묻기·기다림 응답, 티켓 04·05). 손님 말을 붙잡거나 판정 중이면 `None`. JSONL `bot_turn`
+- JSONL 지표: `end_to_voice_ms`(말 끝 → 브라우저 `playback.started`, 둘 다 서버 도착 시각이라 올림 지연이 지워짐), `end_to_thinking_ms`와 `marks.thinking`, `queued`(봇 재생 중 모아 둔 말로 연 턴, 말 끝 기준 지연 없음), `empty`(말소리 뒤 글 없는 `epFlag` 응답, 합성 `eof` 제외), `tts_trim_ms`, `bot_turn`. 판정 경로는 `end_by`(무음 감지·버튼·gap·…)와 `turn_end.path`(rule·model·cap·button). 브라우저 `client.metrics`에 `thinking_ms`
+- 요약(숫자만, 글은 안 냄): `uv run python -m agenthan.voice.call.turn_summary logs/phone-YYYYMMDD.jsonl` → 말 끝 → 첫 목소리 P50·P90, 통화당 느린 턴(2.5초 초과) 수, 효과음 시각, `end_by`·`turn_end.path`별 턴 수, 빈 턴, `stt_wait` P50·P90·P99
+- 테스트: `tests/voice/test_call_latency.py`(세션), `test_turn_summary.py`, `test_call_vad.py`, 웹 `phoneCall.test.ts`(효과음)
+
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
 - 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`
@@ -100,6 +112,6 @@
 - 측정 서버(키 필요, 저장소 루트의 `.env`): `PHONE_STT=clova PHONE_TTS=clova PHONE_NLU=fake PHONE_NOW=2026-11-08T16:30:00+09:00 PHONE_LOG_DIR=private/fake-phone/logs uv run python -m agenthan.voice.server --port 8010` (HCX는 `PHONE_NLU=hcx`)
 - 흘려 넣기: `uv run python -m agenthan.voice.fake_phone --url ws://127.0.0.1:8010/api/phone/ws --recordings private/recordings/donghyeon --convert --label clova-fake`. 결과는 `private/fake-phone/<시각>-<label>/`(`calls.jsonl` 원기록, `rows.jsonl` 녹음별 줄, `summary.md` 표). 받아 적은 글이 들어 있으니 `private/` 밖으로 옮기지 않는다
 - 말 끝 → 결과·첫 소리는 녹음에서 따로 잰 기준 말 끝(`audio.speech_end_s`)부터 잰다. VAD 값을 바꿔도 같은 기준으로 비교된다
-- 키 없이 VAD 후보 비교: `uv run python -m agenthan.voice.fake_phone.vad_check private/recordings/donghyeon/wav 500/200/500 1500/200/400`
+- 키 없이 VAD 후보 비교: `uv run python -m agenthan.voice.fake_phone.vad_check private/recordings/donghyeon/wav 500/200/500 1500/200/400 1500/200/400/250` (네 번째 값은 조기 `epFlag` 무음 ms, 없으면 250)
 - 네트워크가 느리면(업로드 수십 KB/s) STT 결과와 TTS가 수 초씩 늦어 측정값이 의미 없다. 측정 전에 업로드 150KB/s 이상, CLOVA까지 RTT 100ms 미만인지 본다
 - 테스트: `tests/voice/test_fake_phone_*.py`(같은 프로세스 uvicorn + 가짜 STT·TTS, 오프라인), `test_call_vad.py`

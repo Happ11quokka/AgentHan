@@ -54,6 +54,14 @@ def test_vad_values_come_from_the_environment_and_default_to_the_tuned_values() 
     assert s.vad == VadSettings(threshold=900.0, start_ms=300, end_silence_ms=600)
 
 
+def test_the_early_ep_flag_silence_is_set_apart_from_the_speech_end() -> None:
+    assert VoiceSettings.from_env({}, env_file=None).vad.ep_silence_ms == 250
+    s = VoiceSettings.from_env({"PHONE_VAD_EP_SILENCE_MS": "300"}, env_file=None)
+    assert (s.vad.ep_silence_ms, s.vad.end_silence_ms) == (300, 400)
+    with pytest.raises(SettingsError, match="PHONE_VAD_EP_SILENCE_MS"):
+        VoiceSettings.from_env({"PHONE_VAD_EP_SILENCE_MS": "500"}, env_file=None)
+
+
 def test_call_limits_have_server_defaults_and_can_be_changed() -> None:
     default = VoiceSettings.from_env({}, env_file=None)
     assert (default.max_calls, default.max_call_s) == (10, 600.0)

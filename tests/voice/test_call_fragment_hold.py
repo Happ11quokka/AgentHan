@@ -2,7 +2,7 @@
 
 - 붙잡는 근거는 "결과 끝 뒤에 새로 시작한 말 구간"뿐이다. 결과 전부터 이어진 소리(잡음)는 아니다
 - 붙잡은 턴은 시간 제한(`hold_max_s`, 이어지는 말이 있으면 `hold_cap_s`까지) 안에 풀린다
-- 봇이 말하기 시작하면 붙잡아 둔 조각과 "말 끝" 표시를 지운다
+- 봇 첫 소리가 나가면 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다
 """
 
 from __future__ import annotations
@@ -136,11 +136,14 @@ def test_a_fragment_held_while_thinking_does_not_stick_to_the_next_utterance(tmp
             nlu.release.set()
             await c.out.wait_for("bot.done", turn=1)
             await c.played(1)
+            # 첫 소리 전에 한 말이라 버리지 않고 다음 턴이 된다(3단계 티켓 01). 재생 뒤 말과는 따로
+            await c.out.wait_for("bot.done", turn=2)
+            await c.played(2)
             await c.say()
-            await c.out.wait_for("stt.final", turn=2)
+            await c.out.wait_for("stt.final", turn=3)
             return [e["text"] for e in c.out.of("stt.final")]
 
-    assert run(call()) == ["메도빅 하나요", "그게 다예요"]
+    assert run(call()) == ["메도빅 하나요", "나폴레옹", "그게 다예요"]
 
 
 def test_a_button_pressed_while_thinking_does_not_mark_the_next_utterance(tmp_path) -> None:

@@ -29,6 +29,7 @@ export type ServerEvent =
   | { type: 'bot.say'; turn: number; seq: number; text: string }
   | { type: 'bot.audio.end'; turn: number; seq: number }
   | { type: 'bot.done'; turn: number; sentences: number }
+  | { type: 'bot.thinking'; turn: number }
   | { type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number }
   | { type: 'metrics'; turn: number; [key: string]: unknown }
   | { type: 'error'; turn: number; code: string; message: string; retry: boolean }
