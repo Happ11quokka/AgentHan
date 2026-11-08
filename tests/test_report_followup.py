@@ -6,6 +6,7 @@ import pytest
 
 from agenthan.agent import owner_assistant
 from agenthan.agent.owner_assistant import OwnerAssistant
+from agenthan.tools.report_insights import Insight
 
 
 def offline(*args, **kwargs):
@@ -46,8 +47,55 @@ def test_non_view_metric_is_not_misrepresented_as_view_breakdown(tmp_path):
     )
     answer = assistant.ask("왜 줄었어?")
     assert "예약·주문 신청 수" in answer
-    assert "채널·요일·시간대별 변화와 원인은 데이터로는 알 수 없어요" in answer
+    assert "경로·요일·시간대별 변화와 원인은 데이터로는 알 수 없어요" in answer
     assert "조회 경로별 변화" not in answer
+
+
+def test_non_view_decline_connects_views_conversion_and_action(tmp_path):
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=offline)
+    assistant.ask("통계")
+    last = assistant.last_report
+    facts = last.facts
+    channels = tuple(replace(c, change=5) for c in facts.channels)
+    days = {day: replace(item, change=4) for day, item in facts.weekday_changes.items()}
+    hours = tuple(replace(item, change=3) for item in facts.hourly_changes)
+    days["mon"] = replace(days["mon"], change=42)
+    facts = replace(
+        facts,
+        place_views=replace(facts.place_views, change=50),
+        booking_order_requests=replace(facts.booking_order_requests, change=-100),
+        smartcall_calls=replace(facts.smartcall_calls, change=0),
+        previous_conversion_percent=12.3,
+        conversion_percent=8.2,
+        channels=channels,
+        weekday_changes=days,
+        hourly_changes=hours,
+    )
+    insight = Insight("conversion_drop", "전환 감소", {}, "menu", 10)
+    assistant.last_report = replace(last, facts=facts, insights=[insight])
+    answer = assistant.ask("왜 줄었어?")
+    assert "조회 수는 지난 기간보다 늘었어요" in answer
+    assert "예약·주문 전환율은 12.3% → 8.2%" in answer
+    assert "조회 월요일 기준으로 지난 기간보다 +42회" in answer
+    assert "할 일: 대표 메뉴의 사진과 설명을 보강해 보세요" in answer
+    assert "일 수 있어요" in answer
+
+
+def test_non_view_without_comparison_or_action_uses_available_facts(tmp_path):
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=offline)
+    assistant.ask("통계")
+    last = assistant.last_report
+    facts = replace(
+        last.facts,
+        place_views=replace(last.facts.place_views, change=None),
+        booking_order_requests=replace(last.facts.booking_order_requests, change=-999),
+        previous_conversion_percent=None,
+    )
+    assistant.last_report = replace(last, facts=facts, insights=[])
+    answer = assistant.ask("왜 줄었어?")
+    assert "조회 수의 지난 기간 비교 자료가 없어요" in answer
+    assert "전환율" not in answer
+    assert "할 일: 다음 리포트에서 변화를 확인해 보세요" in answer
 
 
 def test_smartcall_followup_subject_particle(tmp_path):

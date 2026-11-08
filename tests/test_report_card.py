@@ -114,7 +114,8 @@ def test_seed_search_and_card_action(tmp_path):
     summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
     assert "샘플 러시안 베이커리: 1위" in summary
     assert "이태원동 메도빅: 3위" in summary
-    assert "이태원동 베이커리" in summary and "안 나오는 검색어" in summary
+    assert "안 나오는 검색어" in summary
+    assert "이태원동 베이커리" in assistant.ask("자세히")
     assert "대표키워드에 추가" in summary
     answer = report.explain("통계", chat=failing_chat)
     card = report.make_card(
@@ -122,6 +123,56 @@ def test_seed_search_and_card_action(tmp_path):
     )
     assert card.todo_feature == "search_keywords"
     assert assistant._missing_search_keyword in card.todo
+
+
+def test_search_summary_is_short_and_details_reuse_results(tmp_path, monkeypatch):
+    from agenthan.agent import owner_assistant
+    from agenthan.tools.search_visibility import summarize
+
+    factory = owner_assistant.FixtureSearch
+    client = factory(
+        owner_assistant.Path(owner_assistant.__file__).parent.parent
+        / "tools"
+        / "search_fixture_sample.json"
+    )
+    client.local = Mock(wraps=client.local)
+    client.blog = Mock(wraps=client.blog)
+    monkeypatch.setattr(owner_assistant, "FixtureSearch", Mock(return_value=client))
+    monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "0")
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=failing_chat)
+    summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
+    lines = summary.splitlines()
+    assert len(lines) <= 5
+    assert "나오는 검색어:" in lines[0] and "위" in lines[0]
+    assert "안 나오는 검색어:" in lines[1]
+    assert len(lines[0].split(": ", 1)[1].split(", ")) <= 3
+    assert len(lines[1].split(": ", 1)[1].split(", ")) <= 3
+    assert lines[1].startswith("안 나오는 검색어: 메도빅, 이태원 케이크")
+    assert assistant._missing_search_keyword in lines[1]
+    assert "다른 가게" in lines[2] and "곳" in lines[2]
+    assert "가상 구름 빵집" not in summary and "가상 달빛 빵집" not in summary
+    assert "할 일" in lines[3]
+    assert lines[-1].startswith("개인화 없는 검색 기준")
+    counts = client.local.call_count, client.blog.call_count
+    assert assistant.ask("자세히") == summarize(assistant.last_search)
+    assert (client.local.call_count, client.blog.call_count) == counts
+    assistant.ask("통계")
+    assert assistant.ask("자세히") == assistant.last_report.text
+
+
+def test_search_summary_without_results(tmp_path, monkeypatch):
+    from agenthan.agent import owner_assistant
+    from agenthan.tools.search_visibility import VisibilityReport
+
+    monkeypatch.setattr(
+        owner_assistant, "diagnose", lambda profile, client, queries: VisibilityReport(profile)
+    )
+    monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "0")
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=failing_chat)
+    answer = assistant.ask("우리 가게 검색하면 어떻게 나와?")
+    assert "상위 5개에 나오는 검색어가 없어요" in answer
+    assert "안 나오는 검색어: 확인된 검색어가 없어요" in answer
+    assert "이번 주 할 일" in answer
 
 
 def test_search_action_subject_particle(tmp_path):

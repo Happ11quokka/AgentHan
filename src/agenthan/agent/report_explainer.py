@@ -429,6 +429,65 @@ def follow_up(question: str, last: ReportAnswer, *, chat=None) -> str:
         if not selected:
             return headline + "변화의 원인은 데이터로는 알 수 없어요."
         if selected[0] != "조회 수":
+            view_change = facts.place_views.change
+            view_text = (
+                "조회 수는 지난 기간보다 "
+                + ("늘었어요" if view_change > 0 else "줄었어요" if view_change < 0 else "같아요")
+                + ". "
+                if view_change is not None
+                else "조회 수의 지난 기간 비교 자료가 없어요. "
+            )
+            conversion = ""
+            if (
+                facts.previous_conversion_percent is not None
+                and facts.conversion_percent is not None
+            ):
+                conversion = (
+                    "예약·주문 전환율은 "
+                    f"{facts.previous_conversion_percent:g}% → {facts.conversion_percent:g}%예요. "
+                )
+                if (
+                    selected[0] == "예약·주문 신청 수"
+                    and view_change
+                    and view_change > 0
+                    and direction < 0
+                ):
+                    conversion += "가게 정보를 본 손님이 신청까지 가지 않는 것일 수 있어요. "
+            changes = [
+                (abs(c.change), f"조회 경로 ‘{c.name}’", c.change, None)
+                for c in facts.channels
+                if c.change
+            ]
+            changes += [
+                (abs(v.change), f"조회 {WEEKDAY_NAMES[day]}요일", v.change, None)
+                for day, v in facts.weekday_changes.items()
+                if v.change
+            ]
+            changes += [
+                (abs(v.change), f"조회 {hour}시", v.change, hour)
+                for hour, v in enumerate(facts.hourly_changes)
+                if v.change
+            ]
+            breakdown = ""
+            hour = None
+            if changes:
+                _, label, change, hour = max(changes, key=lambda item: item[0])
+                breakdown = f"{label} 기준으로 지난 기간보다 {change:+,}회 달라졌어요. "
+            insight = next((i for i in last.insights if i.action_feature), None)
+            action = (
+                GUIDANCE[insight.kind][1] if insight else "다음 리포트에서 변화를 확인해 보세요"
+            )
+            answer = (
+                headline
+                + view_text
+                + conversion
+                + breakdown
+                + f"할 일: {action}. "
+                + "이 지표의 경로·요일·시간대별 변화와 원인은 데이터로는 알 수 없어요."
+            )
+            source = [asdict(facts), {"change": abs(selected[1].change), "peak_hour": hour}]
+            if _grounded_numbers(answer, source):
+                return answer
             return headline + "이 지표의 채널·요일·시간대별 변화와 원인은 데이터로는 알 수 없어요."
         changes = (
             ", ".join(f"{c.name} {c.change:+,}회" for c in facts.channels if c.change is not None)
