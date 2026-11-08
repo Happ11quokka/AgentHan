@@ -299,6 +299,22 @@ def test_bowling_for_blin_is_asked_back(matcher: MenuMatcher) -> None:
     assert result.item is not None and result.item.id == "m04"
 
 
+@pytest.mark.parametrize(
+    ("text", "menu_id"),
+    [
+        ("아메리카노 3잔이요", "m03"),  # STT는 수량을 아라비아 숫자로 쓴다
+        ("블린 2개요.", "m04"),
+        ("나폴레옹옹도 하나요", "m02"),  # 부스팅을 켠 실측 C3 (티켓 10 실측)
+    ],
+)
+def test_stt_digit_quantities_and_punctuation_still_match(
+    matcher: MenuMatcher, text: str, menu_id: str
+) -> None:
+    result = matcher.match(text)
+    assert result.decision == "accept"
+    assert result.item is not None and result.item.id == menu_id
+
+
 @pytest.mark.parametrize("text", ["메뉴", "멕시칸", "블루베리", "맥도날드", "맥주", "3잔", "6시"])
 def test_unrelated_words_from_the_error_set_are_rejected(matcher: MenuMatcher, text: str) -> None:
     assert matcher.match(text).decision == "reject"
