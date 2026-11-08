@@ -9,7 +9,7 @@ import asyncio
 import json
 
 import pytest
-from call_harness import Call
+from call_harness import Call, silence, tone
 
 from agenthan.voice.call.barge import BargeSettings
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
@@ -89,6 +89,34 @@ def test_a_correction_said_while_the_readback_is_being_synthesized_is_kept(tmp_p
     c = run(call())
     assert c.out.of("order") == []
     assert "15,000원" in " ".join(e["text"] for e in c.out.of("bot.say", 4))
+
+
+# ---------------------------------------------------------------- C1
+
+
+def test_the_end_button_during_the_wait_keeps_the_words_whose_text_is_still_coming(
+    tmp_path,
+) -> None:
+    # "메도빅 두 개랑"으로 이어짐 대기 중 손님이 "아메리카노 하나요"를 말하고 "말 끝"을 눌렀다.
+    # 그 말의 epFlag 응답(글)은 아직 오지 않았다. 버튼이 기다리던 말만 넘기면 뒷말이 다음 턴이
+    # 되어 봇이 두 번 답한다
+    stt = FakeSttStream(replies=["메도빅 두 개랑", "아메리카노 하나요"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, settings=SessionSettings(cont_wait_s=2.0)) as c:
+            await c.start()
+            await c.say()
+            await asyncio.sleep(0.05)
+            assert c.out.of("stt.final") == []  # 이어짐 대기 중
+            await c.feed(tone(800) + silence(500))  # epFlag는 갔고 응답은 600ms 뒤(오디오 시각)
+            await c.session.feed_event({"type": "user.end_of_speech", "turn": 0})
+            await c.feed(silence(800))
+            await c.out.wait_for("bot.done", turn=1)
+            await asyncio.sleep(0.1)
+            return c
+
+    c = run(call())
+    assert [e["text"] for e in c.out.of("stt.final")] == ["메도빅 두 개랑 아메리카노 하나요"]
 
 
 # ---------------------------------------------------------------- C2

@@ -481,8 +481,10 @@ class CallSession:
                 self._phase = "thinking"
                 self._spawn(self._turn_loop(), "turns")
         elif kind == "user.end_of_speech":
-            if self._cont is not None and not (self._vad.in_speech or self._parts):
+            if self._cont is not None and not (self._vad.in_speech or self._parts
+                                               or self._ep_waiting()):
                 self._finish_waiting("button")  # 이어짐 대기 중 누름: 기다린 말로 끝낸다
+            # 이어서 한 말의 글을 아직 기다리면(리뷰 C1) 아래처럼 그 글로 끝낸다(기다린 말과 합침)
             elif self._phase in ("listening", "thinking"):
                 self._commit = True
                 self._forced = True
