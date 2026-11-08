@@ -6,13 +6,16 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi>=0.162.2",
+    "grpcio>=1.85.1",
     "httpx>=0.28.1",
     "korean-datetime==1.0.0",
+    "protobuf>=7.36.2",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "grpcio-tools>=1.85.1",
     "pytest",
     "pytest-recording>=0.14.1",
     "ruff",

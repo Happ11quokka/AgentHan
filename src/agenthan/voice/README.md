@@ -45,6 +45,16 @@
   - 오류 `code`: `tts_auth`(401·403, 다시 걸어도 안 됨) · `tts_429` · `tts_vsNN`(VS26·VS99만 재시도 가능) · `tts_http_NNN` · `tts_timeout` · `tts_network` · `tts_bad_audio`(16kHz mono PCM16 아님) · `tts_config`(키 없음)
   - 실측(opt-in, 호출 9번): `AGENTHAN_ENV_FILE=<저장소 루트>/.env uv run pytest tests/voice/test_tts_clova_live.py -m live -s`. `live` 마커 테스트는 `-m live`일 때만 돈다(`tests/voice/conftest.py`)
 
+### STT 어댑터 (`stt/`)
+
+- `stt/clova.py`의 `ClovaSttStream(ClovaSttSettings(...))`: `SttStream` 포트를 CLOVA Speech 스트리밍 gRPC(`grpc.aio`)로 구현. 키는 설정으로 받는다(`ClovaSttSettings.from_env(사전)`이 `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`를 읽음). 모듈이 `.env`를 직접 읽지는 않는다
+  - CONFIG: 한국어 + `semanticEpd`(`gapThreshold=700`, `durationThreshold=10000`). `durationThreshold`를 빼면 400ms 조각으로 쪼개진다
+  - 오류: `stt_auth`(재시도 X), `stt_config`(재시도 X), `stt_disconnected`, `stt_busy`(15개 초과), `stt_timeout`
+  - 연결 4분 30초가 지난 뒤 `epFlag` 프레임을 쓰면 그 뒤 새 연결로 바꾼다(4분 45초까지 `epFlag`가 없으면 그냥 바꿈). 결과 시각은 통화 하나에 이어진다
+- `nest.proto`는 공식 문서 본문 그대로. 생성 코드(`nest_pb2*.py`)는 커밋돼 있다. 바꿨으면 `uv run python src/agenthan/voice/stt/gen_proto.py`
+- 테스트: `tests/voice/test_stt_clova.py`(로컬 가짜 `NestService` `tests/voice/fake_nest.py`, 오프라인)
+- 실측(키 필요, `live` 마커): `uv run pytest tests/voice/test_stt_clova_live.py -m live -s`. 이 맥에서 gRPC DNS가 실패하면 `GRPC_DNS_RESOLVER=native`를 앞에 붙인다
+
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
 - 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`
@@ -55,7 +65,8 @@
   - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
   - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시각 고정, 시연용), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
   - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)
-  - `clova`를 골랐는데 어댑터 모듈이 없으면 서버가 뜨기 전에 `AdapterMissing`으로 멈춘다. 어댑터 연결은 `adapters.py` 한 곳(TTS는 `tts_clova` 연결됨, STT는 티켓 02를 합칠 때 모듈 이름만 맞춘다). 키가 비어 있으면 통화를 걸 때 `error{code: "tts_config"}`
+  - `clova`를 골랐는데 어댑터 모듈이 없으면 서버가 뜨기 전에 `AdapterMissing`으로 멈춘다. 어댑터 연결은 `adapters.py` 한 곳(TTS는 `tts_clova.ClovaVoiceTts`, STT는 `stt.clova.ClovaSttStream`). 키가 비어 있으면 통화를 걸 때 `error{code: "tts_config"}`·`error{code: "stt_config"}`
+  - gRPC DNS: `PHONE_STT=clova`면 `adapters.py`가 `grpc`를 import하기 전에 `GRPC_DNS_RESOLVER`가 비어 있을 때 `native`로 둔다. 맥에서 gRPC 기본 DNS(c-ares)가 "Could not contact DNS servers"(`stt_disconnected`)로 실패해서다. 다른 값을 쓰려면 환경 변수나 `.env`에 `GRPC_DNS_RESOLVER=ares`처럼 적는다
 - 통합(`app/`, 11/17): `app.include_router(phone_router(store=..., config=StoreConfig(store_name=...), order_sink=..., settings=VoiceSettings.from_env()))`. 라우터에는 가짜 기본값이 없다(가게 지식·설정·`OrderSink`를 넣는다). `server.py`는 더미 가게로 띄우는 개발용이라 `app/`은 쓰지 않는다
 - 연결 하나 = `CallSession` 하나. 읽기 작업 하나가 받고, 보내기는 세션의 송신 작업 하나만 한다. 끊기거나 세션이 끝나면 STT를 닫고 JSONL을 쓴 뒤 소켓을 닫는다
 - 테스트: `tests/voice/test_phone_ws.py`(TestClient WebSocket), `test_phone_settings.py`, `test_phone_server.py`
