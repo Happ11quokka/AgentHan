@@ -263,3 +263,80 @@ def suggest_menu(names: Sequence[str]) -> str:
         return f"{eun_neun(names[0])} 어떠세요?"
     head = ", ".join([*names[:-2], i_na(names[-2])])
     return f"{head} {eun_neun(names[-1])} 어떠세요?"
+
+
+# ---------------------------------------------------------------- 메뉴 질문 (티켓 05)
+
+
+def _ieyo(word: str) -> str:
+    """케이크 → 케이크예요, 토핑 → 토핑이에요."""
+    return _josa(word, "이에요", "예요")
+
+
+def dont_know() -> str:
+    """필드에 근거가 없는 질문. 지어내지 않는다."""
+    return "그건 제가 정확히 모르겠어요."
+
+
+def menu_description(name: str, description: str) -> str:
+    return f"{eun_neun(name)} {_ieyo(description.rstrip('. '))}."
+
+
+def menu_price(name: str, price: int) -> str:
+    return f"{eun_neun(name)} {won(price)}이에요."
+
+
+def menu_options(name: str, options: Sequence[str]) -> str:
+    if not options:
+        return f"{eun_neun(name)} 따로 고를 수 있는 옵션이 없어요."
+    return f"{eun_neun(name)} {_join(options)} 할 수 있어요."
+
+
+def option_possible(name: str, option: str, extra_price: int) -> str:
+    said = f"네, {eun_neun(name)} {option} 할 수 있어요."
+    return f"{said} {won(extra_price)} 추가예요." if extra_price else said
+
+
+def allergen_list(name: str, allergens: Sequence[str]) -> str:
+    return f"{name}에는 {i_ga(_join(allergens))} 들어가요."
+
+
+def allergen_present(name: str, allergen: str) -> str:
+    return f"네, {name}에는 {i_ga(allergen)} 들어가요."
+
+
+# ---------------------------------------------------------------- 정정·취소·사장님 연결 (티켓 05)
+
+
+def changed_to(phrases: Sequence[str]) -> str:
+    """정정한 항목만 되받는다. 예: "아메리카노 두 잔으로 바꿨어요."."""
+    return f"{_euro(_join(phrases))} 바꿨어요."
+
+
+def pickup_changed(at: datetime) -> str:
+    return f"픽업 시간 {_euro(spoken_time(at))} 바꿨어요."
+
+
+def pickup_noted(at: datetime) -> str:
+    """주문 중에 시각만 말했을 때. 예: "6시 픽업으로 알아 둘게요."."""
+    return f"{spoken_time(at)} 픽업으로 알아 둘게요."
+
+
+def confirm_cancel() -> str:
+    return "주문 취소할까요?"
+
+
+def cancelled() -> str:
+    return "네, 주문 취소했어요. 감사합니다."
+
+
+def cancel_declined() -> str:
+    return "네, 계속 도와드릴게요."
+
+
+def too_many_failures() -> str:
+    return "죄송해요, 제가 잘 못 알아듣고 있어요."
+
+
+def handoff() -> str:
+    return "사장님께 메모 남겨 드릴게요."

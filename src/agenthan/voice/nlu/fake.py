@@ -6,6 +6,9 @@
 
 티켓 01: "{메뉴명} 하나/두 개", "그게 다예요", "네/아니요", "{N}시".
 티켓 03: 여러 항목, 수량(숫자·고유어), 옵션, 빼기, 수량 바꾸기, 요청사항.
+티켓 05: 메뉴 질문(`ask_menu_info`), "아니요, ~" 머리말(no + 나머지), 장바구니가 있을 때
+메뉴 없는 수량("두 개요") → change_qty. 취소·사장님 연결은 엔진의 규칙 단계(`dialog/rules.py`)가
+NLU보다 먼저 잡는다.
 """
 
 from __future__ import annotations
@@ -32,6 +35,29 @@ def _yes_no(text: str, ctx: NluContext) -> list[Act]:
     if _NO.fullmatch(t):
         return [Act("no")]
     return []
+
+
+# ---------------------------------------------------------------- 메뉴 질문 (티켓 05)
+
+# 묻는 말. "하나요"의 "나요"는 수량이라 뺀다.
+_ASKING = re.compile(r"얼마|무슨|어떤|어때|뭐예요|뭐에요|뭔가요|뭐가|(?<!하)나요$")
+# 메뉴 이름 없이 물어도 메뉴 질문으로 보는 말
+_MENU_TOPIC = re.compile(
+    r"알레르기|알러지|글루텐|비건|칼로리|얼마|가격|옵션|맛|달아|들어가|인분|디카페인"
+)
+# 물음표가 없어도 질문으로 보는 말 ("메도빅 알레르기 있어요")
+_ALWAYS_ASKING = re.compile(r"알레르기|알러지|글루텐|비건|칼로리")
+
+
+def _menu_question(text: str, ctx: NluContext) -> list[Act]:
+    asking = "?" in text or _ASKING.search(_TRAILING.sub("", text))
+    if not (asking or _ALWAYS_ASKING.search(text)):
+        return []
+    named = [n for n in ctx.menu_names if n in text]
+    if named:
+        name = min(named, key=text.index)
+        return [Act("ask_menu_info", menu_text=name, menu_guess=name, free_text=text)]
+    return [Act("ask_menu_info", free_text=text)] if _MENU_TOPIC.search(text) else []
 
 
 # ---------------------------------------------------------------- 픽업 시간
@@ -150,8 +176,13 @@ def _split_head(segment: str) -> tuple[str, str]:
     return (segment, "") if m is None else (segment[: m.start()], segment[m.end() :])
 
 
-def _no_menu_act(text: str) -> list[Act]:
-    t = _TRAILING.sub("", text)
+_BARE_QTY = re.compile(rf"(?:{_QTY_PAT})\s*(?:이요|요|만요|만|으로요|로요)?")
+
+
+def _no_menu_act(text: str, ctx: NluContext) -> list[Act]:
+    t = _TRAILING.sub("", text).strip()
+    if ctx.cart_summary and _BARE_QTY.fullmatch(t):  # "두 개요": 방금 다룬 줄의 수량
+        return [Act("change_qty", qty=_parse_qty(t))]
     if option := _option_text(t):
         return [Act("set_option", option_text=option)]
     if (m := _REMOVE_WHAT.match(t)) and "주문" not in m.group("what"):
@@ -175,7 +206,7 @@ def _items(text: str, ctx: NluContext) -> list[Act]:
         for pos in (m.start() for m in re.finditer(re.escape(name), text))
     )
     if not found:
-        return _no_menu_act(text)
+        return _no_menu_act(text, ctx)
     acts = []
     prefix = text[: found[0][0]]
     for i, (pos, name) in enumerate(found):
@@ -188,13 +219,22 @@ def _items(text: str, ctx: NluContext) -> list[Act]:
 
 # ---------------------------------------------------------------- 조립
 
-_EXCLUSIVE: tuple[Recognizer, ...] = (_yes_no,)
+_EXCLUSIVE: tuple[Recognizer, ...] = (_yes_no, _menu_question)
 _RECOGNIZERS: tuple[Recognizer, ...] = (_items, _done_ordering, _pickup_time)
+
+# "아니요, 두 개요" → no + "두 개요". "네 개요"·"네 시"(넷)의 "네"는 머리말이 아니다.
+_LEAD = re.compile(
+    r"(?P<lead>아니요|아뇨|아니|네|예)(?:\s*[,.!]\s*|\s+(?![개잔시]))(?P<rest>\S.*)"
+)
 
 
 class FakeNlu:
     def parse(self, text: str, ctx: NluContext) -> list[Act]:
         text = text.strip()
+        if m := _LEAD.fullmatch(text):
+            lead = Act("yes") if m.group("lead") in ("네", "예") else Act("no")
+            rest = self.parse(m.group("rest"), ctx)
+            return [lead] + [a for a in rest if a.type != "unknown"] or [lead]
         for recognize in _EXCLUSIVE:
             if acts := recognize(text, ctx):
                 return acts
