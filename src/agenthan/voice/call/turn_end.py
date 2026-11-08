@@ -13,6 +13,7 @@ from agenthan.voice.dialog.rules import yes_or_no
 from agenthan.voice.hangul import BLANK, decompose
 
 Label = Literal["end", "continue", "wait_request"]
+CONT_WAIT_S = 2.0  # 이어짐 상한 기본값(초): 마지막 말 끝부터 (grilling Q3)
 # 직전 질문 종류 (Raux & Eskenazi 2008): 확인(예/아니요) · 닫힌(고르기·시각) · 열린
 QuestionKind = Literal["confirm", "closed", "open"]
 
@@ -62,6 +63,7 @@ class TurnEndVerdict:
     firm: bool = False
     filler_only: bool = False  # 필러만 있는 말. 상한까지 안 이어지면 엔진에 넘기지 않는다
     backchannel: bool = False  # 맞장구로 보이는 말 (기록용)
+    wait_s: float = 0.0  # 추가 대기: 이어짐이면 마지막 말 끝부터 기다릴 상한(초), 아니면 0
 
 
 # 엔진 템플릿(`dialog/templates.py`)의 질문 끝. 예/아니요로 답하는 질문
@@ -123,11 +125,21 @@ def classify_turn_end(
     state: str,
     question_kind: str,
     menu_names: tuple[str, ...],
+    cont_wait_s: float = CONT_WAIT_S,
 ) -> TurnEndVerdict:
+    """확정 글 하나가 끝난 말인가.
+
+    입력은 STT 확정 글, 엔진의 대화 상태(`NluContext.state`), 직전 질문 종류(`question_kind`),
+    메뉴 이름, 이어짐 상한. 규칙의 목표는 이어짐의 정밀도다. 틀려서 이어짐이면 최대 상한만큼
+    늦고, 틀려서 끝남이면 말을 자른다. 그래서 기본은 끝남이고 이어짐은 글에 단서가 보일 때만 건다.
+    `state`는 지금 규칙에서 질문 종류를 거쳐서만 쓴다(상태별 대기 표를 넣을 자리).
+    """
     tokens = _tokens(text)
     if not tokens:
         return TurnEndVerdict("end", "empty")
     verdict = _judge(text, tokens, question_kind, menu_names)
+    if verdict.label == "continue":
+        verdict = replace(verdict, wait_s=cont_wait_s)
     if is_backchannel(text):
         verdict = replace(verdict, backchannel=True)
     return verdict
@@ -191,11 +203,12 @@ class TurnDecision:
     path: Path
     score: float | None  # 턴 모델 끝남 확률. 모델이 없거나 늦거나 실패하면 None
     verdict: TurnEndVerdict
+    wait_s: float = 0.0  # 이어짐이면 마지막 말 끝부터 기다릴 상한(초)
 
     def as_record(self) -> dict[str, object]:
         return {
             "label": self.label, "reason": self.reason, "path": self.path, "score": self.score,
-            "backchannel": self.verdict.backchannel,
+            "wait_s": self.wait_s, "backchannel": self.verdict.backchannel,
         }
 
 
@@ -205,6 +218,7 @@ def combine_turn_end(
     *,
     low: float = MODEL_LOW,
     high: float = MODEL_HIGH,
+    cont_wait_s: float = CONT_WAIT_S,
 ) -> TurnDecision:
     """끝말 규칙 판정 + 턴 모델 점수 → 판정 (spec "규칙과 모델 합치기").
 
@@ -212,10 +226,8 @@ def combine_turn_end(
     앞선다. 점수가 없으면(모델 꺼짐·늦음·실패) 규칙만 쓴다. 티켓 02에서는 늘 `score=None`이다.
     Smart Turn(티켓 03)은 세션이 점수를 받아 여기에 넘기기만 하면 된다.
     """
-    if score is None or verdict.firm:
-        return TurnDecision(verdict.label, verdict.reason, "rule", score, verdict)
+    if score is None or verdict.firm or low < score < high:
+        return TurnDecision(verdict.label, verdict.reason, "rule", score, verdict, verdict.wait_s)
     if score >= high:
         return TurnDecision("end", f"model>={high}", "model", score, verdict)
-    if score <= low:
-        return TurnDecision("continue", f"model<={low}", "model", score, verdict)
-    return TurnDecision(verdict.label, verdict.reason, "rule", score, verdict)
+    return TurnDecision("continue", f"model<={low}", "model", score, verdict, cont_wait_s)

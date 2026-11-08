@@ -603,12 +603,12 @@ class CallSession:
         ctx = engine.nlu_context()  # 듣는 중이라 엔진은 쉬고 있다
         verdict = classify_turn_end(
             text, state=ctx.state, question_kind=question_kind(ctx.last_question, ctx.state),
-            menu_names=ctx.menu_names,
+            menu_names=ctx.menu_names, cont_wait_s=self._settings.cont_wait_s,
         )
         settings = self._settings
         # 턴 모델 점수는 티켓 03이 넣는다. 없으면 규칙만 쓴다
         return combine_turn_end(verdict, None, low=settings.turn_model_low,
-                                high=settings.turn_model_high)
+                                high=settings.turn_model_high, cont_wait_s=settings.cont_wait_s)
 
     def _wait_more(self, u: _Utterance, decision: TurnDecision) -> None:
         self._steps.append({"text": u.text, **decision.as_record()})
@@ -658,7 +658,9 @@ class CallSession:
         if left > 0 and (self._vad.in_speech or self._parts or self._ep_waiting()):
             self._arm_cont(min(_CONT_POLL_S, left))  # 말이 다시 시작됐다. 그 말 끝부터 다시 센다
             return
-        due = (self._voice_at if self._voice_at is not None else now) + settings.cont_wait_s
+        assert self._cont_decision is not None
+        last_voice = self._voice_at if self._voice_at is not None else now
+        due = last_voice + self._cont_decision.wait_s
         if left > 0 and now < due:
             self._arm_cont(min(due - now, left))
             return

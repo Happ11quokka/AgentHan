@@ -241,5 +241,16 @@ def test_model_score_bands(text: str, score: float, label: str, path: str) -> No
     assert (decision.label, decision.path, decision.score) == (label, path, score)
 
 
+def test_a_continue_verdict_carries_the_extra_wait_and_an_end_carries_none() -> None:
+    # 추가 대기 = 마지막 말 끝부터 기다릴 상한 (spec "끝말 규칙" 출력, grilling Q3)
+    assert judge("메도빅 두 개랑").wait_s == 2.0
+    assert judge("메도빅 하나요").wait_s == 0.0
+    tuned = classify_turn_end("메도빅 두", state="ordering", question_kind="closed",
+                              menu_names=MENU, cont_wait_s=1.5)
+    assert tuned.wait_s == 1.5
+    assert combined("6시 반", 0.2).wait_s == 2.0  # 모델이 이어짐으로 돌리면 같은 상한
+    assert combined("메도빅 두 개랑", 0.9).wait_s == 0.0
+
+
 def test_yes_after_confirm_beats_a_low_model_score() -> None:
     assert combined("네", 0.05, kind="confirm").label == "end"

@@ -168,7 +168,7 @@ def test_yes_after_the_readback_is_not_held(tmp_path) -> None:
     assert waited < 1.0
     turn4 = next(r for r in records(c) if r["turn"] == 4)
     assert turn4["turn_end"] == {"label": "end", "reason": "yes_no_after_confirm", "path": "rule",
-                                 "score": None, "backchannel": True}
+                                 "score": None, "wait_s": 0.0, "backchannel": True}
 
 
 def test_a_wait_request_goes_to_the_engine_without_waiting(tmp_path) -> None:
