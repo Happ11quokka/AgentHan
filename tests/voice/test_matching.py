@@ -112,13 +112,38 @@ def test_variants_resolve_to_menu(matcher: MenuMatcher, text: str, menu_id: str)
 
 @pytest.mark.parametrize(
     ("text", "menu_id"),
-    [("메도빅", "m01"), ("메도비크", "m01"), ("나뽈레옹", "m02"), ("블리니", "m04"),
-     ("아메리카노 두개요", "m03"), ("메도비", "m01")],
+    [("메도빅", "m01"), ("메도비크", "m01"), ("꿀케이크", "m01"), ("블리니", "m04"),
+     ("아메리카노 두개요", "m03"), ("블린이요", "m04"), ("메도빅 케이크", "m01")],
 )
-def test_close_variants_are_accepted(matcher: MenuMatcher, text: str, menu_id: str) -> None:
+def test_exact_name_or_alias_is_accepted(matcher: MenuMatcher, text: str, menu_id: str) -> None:
     result = matcher.match(text)
     assert result.decision == "accept"
     assert result.item is not None and result.item.id == menu_id
+
+
+@pytest.mark.parametrize(
+    ("text", "guess", "menu_id"),
+    [
+        ("메도비", "메도빅", "m01"),
+        ("나뽈레옹", "나폴레옹", "m02"),
+        ("아메리까노", "아메리카노", "m03"),
+    ],
+)
+def test_fuzzy_match_alone_asks_but_with_agreeing_guess_accepts(
+    matcher: MenuMatcher, text: str, guess: str, menu_id: str
+) -> None:
+    # 신호가 하나(자모 유사도)뿐이면 되묻고, NLU 추정이 같은 메뉴를 가리키면 수락한다
+    alone = matcher.match(text)
+    assert alone.decision == "confirm"
+    assert alone.item is not None and alone.item.id == menu_id
+    agreed = matcher.match(text, menu_guess=guess)
+    assert agreed.decision == "accept"
+    assert agreed.item is not None and agreed.item.id == menu_id
+
+
+def test_fuzzy_accept_without_guess_can_be_allowed(matcher: MenuMatcher) -> None:
+    lenient = MenuMatcher(MENU, fuzzy_accept_needs_guess=False)
+    assert lenient.match("메도비").decision == "accept"
 
 
 @pytest.mark.parametrize("text", ["티라미수", "짜장면", "카푸치노", "라떼", "커피", "pizza", ""])
@@ -167,8 +192,9 @@ def test_shared_alias_asks_to_choose() -> None:
 
 
 def test_thresholds_can_be_overridden() -> None:
-    strict = MenuMatcher(MENU, accept_at=0.95)
+    strict = MenuMatcher(MENU, accept_at=0.95, fuzzy_accept_needs_guess=False)
     assert strict.match("메도비").decision == "confirm"
+    assert MenuMatcher(MENU, fuzzy_accept_needs_guess=False).match("메도비").decision == "accept"
 
 
 # ---------------------------------------------------------------- menu_guess

@@ -7,6 +7,9 @@
 4. `menu_guess`(NLU 추정)가 같은 메뉴를 가리키면 점수를 올린다. 보조 신호일 뿐이다
 5. 판정: accept / confirm(후보 1개) / choose(1·2등이 가까움) / reject. 품절은 sold_out으로 따로
 
+수락에는 신호 두 개가 필요하다: 이름·별칭과 정확히 같거나, 자모 유사도가 높고 `menu_guess`도
+같은 메뉴를 가리킬 때. 유사도 하나만 높으면 되묻는다(잘못 수락하는 비용이 더 크다, R-Q3).
+
 결과 타입은 voice 내부 타입이다. 계약의 `MenuHit.matched_by`에 "fuzzy"가 없어서다
 (티켓 08에서 제안).
 """
@@ -129,6 +132,7 @@ class MenuMatcher:
         reject_below: float = REJECT_BELOW,
         margin: float = MARGIN,
         guess_bonus: float = GUESS_BONUS,
+        fuzzy_accept_needs_guess: bool = True,
     ) -> None:
         self._menu = list(menu)
         self._names = {m.id: {_clean(n) for n in (m.name_ko, *m.aliases)} - {""} for m in menu}
@@ -136,6 +140,7 @@ class MenuMatcher:
         self._reject_below = reject_below
         self._margin = margin
         self._guess_bonus = guess_bonus
+        self._fuzzy_accept_needs_guess = fuzzy_accept_needs_guess
 
     # ---------------------------------------------------------------- 판정
 
@@ -144,15 +149,16 @@ class MenuMatcher:
         if not ranked or ranked[0][0] < self._reject_below:
             return MatchResult("reject", score=ranked[0][0] if ranked else 0.0)
 
-        (top, item), runner_up = ranked[0], ranked[1:2]
-        close = [m for s, m in runner_up if s >= self._reject_below and top - s < self._margin]
+        top, item, corroborated = ranked[0]
+        close = [m for s, m, _ in ranked[1:2] if s >= self._reject_below and top - s < self._margin]
         if close:
             return self._choose((item, *close), top)
-        if top >= self._accept_at:
+        if top >= self._accept_at and (corroborated or not self._fuzzy_accept_needs_guess):
             return self._single("accept", item, top)
         return self._single("confirm", item, top)
 
-    def _rank(self, text: str, guess: str) -> list[tuple[float, MenuItem]]:
+    def _rank(self, text: str, guess: str) -> list[tuple[float, MenuItem, bool]]:
+        """(점수, 메뉴, 신호가 둘인지) 목록. 점수 높은 순, 같은 점수는 메뉴 순서."""
         forms = query_forms(text)
         if not forms:
             return []
@@ -161,10 +167,12 @@ class MenuMatcher:
         for item in self._menu:
             names = self._names[item.id]
             score = max((similarity(q, n) for q in forms for n in names), default=0.0)
-            if guessed & names:
+            exact = score == 1.0
+            agreed = bool(guessed & names)
+            if agreed:
                 score = min(1.0, score + self._guess_bonus)
-            scored.append((score, item))
-        return sorted(scored, key=lambda pair: pair[0], reverse=True)  # 같은 점수는 메뉴 순서
+            scored.append((score, item, exact or agreed))
+        return sorted(scored, key=lambda row: row[0], reverse=True)
 
     @staticmethod
     def _single(decision: MatchDecision, item: MenuItem, score: float) -> MatchResult:
