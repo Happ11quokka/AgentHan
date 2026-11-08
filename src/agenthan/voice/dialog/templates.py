@@ -78,6 +78,25 @@ def i_ga(word: str) -> str:
     return f"{word}{'이' if _has_batchim(word) else '가'}"
 
 
+def _josa(word: str, after_batchim: str, after_vowel: str) -> str:
+    return f"{word}{after_batchim if _has_batchim(word) else after_vowel}"
+
+
+def eun_neun(word: str) -> str:
+    """메도빅 → 메도빅은, 아메리카노 → 아메리카노는."""
+    return _josa(word, "은", "는")
+
+
+def i_rang(word: str) -> str:
+    """메도빅 → 메도빅이랑, 아메리카노 → 아메리카노랑."""
+    return _josa(word, "이랑", "랑")
+
+
+def i_na(word: str) -> str:
+    """블린 → 블린이나, 아메리카노 → 아메리카노나."""
+    return _josa(word, "이나", "나")
+
+
 # ---------------------------------------------------------------- 대사
 
 def greeting(store_name: str) -> str:
@@ -164,3 +183,35 @@ def confirm_pickup(at: datetime) -> str:
 
 def ask_pickup_again() -> str:
     return "그럼 몇 시쯤 오세요?"
+
+
+# ---------------------------------------------------------------- 메뉴 되묻기·대안 (티켓 02)
+
+
+def confirm_menu(name: str) -> str:
+    """매칭이 애매할 때 후보 하나를 확인한다."""
+    return f"혹시 {name} 말씀하신 거 맞으세요?"
+
+
+def choose_menu(names: Sequence[str]) -> str:
+    """1·2등이 가까울 때. 예: "메도빅이랑 나폴레옹 중에 어떤 거요?"."""
+    if len(names) == 2:
+        return f"{i_rang(names[0])} {names[1]} 중에 어떤 거요?"
+    return f"{_join(names)} 중에 어떤 거요?"
+
+
+def menu_declined(menu_names: Sequence[str]) -> str:
+    """되묻기에 "아니요"라고 했을 때. 메뉴 목록을 다시 알려 준다."""
+    return f"죄송해요. 저희는 {i_ga(_join(menu_names))} 있어요."
+
+
+def sold_out(name: str) -> str:
+    return f"죄송해요, {eun_neun(name)} 오늘 다 떨어졌어요."
+
+
+def suggest_menu(names: Sequence[str]) -> str:
+    """품절 대신 권하기. 하나면 "나폴레옹은 어떠세요?", 둘이면 "나폴레옹이나 블린은 어떠세요?"."""
+    if len(names) == 1:
+        return f"{eun_neun(names[0])} 어떠세요?"
+    head = ", ".join([*names[:-2], i_na(names[-2])])
+    return f"{head} {eun_neun(names[-1])} 어떠세요?"
