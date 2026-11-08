@@ -46,6 +46,19 @@ _REPEAT = re.compile(
 )
 
 
+def yes_or_no(text: str) -> str | None:
+    """발화 전체가 예/아니요 말이면 "yes"·"no", 아니면 None.
+
+    끝말 규칙(`call/turn_end.py`)도 같은 목록을 쓴다.
+    """
+    t = _TRAILING.sub("", text.strip())
+    if _YES.fullmatch(t):
+        return "yes"
+    if _NO.fullmatch(t):
+        return "no"
+    return None
+
+
 def apply_rules(text: str) -> list[Act] | None:
     """규칙에 걸리면 act 목록, 아니면 None."""
     t = _TRAILING.sub("", text.strip())

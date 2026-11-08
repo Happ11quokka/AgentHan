@@ -69,6 +69,13 @@ def test_call_limits_have_server_defaults_and_can_be_changed() -> None:
     assert (s.max_calls, s.max_call_s) == (3, 300.0)
 
 
+def test_continuation_wait_defaults_to_two_seconds_and_can_be_changed() -> None:
+    # 3단계 티켓 02: 이어짐 판정이면 마지막 말 끝부터 이만큼까지 기다린다 (grilling Q3)
+    assert VoiceSettings.from_env({}, env_file=None).cont_wait_s == 2.0
+    s = VoiceSettings.from_env({"PHONE_CONT_WAIT_S": "1.5"}, env_file=None)
+    assert s.cont_wait_s == 1.5
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)
@@ -83,7 +90,8 @@ def test_keys_do_not_show_in_repr(tmp_path) -> None:
      ("PHONE_VAD_THRESHOLD", "nan"), ("PHONE_VAD_THRESHOLD", "inf"), ("PHONE_VAD_THRESHOLD", "0"),
      ("PHONE_VAD_START_MS", "0"), ("PHONE_VAD_END_SILENCE_MS", "0"),
      ("PHONE_VAD_END_SILENCE_MS", "50"),
-     ("PHONE_MAX_CALLS", "0"), ("PHONE_MAX_CALLS", "많이"), ("PHONE_MAX_CALL_S", "nan")],
+     ("PHONE_MAX_CALLS", "0"), ("PHONE_MAX_CALLS", "많이"), ("PHONE_MAX_CALL_S", "nan"),
+     ("PHONE_CONT_WAIT_S", "nan"), ("PHONE_CONT_WAIT_S", "길게")],
 )
 def test_wrong_value_names_the_variable(name, value) -> None:
     with pytest.raises(SettingsError, match=name):
