@@ -176,6 +176,20 @@ class DialogEngine:
         self._count_failure(turn)
         return self._result(turn)
 
+    def nlu_context(self) -> NluContext:
+        """다음 `handle`이 NLU에 넘길 문맥 (3단계 티켓 02 미리 해석의 키, 끝말 규칙의 대화 상태).
+
+        시각 필드가 없어서 엔진이 돌지 않는 동안에는 값이 흔들리지 않는다.
+        `handle`이 도는 중(다른 스레드)에는 부르지 않는다.
+        세션은 엔진이 쉬는 듣기 국면에서만 부른다.
+        """
+        return NluContext(
+            menu_names=tuple(m.name_ko for m in self._menu),
+            cart_summary=self._cart.summary(),
+            last_question=self._last_question,
+            state=self._state.value,
+        )
+
     def _local(self, now: datetime) -> datetime:
         """`now` → 가게 시각. naive면 가게 시각으로 보고 tz만 붙인다 (모듈 설명 참고)."""
         tz = self._config.tz
@@ -191,13 +205,7 @@ class DialogEngine:
         """
         acts = apply_rules(text)
         if acts is None:
-            ctx = NluContext(
-                menu_names=tuple(m.name_ko for m in self._menu),
-                cart_summary=self._cart.summary(),
-                last_question=self._last_question,
-                state=self._state.value,
-            )
-            acts = self._nlu.parse(text, ctx)
+            acts = self._nlu.parse(text, self.nlu_context())
         if self._no_means_done(acts):
             # "더 필요하신 거?" → "아니요, 지금 바로 갈게요": 아니요가 답이다 (2단계 리뷰 5번)
             acts = [Act("done_ordering"), *acts[1:]]
