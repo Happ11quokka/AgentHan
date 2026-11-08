@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import grpc
 import pytest
@@ -348,3 +349,109 @@ def test_an_error_on_the_retired_connection_after_reconnect_does_not_end_the_cal
 
     first, second = run(go())
     assert (first.text, second.text) == ("메도빅 하나요 ", "포장이요 ")
+
+
+# ---------------------------------------------------------------- 재연결과 EOF 순서 (티켓 10 #8)
+
+
+class SlowReplyEofOnHalfClose(FakeNest):
+    """실측 A/B A1 w=3(1/13회): `done_writing` 뒤 뒷조각·epFlag 응답보다 EOF가 먼저 왔다.
+
+    epFlag 응답을 `delay` 뒤에 내고, 클라이언트가 쓰기를 닫으면 남은 응답을 버리고 바로 닫는다.
+    """
+
+    def __init__(self, replies, *, delay: float = 0.2, **kw) -> None:
+        super().__init__(replies, **kw)
+        self.delay = delay
+
+    def _on_request(self, conn, req) -> None:
+        extra = json.loads(req.data.extra_contents or "{}") if req.type == 1 else {}
+        if not extra.get("epFlag"):
+            super()._on_request(conn, req)
+            return
+        conn.requests.append(req)
+        conn.audio_bytes += len(req.data.chunk)
+        text = self.replies.popleft() if self.replies else ""
+        reply = transcription(text, conn.utter_start_ms, conn.audio_ms, epd="endPoint",
+                              ep_flag=True, seq_id=extra.get("seqId", 0))
+        conn.utter_start_ms = conn.audio_ms
+        asyncio.get_running_loop().call_later(self.delay, conn.push, reply)
+
+
+def test_the_retired_connection_keeps_writing_open_until_its_ep_flag_reply() -> None:
+    # 4분 30초 재연결: 앞 연결 쓰기를 epFlag 프레임 바로 뒤에 닫으면, CLOVA가 응답 전에 EOF를
+    # 낼 수 있다. 앞 연결은 그 epFlag 응답을 받은 뒤에 쓰기를 닫는다
+    clock = Clock()
+
+    async def go():
+        async with NestServer(SlowReplyEofOnHalfClose(["메도빅 하나요 ", "포장이요 "])) as srv:
+            stt = ClovaSttStream(settings(srv.endpoint), monotonic=clock)
+            await stt.start()
+            await stt.write(FRAME)
+            clock.t = 271.0
+            await stt.write(FRAME, ep_flag=True, seq_id=1)  # 이 뒤 새 연결
+            first = await next_result(stt)
+            await stt.write(FRAME, ep_flag=True, seq_id=2)
+            second = await next_result(stt)
+            await asyncio.sleep(0.05)
+            conns = srv.servicer.connections
+            await stt.close()
+            return conns, first, second
+
+    conns, first, second = run(go())
+    assert len(conns) == 2
+    assert (first.text, first.ep_flag, first.seq_id) == ("메도빅 하나요 ", True, 1)
+    assert (second.text, second.start_ms) == ("포장이요 ", 200)
+    assert conns[0].writing_done  # 응답을 받은 뒤에는 닫았다
+
+
+def test_a_turn_survives_the_4m30s_reconnect_when_the_reply_is_slow(tmp_path) -> None:
+    clock = Clock()
+
+    async def go():
+        servicer = SlowReplyEofOnHalfClose(["메도빅 하나요 "])
+        async with NestServer(servicer) as srv:
+            stt = ClovaSttStream(settings(srv.endpoint), monotonic=clock)
+            async with Call(tmp_path, stt=stt) as c:
+                await c.start()
+                clock.t = 271.0
+                await c.say()  # 무음 감지 epFlag → 재연결 → 응답은 0.2초 뒤
+                return await c.out.wait_for("stt.final", turn=1)
+
+    final = run(go())
+    assert (final["text"], final["end_by"]) == ("메도빅 하나요", "vad")
+
+
+class EofWithoutReply(FakeNest):
+    """앞 연결이 epFlag 응답 없이 바로 닫힌다 (끝내 오지 않는 경우)."""
+
+    def _on_request(self, conn, req) -> None:
+        extra = json.loads(req.data.extra_contents or "{}") if req.type == 1 else {}
+        if conn is self.connections[0] and extra.get("epFlag"):
+            conn.requests.append(req)
+            conn.audio_bytes += len(req.data.chunk)
+            conn.out.put_nowait(("eof", None))
+            return
+        super()._on_request(conn, req)
+
+
+def test_a_retired_connection_that_ends_without_the_reply_says_so_with_an_empty_ep_reply() -> None:
+    # 세션이 붙잡아 둔 조각을 `hold_cap_s`까지 기다리지 않고 바로 풀 수 있게 빈 epFlag 응답을 낸다
+    clock = Clock()
+
+    async def go():
+        async with NestServer(EofWithoutReply(["포장이요 "])) as srv:
+            stt = ClovaSttStream(settings(srv.endpoint), monotonic=clock)
+            await stt.start()
+            await stt.write(FRAME)
+            clock.t = 271.0
+            await stt.write(FRAME, ep_flag=True, seq_id=1)
+            first = await next_result(stt)
+            await stt.write(FRAME, ep_flag=True, seq_id=2)
+            second = await next_result(stt)
+            await stt.close()
+            return first, second
+
+    first, second = run(go())
+    assert first == SttResult("", 200, 200, "eof", True, 1, None)
+    assert second.text == "포장이요 "

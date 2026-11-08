@@ -9,8 +9,9 @@
 - DATA마다 `extra_contents = {"epFlag": ..., "seqId": ...}`.
   `epFlag` 응답(빈 글일 수 있음)도 넘긴다
 - 5분 연결 제한: 연결이 `reconnect_after_s`(4분 30초)를 넘긴 뒤 `epFlag` 프레임을 쓰면
-  (= 턴 사이) 그 연결은 쓰기를 닫고, 다음 프레임부터 새 연결로 보낸다. 앞 연결은 남은 결과를
-  다 받을 때까지(EOF) 읽는다(그사이 끊기면 로그만 남긴다).
+  (= 턴 사이) 다음 프레임부터 새 연결로 보낸다. 앞 연결은 그 epFlag 응답을 받은 뒤 쓰기를
+  닫고(티켓 10), 남은 결과를 다 받을 때까지(EOF) 읽는다(그사이 끊기면 로그만 남긴다).
+  응답 없이 끝나면 빈 epFlag 응답(`epd_type="eof"`)을 대신 낸다
   `epFlag`가 오지 않고 `hard_reconnect_after_s`를 넘기면 그냥 바꾼다
 - 결과 시각은 통화 오디오 시각으로 이어 준다: 연결마다 CLOVA 시각이 0부터라서,
   그 연결 전까지 쓴 오디오 길이를 더한다
@@ -56,6 +57,8 @@ class ClovaSttSettings:
     config_timeout_s: float = 10.0
     reconnect_after_s: float = 270.0  # 4분 30초. CLOVA 연결 수명은 5분
     hard_reconnect_after_s: float = 285.0
+    # 재연결 때 앞 연결이 epFlag 응답을 기다리는 최대 시간. 5분 제한(300초)보다 먼저 닫히게
+    retire_wait_s: float = 10.0
     # 키워드 부스팅(티켓 10). 비어 있으면 CONFIG에 넣지 않는다. 단어는 `stt.boost.menu_boost_words`
     boost_words: tuple[str, ...] = ()
     boost_weight: float = BOOST_WEIGHT
@@ -141,6 +144,13 @@ class _Connection:
             metadata=(("authorization", f"Bearer {settings.secret_key}"),)
         )
         self.writing = True
+        self.retired = False  # 새 연결로 바꿨다. 남은 결과만 받는다
+        self.end_ms = 0  # 바꾼 때의 통화 오디오 시각
+        # 써 둔 epFlag 중 응답을 아직 못 받은 수. 0이면 `ep_settled`가 켜진다
+        self.ep_pending = 0
+        self.ep_last_seq = 0
+        self.ep_settled = asyncio.Event()
+        self.ep_settled.set()
 
     async def configure(self, config: dict[str, Any], timeout: float) -> str | None:
         """CONFIG를 쓰고 성공 응답을 기다린다. 부스팅 상태(`config.keywordBoosting.status`,
@@ -166,12 +176,21 @@ class _Connection:
                 return str(boost.get("status")) if isinstance(boost, dict) else "missing"
 
     async def write(self, pcm: bytes, ep_flag: bool, seq_id: int) -> None:
+        if ep_flag:  # 쓰기 전에 센다. 응답이 쓰기 `await` 사이에 먼저 읽힐 수 있다
+            self.ep_pending += 1
+            self.ep_last_seq = seq_id
+            self.ep_settled.clear()
         await self.call.write(nest_pb2.NestRequest(
             type=nest_pb2.DATA,
             data=nest_pb2.NestData(
                 chunk=pcm, extra_contents=json.dumps({"epFlag": ep_flag, "seqId": seq_id})
             ),
         ))
+
+    def note_ep_reply(self) -> None:
+        self.ep_pending = max(0, self.ep_pending - 1)
+        if self.ep_pending == 0:
+            self.ep_settled.set()
 
     async def done_writing(self) -> None:
         if self.writing:
@@ -216,7 +235,8 @@ class ClovaSttStream:
         self._queue: asyncio.Queue[SttResult | PortError | None] = asyncio.Queue()
         self._conn: _Connection | None = None
         self._readers: set[asyncio.Task[None]] = set()
-        self._retired: set[_Connection] = set()  # 쓰기를 닫고 남은 결과를 받는 중인 앞 연결
+        self._retired: set[_Connection] = set()  # 바꾼 뒤 남은 결과를 받는 중인 앞 연결
+        self._retirers: set[asyncio.Task[None]] = set()  # 앞 연결 쓰기를 닫을 때를 기다리는 작업
         self._written_bytes = 0
         self._closed = False
         # 마지막 연결 CONFIG 응답의 `keywordBoosting.status`. 부스팅을 안 넣었으면 None
@@ -263,26 +283,43 @@ class ClovaSttStream:
                     break
                 result = parse_result(json.loads(response.contents), conn.offset_ms)
                 if result is not None:
+                    if result.ep_flag:
+                        conn.note_ep_reply()
                     self._queue.put_nowait(result)
         except asyncio.CancelledError:
             raise
         except grpc.aio.AioRpcError as err:
-            if not conn.writing:  # 바꿔 둔 앞 연결. 통화는 새 연결로 이어진다 (리뷰 12번)
+            if conn.retired:  # 바꿔 둔 앞 연결. 통화는 새 연결로 이어진다 (리뷰 12번)
                 log.info("CLOVA Speech 앞 연결이 오류로 끝남 (%s)", err.code().name)
             elif not self._closed and err.code() != grpc.StatusCode.CANCELLED:
                 self._queue.put_nowait(_port_error(err))
             return
         except Exception:
             log.exception("CLOVA Speech 응답 읽기 실패")
-            if not self._closed and conn.writing:
+            if not self._closed and not conn.retired:
                 self._queue.put_nowait(SttDisconnected())
             return
         finally:
-            if not conn.writing:  # 바꿔 둔 앞 연결: 남은 결과를 다 받았으니 닫는다
+            if conn.retired:  # 바꿔 둔 앞 연결: 남은 결과를 다 받았으니 닫는다
                 self._retired.discard(conn)
+                self._settle_lost_replies(conn)
                 await conn.close()
-        if conn.writing and not self._closed:  # 우리가 쓰기를 닫지 않았는데 서버가 닫음
+        if not conn.retired and not self._closed:  # 우리가 바꾸지 않았는데 서버가 닫음
             self._queue.put_nowait(SttDisconnected("CLOVA Speech가 연결을 닫았어요"))
+
+    def _settle_lost_replies(self, conn: _Connection) -> None:
+        """앞 연결이 epFlag 응답 없이 끝났다(티켓 10 #8). 그 말의 글은 잃었다.
+
+        빈 epFlag 응답(`epd_type="eof"`)을 대신 내서, 세션이 그 응답을 기다리며 붙잡아 둔 조각을
+        `hold_cap_s`까지 기다리지 않고 바로 턴으로 넘기게 한다.
+        """
+        if conn.ep_pending == 0 or self._closed:
+            return
+        log.warning("CLOVA Speech 앞 연결이 epFlag 응답 %d개 없이 끝남", conn.ep_pending)
+        conn.ep_pending = 0
+        conn.ep_settled.set()
+        self._queue.put_nowait(SttResult("", conn.end_ms, conn.end_ms, "eof", True,
+                                         conn.ep_last_seq))
 
     async def write(self, pcm: bytes, *, ep_flag: bool = False, seq_id: int = 0) -> None:
         if self._closed:
@@ -307,21 +344,37 @@ class ClovaSttStream:
         return self._monotonic() - self._conn.opened_at
 
     async def _reconnect(self) -> None:
-        """앞 연결은 쓰기만 닫고 EOF까지 계속 읽는다.
+        """앞 연결은 남은 결과를 EOF까지 계속 읽고, 새 프레임은 새 연결로 보낸다.
+
+        앞 연결의 쓰기는 써 둔 epFlag의 응답을 다 받은 뒤에 닫는다(`retire_wait_s`까지 기다림,
+        `_retire`). epFlag 프레임 바로 뒤에 닫으면 CLOVA가 뒷조각·epFlag 응답보다 EOF를 먼저 낼
+        수 있다(실측 A/B 1/13회, 티켓 10 #8). 그러면 그 턴의 말을 잃는다.
 
         새 연결의 CONFIG 응답(실측 0.1~0.2초)까지 이 `write`가 기다린다. 기다리는 쪽은 세션의
         STT 쓰기 작업이라 WS 읽기는 멈추지 않는다(밀린 프레임은 세션 큐에 쌓인다).
         """
         old = self._conn
         assert old is not None
+        old.retired = True
+        old.end_ms = self.audio_ms
         self._retired.add(old)
+        retire = asyncio.create_task(self._retire(old), name="clova-stt-retire")
+        self._retirers.add(retire)
+        retire.add_done_callback(self._retirers.discard)
+        log.info("CLOVA Speech 다시 연결 (통화 오디오 %dms)", self.audio_ms)
+        self._conn = None
+        self._conn = await self._open()
+
+    async def _retire(self, old: _Connection) -> None:
+        try:
+            await asyncio.wait_for(old.ep_settled.wait(), self._settings.retire_wait_s)
+        except TimeoutError:
+            log.info("CLOVA Speech 앞 연결 epFlag 응답이 %.0f초 안에 없어 쓰기를 닫음",
+                     self._settings.retire_wait_s)
         try:
             await old.done_writing()
         except Exception:
             log.info("CLOVA Speech 앞 연결 쓰기 닫기 실패", exc_info=True)
-        log.info("CLOVA Speech 다시 연결 (통화 오디오 %dms)", self.audio_ms)
-        self._conn = None
-        self._conn = await self._open()
 
     def results(self) -> AsyncIterator[SttResult]:
         return self._results()
@@ -345,7 +398,8 @@ class ClovaSttStream:
         for conn in conns:
             with contextlib.suppress(Exception):
                 await conn.close()
-        for reader in list(self._readers):
-            reader.cancel()
-        await asyncio.gather(*self._readers, return_exceptions=True)
+        tasks = [*self._readers, *self._retirers]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         self._queue.put_nowait(None)
