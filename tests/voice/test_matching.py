@@ -112,8 +112,15 @@ def test_variants_resolve_to_menu(matcher: MenuMatcher, text: str, menu_id: str)
 
 @pytest.mark.parametrize(
     ("text", "menu_id"),
-    [("메도빅", "m01"), ("메도비크", "m01"), ("꿀케이크", "m01"), ("블리니", "m04"),
-     ("아메리카노 두개요", "m03"), ("블린이요", "m04"), ("메도빅 케이크", "m01")],
+    [
+        ("메도빅", "m01"),
+        ("메도비크", "m01"),
+        ("꿀케이크", "m01"),
+        ("블리니", "m04"),
+        ("아메리카노 두개요", "m03"),
+        ("블린이요", "m04"),
+        ("메도빅 케이크", "m01"),
+    ],
 )
 def test_exact_name_or_alias_is_accepted(matcher: MenuMatcher, text: str, menu_id: str) -> None:
     result = matcher.match(text)

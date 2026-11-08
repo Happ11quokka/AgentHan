@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Literal
 
@@ -182,14 +182,32 @@ class DialogEngine:
             self._add_to_cart(turn, item, act)
 
     def _resolve_menu(self, turn: _Turn, act: Act) -> MenuItem | None:
-        """매처 판정 → 담을 메뉴. 못 담으면 안내하고 None.
+        """매처 판정 → 담을 메뉴. 바로 못 담으면 안내하거나 되묻고(CLARIFY) None.
 
-        티켓 02가 confirm·choose·sold_out 판정을 붙인다.
+        - accept: 그 메뉴
+        - confirm·choose: "혹시 ○○ 말씀하신 거 맞으세요?" / "○○이랑 △△ 중에 어떤 거요?"
+        - sold_out: 품절 안내 + 대안 권하기(대안이 있으면 CLARIFY)
+        - reject: 메뉴 목록 안내, ORDERING 유지
         """
         result = self._matcher.match(act.menu_text, act.menu_guess)
         if result.decision == "accept" and result.item is not None:
             return result.item
-        self._say(turn, templates.not_on_menu([m.name_ko for m in self._menu]))
+        if result.decision == "confirm" and result.item is not None:
+            item = result.item
+            self._open_menu_clarify(turn, act, (item,), templates.confirm_menu(item.name_ko))
+        elif result.decision == "choose":
+            names = [m.name_ko for m in result.candidates]
+            self._open_menu_clarify(turn, act, result.candidates, templates.choose_menu(names))
+        elif result.decision == "sold_out" and result.item is not None:
+            notice = templates.sold_out(result.item.name_ko)
+            alternatives = tuple(self._matcher.alternatives(result.item))
+            if alternatives:
+                question = templates.suggest_menu([m.name_ko for m in alternatives])
+                self._open_menu_clarify(turn, act, alternatives, question, notice=notice)
+            else:
+                self._say(turn, notice)
+        else:
+            self._say(turn, templates.not_on_menu(self._available_names()))
         return None
 
     def _add_to_cart(self, turn: _Turn, item: MenuItem, act: Act) -> None:
@@ -236,6 +254,108 @@ class DialogEngine:
         self._state = State.ORDERING
         self._ask(turn, templates.ask_what_to_fix())
 
+    # ------------------------------------------------------------ CLARIFY: 메뉴 되묻기 (티켓 02)
+    #
+    # 되묻는 턴에 같은 발화의 나머지 act는 `_MenuClarify.deferred`에 미뤄 두었다가,
+    # 손님이 답한 턴에 ORDERING으로 돌아가 차례로 다시 처리한다.
+    # `self._pending`이 `_MenuClarify`가 아니면(티켓 03의 옵션 질문 등) `_on_unhandled`로 넘긴다.
+
+    def _open_menu_clarify(
+        self,
+        turn: _Turn,
+        act: Act,
+        candidates: tuple[MenuItem, ...],
+        question: str,
+        *,
+        notice: str = "",
+    ) -> None:
+        """되묻기를 연다. 말하는 순서: 앞서 담은 항목 되받기 → 안내(품절 등) → 질문."""
+        if turn.asked:  # 이번 턴에 이미 다른 질문을 했다. 한 턴에 질문은 하나.
+            if notice:
+                self._say(turn, notice)
+            return
+        if turn.accepted:
+            self._say(turn, templates.items_noted(turn.accepted))
+        if notice:
+            self._say(turn, notice)
+        self._pending = _MenuClarify(act, candidates, question, opened_in=turn)
+        self._state = State.CLARIFY
+        self._ask(turn, question)
+
+    def _menu_clarify(self, turn: _Turn, act: Act) -> _MenuClarify | None:
+        """지금 기다리는 메뉴 되묻기. 되묻기를 연 그 턴의 act면 미뤄 두고 None."""
+        pending = self._pending
+        if not isinstance(pending, _MenuClarify):
+            self._on_unhandled(turn, act)
+            return None
+        if pending.opened_in is turn:
+            pending.deferred.append(act)
+            return None
+        return pending
+
+    def _close_menu_clarify(
+        self, turn: _Turn, pending: _MenuClarify, item: MenuItem | None, act: Act | None = None
+    ) -> None:
+        """되묻기를 닫고 ORDERING으로 돌아간다. 고른 메뉴를 담고, 미뤄 둔 act를 처리한다."""
+        self._pending = None
+        self._state = State.ORDERING
+        if item is not None:
+            self._add_to_cart(turn, item, act or pending.act)
+        for deferred in pending.deferred:
+            self._dispatch(turn, deferred)
+            if self._state in TERMINAL:
+                break
+
+    @on("yes", State.CLARIFY)
+    def _on_clarify_yes(self, turn: _Turn, act: Act) -> None:
+        pending = self._menu_clarify(turn, act)
+        if pending is None:
+            return
+        if len(pending.candidates) != 1:  # "둘 중 어떤 거요?"에 "네": 다시 묻는다
+            self._ask(turn, pending.question)
+            return
+        self._close_menu_clarify(turn, pending, pending.candidates[0])
+
+    @on("no", State.CLARIFY)
+    def _on_clarify_no(self, turn: _Turn, act: Act) -> None:
+        pending = self._menu_clarify(turn, act)
+        if pending is None:
+            return
+        self._say(turn, templates.menu_declined(self._available_names()))
+        self._close_menu_clarify(turn, pending, None)
+        if not (turn.asked or turn.accepted or turn.done_ordering):
+            self._ask(turn, templates.ask_order())
+
+    @on("add_item", State.CLARIFY)
+    def _on_clarify_add_item(self, turn: _Turn, act: Act) -> None:
+        """답으로 메뉴를 다시 말함: 후보 중 하나면 그걸 담고, 아니면 새로 판정한다."""
+        pending = self._menu_clarify(turn, act)
+        if pending is None:
+            return
+        if act.qty is None:
+            act = replace(act, qty=pending.act.qty)
+        picked = MenuMatcher(list(pending.candidates), fuzzy_accept_needs_guess=False).match(
+            act.menu_text, act.menu_guess
+        )
+        if picked.decision == "accept" and picked.item is not None:
+            self._close_menu_clarify(turn, pending, picked.item, act)
+            return
+        deferred, pending.deferred = pending.deferred, [act]
+        pending.deferred.extend(deferred)
+        self._close_menu_clarify(turn, pending, None)
+
+    @on("done_ordering", State.CLARIFY)
+    @on("set_pickup_time", State.CLARIFY)
+    def _on_clarify_other(self, turn: _Turn, act: Act) -> None:
+        """질문의 답은 아니지만 버리지 않을 act. 미뤄 두고, 질문 뒤 턴이면 질문을 다시 한다."""
+        pending = self._menu_clarify(turn, act)
+        if pending is not None:
+            pending.deferred.append(act)
+            self._ask(turn, pending.question)
+
+    def _available_names(self) -> list[str]:
+        return [m.name_ko for m in self._matcher.available()]
+
     # ------------------------------------------------------------ Order
 
     def _build_order(self, status: OrderStatus) -> Order:
@@ -247,3 +367,18 @@ class DialogEngine:
             status=status,
             transcript=list(self._transcript),
         )
+
+
+@dataclass
+class _MenuClarify:
+    """CLARIFY가 기다리는 메뉴 확인 (`DialogEngine._pending`에 들어간다).
+
+    후보가 하나면 "맞으세요?"(네 → 담기), 둘 이상이면 "어떤 거요?"(메뉴 이름으로 답해야 함).
+    품절 대안 권하기도 같은 모양이다.
+    """
+
+    act: Act  # 처음 받은 add_item. 답에 수량이 없으면 이 수량을 쓴다
+    candidates: tuple[MenuItem, ...]
+    question: str
+    opened_in: _Turn = field(compare=False, repr=False)  # 되묻기를 연 턴
+    deferred: list[Act] = field(default_factory=list)  # 같은 발화에서 질문 뒤에 온 act
