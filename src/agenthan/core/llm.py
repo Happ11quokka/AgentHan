@@ -1,7 +1,8 @@
 """CLOVA Studio HCX 공용 클라이언트(PRD §2.1): OpenAI 호환 클라이언트와 모델별 요청 옵션.
 
-세 파트(사장님 비서·가게 지식·전화 주문)가 같이 쓴다. 지금은 openai SDK로 OpenAI 호환
-엔드포인트를 부른다. PRD 방향(sdk.md 네이티브 REST v3)으로 바꿀 때는 이 파일만 고친다.
+세 파트(사장님 비서·가게 지식·전화 주문)가 같이 쓴다. 대화·도구 호출은 openai SDK로 OpenAI 호환
+엔드포인트를 부른다. 이미지 입력(HCX-005 dataUri)처럼 호환 API로 확인하지 않은 기능은
+`chat_v3()`로 네이티브 REST v3를 부른다(sdk.md 3장 계약). PRD 방향대로 옮길 때는 이 파일만 고친다.
 
 CLOVA Studio 실측 제약 (2026-11-07, scripts/hcx_check.py):
 - 요청당 system 메시지 1개만 받는다
@@ -15,7 +16,13 @@ CLOVA Studio 실측 제약 (2026-11-07, scripts/hcx_check.py):
 
 from __future__ import annotations
 
+import http.client
+import json
 import os
+import time
+import urllib.error
+import urllib.request
+import uuid
 
 DEFAULT_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
 DEFAULT_MAX_RETRIES = 8
@@ -67,3 +74,83 @@ def request_options(model: str, max_tokens: int = 1024, json_schema: dict | None
 def tool_call_options(model: str, max_tokens: int = TOOL_MAX_TOKENS) -> dict:
     """도구 호출 턴의 옵션: max_tokens 1024 이상, JSON 스키마 없음."""
     return request_options(model, max(max_tokens, TOOL_MAX_TOKENS))
+
+
+# ---------------------------------------------------------------- 네이티브 REST v3
+
+V3_HOST = "https://clovastudio.stream.ntruss.com"
+V3_MAX_RETRIES = 2  # sdk.md 3장: 429·5xx는 최대 두 번
+V3_MAX_RETRY_AFTER = 10  # 초. 이보다 길면 기다리지 않고 바로 실패
+V3_TIMEOUT = 60
+
+
+class ClovaV3Error(Exception):
+    """서버 본문·키가 들어가지 않은, 화면에 보여도 되는 오류."""
+
+
+def _retry_wait(attempt: int, retry_after: str | None) -> float | None:
+    """다시 시도할 때 기다릴 초. 기다리면 안 되면 None."""
+    if attempt >= V3_MAX_RETRIES:
+        return None
+    if retry_after and retry_after.strip().isdigit():
+        wait = int(retry_after)
+        return None if wait > V3_MAX_RETRY_AFTER else float(wait)
+    return 0.5 * (attempt + 1)
+
+
+def chat_v3(model: str, body: dict, *, timeout: float = V3_TIMEOUT) -> dict:
+    """POST /v3/chat-completions/{model}. 성공(status.code 20000)이면 `result`를 돌려준다.
+
+    body는 네이티브 필드 그대로다(messages, maxTokens, maxCompletionTokens, thinking,
+    responseFormat 등). 429·5xx는 최대 두 번 재시도하고, Retry-After가 10초를 넘으면 바로 실패한다.
+    서버 본문과 원래 예외는 밖으로 내보내지 않는다(키가 섞일 수 있다).
+    """
+    key = os.environ.get("CLOVASTUDIO_API_KEY")
+    if not key:
+        raise ClovaV3Error("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
+    url = f"{V3_HOST}/v3/chat-completions/{model}"
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    for attempt in range(V3_MAX_RETRIES + 1):
+        request = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "X-NCP-CLOVASTUDIO-REQUEST-ID": str(uuid.uuid4()),
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        wait = None
+        failure = "CLOVA 요청에 실패했습니다."
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                payload = json.load(response)
+            code = str(payload["status"]["code"])
+            if code == "20000":
+                return payload["result"]
+            failure = f"CLOVA API 오류 (code {code[:5]})"
+            if code[:3] == "429" or code[:1] == "5":
+                wait = _retry_wait(attempt, None)
+        except urllib.error.HTTPError as error:
+            failure = f"CLOVA HTTP 오류 ({error.code})"
+            if error.code == 429 or 500 <= error.code <= 599:
+                wait = _retry_wait(attempt, error.headers.get("Retry-After"))
+            error.close()
+        except (OSError, http.client.HTTPException, ValueError, KeyError, TypeError):
+            failure = "CLOVA 응답 또는 연결이 올바르지 않습니다."
+        if wait is not None:
+            time.sleep(wait)
+            continue
+        raise ClovaV3Error(failure)
+    raise ClovaV3Error("CLOVA 요청에 실패했습니다.")  # pragma: no cover
+
+
+def image_content(data: bytes, mime: str) -> dict:
+    """HCX-005 이미지 입력 항목(네이티브 dataUri). 턴당 1장."""
+    import base64
+
+    return {
+        "type": "image_url",
+        "dataUri": {"data": f"data:{mime};base64," + base64.b64encode(data).decode("ascii")},
+    }

@@ -16,6 +16,7 @@
      ② 기능 하나 고르기: 지금은 매칭 1위 (PRD는 HCX-DASH-002 select_feature — 아직 안 함)
      ③ 그 기능 도구만 붙여 HCX-005 실행
         ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
+        ├ 메뉴판 사진 (A-1)         → ask_photo(): agent/menu_photo.py 초안 → 사장님 승인 → 저장
         ├ review_reply, ai_review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
         └ 그 밖의 기능              → 이름·설명 안내 (도구는 tools/feature_tools.py에 정의만)
 ```
@@ -23,6 +24,7 @@
 | 위치 | 하는 일 |
 |---|---|
 | `agent/owner_assistant.py` | 오케스트레이터 대화 루프 (CLI: `python -m agenthan.agent.owner_assistant`) |
+| `agent/menu_photo.py` | A-1 메뉴 사진 → 초안: HCX-005 사진 읽기 → 가게 지식(`StoreKnowledge`) 대조 → 한국어 이름·설명 |
 | `agent/place_matcher.py`, `place_features.json` | 플레이스 기능 카탈로그(=PRD의 `features.json`)와 요청→기능 매칭 |
 | `agent/review/` | 리뷰 서브에이전트: 분석·요약, 미답글, 답글 초안·등록(더미), 정기 보고 루틴(A-2·A-4) |
 | `agent/review_delegate.py` | 오케스트레이터 → 리뷰 서브에이전트 위임 |
@@ -40,7 +42,8 @@
 - HCX 호출이 openai SDK(OpenAI 호환 API)다. PRD는 sdk.md 네이티브 REST v3. `core/llm.py`만 바꾸면 되게 모아 뒀다.
 - 오케스트레이터가 LangGraph `StateGraph`가 아니라 직접 짠 루프다. 승인(HITL)도 `interrupt()`가 아니라 대화 턴 확인이다.
 - 기능 고르기(HCX-DASH-002 `select_feature`)가 없다. 매칭 1위를 그대로 쓴다.
-- 메뉴 사진 → 등록(A-1)과 통계 리포트(A-3)는 아직 없다. 메뉴 도구는 이름·가격만.
+- 통계 리포트(A-3)는 아직 없다.
+- A-1 승인은 `interrupt()`가 아니라 다음 턴의 "네/취소/고칠 곳"이다. 웹 폼은 `menu_form()` 값으로 채운다.
 - 더미 플레이스 API 시드(`tools/dummy_store_seed.json`)가 `fixtures/sample_store.json`과 다른 가게다. 메뉴·리뷰 읽기를 `StoreKnowledge`로 옮기면 하나로 맞춘다.
 
 ## 실행
@@ -54,6 +57,23 @@ uv run pytest -q -m network                                 # 실제 CLOVA 호�
 ```
 
 예: `신메뉴 연습 차를 등록하고 싶어요` → 가격 질문 → `5000원`.
+메뉴판 사진: `/photo ~/menu.jpg 이거 올려 줘` → 초안 확인 → `3번 가격 9500원` → `네`.
+
+### A-1 메뉴 사진 등록
+
+입출력은 한국어다. 사진 속 메뉴 이름만 원어 그대로 읽어 `name_native`로 남긴다.
+
+1. 사진 읽기(HCX-005, 네이티브 REST `core.llm.chat_v3` + `dataUri`): 이름·가격만. 도구 없이 따로 부른다.
+2. 가게 지식 대조: 이름·원어 이름·별칭 일치 → 글자 유사도 0.8 이상 → `search_menu`. 맞으면 기존
+   메뉴의 이름·설명을 쓴다.
+3. 새 메뉴는 HCX-005로 메뉴 하나씩 한글 이름·한 문장 설명(여러 개를 한 번에 보내면 순서가 섞였다).
+4. 초안을 한국어로 보여 주고, `네`면 이름·가격이 다 있는 것만 더미 플레이스에 저장한다.
+   그 밖의 말은 `edit_menu_draft` 도구로 초안만 고친다(번호·이름·가격·설명·빼기).
+
+실측(2026-11-08, 합성 메뉴판): 베트남어·영어는 이름·가격 모두 정확, 러시아어(키릴)는 가격만 맞고
+이름은 다른 단어로 읽었다(Наполеон → Народный). 그래서 가게 지식과 안 맞은 키릴 이름에는
+"사진 글자 확인 필요" 표시를 붙인다. 가게 메뉴 목록을 힌트로 주면 없는 메뉴까지 목록 이름으로
+바꿔 써서 쓰지 않았다. 사진 1장(메뉴 3~5개)에 6~8초.
 리뷰 예: `답글 안 단 리뷰 있어?` → `안 좋은 리뷰에 답글 써줘` → `더 정중하게 고쳐줘` → `이대로 올려줘`.
 답글은 `owner_reply.status = "saved_not_sent"`로 저장만 하고 보내지 않는다.
 
