@@ -1095,7 +1095,7 @@ class CallSession:
         self._after_playback(turn, mark="interrupted")
 
     def _drop_queued(self, turn: int) -> None:
-        """송신 큐에 남은 그 턴의 오디오·자막을 버린다. 이미 소켓으로 나간 것은 브라우저가 버린다."""
+        """송신 큐에 남은 그 턴의 오디오·자막을 버린다. 이미 나간 것은 브라우저가 버린다."""
         kept = []
         while not self._out.empty():
             item = self._out.get_nowait()
