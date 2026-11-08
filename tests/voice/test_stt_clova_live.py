@@ -2,7 +2,7 @@
 
 평소 `uv run pytest`에서는 건너뛴다. 돌리기 (저장소 루트, macOS `afconvert` 필요):
 
-    AGENTHAN_LIVE_CLOVA=1 uv run pytest -m live_clova -s tests/voice/test_stt_clova_live.py
+    uv run pytest tests/voice/test_stt_clova_live.py -m live -s
 
 - 키: 환경 변수 또는 `.env`(이 파일에서 위로 올라가며 처음 찾은 것, `AGENTHAN_ENV_FILE`로 바꿈)의
   `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`. 키는 출력하지 않는다
@@ -34,11 +34,7 @@ import pytest
 from agenthan.voice.call.vad import SilenceDetector
 from agenthan.voice.stt.clova import ClovaSttSettings, ClovaSttStream
 
-pytestmark = [
-    pytest.mark.live_clova,
-    pytest.mark.skipif(os.environ.get("AGENTHAN_LIVE_CLOVA") != "1",
-                       reason="실제 CLOVA 측정: AGENTHAN_LIVE_CLOVA=1 로 켠다"),
-]
+pytestmark = pytest.mark.live  # `-m live`일 때만 돈다 (tests/voice/conftest.py)
 
 FRAME_BYTES = 3_200  # 100ms
 TAIL_S = 3.0
