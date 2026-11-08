@@ -26,11 +26,17 @@ LINES = [
                                          "ctx_order": "context-first", "voice_barge_in": True},
      "barge": _window("blocked", 300, 900, 1_200)},
     {"call": "c1", "turn": 1, "text": "비밀 글",
+     "listen_rms": {"voiced": {"frames": 8, "p10": 2_000, "p50": 3_000, "p95": 4_000, "max": 5_000},
+                    "quiet": {"frames": 5, "p10": 100, "p50": 200, "p95": 400, "max": 600}},
+     "turn_model": {"src": "model", "ms": 31.2}, "turn_end": {"score": 0.82},
      "barge": _window("open", 200, 700, 800,
                       events=[{"act": "duck", "by": "sound", "at_ms": 1_000},
                               {"act": "unduck", "by": "text", "at_ms": 1_900}],
                       results=[{"verdict": "backchannel", "text": "네"}])},
     {"call": "c1", "turn": 2,
+     "listen_rms": {"voiced": {"frames": 4, "p10": 1_800, "p50": 2_600, "p95": 3_000, "max": 3_100},
+                    "quiet": {"frames": 0}},
+     "turn_model": {"src": "late"}, "turn_end": {"score": None},
      "barge": _window("open", 400, 1_100, 1_300, stop_ms=1_250,
                       events=[{"act": "duck", "by": "sound", "at_ms": 5_000},
                               {"act": "stop", "by": "sound", "at_ms": 6_250}],
@@ -70,6 +76,15 @@ def test_echo_rms_results_events_and_stop_latency() -> None:
     assert s["duck_to_unduck_ms"] == {"n": 1, "p50_ms": 900, "p90_ms": 900}
     assert s["false_stops"] == 1
     assert s["stop_report_ms"] == {"n": 2, "p50_ms": 100, "p90_ms": 116}
+
+
+def test_listening_rms_and_smart_turn_scores_for_the_thresholds() -> None:
+    s = summarize(LINES)
+    assert s["listen_rms"] == {"turns": 2, "voiced_p10": 1_900, "voiced_p50": 2_800,
+                               "quiet_p95": 400, "quiet_max": 600}
+    assert s["turn_model"] == {"src": {"late": 1, "model": 1},
+                               "ms": {"n": 1, "p50_ms": 31, "p90_ms": 31},
+                               "score_bands": {"le_0.3": 0, "middle": 0, "ge_0.7": 1}}
 
 
 def test_the_summary_prints_numbers_only(tmp_path, capsys) -> None:

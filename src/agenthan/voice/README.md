@@ -134,8 +134,8 @@
 - 거르기: STT 글은 도착 시각이 아니라 `start_ms`(말한 시각)로 봇 말 구간(첫 소리 ~ 재생 끝 보고·끊긴 때)과 비교한다. 구간 안에서 시작한 말만 판정하고, 맞장구는 구간 끝 + 150ms까지 구간 안으로 본다. 봇 문장과 두 글자 조각이 60% 이상 겹치면 에코 글이다. 재생이 끝날 때 무음 감지가 말하는 중(대개 에코)이면 그 프레임에 `epFlag`를 붙여 STT 구간을 끊고 무음 감지를 비운다. 문장 위치는 `playback.started`를 받은 순간의 오디오 시각이다
 - 멈추면 버튼과 같은 자리에서 끊는다(남은 TTS·`bot.say` 취소, 듣기로, 무음 타이머 시작). 끼어든 말은 진행 중인 말이라 무음 타이머는 그 말 끝까지 기다린다. 들은 만큼은 서버가 오디오 시각으로 어림해 두고(`interrupt.est`), 브라우저 `playback.interrupted`가 오면 그 값으로 바꾼다
 - 아래로: `bot.duck {turn}`, `bot.unduck {turn}`, `bot.stop {turn}`. 브라우저는 봇 목소리를 GainNode로 약 -18 dB 페이드(약 150ms, 되돌리기 약 80ms)하고, 다음 턴 소리가 오면 원래 크기로 돌린다. `bot.stop`이면 재생을 멈추고 그 턴 이하 오디오를 버리고 `playback.interrupted`를 보낸다(복창처럼 버튼이 막힌 턴에서도)
-- JSONL: 봇 말 턴마다 `barge {kind(blocked·open·readback), stop_ms, rms{frames,p50,p95,max}, events[{act, by(sound·text), at_ms, shadow?}], results[{start_ms, end_ms, text, verdict}]}`. 버린 결과 `dropped[].barge`에 판정. 음성으로 끊은 턴은 `interrupt {by: voice, reason, seq, played_ms, heard, report_ms}`(`report_ms`는 `bot.stop` → 브라우저 보고)
-- 측정 요약: `uv run python -m agenthan.voice.call.barge_summary logs/phone-YYYYMMDD.jsonl`(숫자만). 실기기 시험 순서표는 `.scratch/phone-s3-turn-management/device-check.md`
+- JSONL: 봇 말 턴마다 `barge {kind(blocked·open·readback), stop_ms, rms{frames,p50,p95,max}, events[{act, by(sound·text), at_ms, shadow?}], results[{start_ms, end_ms, text, verdict}]}`. 버린 결과 `dropped[].barge`에 판정. 음성으로 끊은 턴은 `interrupt {by: voice, reason, seq, played_ms, heard, report_ms}`(`report_ms`는 `bot.stop` → 브라우저 보고). 손님 턴마다 `listen_rms {voiced, quiet}`(그 말을 듣는 동안 말소리 프레임·말 구간 밖 프레임의 RMS, 문턱을 정하는 근거)
+- 측정 요약: `uv run python -m agenthan.voice.call.barge_summary logs/phone-YYYYMMDD.jsonl`(숫자만. 통화별 마이크 설정·에코 바닥·줄이기/멈춤 수, 판정별 수, 멈춤 지연, 듣는 동안 RMS, Smart Turn 점수 대역). 실기기 시험 순서표는 `.scratch/phone-s3-turn-management/device-check.md`
 - 실기기 시험용 웹 선택: 주소 뒤 `?mic_first=1`(재생 컨텍스트를 마이크 허용 뒤에 만듦, T4), `?agc=0`(자동 음량 끔, T5). `call.start.ctx_order`에 남는다
 - 테스트: `tests/voice/test_call_barge_in.py`(세션), `test_barge_summary.py`, 웹 `bargeIn.test.ts`·`callState.test.ts`·`phoneCall.test.ts`
 

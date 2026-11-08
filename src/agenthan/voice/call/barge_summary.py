@@ -19,6 +19,11 @@
 - `false_stops`: 멈췄는데 그 구간에 받아들인 글이 없다(헛 멈춤)
 - `stop_report_ms`: `bot.stop`을 보낸 뒤 브라우저가 멈췄다고 알리기까지(T7, 판정 → 소리 꺼짐의
   위 한계. 올림 회선 지연이 들어 있다)
+- `listen_rms`: 듣는 동안 손님 말소리 프레임(`voiced`, 무음 감지 문턱 이상)과 조용할 때(`quiet`,
+  말 구간 밖)의 RMS. 턴마다 낸 값을 모은다(voiced p10은 턴 p10의 중앙값, quiet p95는 턴 p95의
+  p95). `PHONE_VAD_THRESHOLD`는 quiet p95와 voiced p10 사이, 끼어들기 문턱은 에코 p95 위에 둔다
+- `turn_model`: Smart Turn 점수 출처(model·late·error·none) 수, 걸린 ms, 점수 대역(0.3 이하·
+  가운데·0.7 이상) 수. 실기기 소리에서 점수가 어디에 몰리는지 본다
 """
 
 from __future__ import annotations
@@ -68,6 +73,36 @@ def _rms_by_kind(windows: list[dict[str, Any]]) -> dict[str, dict[str, int | Non
     return out
 
 
+def _listen_rms(lines: list[dict[str, Any]]) -> dict[str, int | None]:
+    voiced = [line["listen_rms"]["voiced"] for line in lines
+              if line.get("listen_rms", {}).get("voiced", {}).get("frames")]
+    quiet = [line["listen_rms"]["quiet"] for line in lines
+             if line.get("listen_rms", {}).get("quiet", {}).get("frames")]
+    return {
+        "turns": len(voiced),
+        "voiced_p10": percentile([v["p10"] for v in voiced], 0.5),
+        "voiced_p50": percentile([v["p50"] for v in voiced], 0.5),
+        "quiet_p95": percentile([q["p95"] for q in quiet], 0.95),
+        "quiet_max": max((q["max"] for q in quiet), default=None),
+    }
+
+
+def _turn_model(lines: list[dict[str, Any]]) -> dict[str, Any]:
+    infos = [line["turn_model"] for line in lines if isinstance(line.get("turn_model"), dict)]
+    scores = [line["turn_end"]["score"] for line in lines
+              if isinstance(line.get("turn_end"), dict)
+              and isinstance(line["turn_end"].get("score"), int | float)]
+    return {
+        "src": dict(sorted(Counter(i.get("src") for i in infos).items())),
+        "ms": _spread([round(i["ms"]) for i in infos if isinstance(i.get("ms"), int | float)]),
+        "score_bands": {
+            "le_0.3": sum(s <= 0.3 for s in scores),
+            "middle": sum(0.3 < s < 0.7 for s in scores),
+            "ge_0.7": sum(s >= 0.7 for s in scores),
+        },
+    }
+
+
 def _call_row(call: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
     first = min(lines, key=lambda line: line["turn"])
     client = first.get("client", {})
@@ -115,6 +150,8 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
                                       for d in _duck_to_unduck(w.get("events", []))]),
         "false_stops": sum(_is_false_stop(w) for w in windows),
         "stop_report_ms": _spread([c["report_ms"] for c in voice_cuts if "report_ms" in c]),
+        "listen_rms": _listen_rms(lines),
+        "turn_model": _turn_model(lines),
     }
 
 

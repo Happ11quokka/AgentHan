@@ -229,6 +229,23 @@ def test_echo_text_that_arrives_after_the_bot_finished_is_judged_by_when_it_was_
     assert [(d["text"], d["barge"]) for d in record["dropped"]] == [("있으세요", "echo")]
 
 
+def test_the_guests_speech_and_quiet_levels_are_kept_for_the_rms_thresholds(tmp_path) -> None:
+    # 실기기 시험: 손님 말소리 프레임(문턱 이상)과 조용할 때(말 구간 밖)의 RMS로 문턱을 정한다
+    async def call() -> Call:
+        async with barge_call(tmp_path, ["메도빅 하나요"]) as c:
+            await start(c)
+            await c.feed(silence(500))
+            await to_speaking(c)
+            await c.session.feed_event({"type": "call.end", "turn": 1})
+            return c
+
+    c = run(call())
+    record = next(line for line in lines(c) if line["turn"] == 1)
+    voiced, quiet = record["listen_rms"]["voiced"], record["listen_rms"]["quiet"]
+    assert voiced["frames"] == 8 and voiced["p10"] == 2_828  # 진폭 4,000 사인파의 RMS
+    assert quiet["frames"] >= 5 and quiet["max"] == 0
+
+
 def test_the_greeting_cannot_be_barged_in_by_voice(tmp_path) -> None:
     async def call() -> Call:
         async with barge_call(tmp_path, ["여보세요 메도빅 하나 주세요"]) as c:

@@ -440,6 +440,7 @@ class CallSession:
         self._windows: list[_Window] = []  # 최근 봇 말 구간들 (늦게 온 글을 말한 시각으로 가른다)
         self._cut_ep = False  # 봇 재생 끝 경계: 다음 DATA에 epFlag (`_close_window`)
         self._stop_sent_at: float | None = None  # 마지막 `bot.stop`을 보낸 때 (멈춤 지연 T7)
+        self._listen_rms: dict[str, list[float]] = {"voiced": [], "quiet": []}
         self._broken = False
 
     # ------------------------------------------------------------ 바깥 진입점
@@ -482,8 +483,13 @@ class CallSession:
         if ended:
             self._speech_end_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
-        if self._barge is not None and self._phase == "speaking" and self._windows:
-            self._barge_frame(frame_from)
+        if self._barge is not None:
+            if self._phase == "speaking" and self._windows:
+                self._barge_frame(frame_from)
+            elif self._vad.last_voiced or not self._vad.in_speech:
+                # 듣는 동안의 손님 말소리·조용할 때 RMS (실기기 시험에서 문턱을 정하는 근거)
+                key = "voiced" if self._vad.last_voiced else "quiet"
+                self._listen_rms[key].append(self._vad.last_rms)
         if ended:
             self._score_turn()
             self._on_speech_end()
@@ -1073,6 +1079,9 @@ class CallSession:
         fields: dict[str, Any] = {}
         if u.queued:
             fields["queued"] = True
+        if self._barge is not None:  # 이 말을 듣는 동안의 RMS (티켓 06 실기기 시험)
+            fields["listen_rms"] = {k: _rms_stats(v) for k, v in self._listen_rms.items()}
+            self._listen_rms = {"voiced": [], "quiet": []}
         if decision is not None:
             fields["turn_end"] = decision.as_record()
             if self._model_info is not None:
@@ -1639,7 +1648,7 @@ def _timed_score(model: TurnModel, pcm: bytes) -> tuple[float, float]:
 
 
 def _rms_stats(values: list[float]) -> dict[str, int]:
-    """봇 말 구간 프레임 RMS의 p50·p95·최대 (에코 바닥, 실기기 시험 T1)."""
+    """프레임 RMS의 p10·p50·p95·최대 (에코 바닥·손님 말소리·조용할 때, 실기기 시험 T1)."""
     if not values:
         return {"frames": 0}
     ordered = sorted(values)
@@ -1647,7 +1656,8 @@ def _rms_stats(values: list[float]) -> dict[str, int]:
     def pct(p: float) -> int:
         return round(ordered[min(len(ordered) - 1, int(p * len(ordered)))])
 
-    return {"frames": len(ordered), "p50": pct(0.5), "p95": pct(0.95), "max": round(ordered[-1])}
+    return {"frames": len(ordered), "p10": pct(0.1), "p50": pct(0.5), "p95": pct(0.95),
+            "max": round(ordered[-1])}
 
 
 def _is_int(value: Any) -> bool:
