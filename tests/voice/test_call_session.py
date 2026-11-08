@@ -92,8 +92,8 @@ def test_silence_after_speech_sends_ep_flag_on_that_frame(tmp_path) -> None:
             before = stt.audio_ms
             await c.feed(tone(800) + silence(1_000))
             eps = [w for w in stt.writes if w.ep_flag]
-            # 말소리 0~800ms, 무음 500ms가 채워지는 프레임(1,200~1,300ms)에 epFlag 하나
-            assert [(w.at_ms - before, w.seq_id) for w in eps] == [(1_200, 1)]
+            # 말소리 0~800ms, 무음 400ms(기본값)가 채워지는 프레임(1,100~1,200ms)에 epFlag 하나
+            assert [(w.at_ms - before, w.seq_id) for w in eps] == [(1_100, 1)]
             await c.feed(silence(1_000) + tone(100) + silence(1_000))  # 짧은 소리는 말이 아니다
             assert len([w for w in stt.writes if w.ep_flag]) == 1
 

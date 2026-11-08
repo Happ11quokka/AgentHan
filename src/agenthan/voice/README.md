@@ -37,7 +37,8 @@
 - 쓰는 법: `open()` → 읽기 작업에서 `feed_audio(pcm)` / `feed_event(dict)` → `wait_done()` → `close()`
 - 내리는 오디오: `call/frames.py` (8바이트 헤더 kind·flags·seq·turn + PCM16LE 16kHz, 약 200ms 조각). TTS PCM을 200ms로 자르는 것은 세션이 한다
 - 대사 → TTS 문장(150자 이하) 나누기, TTS 동시 2개·문장 순서 보내기도 세션이 한다(`call/sentences.py`)
-- 무음 감지(`call/vad.py`): RMS 임계값 500, 말 시작 200ms, 말 끝 무음 500ms가 시작값. `SessionSettings(vad=VadSettings(...))`로 바꾼다
+- 무음 감지(`call/vad.py`): RMS 임계값 1,500, 말 시작 200ms, 말 끝 무음 400ms (티켓 07에서 녹음 17개로 맞춤, 시작값은 500/200/500). 근거는 `VadSettings` 주석. 시작값 500에서는 배경 소리(RMS 400~1,900) 때문에 17개 중 12개가 녹음 안에서 말 끝을 못 잡았고, 지금 값은 17개 모두 잡는다. 코드에서는 `SessionSettings(vad=VadSettings(...))`, 서버에서는 `PHONE_VAD_THRESHOLD`·`PHONE_VAD_START_MS`·`PHONE_VAD_END_SILENCE_MS`로 바꾼다
+- 조각 합치기 규칙은 그대로 둔다: 결과가 왔을 때 무음 감지가 말하는 중이거나 결과 끝 뒤에 시작한 말 구간(200ms 이상)이 있으면 붙잡는다. 낱말 사이 0.3초 쉼(B1)은 붙잡히고, 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이면 다음 턴에 합쳐지고, 봇이 말하는 중이면 버려진다). 3단계 끝남/이어짐 판정에서 다룬다
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
 - 테스트: `tests/voice/test_call_session*.py`, 도구는 `tests/voice/call_harness.py`
@@ -70,3 +71,13 @@
 - 통합(`app/`, 11/17): `app.include_router(phone_router(store=..., config=StoreConfig(store_name=...), order_sink=..., settings=VoiceSettings.from_env()))`. 라우터에는 가짜 기본값이 없다(가게 지식·설정·`OrderSink`를 넣는다). `server.py`는 더미 가게로 띄우는 개발용이라 `app/`은 쓰지 않는다
 - 연결 하나 = `CallSession` 하나. 읽기 작업 하나가 받고, 보내기는 세션의 송신 작업 하나만 한다. 끊기거나 세션이 끝나면 STT를 닫고 JSONL을 쓴 뒤 소켓을 닫는다
 - 테스트: `tests/voice/test_phone_ws.py`(TestClient WebSocket), `test_phone_settings.py`, `test_phone_server.py`
+
+## 2단계: 끝-끝 측정 (`fake_phone/`, 티켓 07)
+
+- 녹음(`private/recordings/<이름>/*.m4a`)을 16kHz WAV로 바꿔(`wav/`, 맥 `afconvert`) `/api/phone/ws`에 100ms씩 실제 속도로 흘려 넣는 가짜 휴대폰. 봇 오디오는 길이만큼 '재생'하고 `playback.started/done`을 보내며, 재생 중에는 0 프레임을 보낸다(반이중). A·B·C 묶음은 한 통화, D는 녹음마다 한 통화
+- 측정 서버(키 필요, 저장소 루트의 `.env`): `PHONE_STT=clova PHONE_TTS=clova PHONE_NLU=fake PHONE_NOW=2026-11-08T16:30:00+09:00 PHONE_LOG_DIR=private/fake-phone/logs uv run python -m agenthan.voice.server --port 8010` (HCX는 `PHONE_NLU=hcx`)
+- 흘려 넣기: `uv run python -m agenthan.voice.fake_phone --url ws://127.0.0.1:8010/api/phone/ws --recordings private/recordings/donghyeon --convert --label clova-fake`. 결과는 `private/fake-phone/<시각>-<label>/`(`calls.jsonl` 원기록, `rows.jsonl` 녹음별 줄, `summary.md` 표). 받아 적은 글이 들어 있으니 `private/` 밖으로 옮기지 않는다
+- 말 끝 → 결과·첫 소리는 녹음에서 따로 잰 기준 말 끝(`audio.speech_end_s`)부터 잰다. VAD 값을 바꿔도 같은 기준으로 비교된다
+- 키 없이 VAD 후보 비교: `uv run python -m agenthan.voice.fake_phone.vad_check private/recordings/donghyeon/wav 500/200/500 1500/200/400`
+- 네트워크가 느리면(업로드 수십 KB/s) STT 결과와 TTS가 수 초씩 늦어 측정값이 의미 없다. 측정 전에 업로드 150KB/s 이상, CLOVA까지 RTT 100ms 미만인지 본다
+- 테스트: `tests/voice/test_fake_phone_*.py`(같은 프로세스 uvicorn + 가짜 STT·TTS, 오프라인), `test_call_vad.py`
