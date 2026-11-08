@@ -86,3 +86,16 @@ def test_specific_allergen_present(q: str, expected: str) -> None:
 def test_ungrounded_questions_say_dont_know(q: str) -> None:
     menu_id = "m03" if "아메리카노" in q else "m01"
     assert answer_menu_question(item(menu_id), q) == DONT_KNOW
+
+
+@pytest.mark.parametrize("q", ["메도빅 얼마나 달아요?", "메도빅은 얼마나 부드러워요?"])
+def test_eolmana_is_not_a_price_question(q: str) -> None:
+    """P2: "얼마나 달아요"는 설명으로 답한다."""
+    assert answer_menu_question(item("m01"), q) == (
+        "메도빅은 꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크예요."
+    )
+
+
+@pytest.mark.parametrize("q", ["메도빅 얼마예요?", "메도빅 얼마에요", "메도빅 얼마죠?", "얼마야"])
+def test_eolma_is_still_price(q: str) -> None:
+    assert answer_menu_question(item("m01"), q) == "메도빅은 7,500원이에요."

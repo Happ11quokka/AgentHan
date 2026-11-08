@@ -149,6 +149,20 @@ def option_unavailable(option_name: str) -> str:
     return f"죄송해요, 오늘은 {i_ga(option_name)} 안 돼요."
 
 
+def not_a_choice() -> str:
+    """필수 옵션 질문에 고를 수 없는 값으로 답했을 때. 뒤에 같은 질문을 다시 한다."""
+    return "죄송해요, 그렇게는 준비가 안 돼요."
+
+
+def one_choice_only(group_name: str) -> str:
+    """한 줄에 같은 필수 옵션 값을 둘 이상 말했을 때 ("하나는 따뜻하게, 하나는 차갑게")."""
+    return f"죄송해요, {eun_neun(group_name)} 한 가지로만 골라 주세요."
+
+
+def qty_too_large(limit: int) -> str:
+    return f"죄송해요, 전화로는 한 번에 {limit}개까지 받을 수 있어요."
+
+
 def which_item() -> str:
     """대상 메뉴를 모르는 옵션·요청. 예: 장바구니가 빈 채로 "디카페인으로요"."""
     return "어떤 메뉴에 해 드릴까요?"
@@ -218,6 +232,11 @@ def meridiem_time(dt: datetime) -> str:
 
 def pickup_too_early(prep_minutes: int, offer: datetime) -> str:
     return f"준비에 {prep_minutes}분 정도 걸려요. {spoken_time(offer)} 괜찮으세요?"
+
+
+def pickup_passed(offer: datetime) -> str:
+    """이미 지난 시각을 말했을 때. 가장 빠른 시각을 제안한다 (리뷰 P4)."""
+    return f"그 시간은 이미 지났어요. 가장 빠른 시간은 {spoken_time(offer)}인데 괜찮으세요?"
 
 
 def _euro(word: str) -> str:

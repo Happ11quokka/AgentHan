@@ -35,11 +35,29 @@ def test_exactly_prep_time_is_accepted() -> None:
 @pytest.mark.parametrize(("pickup", "now", "offer"), [
     ("17:15", "17:10", "17:25"),  # spec §7 예시
     ("17:10", "17:10", "17:25"),
-    ("15:00", "15:02", "15:20"),  # 15:17 → 5분 단위로 올림
-    ("14:00", "15:00", "15:15"),  # 이미 지난 시각
 ])
 def test_too_early_offers_prep_time(pickup: str, now: str, offer: str) -> None:
     assert judge(PickupParse(at(pickup)), now) == PickupVerdict("too_early", at(offer))
+
+
+@pytest.mark.parametrize(("pickup", "now", "offer"), [
+    ("15:00", "15:02", "15:20"),  # 15:17 → 5분 단위로 올림
+    ("14:00", "15:00", "15:15"),
+])
+def test_past_time_offers_earliest(pickup: str, now: str, offer: str) -> None:
+    """리뷰 P4: 이미 지난 시각은 "이미 지났어요"라고 말하도록 따로 판정한다."""
+    assert judge(PickupParse(at(pickup)), now) == PickupVerdict("past", at(offer))
+
+
+@pytest.mark.parametrize(("now", "kind"), [
+    ("08:00", "before_open"),
+    ("09:40", "before_open"),  # 준비 끝 9:55
+    ("09:44", "asap"),  # 9:59 → 5분 단위로 올리면 10:00
+    ("20:50", "after_close"),
+])
+def test_asap_follows_opening_hours(now: str, kind: str) -> None:
+    """리뷰 C4: "지금 갈게요"도 준비가 끝나는 시각으로 영업시간을 본다."""
+    assert judge(PickupParse(at(now), asap=True), now).kind == kind
 
 
 def test_asap_takes_prep_time() -> None:

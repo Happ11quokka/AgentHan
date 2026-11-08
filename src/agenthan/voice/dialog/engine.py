@@ -46,6 +46,7 @@ from agenthan.voice.timeparse import PickupParse, parse_pickup
 OrderStatus = Literal["draft", "confirmed", "handoff"]
 
 MAX_FAILURES = 3  # 같은 슬롯에서 이만큼 연속으로 못 알아들으면 사장님께 넘긴다 (spec §5)
+MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hcx.py` `_qty`)와 같다
 
 # 손님과 대화 중인 상태. 전역 규칙(취소·사장님 연결·메뉴 질문)을 받는다.
 _ACTIVE = (State.ORDERING, State.CLARIFY, State.ASK_PICKUP, State.CONFIRM)
@@ -196,9 +197,17 @@ class DialogEngine:
             )
             acts = self._nlu.parse(text, ctx)
         if any(a.type not in ("yes", "no") for a in acts):
+            keep_yes = self._awaiting_menu_yes() and not any(a.type == "add_item" for a in acts)
             while acts and acts[0].type in ("yes", "no"):
+                if keep_yes and acts[0].type == "yes":
+                    break  # "혹시 메도빅 맞으세요?" → "네, 두 개요": 네가 답이다 (리뷰 C9)
                 acts = acts[1:]
         return acts
+
+    def _awaiting_menu_yes(self) -> bool:
+        """CLARIFY가 후보 하나짜리 메뉴 확인("맞으세요?")의 답을 기다린다."""
+        pending = self._pending
+        return isinstance(pending, _MenuClarify) and len(pending.candidates) == 1
 
     def _dispatch(self, turn: _Turn, act: Act) -> None:
         if self._cancel_resume is not None and self._on_cancel_answer(turn, act):
@@ -542,12 +551,27 @@ class DialogEngine:
     def _add_to_cart(self, turn: _Turn, item: MenuItem, act: Act) -> None:
         """장바구니에 담는다. 수량 기본값 1, 기본값이 있는 필수 옵션은 미리 고르고,
         손님이 같이 말한 옵션(`act.option_text`)을 붙인다. 되받기는 `_finish`가 한다."""
+        qty = 1 if act.qty is None else act.qty
+        if qty <= 0:  # "메도빅 0개": 1개로 바꾸지 않는다 (리뷰 C17)
+            self._on_unhandled(turn, act)
+            return
+        if not self._qty_ok(turn, qty):
+            return
         options = self._default_choices(item)
         if act.option_text:
             options = self._resolve_options(turn, item, act.option_text, options)
-        line = CartLine(item, act.qty or 1, options)
+        line = CartLine(item, qty, options)
         self._cart = self._cart.add(item, line.qty, options=options)
         self._touch(turn, line)
+
+    def _qty_ok(self, turn: _Turn, qty: int) -> bool:
+        """수량 상한(`MAX_QTY`). 넘으면 안내하고 담지 않는다."""
+        if qty <= MAX_QTY:
+            return True
+        self._fail(turn)
+        self._say(turn, templates.qty_too_large(MAX_QTY))
+        turn.changed = True
+        return False
 
     @on("done_ordering", State.ORDERING)
     def _on_done_ordering(self, turn: _Turn, act: Act) -> None:
@@ -617,6 +641,8 @@ class DialogEngine:
             return
         if not self._leave_option_clarify(turn, act):
             return
+        if not self._qty_ok(turn, act.qty):
+            return
         index, item = self._pick_line(act)
         if index is not None:
             self._replace_line(turn, index, replace(self._cart.lines[index], qty=act.qty))
@@ -641,8 +667,19 @@ class DialogEngine:
 
     @on("set_option", State.CLARIFY)
     def _on_option_answer(self, turn: _Turn, act: Act) -> None:
-        """필수 옵션 질문의 답. 고를 값이 아닌 옵션이면 그것만 붙이고 `_finish`가 다시 묻는다."""
+        """필수 옵션 질문의 답. 고를 값이 아닌 옵션이면 그것만 붙이고 `_finish`가 다시 묻는다.
+
+        그 메뉴에 없는 값이거나("미지근하게") 한 묶음 값을 둘 이상 말했으면 실패로 세고 같은
+        질문을 다시 한다 (리뷰 C8, C15). 계속 안 맞으면 사장님께 넘긴다.
+        """
         pending = self._pending
+        if isinstance(pending, _OptionPending) and not _names_menu(act):
+            problem = self._option_answer_problem(pending, act.option_text)
+            if problem:
+                self._fail(turn)
+                self._say(turn, problem)
+                self._ask(turn, self._last_question)
+                return
         if not self._leave_option_clarify(turn, act):
             return
         if _names_menu(act):
@@ -719,6 +756,17 @@ class DialogEngine:
             turn.done_ordering = True
         return True
 
+    def _option_answer_problem(self, pending: _OptionPending, text: str) -> str:
+        """필수 옵션 답이 고를 수 없는 말이면 안내 문구, 아니면 ""."""
+        item = pending.line.item
+        candidates = [c for g in self._required_for(item) for c in g.choices] + list(item.options)
+        found = find_options(candidates, text)
+        if not found:
+            return templates.not_a_choice()
+        if sum(option in pending.group.choices for option in found) > 1:
+            return templates.one_choice_only(pending.group.name)
+        return ""
+
     def _resolve_options(
         self, turn: _Turn, item: MenuItem, text: str, current: tuple[MenuOption, ...]
     ) -> tuple[MenuOption, ...]:
@@ -735,6 +783,11 @@ class DialogEngine:
             turn.changed = True
             return current
         result = list(current)
+        for group in groups:  # 한 묶음 값을 둘 이상 말했다: 고르지 않고 다시 묻는다 (리뷰 C15)
+            if sum(option in group.choices for option in found) > 1:
+                self._say(turn, templates.one_choice_only(group.name))
+                found = [o for o in found if o not in group.choices]
+                result = [o for o in result if o not in group.choices]
         for option in found:
             if not option.available:
                 self._say(turn, templates.option_unavailable(option.name))
@@ -915,6 +968,9 @@ class DialogEngine:
         elif verdict.kind == "too_early":
             assert verdict.at is not None
             self._offer_pickup(turn, verdict.at, templates.pickup_too_early(prep, verdict.at))
+        elif verdict.kind == "past":
+            assert verdict.at is not None
+            self._offer_pickup(turn, verdict.at, templates.pickup_passed(verdict.at))
         elif verdict.kind == "confirm":
             assert verdict.at is not None
             self._offer_pickup(turn, verdict.at, templates.confirm_pickup(verdict.at))

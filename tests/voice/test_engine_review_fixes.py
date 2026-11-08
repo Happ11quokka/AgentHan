@@ -327,3 +327,152 @@ def test_s11_registering_the_same_handler_twice_is_an_error() -> None:
 
     with pytest.raises(ValueError):
         on("yes", State.CONFIRM)(lambda engine, turn, act: None)
+
+
+
+# ---------------------------------------------------------------- C6: "아니요, 취소할게요"
+
+
+@pytest.mark.parametrize(
+    "text", ["아니요, 취소할게요", "아니요 주문 취소해 주세요", "네, 취소할래요"]
+)
+def test_c6_rules_see_cancel_after_yes_no_lead(text: str) -> None:
+    from agenthan.voice.dialog.rules import apply_rules
+
+    assert [a.type for a in apply_rules(text) or []] == ["cancel_order"]
+
+
+def test_c6_rules_see_owner_after_lead() -> None:
+    from agenthan.voice.dialog.rules import apply_rules
+
+    assert [a.type for a in apply_rules("아니요, 사장님 바꿔 주세요") or []] == ["want_owner"]
+
+
+def test_c6_lead_with_other_content_still_goes_to_nlu() -> None:
+    from agenthan.voice.dialog.rules import apply_rules
+
+    assert apply_rules("아니요, 블린 취소할게요") is None
+    assert apply_rules("아니요, 두 개요") is None
+
+
+def test_c6_no_cancel_in_confirm_asks_to_cancel_the_whole_order() -> None:
+    engine = make()
+    talk(engine, "메도빅 하나랑 블린 하나요", "6시 반에 갈게요", "그게 다예요")
+    r = talk(engine, "아니요, 취소할게요")
+    assert r.utterances == ["주문 취소할까요?"]
+    assert lines(r) == [("m01", 1), ("m04", 1)]
+    r = talk(engine, "네")
+    assert r.state is State.DONE
+    assert r.order is None
+
+
+def test_c6_fake_nlu_bare_cancel_is_cancel_order() -> None:
+    ctx = NluContext(
+        menu_names=("메도빅", "블린"), cart_summary="블린 하나", last_question="", state="confirm"
+    )
+    assert [a.type for a in FakeNlu().parse("음 취소할게요", ctx)] == ["cancel_order"]
+    assert FakeNlu().parse("그거 취소해 주세요", ctx) == [Act("remove_item")]
+
+
+# ---------------------------------------------------------------- C8: 필수 옵션에 없는 값
+
+
+def test_c8_unknown_choice_for_required_option_counts_as_failure() -> None:
+    nlu = ScriptNlu()
+    engine = make(nlu)
+    talk(engine, "아메리카노 하나요")
+    for _ in range(2):
+        nlu.queue(Act("set_option", option_text="미지근하게"))
+        r = talk(engine, "미지근하게요")
+        assert r.state is State.CLARIFY
+        assert r.utterances[-1] == "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+        assert "디카페인" not in " ".join(r.utterances)
+    nlu.queue(Act("set_option", option_text="미지근하게"))
+    r = talk(engine, "미지근하게요")
+    assert r.state is State.FALLBACK
+    assert r.order is not None and r.order.status == "handoff"
+
+
+def test_c8_optional_option_during_required_question_is_still_taken() -> None:
+    engine = make()
+    talk(engine, "아메리카노 하나요")
+    r = talk(engine, "샷 추가요")
+    assert r.state is State.CLARIFY
+    assert [o.name for o in r.cart.lines[0].options] == ["샷 추가"]
+
+
+# ---------------------------------------------------------------- C9: 되묻기에 "네, 두 개요"
+
+
+def test_c9_yes_plus_qty_to_menu_confirm_takes_menu_with_that_qty() -> None:
+    nlu = ScriptNlu()
+    engine = make(nlu)
+    r = talk(engine, "메도비 하나요")
+    assert r.utterances == ["혹시 메도빅 말씀하신 거 맞으세요?"]
+    nlu.queue(Act("yes"), Act("change_qty", qty=2))
+    r = talk(engine, "네, 두 개요")
+    assert r.state is State.ORDERING
+    assert lines(r) == [("m01", 2)]
+
+
+def test_c9_no_plus_menu_to_menu_confirm_still_takes_the_new_menu() -> None:
+    nlu = ScriptNlu()
+    engine = make(nlu)
+    talk(engine, "메도비 하나요")
+    nlu.queue(Act("no"), Act("add_item", menu_text="블린", menu_guess="블린", qty=1))
+    r = talk(engine, "아니요, 블린이요")
+    assert lines(r) == [("m04", 1)]
+
+
+# ---------------------------------------------------------------- C15: 한 묶음에 두 값
+
+
+def test_c15_two_values_of_one_required_group_ask_again() -> None:
+    engine = make()
+    talk(engine, "아메리카노 두 잔이요")
+    r = talk(engine, "하나는 따뜻하게 하나는 차갑게요")
+    assert r.state is State.CLARIFY
+    assert r.cart.lines[0].options == ()
+    assert r.utterances[-1] == "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+    assert "한 가지로만" in r.utterances[0]
+
+
+def test_c15_two_values_in_one_add_are_not_silently_overwritten() -> None:
+    engine = make()
+    r = talk(engine, "아메리카노 따뜻하게 차갑게 하나요")
+    assert r.state is State.CLARIFY
+    assert r.cart.lines[0].options == ()
+
+
+# ---------------------------------------------------------------- C17: 수량 0과 상한
+
+
+def test_c17_zero_qty_add_is_not_one() -> None:
+    engine = make()
+    r = talk(engine, "메도빅 0개요")
+    assert r.cart.is_empty()
+    assert r.state is State.ORDERING
+
+
+def test_c17_huge_qty_is_refused() -> None:
+    engine = make()
+    r = talk(engine, "메도빅 1000개요")
+    assert r.cart.is_empty()
+    assert "99개까지" in " ".join(r.utterances)
+    talk(engine, "메도빅 하나요")
+    r = talk(engine, "메도빅 500개로 해 주세요")
+    assert lines(r) == [("m01", 1)]
+    assert "99개까지" in " ".join(r.utterances)
+
+
+# ---------------------------------------------------------------- P4: 이미 지난 시각
+
+
+def test_p4_past_time_says_it_has_passed() -> None:
+    engine = make()
+    talk(engine, "메도빅 하나", "그게 다예요")
+    r = talk(engine, "두 시요")  # 17:10에 2시
+    assert r.state is State.ASK_PICKUP
+    assert r.utterances == ["그 시간은 이미 지났어요. 가장 빠른 시간은 5시 25분인데 괜찮으세요?"]
+    r = talk(engine, "네")
+    assert r.state is State.CONFIRM

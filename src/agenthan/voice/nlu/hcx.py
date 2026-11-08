@@ -194,7 +194,8 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
     ("6시 반" → "6:30") 일이 스파이크에서 보였다. 그래서 원문에 근거가 없는 조각은 믿지 않는다.
     - menu_text는 발화의 원래 구간으로 바꾼다. 비슷한 구간이 없으면 menu_text·menu_guess를
       비우고, 메뉴 없는 add_item은 버린다
-    - time_text가 발화에 없으면 발화 전체를 넣는다 (timeparse가 문장에서 시각을 찾는다)
+    - 줄을 고치는 act에서 모델이 쓴 메뉴가 발화에 없는데 손님이 다른 메뉴를 말했으면 unknown
+    - time_text가 비었거나 발화에 없으면 발화 전체를 넣는다 (timeparse가 문장에서 시각을 찾는다)
     - 질문(ask_*)의 free_text는 늘 발화 원문이다 (menu_info.py가 손님 말의 낱말을 본다)
     - 메뉴 질문에 메뉴가 비었으면 발화에 그대로 나온 메뉴명을 넣는다
     """
@@ -204,6 +205,7 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
     fields = {k: v.strip() for k in _TEXT_FIELDS if isinstance(v := item.get(k), str)}
     if fields.get("menu_guess") not in ctx.menu_names:
         fields.pop("menu_guess", None)  # 목록 밖 추정("없음" 등)은 버린다. 판정은 매처가 한다
+    wrote_menu = bool(fields.get("menu_text"))
     if said := _said_span(fields.get("menu_text", ""), text):
         fields["menu_text"] = said
     else:
@@ -211,8 +213,13 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
         fields.pop("menu_guess", None)
         if kind == "add_item":
             return None
-    if kind == "set_pickup_time" and _squash(fields.get("time_text", "")) not in _squash(text):
-        fields["time_text"] = text
+        if wrote_menu and kind in _LINE_ACTS and _names_some_menu(text, ctx):
+            # 손님은 메뉴를 말했는데 모델이 쓴 메뉴가 발화에 없다. 메뉴 없는 act로 두면 엔진이
+            # 직전 줄을 고치므로(엉뚱한 줄 빼기) 되묻게 한다 (리뷰 C12)
+            return Act("unknown", free_text=text)
+    time_text = _squash(fields.get("time_text", ""))
+    if kind == "set_pickup_time" and (not time_text or time_text not in _squash(text)):
+        fields["time_text"] = text  # 비었거나 바꿔 쓴 시각 (리뷰 C11)
     if kind == "ask_menu_info" and not fields.get("menu_text"):
         # "메도빅 많이 달아요"에서 모델이 메도빅을 놓친 때
         named = [n for n in ctx.menu_names if n in text]
@@ -222,6 +229,15 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
     if kind in _QUESTION_ACTS or needs_text:
         fields["free_text"] = text
     return Act(kind, qty=_qty(item.get("qty")), **fields)
+
+
+# 장바구니의 줄 하나를 고치는 act. 메뉴를 안 말하면 엔진이 직전 줄을 고친다
+_LINE_ACTS = frozenset({"remove_item", "change_qty", "set_option", "set_request"})
+
+
+def _names_some_menu(text: str, ctx: NluContext) -> bool:
+    """발화에 메뉴 목록의 어떤 이름과 비슷한 구간이 있나 (손님이 메뉴를 말했나)."""
+    return any(_said_span(name, text) for name in ctx.menu_names)
 
 
 _SPACE = re.compile(r"[\s.,!?~]+")

@@ -132,7 +132,9 @@ _PARTICLE = re.compile(r"^(?:은|는|을|를|도|에는|에|이|가)?\s*")
 _REMOVE = re.compile(r"빼|취소|없애")
 _CHANGE = re.compile(rf"({_QTY_PAT})\s*으?로")
 _REQUEST = re.compile(r"따로|많이|적게|덜|넉넉히|조금만|잘라|썰어|넣어|담아|데워|챙겨|포장")
-_REMOVE_WHAT = re.compile(r"(?P<what>[가-힣A-Za-z ]*?)\s*(?:은|는|을|를|도)?\s*(?:빼|취소|없애)")
+_REMOVE_WHAT = re.compile(
+    r"(?P<what>[가-힣A-Za-z ]*?)\s*(?:은|는|을|를|도)?\s*(?P<verb>빼|취소|없애)"
+)
 _THAT_ONE = frozenset(
     {"", "그거", "그것", "이거", "이것", "저거", "그건", "방금 거", "방금거", "마지막 거"}
 )
@@ -187,6 +189,8 @@ def _no_menu_act(text: str, ctx: NluContext) -> list[Act]:
         return [Act("set_option", option_text=option)]
     if (m := _REMOVE_WHAT.match(t)) and "주문" not in m.group("what"):
         what = m.group("what").strip()
+        if not what and m.group("verb") == "취소":  # 무엇을 말하지 않은 "취소할게요" = 주문 취소
+            return [Act("cancel_order", free_text=t)]
         return [Act("remove_item", menu_text="" if what in _THAT_ONE else what)]
     if m := _CHANGE.search(t):
         return [Act("change_qty", qty=_parse_qty(m.group(1)))]

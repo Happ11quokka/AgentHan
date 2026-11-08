@@ -321,3 +321,27 @@ def test_other_errors_do_not_retry_and_tools_false_sends_no_tools() -> None:
     HcxNlu(client_with(handler), tools=False).parse("음", CTX)
     assert len(bodies) == 1
     assert "tools" not in bodies[0] and "toolChoice" not in bodies[0]
+
+
+def test_empty_time_text_falls_back_to_whole_utterance() -> None:
+    """C11: 모델이 time_text를 비우면 발화 전체로 timeparse가 시각을 찾는다."""
+    args = {"acts": [{"type": "set_pickup_time"}]}
+    assert acts_from_args(args, "6시 반에 갈게요", CTX) == [
+        Act("set_pickup_time", time_text="6시 반에 갈게요")
+    ]
+    args = {"acts": [{"type": "set_pickup_time", "time_text": "  "}]}
+    assert acts_from_args(args, "6시 반에 갈게요", CTX)[0].time_text == "6시 반에 갈게요"
+
+
+@pytest.mark.parametrize("kind", ["remove_item", "change_qty", "set_option", "set_request"])
+def test_menu_said_but_not_matched_is_not_turned_into_the_focus_line(kind: str) -> None:
+    """C12: 손님이 말한 메뉴와 모델이 쓴 메뉴가 다르면 메뉴 없는 act(= 직전 줄)로 두지 않는다."""
+    args = {"acts": [{"type": kind, "menu_text": "블린", "menu_guess": "블린", "qty": 2,
+                      "option_text": "샷 추가", "free_text": "따로"}]}
+    acts = acts_from_args(args, "메도빅 빼 주세요", CTX)
+    assert [a.type for a in acts] == ["unknown"]
+
+
+def test_menu_not_said_still_clears_to_focus_line() -> None:
+    args = {"acts": [{"type": "remove_item", "menu_text": "블린", "menu_guess": "블린"}]}
+    assert acts_from_args(args, "그거 빼 주세요", CTX) == [Act("remove_item")]

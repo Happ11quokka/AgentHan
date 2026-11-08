@@ -32,7 +32,8 @@ _ALLERGEN_WORDS = (
 )  # fmt: skip
 # "게"·"잣"은 "어떤 게 있어요?"처럼 다른 말과 겹쳐서 뺐다.
 _ALLERGY = re.compile(r"알레르기|알러지")
-_PRICE = re.compile(r"얼마|가격|몇\s*원|비싸|비싼")
+# "얼마나 달아요/커요"는 정도를 묻는 말이라 뺀다 (리뷰 P2)
+_PRICE = re.compile(r"얼마(?!나)|가격|몇\s*원|비싸|비싼")
 _OPTION = re.compile(r"옵션|변경|추가|바꿀\s*수|고를\s*수|선택")
 _DESCRIBE = re.compile(
     r"달아|달까|단가|달달|단맛|맛|어떤|뭐예요|뭐에요|뭔가요|뭐가\s*들어|무슨|어때|설명|재료"
