@@ -72,6 +72,31 @@ class Cart:
                 return Cart(self.lines[:i] + (merged,) + self.lines[i + 1 :])
         return Cart((*self.lines, new))
 
+    def index_of(self, line: CartLine) -> int | None:
+        """`line`과 같은 종류(메뉴·옵션·요청)인 줄의 위치. 수량은 보지 않는다."""
+        return next((i for i, mine in enumerate(self.lines) if mine.same_kind(line)), None)
+
+    def indices_for(self, item_id: str) -> list[int]:
+        return [i for i, line in enumerate(self.lines) if line.item.id == item_id]
+
+    def remove_item(self, item_id: str) -> Cart:
+        """그 메뉴의 줄을 옵션과 상관없이 모두 뺀다."""
+        return Cart(tuple(line for line in self.lines if line.item.id != item_id))
+
+    def replace_at(self, index: int, line: CartLine) -> Cart:
+        """`index` 줄을 `line`으로 바꾼다. 수량이 0 이하면 뺀다.
+
+        바꾼 뒤 다른 줄과 같은 종류가 되면 그 줄에 수량을 합친다.
+        """
+        rest = self.lines[:index] + self.lines[index + 1 :]
+        if line.qty <= 0:
+            return Cart(rest)
+        for i, other in enumerate(rest):
+            if other.same_kind(line):
+                merged = replace(other, qty=other.qty + line.qty)
+                return Cart(rest[:i] + (merged,) + rest[i + 1 :])
+        return Cart(rest[:index] + (line,) + rest[index:])
+
     def total(self) -> int:
         return sum(line.subtotal() for line in self.lines)
 
