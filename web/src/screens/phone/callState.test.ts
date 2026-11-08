@@ -140,6 +140,10 @@ describe('callReducer', () => {
     expect(again.captions).toEqual([])
   })
 
+  it('stays idle when hangup comes before any call (screen unmount)', () => {
+    expect(run({ type: 'hangup' }).status).toBe('idle')
+  })
+
   it('ends locally on hangup', () => {
     const s = run(dial, micReady, ready, { type: 'hangup' })
     expect(s.status).toBe('ended')

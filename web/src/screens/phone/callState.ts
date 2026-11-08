@@ -113,7 +113,10 @@ export function callReducer(state: CallState, action: CallAction): CallState {
       }
       return state
     case 'hangup':
-      return state.status === 'failed' ? state : { ...state, status: 'ended', botTalking: false }
+      if (state.status === 'starting' || state.status === 'live') {
+        return { ...state, status: 'ended', botTalking: false }
+      }
+      return state
   }
 }
 

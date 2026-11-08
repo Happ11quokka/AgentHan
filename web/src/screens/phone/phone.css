@@ -1,0 +1,196 @@
+/* 통화 화면 전용. 클래스는 모두 phone- 접두어(다른 화면과 겹치지 않게). */
+.phone {
+  --phone-accent: #1f7a4d;
+  --phone-danger: #c0392b;
+  --phone-muted: #6b7280;
+  --phone-line: rgba(127, 127, 127, 0.25);
+  --phone-bot-bg: rgba(31, 122, 77, 0.1);
+  --phone-guest-bg: rgba(127, 127, 127, 0.12);
+  max-width: 480px;
+  margin: 0 auto;
+  /* 화면 높이에 고정: 자막만 안에서 스크롤하고 말 끝·끊기 버튼은 늘 보이게 */
+  height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.phone-head {
+  text-align: center;
+}
+
+.phone-store {
+  margin: 0;
+  color: var(--phone-muted);
+  font-size: 14px;
+}
+
+.phone-status {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.phone-phase-listening {
+  color: var(--phone-accent);
+}
+
+.phone-status-failed {
+  color: var(--phone-danger);
+}
+
+.phone-error {
+  border: 1px solid var(--phone-danger);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.phone-error p {
+  margin: 0;
+}
+
+.phone-captions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.phone-order {
+  flex: none;
+  max-height: 40dvh;
+  overflow-y: auto;
+}
+
+.phone-empty {
+  color: var(--phone-muted);
+  text-align: center;
+  margin: auto 0;
+}
+
+.phone-line {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  max-width: 85%;
+}
+
+.phone-line-bot {
+  align-self: flex-start;
+  background: var(--phone-bot-bg);
+}
+
+.phone-line-guest {
+  align-self: flex-end;
+  background: var(--phone-guest-bg);
+}
+
+.phone-who {
+  display: block;
+  font-size: 12px;
+  color: var(--phone-muted);
+}
+
+.phone-order {
+  border: 1px solid var(--phone-line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.phone-order-final {
+  border-color: var(--phone-accent);
+}
+
+.phone-order h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.phone-order ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.phone-order li,
+.phone-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.phone-total {
+  margin: 8px 0 0;
+  border-top: 1px solid var(--phone-line);
+  padding-top: 8px;
+}
+
+.phone-pickup {
+  margin: 4px 0 0;
+  color: var(--phone-muted);
+}
+
+.phone-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.phone-btn {
+  flex: 1;
+  min-height: 56px;
+  border-radius: 28px;
+  border: 1px solid var(--phone-line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.phone-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.phone-btn-answer {
+  background: var(--phone-accent);
+  border-color: var(--phone-accent);
+  color: #fff;
+}
+
+.phone-btn-hangup {
+  background: var(--phone-danger);
+  border-color: var(--phone-danger);
+  color: #fff;
+}
+
+.phone-btn-warn {
+  flex: none;
+  min-height: 44px;
+  border-color: var(--phone-danger);
+}
+
+.phone-mic {
+  font-size: 13px;
+  color: var(--phone-muted);
+}
+
+.phone-mic dl {
+  margin: 8px 0 0;
+  display: grid;
+  gap: 2px;
+}
+
+.phone-mic dl div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.phone-mic dd {
+  margin: 0;
+}

@@ -3,6 +3,8 @@
 
 export const WIRE_RATE = 16000 // 올리는·내리는 PCM 모두 16kHz mono
 export const FRAME_SAMPLES = 1600 // 올리는 프레임 100ms = 1,600샘플 = 3,200바이트
+/** capture.worklet.ts가 등록하는 프로세서 이름(워클릿 파일은 메인 스레드에서 import하지 않는다). */
+export const CAPTURE_PROCESSOR = 'phone-capture'
 
 /** Float32(-1..1) → Int16. 범위를 넘으면 자른다. */
 export function floatToInt16(input: Float32Array): Int16Array {
@@ -102,7 +104,7 @@ export class Downsampler {
 }
 
 /** Int16 → Float32(-1..1). AudioBuffer에 넣을 값. */
-export function int16ToFloat(input: Int16Array): Float32Array {
+export function int16ToFloat(input: Int16Array): Float32Array<ArrayBuffer> {
   const out = new Float32Array(input.length)
   for (let i = 0; i < input.length; i++) {
     out[i] = input[i] / 32768
