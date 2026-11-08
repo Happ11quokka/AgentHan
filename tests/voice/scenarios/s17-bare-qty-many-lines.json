@@ -5,19 +5,29 @@
   "xfail": "05 알려진 한계. 복창 직후 메뉴 없는 수량 정정은 마지막에 다룬 줄(블린)을 고친다. '어떤 메뉴를 두 개로 해 드릴까요?'로 물으려면 CONFIRM에 새 대기 상태가 필요해서 1단계에서는 고치지 않는다",
   "turns": [
     {
-      "user": "메도빅 하나랑 블린 하나요",
-      "expect_state": "ordering"
+      "guest": "메도빅 하나랑 블린 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "6시 반이요",
+      "guest": "6시 반이요",
       "expect_state": "confirm"
     },
     {
-      "user": "아니요, 두 개요",
+      "guest": "아니요, 두 개요",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -34,7 +44,7 @@
       ]
     },
     {
-      "user": "메도빅이요",
+      "guest": "메도빅이요",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -51,7 +61,7 @@
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

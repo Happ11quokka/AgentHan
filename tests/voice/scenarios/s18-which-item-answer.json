@@ -5,11 +5,24 @@
   "xfail": "05 알려진 한계. 대상 없는 옵션에 '어떤 메뉴에 해 드릴까요?'라고 물은 뒤 '아메리카노요'는 add_item으로 읽혀 한 잔이 더 담긴다. 옵션 대기 상태가 따로 필요하다",
   "turns": [
     {
-      "user": "아메리카노 차갑게 하나랑 블린 하나요",
-      "expect_state": "ordering"
+      "guest": "아메리카노 차갑게 하나랑 블린 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "options": [
+            "차갑게"
+          ]
+        },
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ]
     },
     {
-      "user": "블린 빼 주세요",
+      "guest": "블린 빼 주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -22,14 +35,14 @@
       ]
     },
     {
-      "user": "디카페인으로 해 주세요",
+      "guest": "디카페인으로 해 주세요",
       "expect_state": "ordering",
       "expect_say": [
         "어떤 메뉴에 해 드릴까요?"
       ]
     },
     {
-      "user": "아메리카노요",
+      "guest": "아메리카노요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -43,15 +56,15 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "6시 반이요",
+      "guest": "6시 반이요",
       "expect_state": "confirm"
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

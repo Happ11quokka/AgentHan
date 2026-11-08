@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "나폴레옹 하나랑 블린 하나요",
+      "guest": "나폴레옹 하나랑 블린 하나요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -18,7 +18,7 @@
       ]
     },
     {
-      "user": "나폴레옹 세 개로 바꿔 주세요",
+      "guest": "나폴레옹 세 개로 바꿔 주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -35,7 +35,7 @@
       ]
     },
     {
-      "user": "블린 2개로 바꿔주세요",
+      "guest": "블린 2개로 바꿔주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -52,7 +52,7 @@
       ]
     },
     {
-      "user": "아니 세 개로요",
+      "guest": "아니 세 개로요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -69,18 +69,18 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "7시요",
+      "guest": "7시요",
       "expect_state": "confirm",
       "expect_say": [
         "나폴레옹 세 개, 블린 세 개, 7시 픽업, 총 48,000원이에요."
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "나폴레옹 하나요",
+      "guest": "나폴레옹 하나요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -14,32 +14,32 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "10분 뒤에 갈게요",
+      "guest": "10분 뒤에 갈게요",
       "expect_state": "ask_pickup",
       "expect_say": [
         "준비에 15분 정도 걸려요. 5시 25분 괜찮으세요?"
       ]
     },
     {
-      "user": "아니요",
+      "guest": "아니요",
       "expect_state": "ask_pickup",
       "expect_say": [
         "그럼 몇 시쯤 오세요?"
       ]
     },
     {
-      "user": "5시 반이요",
+      "guest": "5시 반이요",
       "expect_state": "confirm",
       "expect_say": [
         "나폴레옹 하나, 5시 반 픽업, 총 7,000원이에요."
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도빅 하나랑 블린 하나요",
+      "guest": "메도빅 하나랑 블린 하나요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -18,7 +18,7 @@
       ]
     },
     {
-      "user": "블린은 빼 주세요",
+      "guest": "블린은 빼 주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -32,7 +32,7 @@
       ]
     },
     {
-      "user": "나폴레옹두개요",
+      "guest": "나폴레옹두개요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -49,7 +49,7 @@
       ]
     },
     {
-      "user": "아 그거 빼 주세요",
+      "guest": "아 그거 빼 주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -62,11 +62,11 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "6시 반",
+      "guest": "6시 반",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -79,7 +79,7 @@
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

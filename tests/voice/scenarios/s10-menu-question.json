@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도빅 많이 달아요?",
+      "guest": "메도빅 많이 달아요?",
       "expect_state": "ordering",
       "expect_cart": [],
       "expect_say": [
@@ -13,7 +13,7 @@
       ]
     },
     {
-      "user": "메도빅 하나요",
+      "guest": "메도빅 하나요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "user": "글루텐 프리예요?",
+      "guest": "글루텐 프리예요?",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -37,7 +37,7 @@
       ]
     },
     {
-      "user": "아메리카노 디카페인 돼요?",
+      "guest": "아메리카노 디카페인 돼요?",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -51,11 +51,11 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "블린 얼마예요?",
+      "guest": "블린 얼마예요?",
       "expect_state": "ask_pickup",
       "expect_cart": [
         {
@@ -69,11 +69,11 @@
       ]
     },
     {
-      "user": "6시 반이요",
+      "guest": "6시 반이요",
       "expect_state": "confirm"
     },
     {
-      "user": "메도빅 알레르기 있어요?",
+      "guest": "메도빅 알레르기 있어요?",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -87,7 +87,7 @@
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

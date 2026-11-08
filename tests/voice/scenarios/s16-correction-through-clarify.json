@@ -4,26 +4,32 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도빅 하나요",
-      "expect_state": "ordering"
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "6시 반이요",
+      "guest": "6시 반이요",
       "expect_state": "confirm"
     },
     {
-      "user": "나폴래옹 하나요",
+      "guest": "나폴래옹 하나요",
       "expect_state": "clarify",
       "expect_say": [
         "혹시 나폴레옹 말씀하신 거 맞으세요?"
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -41,7 +47,7 @@
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

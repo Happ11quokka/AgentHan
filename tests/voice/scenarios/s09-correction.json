@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도빅 하나랑 아메리카노 한잔 차갑게요",
+      "guest": "메도빅 하나랑 아메리카노 한잔 차갑게요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -21,18 +21,18 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "6시 반이요",
+      "guest": "6시 반이요",
       "expect_state": "confirm",
       "expect_say": [
         "메도빅 하나, 아메리카노 차갑게 한 잔, 6시 반 픽업, 총 12,000원이에요. 맞으세요?"
       ]
     },
     {
-      "user": "아니요, 아메리카노 두 잔이요",
+      "guest": "아니요, 아메리카노 두 잔이요",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -53,14 +53,14 @@
       ]
     },
     {
-      "user": "아니요",
+      "guest": "아니요",
       "expect_state": "ordering",
       "expect_say": [
         "어떤 걸 고쳐 드릴까요?"
       ]
     },
     {
-      "user": "7시로 해 주세요",
+      "guest": "7시로 해 주세요",
       "expect_state": "confirm",
       "expect_say": [
         "픽업 시간 7시로 바꿨어요.",
@@ -68,7 +68,7 @@
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing",
       "expect_say": [
         "7시에 준비해 둘게요. 감사합니다."

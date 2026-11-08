@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도비크하나 주세요",
+      "guest": "메도비크하나 주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -18,7 +18,7 @@
       ]
     },
     {
-      "user": "어 그게다예요",
+      "guest": "어 그게다예요",
       "expect_state": "ask_pickup",
       "expect_cart": [
         {
@@ -31,7 +31,7 @@
       ]
     },
     {
-      "user": "여섯시 반이요",
+      "guest": "여섯시 반이요",
       "expect_state": "confirm",
       "expect_cart": [
         {
@@ -44,7 +44,7 @@
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing",
       "expect_cart": [
         {

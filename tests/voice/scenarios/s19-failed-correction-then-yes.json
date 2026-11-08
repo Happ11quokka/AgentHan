@@ -1,0 +1,62 @@
+{
+  "id": "s19-failed-correction-then-yes",
+  "title": "리뷰 P1: 복창 뒤 못 알아들은 정정에는 복창을 다시 하고, 그 뒤 '네'에만 확정",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "guest": "메도빅 하나랑 블린 하나랑 나폴레옹 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {"menu_id": "m01", "qty": 1},
+        {"menu_id": "m04", "qty": 1},
+        {"menu_id": "m02", "qty": 1}
+      ]
+    },
+    {
+      "guest": "나폴레옹 빼 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {"menu_id": "m01", "qty": 1},
+        {"menu_id": "m04", "qty": 1}
+      ]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "guest": "6시 반이요",
+      "expect_state": "confirm",
+      "expect_say": ["메도빅 하나, 블린 하나, 6시 반 픽업, 총 16,500원이에요. 맞으세요?"]
+    },
+    {
+      "guest": "그거 빼 주세요",
+      "expect_state": "confirm",
+      "expect_cart": [
+        {"menu_id": "m01", "qty": 1},
+        {"menu_id": "m04", "qty": 1}
+      ],
+      "expect_say": [
+        "죄송해요, 잘 못 알아들었어요.",
+        "메도빅 하나, 블린 하나, 6시 반 픽업, 총 16,500원이에요. 맞으세요?"
+      ]
+    },
+    {
+      "guest": "두 개로 해 주세요",
+      "expect_state": "confirm",
+      "expect_say": ["메도빅 하나, 블린 하나, 6시 반 픽업, 총 16,500원이에요. 맞으세요?"]
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {"menu_id": "m01", "quantity": 1},
+      {"menu_id": "m04", "quantity": 1}
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

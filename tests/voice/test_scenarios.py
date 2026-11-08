@@ -56,13 +56,13 @@ def test_scenario_files_are_consistent() -> None:
 NOW = datetime(2026, 11, 8, 17, 10, tzinfo=KST)
 
 
-def _view(utterances: list[str], *, user: str = "네", state: State = State.ORDERING,
+def _view(utterances: list[str], *, guest: str = "네", state: State = State.ORDERING,
           before: TurnResult | None = None, order_status: str | None = None) -> TurnView:
     from agenthan.core.contracts import Order
 
     order = Order("o", [], status=order_status) if order_status else None  # type: ignore[arg-type]
     result = TurnResult(utterances, state, Cart(), order)
-    return TurnView(user, result, before or TurnResult([], State.ORDERING, Cart(), None))
+    return TurnView(guest, result, before or TurnResult([], State.ORDERING, Cart(), None))
 
 
 def test_forbidden_passes_a_normal_turn() -> None:
@@ -93,9 +93,17 @@ def test_forbidden_catches_confirmed_without_readback() -> None:
 
 def test_forbidden_catches_confirmed_on_content_after_readback() -> None:
     before = TurnResult(["…, 총 0원이에요. 맞으세요?"], State.CONFIRM, Cart(), None)
-    view = _view(["감사합니다."], user="네, 6시 반이요", state=State.CLOSING, before=before,
+    view = _view(["감사합니다."], guest="네, 6시 반이요", state=State.CLOSING, before=before,
                  order_status="confirmed")
     assert any("확인 전 confirmed" in p for p in forbidden(view))
+
+
+def test_runner_checks_cart_on_turns_without_expect_cart() -> None:
+    """리뷰 P5: 기대 장바구니가 없는 턴은 직전 턴과 같아야 한다."""
+    scenario = Scenario(id="t", title="", now=NOW, turns=[{"guest": "메도빅 하나요"}],
+                        expect_order=None)
+    failures = run(scenario).failures
+    assert any("장바구니" in f for f in failures), failures
 
 
 def test_forbidden_allows_confirmed_after_readback_and_yes() -> None:

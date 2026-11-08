@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도빅 1개랑 블린두개요",
+      "guest": "메도빅 1개랑 블린두개요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -21,7 +21,7 @@
       ]
     },
     {
-      "user": "아이스 아메리카노 2잔 주세요",
+      "guest": "아이스 아메리카노 2잔 주세요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -45,21 +45,21 @@
       ]
     },
     {
-      "user": "아니요",
+      "guest": "아니요",
       "expect_state": "ask_pickup",
       "expect_say": [
         "몇 시쯤 오세요?"
       ]
     },
     {
-      "user": "6시30분",
+      "guest": "6시30분",
       "expect_state": "confirm",
       "expect_say": [
         "메도빅 하나, 블린 두 개, 아메리카노 차갑게 두 잔, 6시 반 픽업, 총 34,500원이에요."
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "closing"
     }
   ],

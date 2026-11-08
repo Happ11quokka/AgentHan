@@ -4,11 +4,17 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "메도빅 하나요",
-      "expect_state": "ordering"
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ]
     },
     {
-      "user": "음",
+      "guest": "음",
       "expect_state": "ordering",
       "expect_say": [
         "죄송해요, 잘 못 알아들었어요.",
@@ -16,14 +22,14 @@
       ]
     },
     {
-      "user": "어 그러니까",
+      "guest": "어 그러니까",
       "expect_state": "ordering",
       "expect_say": [
         "죄송해요, 잘 못 알아들었어요."
       ]
     },
     {
-      "user": "음 저기요",
+      "guest": "음 저기요",
       "expect_state": "fallback",
       "expect_say": [
         "죄송해요, 제가 잘 못 알아듣고 있어요.",

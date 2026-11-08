@@ -4,7 +4,7 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "블린 2개요",
+      "guest": "블린 2개요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -14,7 +14,7 @@
       ]
     },
     {
-      "user": "사장님 바꿔 주세요",
+      "guest": "사장님 바꿔 주세요",
       "expect_state": "fallback",
       "expect_cart": [
         {

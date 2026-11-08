@@ -1,0 +1,52 @@
+{
+  "id": "s20-item-and-time-while-asking-pickup",
+  "title": "리뷰 C1·C10: 시각을 묻는 중에 메뉴와 시각을 같이 말하면 둘 다 받고 복창한다",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [{"menu_id": "m01", "qty": 1}]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup",
+      "expect_say": ["몇 시쯤 오세요?"]
+    },
+    {
+      "guest": "블린 하나 추가요",
+      "expect_state": "ask_pickup",
+      "expect_cart": [
+        {"menu_id": "m01", "qty": 1},
+        {"menu_id": "m04", "qty": 1}
+      ],
+      "expect_say": ["블린 하나요.", "몇 시쯤 오세요?"]
+    },
+    {
+      "guest": "나폴레옹 하나랑 6시 반에 갈게요",
+      "expect_state": "confirm",
+      "expect_cart": [
+        {"menu_id": "m01", "qty": 1},
+        {"menu_id": "m04", "qty": 1},
+        {"menu_id": "m02", "qty": 1}
+      ],
+      "expect_say": [
+        "나폴레옹 하나요.",
+        "메도빅 하나, 블린 하나, 나폴레옹 하나, 6시 반 픽업, 총 23,500원이에요. 맞으세요?"
+      ]
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {"menu_id": "m01", "quantity": 1},
+      {"menu_id": "m04", "quantity": 1},
+      {"menu_id": "m02", "quantity": 1}
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

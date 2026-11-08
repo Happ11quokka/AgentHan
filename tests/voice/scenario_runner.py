@@ -12,9 +12,10 @@
       "sold_out": ["m01"],                  # 선택. 이 메뉴를 품절로 바꿔 넣는다
       "xfail": "이유",                      # 선택. 알고 있는 한계 (strict xfail)
       "turns": [
-        {"user": "메도비크하나 주세요",
+        {"guest": "메도비크하나 주세요",               # 손님이 하는 말
          "expect_state": "ordering",                        # 선택
          "expect_cart": [{"menu_id": "m01", "qty": 1}],     # 선택. options·request 기본값은 빈 값
+                                                            # 없으면 직전 턴과 같아야 한다
          "expect_say": ["메도빅 하나요"]}  # 선택. 이번 턴 대사에 들어 있어야 할 조각
       ],
       "expect_order": {"lines": [{"menu_id": "m01", "quantity": 1}],
@@ -63,7 +64,7 @@ _EMOJI = re.compile(
 class TurnView:
     """금지 규칙이 보는 한 턴. 직전 턴 결과와 손님 말이 있어야 '확인 전 확정'을 판단한다."""
 
-    user: str
+    guest: str  # 손님이 한 말
     result: TurnResult
     before: TurnResult  # 이 턴 직전의 결과 (첫 턴이면 인사)
 
@@ -93,7 +94,7 @@ def forbidden(view: TurnView) -> list[str]:
         read_back = view.before.state is State.CONFIRM and "맞으세요?" in " ".join(
             view.before.utterances
         )
-        clean_yes = apply_rules(view.user) == [Act("yes")]
+        clean_yes = apply_rules(view.guest) == [Act("yes")]
         if not (read_back and clean_yes):
             problems.append("확인 전 confirmed: 복창 뒤 '네'가 아닌데 주문을 확정했다")
         elif view.result.cart != view.before.cart:
@@ -203,17 +204,21 @@ def run(scenario: Scenario) -> Run:
     out.transcript += [f"AI: {u}" for u in before.utterances]
     last = len(scenario.turns) - 1
     for i, turn in enumerate(scenario.turns):
-        user = turn["user"]
-        result = engine.handle(user, scenario.now)
-        out.transcript.append(f"손님: {user}")
+        guest = turn["guest"]
+        result = engine.handle(guest, scenario.now)
+        out.transcript.append(f"손님: {guest}")
         out.transcript += [f"AI: {u}" for u in result.utterances]
-        where = f"턴 {i + 1} ({user!r})"
+        where = f"턴 {i + 1} ({guest!r})"
 
-        out.failures += [f"{where}: {p}" for p in forbidden(TurnView(user, result, before))]
+        out.failures += [f"{where}: {p}" for p in forbidden(TurnView(guest, result, before))]
         if "expect_state" in turn and result.state.value != turn["expect_state"]:
             out.failures.append(f"{where}: 상태 {result.state.value} ≠ {turn['expect_state']}")
-        if "expect_cart" in turn and _cart_rows(result) != _expected_cart(turn["expect_cart"]):
-            out.failures.append(f"{where}: 장바구니 {_cart_rows(result)}")
+        # 장바구니는 턴마다 본다 (spec §9 L2). 기대값이 없으면 직전 턴에서 바뀌지 않아야 한다
+        want_cart = (
+            _expected_cart(turn["expect_cart"]) if "expect_cart" in turn else _cart_rows(before)
+        )
+        if _cart_rows(result) != want_cart:
+            out.failures.append(f"{where}: 장바구니 {_cart_rows(result)} ≠ {want_cart}")
         said = " ".join(result.utterances)
         for piece in turn.get("expect_say", ()):
             if piece not in said:

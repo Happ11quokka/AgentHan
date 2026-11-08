@@ -4,11 +4,17 @@
   "now": "2026-11-08T17:10:00+09:00",
   "turns": [
     {
-      "user": "블린 하나요",
-      "expect_state": "ordering"
+      "guest": "블린 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ]
     },
     {
-      "user": "주문 취소할게요",
+      "guest": "주문 취소할게요",
       "expect_state": "ordering",
       "expect_cart": [
         {
@@ -21,7 +27,7 @@
       ]
     },
     {
-      "user": "아니요",
+      "guest": "아니요",
       "expect_state": "ordering",
       "expect_say": [
         "네, 계속 도와드릴게요.",
@@ -29,22 +35,22 @@
       ]
     },
     {
-      "user": "그게 다예요",
+      "guest": "그게 다예요",
       "expect_state": "ask_pickup"
     },
     {
-      "user": "6시 반",
+      "guest": "6시 반",
       "expect_state": "confirm"
     },
     {
-      "user": "주문 취소해 주세요",
+      "guest": "주문 취소해 주세요",
       "expect_state": "confirm",
       "expect_say": [
         "주문 취소할까요?"
       ]
     },
     {
-      "user": "네",
+      "guest": "네",
       "expect_state": "done",
       "expect_say": [
         "네, 주문 취소했어요. 감사합니다."
