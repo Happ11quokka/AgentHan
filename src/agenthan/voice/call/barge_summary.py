@@ -16,6 +16,8 @@
   blocked). T2: 손님이 조용한 통화에서 empty가 아닌 것은 에코 글이다
 - `events`: 줄이기·되돌림·멈춤 수(그림자 측정이면 `shadow`로 따로). `duck_to_unduck_ms`: 줄인 뒤
   되돌리기까지(맞장구·에코일 때 손님이 듣는 울렁임 길이, `s3-verify-barge-in` 6장 10)
+- `backchannel_ms`: 맞장구로 판정한 글(복창 중 이른 "네" 포함)의 길이(STT `end_ms - start_ms`).
+  멈춤 문턱(`PHONE_BARGE_STOP_MS`)을 정하는 근거다(논문 값: 한국어 중앙값 0.5초, 최대 2.4초)
 - `false_stops`: 멈췄는데 그 구간에 받아들인 글이 없다(헛 멈춤)
 - `stop_report_ms`: `bot.stop`을 보낸 뒤 브라우저가 멈췄다고 알리기까지(T7, 판정 → 소리 꺼짐의
   위 한계. 올림 회선 지연이 들어 있다)
@@ -149,6 +151,11 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "duck_to_unduck_ms": _spread([d for w in windows
                                       for d in _duck_to_unduck(w.get("events", []))]),
         "false_stops": sum(_is_false_stop(w) for w in windows),
+        "backchannel_ms": _spread([
+            r["end_ms"] - r["start_ms"] for w in windows for r in w.get("results", [])
+            if r.get("verdict") in ("backchannel", "early_yes")
+            and isinstance(r.get("start_ms"), int) and isinstance(r.get("end_ms"), int)
+        ]),
         "stop_report_ms": _spread([c["report_ms"] for c in voice_cuts if "report_ms" in c]),
         "listen_rms": _listen_rms(lines),
         "turn_model": _turn_model(lines),

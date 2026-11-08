@@ -32,7 +32,8 @@ LINES = [
      "barge": _window("open", 200, 700, 800,
                       events=[{"act": "duck", "by": "sound", "at_ms": 1_000},
                               {"act": "unduck", "by": "text", "at_ms": 1_900}],
-                      results=[{"verdict": "backchannel", "text": "네"}])},
+                      results=[{"verdict": "backchannel", "text": "네", "start_ms": 1_000,
+                                "end_ms": 1_600}])},
     {"call": "c1", "turn": 2,
      "listen_rms": {"voiced": {"frames": 4, "p10": 1_800, "p50": 2_600, "p95": 3_000, "max": 3_100},
                     "quiet": {"frames": 0}},
@@ -75,6 +76,7 @@ def test_echo_rms_results_events_and_stop_latency() -> None:
     assert s["events"] == {"duck:sound": 3, "stop:sound": 1, "stop:text": 1, "unduck:text": 1}
     assert s["duck_to_unduck_ms"] == {"n": 1, "p50_ms": 900, "p90_ms": 900}
     assert s["false_stops"] == 1
+    assert s["backchannel_ms"] == {"n": 1, "p50_ms": 600, "p90_ms": 600}
     assert s["stop_report_ms"] == {"n": 2, "p50_ms": 100, "p90_ms": 116}
 
 
