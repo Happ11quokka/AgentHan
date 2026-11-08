@@ -50,8 +50,26 @@ _MENU_TOPIC = re.compile(
 _ALWAYS_ASKING = re.compile(r"알레르기|알러지|글루텐|비건|칼로리")
 
 
+# 물음표 없이도 질문으로 보는 끝말 (STT 글에는 문장부호가 없다, 2단계 리뷰 7번).
+# 맛·크기를 묻는 서술어는 주문 말("하나요"·"따뜻하게요")에 오지 않는다
+_TRAIT_ASK = re.compile(
+    r"(?:달아|단가|짜|짠가|매워|매운가|싱거워|커|큰가|작아|작은가|뜨거워|차가워|부드러워|느끼해"
+    r"|딱딱해|맛있어|맛있나)요$"
+)
+# "…이에요/예요/인가요"는 메뉴 이름 뒤면 주문 답("메도빅이에요")이다. 메뉴 화제어가 있을 때만 질문
+_TOPIC_COPULA = re.compile(r"(?:예요|이에요|인가요|일까요)$")
+
+
+def _asks_without_mark(t: str) -> bool:
+    """물음표 없는 글 `t`(끝 문장부호 뗀 것)가 질문 끝말로 끝나고, 수량이 없다."""
+    if _QTY.search(t):
+        return False  # "메도빅 하나요"·"두 개 포장이에요": 주문
+    return bool(_TRAIT_ASK.search(t) or (_TOPIC_COPULA.search(t) and _MENU_TOPIC.search(t)))
+
+
 def _menu_question(text: str, ctx: NluContext) -> list[Act]:
-    asking = "?" in text or _ASKING.search(_TRAILING.sub("", text))
+    t = _TRAILING.sub("", text)
+    asking = "?" in text or _ASKING.search(t) or _asks_without_mark(t)
     if not (asking or _ALWAYS_ASKING.search(text)):
         return []
     named = [n for n in ctx.menu_names if n in text]

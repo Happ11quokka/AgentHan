@@ -98,3 +98,44 @@ def test_6_a_request_after_the_last_item_goes_to_that_item() -> None:
 def test_6_words_after_the_last_item_that_mean_nothing_add_nothing() -> None:
     assert [a[0] for a in parse("메도빅 하나요, 감사합니다")] == ["add_item"]
 
+
+# ---------------------------------------------------------------- 7: C1 물음표 없는 메뉴 질문
+
+
+@pytest.mark.parametrize("text", [
+    "메도빅 많이 달아요",  # 대본 C1을 STT가 받아 적은 모양
+    "메도빅 달아요",
+    "메도빅 단가요",
+    "블린 짜요",
+    "나폴레옹 매워요",
+    "나폴레옹 커요",
+    "메도빅 몇 인분이에요",
+    "메도빅 무슨 맛이 나요",
+])
+def test_7_menu_question_without_a_question_mark(text) -> None:
+    assert parse(text)[:1] == [("ask_menu_info", text.split()[0], "", text)]
+
+
+@pytest.mark.parametrize("text", [
+    "메도빅 하나요",
+    "메도빅 하나요 많이 주세요",
+    "메도빅 두 개요",
+    "메도빅이요",
+    "메도빅이에요",
+    "블린 하나 사워크림 빼고요",
+    "아메리카노 따뜻하게요",
+    "나폴레옹 큰 걸로 하나요",
+    "메도빅 2개 포장이에요",
+])
+def test_7_orders_are_not_read_as_menu_questions(text) -> None:
+    assert "ask_menu_info" not in [a[0] for a in parse(text)]
+
+
+def test_7_c1_then_c2_answers_the_question_and_adds_one_line() -> None:
+    engine = make()
+    r = talk(engine, "메도빅 많이 달아요")
+    assert r.cart.is_empty()
+    assert "적어 둘게요" not in " ".join(r.utterances)
+    r = talk(engine, "그럼 메도빅 하나 주세요")
+    assert lines(r) == [("m01", 1, [], "")]
+
