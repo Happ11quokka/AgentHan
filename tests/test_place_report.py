@@ -215,6 +215,26 @@ def test_daily_average_window_and_unrounded_conversion_difference(data):
     assert facts.conversion_change_pp == 3.1
 
 
+def test_hourly_and_weekday_changes_use_previous_period(data):
+    previous, current = data["week"][-2:]
+    previous["hourly_views"] = [3, 77] + [0] * 22
+    current["hourly_views"] = [4, 96] + [0] * 22
+    previous["weekday_views"] = dict(zip(WEEKDAYS, [3, 77, 0, 0, 0, 0, 0], strict=True))
+    current["weekday_views"] = dict(zip(WEEKDAYS, [4, 96, 0, 0, 0, 0, 0], strict=True))
+    facts = report_facts(data)
+    for change in (facts.hourly_changes[0], facts.weekday_changes["mon"]):
+        assert (change.current, change.previous, change.change, change.change_percent) == (
+            4,
+            3,
+            1,
+            33.3,
+        )
+    assert facts.hourly_changes[2].change_percent is None
+    first = report_facts(data, end=data["week"][0]["end"])
+    assert first.hourly_changes[0].previous is None
+    assert first.weekday_changes["mon"].change is None
+
+
 @pytest.mark.parametrize("period", ["day", "week"])
 def test_packaged_dummy_patterns(period):
     data = load_report()

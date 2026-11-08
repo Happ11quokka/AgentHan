@@ -180,10 +180,10 @@ def test_statistics_delegates_once_and_keeps_only_final_answer(tmp_path, monkeyp
     question = "이번 주 손님 어땠어?"
     text = assistant.ask(question)
     delegated.assert_called_once_with(question, chat=chat, shop=assistant.store.read())
-    chat.assert_called_once()
-    assert "해 볼 일" in text
+    assert chat.call_count == 2
+    assert "이번 주 할 일" in text
     assert assistant.last_report is not None
-    assert assistant.last_report.text == text
+    assert "해 볼 일" in assistant.last_report.text
     assert assistant.pending_feature is None
     assert assistant.history == [
         {"role": "user", "content": question},

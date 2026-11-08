@@ -70,6 +70,14 @@ class KeywordFact:
 
 
 @dataclass(frozen=True)
+class BreakdownChange:
+    current: int
+    previous: int | None
+    change: int | None
+    change_percent: float | None
+
+
+@dataclass(frozen=True)
 class ReportFacts:
     period: ReportPeriod
     end: str
@@ -95,6 +103,8 @@ class ReportFacts:
     conversion_percent: float | None
     previous_conversion_percent: float | None
     conversion_change_pp: float | None
+    hourly_changes: tuple[BreakdownChange, ...]
+    weekday_changes: dict[str, BreakdownChange]
 
 
 def _rounded(value: Decimal) -> float:
@@ -214,6 +224,13 @@ def _metric(current: int, previous: int | None, history: list[int]) -> MetricCha
     )
 
 
+def _breakdown(current: int, previous: int | None) -> BreakdownChange:
+    change = current - previous if previous is not None else None
+    return BreakdownChange(
+        current, previous, change, _optional_round(_ratio(change, previous)) if previous else None
+    )
+
+
 def _extreme(values: dict, *, minimum: bool = False, positive: bool = False):
     candidates = [k for k, v in values.items() if not positive or v > 0]
     return min(candidates, key=lambda k: (values[k] if minimum else -values[k], k), default=None)
@@ -315,4 +332,14 @@ def report_facts(
             if conversion is not None and old_conversion is not None
             else None
         ),
+        hourly_changes=tuple(
+            _breakdown(value, previous["hourly_views"][hour] if previous else None)
+            for hour, value in enumerate(current["hourly_views"])
+        ),
+        weekday_changes={
+            day: _breakdown(
+                current["weekday_views"][day], previous["weekday_views"][day] if previous else None
+            )
+            for day in WEEKDAYS
+        },
     )

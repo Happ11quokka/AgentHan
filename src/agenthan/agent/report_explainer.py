@@ -173,6 +173,21 @@ def _grounded_numbers(text: str, source: object) -> bool:
         return False
     units = _unit_numbers(source)
     normalized = unicodedata.normalize("NFKC", text).replace("−", "-")
+
+    # 숫자가 각각 다른 사실에 있어도 임의의 시각을 조합할 수는 없다.
+    def times(value):
+        if isinstance(value, dict):
+            return {
+                v
+                for key, v in value.items()
+                if key in ("open_time", "close_time") and isinstance(v, str)
+            } | set().union(*(times(v) for v in value.values()))
+        if isinstance(value, list | tuple):
+            return set().union(*(times(v) for v in value))
+        return set()
+
+    if not set(re.findall(r"\b\d{1,2}:\d{2}\b", normalized)) <= times(source):
+        return False
     aliases = {"건": "회", "퍼센트": "%", "퍼센트포인트": "%p"}
     return all(
         Decimal(number.replace(",", "")) in units[aliases.get(unit, unit)]
@@ -241,3 +256,209 @@ def explain(
         pass
     LOGGER.info("리포트 템플릿 사용: %s", reason)
     return ReportAnswer(_template(facts, insights), facts, insights, True)
+
+
+@dataclass(frozen=True)
+class ReportCard:
+    good: str
+    watch: str
+    todo: str
+    todo_feature: str | None
+
+    def render(self) -> str:
+        return "\n".join(
+            f"{label}: {line}"
+            for label, line in (
+                ("좋아진 점", self.good),
+                ("살펴볼 점", self.watch),
+                ("이번 주 할 일", self.todo),
+            )
+        )
+
+
+GLOSSARY_PATH = Path(__file__).with_name("report_glossary.json")
+
+
+def glossary_lookup(question: str) -> str | None:
+    """용어 질문에만 정해진 풀이를 반환한다."""
+    if re.search(r"추가|바꿔|바꾸|등록|수정|삭제", question):
+        return None
+    glossary = json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
+    for name, entry in glossary.items():
+        if any(
+            re.search(
+                rf"{re.escape(alias)}\s*(?:이|가|은|는)?\s*(?:뭐|무엇|무슨\s*뜻|뜻|의미)", question
+            )
+            for alias in entry["aliases"]
+        ):
+            return f"{name}: {entry['meaning']} {entry['where']}"
+    return None
+
+
+def _gloss_line(line: str, seen: set[str]) -> str:
+    glossary = json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
+    for name, entry in glossary.items():
+        if name not in seen and any(alias in line for alias in entry["aliases"]):
+            line += f" ({entry['short']})"
+            seen.add(name)
+    return line
+
+
+def subject_particle(word: str) -> str:
+    """마지막 글자에 맞는 주격 조사를 고른다."""
+    if word and "가" <= word[-1] <= "힣" and (ord(word[-1]) - 0xAC00) % 28:
+        return "이"
+    return "가"
+
+
+def make_card(last: ReportAnswer, *, chat=None, missing_keyword: str | None = None) -> ReportCard:
+    """규칙으로 내용을 정하고 문장부호만 다듬는다. 실패하면 정해진 문장을 쓴다."""
+    facts = last.facts
+    period = "전날" if facts.period == "day" else "지난주"
+    metrics = [
+        ("조회 수", facts.place_views),
+        ("예약·주문 신청 수", facts.booking_order_requests),
+        ("스마트콜", facts.smartcall_calls),
+    ]
+    increased = [
+        (name, m) for name, m in metrics if m.change_percent is not None and m.change_percent > 0
+    ]
+    decreased = [
+        (name, m) for name, m in metrics if m.change_percent is not None and m.change_percent < 0
+    ]
+    good = "크게 달라진 점은 없어요"
+    if increased:
+        name, metric = max(increased, key=lambda pair: pair[1].change_percent)
+        good = f"{name}{subject_particle(name)} {period}보다 {metric.change_percent:g}% 늘었어요"
+    watch = "다음 리포트에서 변화를 살펴보세요"
+    if decreased:
+        name, metric = min(decreased, key=lambda pair: pair[1].change_percent)
+        decline = abs(metric.change_percent)
+        watch = f"{name}{subject_particle(name)} {period}보다 {decline:g}% 줄었어요"
+    elif last.insights and not _numbers(last.insights[0].title):
+        watch = last.insights[0].title
+    insight = last.insights[0] if last.insights else None
+    todo = GUIDANCE[insight.kind][1] if insight else "다음 리포트에서 변화를 확인해 보세요"
+    feature = insight.action_feature if insight else None
+    if missing_keyword and not _numbers(missing_keyword):
+        todo = (
+            f"‘{missing_keyword}’{subject_particle(missing_keyword)} 실제 메뉴와 맞으면 "
+            "대표키워드에 추가해 보세요"
+        )
+        feature = "search_keywords"
+    lines = [good, watch, todo]
+    source = [asdict(facts), *[i.evidence for i in last.insights]]
+    # 감소율은 표시에서 절댓값을 사용하므로 원래의 음수도 근거로 허용한다.
+    source.append(
+        {
+            "change_percent": [
+                abs(m.change_percent) for _, m in metrics if m.change_percent is not None
+            ]
+        }
+    )
+    try:
+        response = parse_message(
+            (chat or hcx_chat)(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "각 문장의 내용과 숫자를 바꾸지 말고 문장부호만 다듬으세요. "
+                            "JSON 문자열 배열만 반환하세요."
+                        ),
+                    },
+                    {"role": "user", "content": json.dumps(lines, ensure_ascii=False)},
+                ],
+                tools=[],
+            )
+        )
+        polished = json.loads(response["content"])
+
+        def canonical(s):
+            return re.sub(r"[\s.,!?。！？]", "", s)
+
+        if (
+            not response.get("tool_calls")
+            and isinstance(polished, list)
+            and len(polished) == 3
+            and all(
+                isinstance(s, str)
+                and "\n" not in s
+                and canonical(s) == canonical(original)
+                and _grounded_numbers(s, source)
+                for s, original in zip(polished, lines, strict=True)
+            )
+        ):
+            lines = polished
+    except Exception:
+        pass
+    seen: set[str] = set()
+    lines = [_gloss_line(line, seen) for line in lines]
+    return ReportCard(*lines, feature)
+
+
+def follow_up(question: str, last: ReportAnswer, *, chat=None) -> str:
+    """R1이 실제로 제공하는 요약만 사용하며 원인을 추측하지 않는다."""
+    facts = last.facts
+    if re.search(r"비\s*(와|왔|때문)|날씨|원인", question):
+        return "그 원인은 데이터로는 알 수 없어요."
+    channel = ", ".join(f"{c.name} {c.views:,}회" for c in facts.channels)
+    keywords = ", ".join(f"{k.name} {k.views:,}회" for k in facts.top_keywords) or "자료 없음"
+    when = (
+        f"가장 많이 본 시간은 {facts.peak_hour}시예요. "
+        if facts.peak_hour is not None
+        else "최다 시간 자료가 없어요. "
+    )
+    when += f"가장 많이 본 요일은 {WEEKDAY_NAMES[facts.peak_weekday]}요일이에요."
+    if re.search(r"왜.*(?:늘|증가|줄|감소)", question):
+        direction = -1 if re.search(r"줄|감소", question) else 1
+        metrics = [
+            ("조회 수", facts.place_views),
+            ("예약·주문 신청 수", facts.booking_order_requests),
+            ("스마트콜", facts.smartcall_calls),
+        ]
+        changed = [(n, m) for n, m in metrics if m.change is not None and m.change * direction > 0]
+        selected = max(changed, key=lambda pair: abs(pair[1].change)) if changed else None
+        headline = (
+            f"{selected[0]}{subject_particle(selected[0])} 지난 기간보다 "
+            f"{abs(selected[1].change):,}회 "
+            f"{'줄었어요' if direction < 0 else '늘었어요'}. "
+            if selected
+            else "해당 방향으로 달라진 지표가 없어요. "
+        )
+        if not selected:
+            return headline + "변화의 원인은 데이터로는 알 수 없어요."
+        if selected[0] != "조회 수":
+            return headline + "이 지표의 채널·요일·시간대별 변화와 원인은 데이터로는 알 수 없어요."
+        changes = (
+            ", ".join(f"{c.name} {c.change:+,}회" for c in facts.channels if c.change is not None)
+            or "자료 없음"
+        )
+
+        def breakdown(items):
+            parts = [
+                f"{label} {value.previous:,}회→{value.current:,}회 ({value.change:+,}회)"
+                for label, value in items
+                if value.change is not None and value.change != 0
+            ]
+            return ", ".join(parts) or "변화 자료 없음"
+
+        weekdays = breakdown(
+            (WEEKDAY_NAMES[day] + "요일", value) for day, value in facts.weekday_changes.items()
+        )
+        hours = breakdown((f"{hour}시", value) for hour, value in enumerate(facts.hourly_changes))
+        return (
+            headline
+            + f"조회 경로별 변화: {changes}. 요일별: {weekdays}. 시간대별: {hours}. "
+            + "변화의 원인은 데이터로는 알 수 없어요."
+        )
+    if re.search(r"어디서|어디.*왔|유입", question):
+        return f"가게 조회 경로: {channel}. 검색어: {keywords}."
+    if re.search(r"언제|시간|요일", question):
+        return when
+    if re.search(r"누가|성별|연령|나이", question):
+        return (
+            f"가장 큰 성별 그룹: {facts.largest_gender_group or '자료 없음'}, "
+            f"연령 그룹: {facts.largest_age_group or '자료 없음'}."
+        )
+    return "그 원인은 데이터로는 알 수 없어요."
