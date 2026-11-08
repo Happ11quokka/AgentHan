@@ -159,6 +159,10 @@ export default function PhonePage() {
                 <dd>{String(state.mic?.[k] ?? '—')}</dd>
               </div>
             ))}
+            <div>
+              <dt>음성 끼어들기</dt>
+              <dd>{state.bargeIn ?? 'off'}</dd>
+            </div>
           </dl>
         </details>
       )}
