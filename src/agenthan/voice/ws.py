@@ -26,7 +26,7 @@ from agenthan.core.contracts import OrderSink, StoreKnowledge
 from agenthan.voice import adapters
 from agenthan.voice.adapters import SttFactory, TtsFactory
 from agenthan.voice.call.fakes import FakeClock
-from agenthan.voice.call.ports import Clock, PortError, SystemClock
+from agenthan.voice.call.ports import Clock, PortError, SystemClock, Tts
 from agenthan.voice.call.session import CallSession
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
@@ -70,9 +70,12 @@ def phone_router(
     @router.websocket(WS_PATH)
     async def phone_ws(ws: WebSocket) -> None:
         await ws.accept()
+        tts: Tts | None = None
         try:
-            stt, tts = make_stt(), make_tts()
+            tts = make_tts()
+            stt = make_stt()  # 만들기만 한다. 연결(`start`)은 세션이 한다
         except Exception as err:  # 키 없음 등. 세션 전이라 여기서 직접 한 번 보낸다
+            await _aclose(tts)
             await _refuse(ws, err)
             return
         session = CallSession(
@@ -99,6 +102,7 @@ def phone_router(
                     task.cancel()
                 await asyncio.gather(reader, done, return_exceptions=True)
                 await session.close()  # 남은 송신을 비운 뒤라 이제 이 코루틴이 유일한 송신자
+                await _aclose(tts)
                 await _close(ws)
 
     return router
@@ -153,6 +157,16 @@ async def _refuse(ws: WebSocket, err: Exception) -> None:
     except Exception:
         log.info("error 이벤트를 보내지 못함", exc_info=True)
     await _close(ws)
+
+
+async def _aclose(tts: Tts | None) -> None:
+    """HTTP 연결을 들고 있는 TTS(`ClovaVoiceTts`)는 통화가 끝나면 닫는다. 가짜는 `aclose`가 없다."""
+    aclose = getattr(tts, "aclose", None)
+    if aclose is not None:
+        try:
+            await aclose()
+        except Exception:
+            log.info("TTS 닫기 실패", exc_info=True)
 
 
 async def _close(ws: WebSocket) -> None:

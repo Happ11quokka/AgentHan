@@ -170,6 +170,27 @@ def test_bot_audio_goes_out_as_binary_frames_with_an_8_byte_header(tmp_path) -> 
         assert b"".join(f[8:] for f in between) == pcm
 
 
+class ClosableTts(FakeTts):
+    """진짜 TTS처럼 HTTP 연결을 들고 있어서 `aclose()`가 있는 TTS."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def test_hangup_also_closes_a_tts_that_holds_a_connection(tmp_path) -> None:
+    made: list[ClosableTts] = []
+    client = TestClient(_app(tmp_path, tts_factory=lambda: made.append(ClosableTts()) or made[-1]))
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.until("call.ready", 0)
+    assert [t.closed for t in made] == [True]
+
+
 def test_port_that_cannot_be_made_sends_one_error_and_closes(tmp_path) -> None:
     def no_key() -> FakeSttStream:
         raise PortError("CLOVA_SPEECH_SECRET_KEY가 없어요", code="stt_config", retry=False)

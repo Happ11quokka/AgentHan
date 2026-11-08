@@ -3,8 +3,11 @@
 진짜 어댑터(티켓 02 STT, 03 TTS)는 여기서만 늦게 import한다. 그래서 그 모듈이 아직 없어도
 가짜 모드는 뜨고, `clova`를 골랐는데 없으면 서버가 뜰 때 `AdapterMissing`으로 바로 멈춘다.
 
-02·03이 들어오면 아래 `CLOVA_STT`·`CLOVA_TTS`의 모듈 이름과 `_clova_stt`·`_clova_tts`
-두 함수만 실제 이름에 맞춘다. 어댑터는 `env`(환경 변수 + `.env`)에서 키를 읽는다.
+키는 설정의 `env`(환경 변수 + `.env`)에서 꺼내 넘긴다. 키가 없으면 통화를 만들 때 `PortError`
+(`*_config`)가 나고, 라우터가 그것을 `error` 이벤트로 낸다.
+
+- TTS(티켓 03): `tts_clova.ClovaVoiceTts`. 통화마다 하나 만들고, 통화가 끝나면 라우터가 `aclose()`
+- STT(티켓 02): 아직 없다. 들어오면 `CLOVA_STT`의 모듈 이름과 `_clova_stt`만 실제 이름에 맞춘다
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
-from agenthan.voice.call.ports import SttStream, Tts
+from agenthan.voice.call.ports import PortError, SttStream, Tts
 from agenthan.voice.settings import SettingsError, VoiceSettings
 
 SttFactory = Callable[[], SttStream]
@@ -25,7 +28,7 @@ TtsFactory = Callable[[], Tts]
 CLOVA_STT = (
     "agenthan.voice.stt.clova", "02", "CLOVA_SPEECH_SECRET_KEY · CLOVA_SPEECH_GRPC_ENDPOINT"
 )
-CLOVA_TTS = ("agenthan.voice.tts.clova", "03", "CLOVA_VOICE_CLIENT_ID · CLOVA_VOICE_CLIENT_SECRET")
+CLOVA_TTS = ("agenthan.voice.tts_clova", "03", "CLOVA_VOICE_CLIENT_ID · CLOVA_VOICE_CLIENT_SECRET")
 
 
 class AdapterMissing(SettingsError):
@@ -66,4 +69,8 @@ def _clova_stt(module: Any, env: Mapping[str, str]) -> SttStream:
 
 
 def _clova_tts(module: Any, env: Mapping[str, str]) -> Tts:
-    return module.ClovaTts.from_env(env)
+    client_id, secret = (env.get(k, "").strip() for k in module.KEY_ENVS)
+    if not (client_id and secret):
+        keys = ", ".join(module.KEY_ENVS)
+        raise PortError(f"CLOVA Voice 키가 없어요 ({keys})", code="tts_config", retry=False)
+    return module.ClovaVoiceTts(client_id, secret)

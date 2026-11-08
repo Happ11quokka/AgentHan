@@ -10,6 +10,7 @@ import pytest
 from agenthan.voice import adapters
 from agenthan.voice.adapters import AdapterMissing, stt_factory, tts_factory
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
+from agenthan.voice.call.ports import PortError
 from agenthan.voice.settings import SettingsError, VoiceSettings
 
 
@@ -67,3 +68,18 @@ def test_clova_without_its_adapter_module_fails_clearly(monkeypatch) -> None:
         stt_factory(VoiceSettings(stt="clova"))
     with pytest.raises(AdapterMissing, match="티켓 03"):
         tts_factory(VoiceSettings(tts="clova"))
+
+
+def test_clova_tts_takes_its_keys_from_the_settings_env() -> None:
+    env = {"PHONE_TTS": "clova", "CLOVA_VOICE_CLIENT_ID": "id-1",
+           "CLOVA_VOICE_CLIENT_SECRET": "s-1"}
+    tts = tts_factory(VoiceSettings.from_env(env, env_file=None))()
+    assert type(tts).__name__ == "ClovaVoiceTts"
+    assert "s-1" not in repr(tts)
+
+
+def test_clova_tts_without_keys_fails_per_call_with_tts_config() -> None:
+    make_tts = tts_factory(VoiceSettings.from_env({"PHONE_TTS": "clova"}, env_file=None))
+    with pytest.raises(PortError) as err:
+        make_tts()
+    assert (err.value.code, err.value.retry) == ("tts_config", False)
