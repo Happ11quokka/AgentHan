@@ -9,7 +9,7 @@ import asyncio
 import math
 import struct
 from collections.abc import Callable
-from concurrent.futures import Executor
+from concurrent.futures import Executor, Future
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -36,6 +36,25 @@ def tone(ms: int = FRAME_MS, amplitude: int = 4_000) -> list[bytes]:
         *(int(amplitude * math.sin(2 * math.pi * 440 * i / 16_000)) for i in range(FRAME_SAMPLES)),
     )
     return [one for _ in range(ms // FRAME_MS)]
+
+
+class InlineExecutor(Executor):
+    """부른 자리에서 바로 돌리는 실행기. 턴 모델 점수가 말 끝 순간에 바로 나온다(결정적 시험)."""
+
+    def submit(self, fn, /, *args, **kwargs):  # type: ignore[override]
+        future: Future = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as err:  # noqa: BLE001 - 모델 실패 흉내도 그대로 담는다
+            future.set_exception(err)
+        return future
+
+
+class StalledExecutor(Executor):
+    """받기만 하고 돌리지 않는 실행기. 턴 모델 결과가 판정 때까지 안 오는 경우(늦음)."""
+
+    def submit(self, fn, /, *args, **kwargs):  # type: ignore[override]
+        return Future()
 
 
 class RecordingOutbound:
@@ -92,6 +111,8 @@ class Call:
         settings: SessionSettings | None = None,
         store_factory: Callable[[], Any] = FakeStoreKnowledge.from_fixture,
         executor: Executor | None = None,
+        turn_model: Any = None,
+        turn_executor: Executor | None = None,
     ) -> None:
         self.out = RecordingOutbound()
         self.sink = MemoryOrderSink()
@@ -112,6 +133,8 @@ class Call:
             call_id="test-call",
             settings=settings or SessionSettings(),
             executor=executor,
+            turn_model=turn_model,
+            turn_executor=turn_executor,
         )
 
     async def __aenter__(self) -> Call:

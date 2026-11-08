@@ -50,9 +50,11 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import math
+import time
 import uuid
 from collections.abc import Callable
-from concurrent.futures import Executor
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -77,6 +79,7 @@ from agenthan.voice.call.ports import (
     SttResult,
     SttStream,
     Tts,
+    TurnModel,
 )
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
 from agenthan.voice.call.trim import TrimSettings, trim_leading_silence
@@ -105,6 +108,21 @@ __all__ = ["CUSTOMER_FATAL", "CUSTOMER_RETRY", "CallSession", "SessionSettings",
 NluChoice = Literal["fake", "hcx"]
 Phase = Literal["idle", "listening", "thinking", "speaking", "ended"]
 _CONT_POLL_S = 0.1  # 이어짐 대기 중 손님이 다시 말하고 있으면 이 간격으로 다시 본다
+# 턴 모델(Smart Turn)이 보는 최근 오디오: 8초 = 256,000바이트 (원본 입력 규칙)
+TURN_AUDIO_BYTES = 8_000 * BYTES_PER_MS
+# 턴 모델 전용 스레드 수. 프로세스에 풀 하나, 세션(ONNX) 하나를 같이 쓴다. 2 vCPU 서버라 2개
+# (연구 노트 Q11-3). 엔진 풀은 HCX를 기다리는 스레드로 찰 수 있어 따로 둔다
+TURN_THREADS = 2
+TURN_THREAD_PREFIX = "phone-turn"
+_turn_pool: ThreadPoolExecutor | None = None
+
+
+def default_turn_pool() -> ThreadPoolExecutor:
+    """실행기를 따로 받지 않은 세션이 같이 쓰는 턴 모델 풀 (처음 부를 때 만든다)."""
+    global _turn_pool
+    if _turn_pool is None:
+        _turn_pool = ThreadPoolExecutor(TURN_THREADS, thread_name_prefix=TURN_THREAD_PREFIX)
+    return _turn_pool
 
 
 @dataclass(frozen=True)
@@ -224,6 +242,8 @@ class CallSession:
         call_id: str | None = None,
         settings: SessionSettings | None = None,
         executor: Executor | None = None,
+        turn_model: TurnModel | None = None,
+        turn_executor: Executor | None = None,
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
@@ -236,6 +256,12 @@ class CallSession:
         self._sink = order_sink
         self._settings = settings or SessionSettings()
         self._executor = executor  # None이면 루프 기본 풀
+        # 턴 모델(티켓 03). 없으면(꺼짐·모델 파일 없음) 링 버퍼도 만들지 않고 규칙만 쓴다
+        self._turn_model = turn_model
+        self._turn_executor = turn_executor
+        self._ring: bytearray | None = bytearray() if turn_model is not None else None
+        self._score: Future[tuple[float, float]] | None = None  # 마지막 말 끝의 점수 작업
+        self._model_info: dict[str, Any] | None = None  # 마지막 판정에 쓴 점수의 출처
         self._log = LatencyLog(log_dir, self.call_id, clock)
         self._vad = SilenceDetector(self._settings.vad)
 
@@ -300,8 +326,11 @@ class CallSession:
         """올라온 PCM16LE 16kHz mono 프레임 하나 (헤더 없음)."""
         if not self._ready or self.done:
             return
+        was_speaking = self._vad.in_speech
         ended = self._vad.feed(pcm)
         now = self._clock.monotonic()
+        if self._ring is not None:
+            self._keep_turn_audio(pcm, started=self._vad.in_speech and not was_speaking)
         if self._vad.last_voiced:
             self._voice_at = now
         ep = self._vad.ep_due or self._commit  # 조기 epFlag: 무음 250ms (턴 판정은 `ended`)
@@ -312,6 +341,7 @@ class CallSession:
             self._ep_at = now
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
         if ended:
+            self._score_turn()
             self._on_speech_end()
         self._stt_backlog += len(pcm)
         backlog_ms = self._stt_backlog // BYTES_PER_MS
@@ -693,9 +723,55 @@ class CallSession:
             menu_names=ctx.menu_names, cont_wait_s=self._settings.cont_wait_s,
         )
         settings = self._settings
-        # 턴 모델 점수는 티켓 03이 넣는다. 없으면 규칙만 쓴다
-        return combine_turn_end(verdict, None, low=settings.turn_model_low,
+        score, self._model_info = self._take_score()  # 없으면(꺼짐·늦음·실패) 규칙만
+        return combine_turn_end(verdict, score, low=settings.turn_model_low,
                                 high=settings.turn_model_high, cont_wait_s=settings.cont_wait_s)
+
+    # ------------------------------------------------------------ 턴 모델 (티켓 03)
+
+    def _keep_turn_audio(self, pcm: bytes, *, started: bool) -> None:
+        """최근 8초 링 버퍼에 프레임을 넣는다. 봇이 말하는 동안의 프레임(반이중 0)은 넣지 않는다.
+
+        새 말 구간이 시작되면 앞 말 끝의 점수는 버린다(그 뒤 말 끝에서 다시 본다).
+        """
+        assert self._ring is not None
+        if started:
+            self._score = None
+        if self._phase == "speaking":
+            return
+        self._ring += pcm
+        if len(self._ring) > TURN_AUDIO_BYTES:
+            del self._ring[: len(self._ring) - TURN_AUDIO_BYTES]
+
+    def _score_turn(self) -> None:
+        """말 끝(무음 400ms)에 한 번, 링 버퍼 사본으로 턴 모델을 돌린다. 결과는 판정 때 꺼낸다.
+
+        무음이 더 길어졌다고 다시 돌리지 않는다(확률이 끝 무음 길이에 따라 오락가락한다,
+        연구 노트 Q2). 이어짐 대기 중에는 링 버퍼를 비우지 않아 다음 말 끝에서 턴 전체를 본다.
+        """
+        model, ring = self._turn_model, self._ring
+        if model is None or ring is None or self._phase == "speaking" or not ring:
+            return
+        executor = self._turn_executor or default_turn_pool()
+        self._score = executor.submit(_timed_score, model, bytes(ring))
+
+    def _take_score(self) -> tuple[float | None, dict[str, Any] | None]:
+        """판정에 쓸 점수. 기다리지 않는다: 말 끝(400ms)부터 STT 확정 글(말 끝 + 0.9~1.1초)까지가
+        모델의 시간이다. 그때까지 안 끝났으면 `late`, 실패면 `error`로 남기고 규칙만 쓴다.
+        """
+        if self._turn_model is None:
+            return None, None
+        future, self._score = self._score, None  # 한 번 쓴 점수는 다른 글에 다시 쓰지 않는다
+        if future is None:
+            return None, {"src": "none"}  # 말 끝 없이 넘어온 말(버튼·붙잡기 시간 제한)
+        if not future.done():
+            return None, {"src": "late"}
+        err = future.exception()
+        if err is not None:
+            log.warning("턴 모델 실패, 이 판정은 규칙만 씀 (%s): %r", self.call_id, err)
+            return None, {"src": "error"}
+        score, ms = future.result()
+        return score, {"src": "model", "ms": round(ms, 1)}
 
     def _wait_more(self, u: _Utterance, decision: TurnDecision) -> None:
         self._steps.append({"text": u.text, **decision.as_record()})
@@ -796,11 +872,16 @@ class CallSession:
             fields["queued"] = True
         if decision is not None:
             fields["turn_end"] = decision.as_record()
+            if self._model_info is not None:
+                fields["turn_model"] = self._model_info
             if self._steps:
                 fields["turn_end_steps"] = self._steps
             if self._cont_since is not None:
                 fields["cont_wait_ms"] = round((self._clock.monotonic() - self._cont_since) * 1000)
         self._steps, self._cont_since = [], None
+        self._model_info = None
+        if self._ring is not None:
+            self._ring.clear()  # 넘긴 말의 오디오는 다음 말 끝에 넣지 않는다
         self._log.begin(turn, text=u.text, epd_type=u.epd_type, fragments=u.fragments,
                         splits=u.fragments - 1, utterances=u.utterances, end_by=u.end_by,
                         **fields)
@@ -1070,6 +1151,15 @@ class CallSession:
         self._phase = "ended"
         self._ready = False
         self._done.set()
+
+
+def _timed_score(model: TurnModel, pcm: bytes) -> tuple[float, float]:
+    """턴 모델 스레드에서 돈다. (끝남 확률, 걸린 ms). 0~1 밖이거나 숫자가 아니면 실패로 본다."""
+    start = time.perf_counter()
+    score = float(model.p_complete(pcm))
+    if not (math.isfinite(score) and 0.0 <= score <= 1.0):
+        raise ValueError(f"턴 모델 점수가 0~1 밖: {score!r}")
+    return score, (time.perf_counter() - start) * 1000
 
 
 def _is_int(value: Any) -> bool:

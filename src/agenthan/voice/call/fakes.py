@@ -6,6 +6,7 @@
   - `script`: `Scripted(at_ms, result)` — 세션이 `at_ms`만큼 오디오를 쓴 순간 그 결과를 낸다
 - `FakeTts`: 고정 PCM을 돌려준다. 문장별 지연·실패를 줄 수 있고 동시 호출 수를 센다
 - `FakeClock`: 고정 가게 시각 + (기본) 실제 단조 시각
+- `FakeTurnModel`: 턴 모델(Smart Turn) 가짜. 정해 둔 점수를 차례로 내고, 본 오디오 길이를 남긴다
 """
 
 from __future__ import annotations
@@ -153,3 +154,24 @@ class FakeClock:
 
     def monotonic(self) -> float:
         return self._monotonic()
+
+
+class FakeTurnModel:
+    """`TurnModel` 가짜. 부를 때마다 `scores`의 다음 값(다 쓰면 마지막 값)을 낸다.
+
+    값이 예외면 그 예외를 올린다(모델 실패 흉내).
+    `heard_ms`에 부를 때 받은 오디오 길이(ms)를 쌓는다.
+    """
+
+    def __init__(self, scores: Iterable[float | Exception]) -> None:
+        self._scores = list(scores)
+        if not self._scores:
+            raise ValueError("점수를 하나 이상 주세요")
+        self.heard_ms: list[int] = []
+
+    def p_complete(self, pcm16: bytes) -> float:
+        self.heard_ms.append(len(pcm16) // BYTES_PER_MS)
+        score = self._scores.pop(0) if len(self._scores) > 1 else self._scores[0]
+        if isinstance(score, Exception):
+            raise score
+        return score
