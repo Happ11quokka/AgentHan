@@ -96,6 +96,30 @@ def test_the_button_stops_the_turn_and_the_next_words_do_not_wait_for_the_cut_tt
     ]
 
 
+def test_words_said_before_the_first_sound_become_the_next_turn_when_the_bot_is_cut(
+    tmp_path,
+) -> None:
+    # 첫 소리 전에 한 말(티켓 01)은 재생 끝을 기다렸다 다음 턴이 된다. 끊으면 그 자리에서 넘긴다
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요"])
+    tts = FakeTts(delays={"메도빅 하나요.": 0.4, SLOW: 5.0})
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, tts=tts) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=1)
+            await c.say()  # 엔진은 끝났고 첫 문장을 합성하는 중
+            await c.out.wait_for("bot.say", turn=1)
+            assert c.out.of("stt.final", 2) == []
+            await interrupt(c, 1)
+            await c.out.wait_for("stt.final", turn=2)
+            return c
+
+    c = run(call())
+    (second,) = c.out.of("stt.final", 2)
+    assert second["text"] == "그게 다예요"
+
+
 def _lines(c: Call) -> list[dict]:
     path = c.log_dir / "phone-20261108.jsonl"
     return [json.loads(s) for s in path.read_text().splitlines()]
