@@ -1,8 +1,9 @@
 """텍스트로 주문 대화를 해 보는 CLI.
 
-    uv run python -m agenthan.voice.cli [--now 2026-11-08T15:00:00+09:00]
+    uv run python -m agenthan.voice.cli [--now 2026-11-08T15:00:00+09:00] [--nlu fake|hcx]
 
 손님 말을 한 줄씩 넣는다. 주문이 확정되면 `Order`를 찍고 끝난다.
+`--nlu hcx`는 HCX-DASH-002를 부른다. 키는 `CLOVASTUDIO_API_KEY` 환경 변수나 `.env`에서 읽는다.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import TextIO
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
 from agenthan.voice.dialog.states import TERMINAL
+from agenthan.voice.nlu.base import Nlu
 from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.store_config import StoreConfig
 
@@ -25,18 +27,34 @@ def _print_turn(result: TurnResult, out: TextIO) -> None:
         print(f"AI: {text}", file=out)
 
 
+def _make_nlu(kind: str) -> Nlu:
+    if kind == "hcx":
+        from agenthan.voice.nlu.hcx import HcxNlu
+
+        return HcxNlu.from_env()
+    return FakeNlu()
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
 ) -> int:
-    parser = argparse.ArgumentParser(description="텍스트 주문 대화 (가짜 NLU)")
+    parser = argparse.ArgumentParser(description="텍스트 주문 대화")
     parser.add_argument("--now", help="고정 시각 ISO 8601. 없으면 지금 시각(KST)")
+    parser.add_argument(
+        "--nlu", choices=("fake", "hcx"), default="fake", help="fake: 규칙 기반(기본), hcx: HCX"
+    )
     args = parser.parse_args(argv)
     inp = stdin or sys.stdin
     out = stdout or sys.stdout
 
+    try:
+        nlu = _make_nlu(args.nlu)
+    except ValueError as err:
+        print(err, file=sys.stderr)
+        return 2
     config = StoreConfig.from_fixture()
     fixed_now = datetime.fromisoformat(args.now) if args.now else None
 
@@ -45,7 +63,7 @@ def main(
 
     engine = DialogEngine(
         FakeStoreKnowledge.from_fixture(),
-        FakeNlu(),
+        nlu,
         config,
         order_id=f"cli-{now():%Y%m%d%H%M%S}",
     )
