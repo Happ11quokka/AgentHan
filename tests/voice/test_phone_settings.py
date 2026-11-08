@@ -126,6 +126,32 @@ def test_clova_stt_builds_from_the_settings_env_without_network() -> None:
     assert os.environ["GRPC_DNS_RESOLVER"] == "native"
 
 
+def test_clova_stt_gets_the_boost_words_for_its_config() -> None:
+    env = {"PHONE_STT": "clova", "CLOVA_SPEECH_SECRET_KEY": "stt-secret-1"}
+    make_stt = stt_factory(VoiceSettings.from_env(env, env_file=None),
+                           boost_words=("메도빅", "사워크림"))
+    assert make_stt()._settings.boost_words == ("메도빅", "사워크림")
+
+
+def test_phone_router_boosts_the_store_menu_for_clova_stt(monkeypatch) -> None:
+    from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
+    from agenthan.voice.store_config import StoreConfig
+    from agenthan.voice.ws import phone_router
+
+    seen: dict = {}
+
+    def capture(settings, **kw):
+        seen.update(kw)
+        return lambda: None
+
+    monkeypatch.setattr(adapters, "stt_factory", capture)
+    phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
+                 order_sink=MemoryOrderSink(),
+                 settings=VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))
+    assert seen["boost_words"][:3] == ("메도빅", "꿀케이크", "허니케이크")
+    assert "사워크림" in seen["boost_words"]
+
+
 def test_clova_stt_keeps_a_grpc_dns_resolver_that_is_already_set(monkeypatch) -> None:
     monkeypatch.setenv("GRPC_DNS_RESOLVER", "ares")
     stt_factory(VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))

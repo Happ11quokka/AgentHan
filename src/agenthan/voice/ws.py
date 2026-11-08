@@ -36,6 +36,7 @@ from agenthan.voice.call.ports import CUSTOMER_RETRY, Clock, PortError, SystemCl
 from agenthan.voice.call.session import CallSession, SessionSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.stt.boost import menu_boost_words
 
 WS_PATH = "/api/phone/ws"
 ENGINE_THREADS_PER_CALL = 2  # 지금 도는 턴 1 + 시간을 넘겨 아직 남은 스레드 1
@@ -70,7 +71,12 @@ def phone_router(
 
     `stt_factory`·`tts_factory`를 주면 설정 대신 그것으로 통화마다 포트를 만든다.
     """
-    make_stt = stt_factory or adapters.stt_factory(settings)
+    if stt_factory is None:
+        # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
+        # 통화마다 이벤트 루프에서 부르지 않는다). 메뉴 이름이 바뀌면 서버를 다시 띄운다
+        boost = menu_boost_words(store.list_menu()) if settings.stt == "clova" else ()
+        stt_factory = adapters.stt_factory(settings, boost_words=boost)
+    make_stt = stt_factory
     make_tts = tts_factory or adapters.tts_factory(settings)
     config = replace(config, tz=settings.tz)
     engine_pool = ThreadPoolExecutor(

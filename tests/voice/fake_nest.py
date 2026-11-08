@@ -77,9 +77,10 @@ def transcription(text: str, start: int, end: int, *, epd: str = "gap", ep_flag:
 
 class FakeNest(nest_pb2_grpc.NestServiceServicer):
     def __init__(self, replies: Iterable[str] = (), *, key: str = KEY,
-                 config_status: str = "Success") -> None:
+                 config_status: str = "Success", boost_status: str = "Success") -> None:
         self.key = key
         self.config_status = config_status
+        self.boost_status = boost_status  # CONFIG에 keywordBoosting이 있을 때 응답 상태
         self.replies = deque(replies)
         self.connections: list[Connection] = []
         self.connected = asyncio.Condition()
@@ -94,12 +95,12 @@ class FakeNest(nest_pb2_grpc.NestServiceServicer):
     def _on_request(self, conn: Connection, req: Any) -> None:
         conn.requests.append(req)
         if req.type == nest_pb2.CONFIG:
-            conn.push({
-                "config": {"status": self.config_status, "contextCode": {"status": "Success"},
-                           "transcription": {"status": "Success"},
-                           "semanticEpd": {"status": "Success"}},
-                "responseType": ["config"], "uid": "fake-uid",
-            })
+            config = {"status": self.config_status, "contextCode": {"status": "Success"},
+                      "transcription": {"status": "Success"},
+                      "semanticEpd": {"status": "Success"}}
+            if "keywordBoosting" in json.loads(req.config.config):  # 실측 A/B 응답 모양
+                config["keywordBoosting"] = {"status": self.boost_status}
+            conn.push({"config": config, "responseType": ["config"], "uid": "fake-uid"})
             return
         conn.audio_bytes += len(req.data.chunk)
         extra = json.loads(req.data.extra_contents or "{}")

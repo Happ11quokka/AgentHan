@@ -60,6 +60,15 @@ def _removal_target(name: str) -> str:
     return base[: -len("빼기")] if base.endswith("빼기") and len(base) > 2 else ""
 
 
+def option_target(name: str) -> str:
+    """옵션 이름의 대상어. "사워크림 빼기" → "사워크림", "디카페인 변경" → "디카페인",
+    "샷 추가" → "샷". 대상어로 나눌 수 없는 이름("차갑게")은 "". STT 부스팅 단어에 쓴다."""
+    if target := _removal_target(name) or _change_target(name):
+        return target
+    base = _normalize(name)
+    return base[: -len("추가")] if base.endswith("추가") and len(base) > 2 else ""
+
+
 def option_keys(name: str) -> tuple[str, ...]:
     """옵션 이름 → 정확히 찾을 말(정규화한 것). 긴 말부터.
 

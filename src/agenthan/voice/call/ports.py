@@ -81,6 +81,8 @@ class SttResult:
     epd_type: str = "gap"
     ep_flag: bool = False  # `epFlag=true` 조각에 대한 응답 (빈 글일 수 있음)
     seq_id: int = 0
+    # 문장 신뢰도. 판정에 쓰지 않는다: 키워드 부스팅이 고친 음절은 신뢰도가 0.02~0.05로 떨어진다
+    # (티켓 10, `stt/boost.py`). 신뢰도로 되묻게 되면 부스팅 단어는 예외로 둔다
     confidence: float | None = None
 
     @property

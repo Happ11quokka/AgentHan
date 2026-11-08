@@ -8,7 +8,8 @@
 
 - TTS(티켓 03): `tts_clova.ClovaVoiceTts`. 통화마다 하나 만들고, 통화가 끝나면 라우터가 `aclose()`
 - STT(티켓 02): `stt.clova.ClovaSttStream(ClovaSttSettings.from_env(env))`. 통화마다 하나.
-  접속은 세션이 `start()`할 때 한다(여기서는 네트워크를 쓰지 않는다)
+  접속은 세션이 `start()`할 때 한다(여기서는 네트워크를 쓰지 않는다). 라우터가 넘긴 가게 메뉴
+  부스팅 단어를 CONFIG에 넣는다(티켓 10)
 - gRPC DNS: 맥에서 gRPC 기본 DNS(c-ares)가 "Could not contact DNS servers"로 실패해서,
   STT 모듈(= `grpc`)을 import하기 전에 `GRPC_DNS_RESOLVER`가 비어 있으면 `native`로 둔다.
   환경 변수나 `.env`에 값이 있으면 그 값을 쓴다
@@ -19,7 +20,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
@@ -43,13 +44,17 @@ class AdapterMissing(SettingsError):
     """`clova`를 골랐는데 어댑터 모듈이 없다."""
 
 
-def stt_factory(settings: VoiceSettings) -> SttFactory:
-    """통화마다 새 STT 스트림을 만드는 함수. 연결 하나 = 스트림 하나."""
+def stt_factory(settings: VoiceSettings, *, boost_words: Sequence[str] = ()) -> SttFactory:
+    """통화마다 새 STT 스트림을 만드는 함수. 연결 하나 = 스트림 하나.
+
+    `boost_words`는 CLOVA 키워드 부스팅 단어(`stt.boost.menu_boost_words`). 가짜 STT는 쓰지 않는다.
+    """
     if settings.stt == "fake":
         return lambda: FakeSttStream(replies=settings.fake_replies)
     default_grpc_dns(settings.env)
     module = _require("PHONE_STT", CLOVA_STT)
-    return lambda: _clova_stt(module, settings.env)
+    words = tuple(boost_words)
+    return lambda: _clova_stt(module, settings.env, words)
 
 
 def default_grpc_dns(env: Mapping[str, str]) -> None:
@@ -78,13 +83,14 @@ def _require(var: str, spec: tuple[str, str, str]) -> Any:
     return importlib.import_module(name)
 
 
-def _clova_stt(module: Any, env: Mapping[str, str]) -> SttStream:
+def _clova_stt(module: Any, env: Mapping[str, str], boost_words: tuple[str, ...]) -> SttStream:
     key = env.get(STT_KEY_ENV, "").strip()
     if not key:
         raise PortError(f"CLOVA Speech 키가 없어요 ({STT_KEY_ENV})", code="stt_config",
                         retry=False)
     endpoint = env.get(STT_ENDPOINT_ENV, "").strip()
-    settings = module.ClovaSttSettings.from_env({STT_KEY_ENV: key, STT_ENDPOINT_ENV: endpoint})
+    settings = module.ClovaSttSettings.from_env({STT_KEY_ENV: key, STT_ENDPOINT_ENV: endpoint},
+                                                boost_words=boost_words)
     return module.ClovaSttStream(settings)
 
 

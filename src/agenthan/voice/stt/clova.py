@@ -35,6 +35,7 @@ import grpc
 from agenthan.voice.call.frames import BYTES_PER_MS
 from agenthan.voice.call.ports import PortError, SttResult
 from agenthan.voice.stt import nest_pb2, nest_pb2_grpc
+from agenthan.voice.stt.boost import BOOST_WEIGHT
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class ClovaSttSettings:
     config_timeout_s: float = 10.0
     reconnect_after_s: float = 270.0  # 4분 30초. CLOVA 연결 수명은 5분
     hard_reconnect_after_s: float = 285.0
+    # 키워드 부스팅(티켓 10). 비어 있으면 CONFIG에 넣지 않는다. 단어는 `stt.boost.menu_boost_words`
+    boost_words: tuple[str, ...] = ()
+    boost_weight: float = BOOST_WEIGHT
 
     def __post_init__(self) -> None:
         if not self.secret_key:
@@ -82,8 +86,12 @@ def normalize_endpoint(endpoint: str) -> str:
 
 
 def build_config(settings: ClovaSttSettings) -> dict[str, Any]:
-    """CONFIG JSON. 최소 옵션만 (spec 말 끝 판정과 STT 설정)."""
-    return {
+    """CONFIG JSON. 최소 옵션만 (spec 말 끝 판정과 STT 설정).
+
+    부스팅 단어가 있으면 요청별 `keywordBoosting.boostings` 하나로 넣는다(`stt/boost.py`).
+    `useDomainBoostings`는 넣지 않는다(같이 쓰면 요청이 실패한다).
+    """
+    config: dict[str, Any] = {
         "transcription": {"language": settings.language},
         "semanticEpd": {
             "skipEmptyText": True,
@@ -93,6 +101,11 @@ def build_config(settings: ClovaSttSettings) -> dict[str, Any]:
             "durationThreshold": settings.duration_threshold_ms,
         },
     }
+    if settings.boost_words and settings.boost_weight > 0:
+        config["keywordBoosting"] = {"boostings": [
+            {"words": ",".join(settings.boost_words), "weight": settings.boost_weight}
+        ]}
+    return config
 
 
 def parse_result(contents: dict[str, Any], offset_ms: int) -> SttResult | None:
@@ -129,7 +142,9 @@ class _Connection:
         )
         self.writing = True
 
-    async def configure(self, config: dict[str, Any], timeout: float) -> None:
+    async def configure(self, config: dict[str, Any], timeout: float) -> str | None:
+        """CONFIG를 쓰고 성공 응답을 기다린다. 부스팅 상태(`config.keywordBoosting.status`,
+        부스팅을 안 넣었으면 None)를 돌려준다. 부스팅만 실패하면 통화는 그대로 간다."""
         await self.call.write(nest_pb2.NestRequest(
             type=nest_pb2.CONFIG,
             config=nest_pb2.NestConfig(config=json.dumps(config)),
@@ -140,11 +155,15 @@ class _Connection:
                 raise SttDisconnected("CLOVA Speech가 설정 중에 연결을 닫았어요")
             contents = json.loads(response.contents)
             if "config" in contents.get("responseType", []):
-                status = (contents.get("config") or {}).get("status")
+                answer = contents.get("config") or {}
+                status = answer.get("status")
                 if status != "Success":
                     raise PortError(f"CLOVA Speech 설정 실패: {status}", code="stt_config",
                                     retry=False)
-                return
+                if "keywordBoosting" not in config:
+                    return None
+                boost = answer.get("keywordBoosting")
+                return str(boost.get("status")) if isinstance(boost, dict) else "missing"
 
     async def write(self, pcm: bytes, ep_flag: bool, seq_id: int) -> None:
         await self.call.write(nest_pb2.NestRequest(
@@ -200,6 +219,8 @@ class ClovaSttStream:
         self._retired: set[_Connection] = set()  # 쓰기를 닫고 남은 결과를 받는 중인 앞 연결
         self._written_bytes = 0
         self._closed = False
+        # 마지막 연결 CONFIG 응답의 `keywordBoosting.status`. 부스팅을 안 넣었으면 None
+        self.boost_status: str | None = None
 
     @property
     def audio_ms(self) -> int:
@@ -212,7 +233,8 @@ class ClovaSttStream:
     async def _open(self) -> _Connection:
         conn = _Connection(self._settings, self.audio_ms, self._monotonic())
         try:
-            await conn.configure(build_config(self._settings), self._settings.config_timeout_s)
+            boost = await conn.configure(build_config(self._settings),
+                                         self._settings.config_timeout_s)
         except BaseException as err:
             await conn.close()
             if isinstance(err, grpc.aio.AioRpcError):
@@ -221,6 +243,13 @@ class ClovaSttStream:
                 raise PortError("CLOVA Speech 설정 응답이 없어요", code="stt_timeout",
                                 retry=True) from None
             raise
+        if boost is not None:
+            self.boost_status = boost
+            words = len(self._settings.boost_words)
+            if boost == "Success":
+                log.info("CLOVA Speech 키워드 부스팅 %d단어 적용", words)
+            else:  # 부스팅 없이 계속한다. 인식은 되므로 통화를 끊을 일은 아니다
+                log.warning("CLOVA Speech 키워드 부스팅 실패 (%s, %d단어)", boost, words)
         reader = asyncio.create_task(self._read(conn), name="clova-stt-read")
         self._readers.add(reader)
         reader.add_done_callback(self._readers.discard)
