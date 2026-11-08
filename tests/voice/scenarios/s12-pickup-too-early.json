@@ -1,0 +1,56 @@
+{
+  "id": "s12-pickup-too-early",
+  "title": "덤: 픽업이 준비 시간보다 이름 → 제안 → 거절 → 다른 시각",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "나폴레옹 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m02",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "10분 뒤에 갈게요",
+      "expect_state": "ask_pickup",
+      "expect_say": [
+        "준비에 15분 정도 걸려요. 5시 25분 괜찮으세요?"
+      ]
+    },
+    {
+      "user": "아니요",
+      "expect_state": "ask_pickup",
+      "expect_say": [
+        "그럼 몇 시쯤 오세요?"
+      ]
+    },
+    {
+      "user": "5시 반이요",
+      "expect_state": "confirm",
+      "expect_say": [
+        "나폴레옹 하나, 5시 반 픽업, 총 7,000원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m02",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T17:30:00+09:00",
+    "status": "confirmed"
+  }
+}

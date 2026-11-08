@@ -1,0 +1,75 @@
+{
+  "id": "s05-required-option",
+  "title": "필수 옵션(온도) 질문. 질문 중 '그게 다예요'를 기억한다",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "아메리카노 두잔이요",
+      "expect_state": "clarify",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "아메리카노 두 잔이요.",
+        "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "clarify",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+      ]
+    },
+    {
+      "user": "아이스요",
+      "expect_state": "ask_pickup",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 2,
+          "options": [
+            "차갑게"
+          ]
+        }
+      ],
+      "expect_say": [
+        "아메리카노 차갑게 두 잔이요.",
+        "몇 시쯤 오세요?"
+      ]
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm",
+      "expect_say": [
+        "아메리카노 차갑게 두 잔, 6시 반 픽업, 총 9,000원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m03",
+        "quantity": 2,
+        "options": [
+          "차갑게"
+        ]
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

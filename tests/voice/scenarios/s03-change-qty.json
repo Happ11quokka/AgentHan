@@ -1,0 +1,101 @@
+{
+  "id": "s03-change-qty",
+  "title": "수량 변경. 메뉴 이름으로, 숫자로, 이름 없이",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "나폴레옹 하나랑 블린 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m02",
+          "qty": 1
+        },
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "user": "나폴레옹 세 개로 바꿔 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m02",
+          "qty": 3
+        },
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "나폴레옹 세 개요."
+      ]
+    },
+    {
+      "user": "블린 2개로 바꿔주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m02",
+          "qty": 3
+        },
+        {
+          "menu_id": "m04",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "블린 두 개요."
+      ]
+    },
+    {
+      "user": "아니 세 개로요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m02",
+          "qty": 3
+        },
+        {
+          "menu_id": "m04",
+          "qty": 3
+        }
+      ],
+      "expect_say": [
+        "블린 세 개요."
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "7시요",
+      "expect_state": "confirm",
+      "expect_say": [
+        "나폴레옹 세 개, 블린 세 개, 7시 픽업, 총 48,000원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m02",
+        "quantity": 3
+      },
+      {
+        "menu_id": "m04",
+        "quantity": 3
+      }
+    ],
+    "pickup_time": "2026-11-08T19:00:00+09:00",
+    "status": "confirmed"
+  }
+}

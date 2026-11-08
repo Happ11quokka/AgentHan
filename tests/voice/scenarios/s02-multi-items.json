@@ -1,0 +1,87 @@
+{
+  "id": "s02-multi-items",
+  "title": "여러 항목. 숫자·수사 섞기, 붙여 쓰기, '아니요'로 주문 끝",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "메도빅 1개랑 블린두개요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m04",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "메도빅 하나, 블린 두 개요."
+      ]
+    },
+    {
+      "user": "아이스 아메리카노 2잔 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m04",
+          "qty": 2
+        },
+        {
+          "menu_id": "m03",
+          "qty": 2,
+          "options": [
+            "차갑게"
+          ]
+        }
+      ],
+      "expect_say": [
+        "아메리카노 차갑게 두 잔이요."
+      ]
+    },
+    {
+      "user": "아니요",
+      "expect_state": "ask_pickup",
+      "expect_say": [
+        "몇 시쯤 오세요?"
+      ]
+    },
+    {
+      "user": "6시30분",
+      "expect_state": "confirm",
+      "expect_say": [
+        "메도빅 하나, 블린 두 개, 아메리카노 차갑게 두 잔, 6시 반 픽업, 총 34,500원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      },
+      {
+        "menu_id": "m04",
+        "quantity": 2
+      },
+      {
+        "menu_id": "m03",
+        "quantity": 2,
+        "options": [
+          "차갑게"
+        ]
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

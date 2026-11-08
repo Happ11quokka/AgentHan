@@ -228,9 +228,13 @@ _LEAD = re.compile(
 )
 
 
+# 말 앞의 군말. STT 결과에 그대로 붙어 온다 ("아 그거 빼 주세요"). 뒤에 띄어쓰기가 있을 때만 뗀다
+_FILLER = re.compile(r"^(?:(?:아|어|음|엄|저기|그러니까)\s*[,.]?\s+)+")
+
+
 class FakeNlu:
     def parse(self, text: str, ctx: NluContext) -> list[Act]:
-        text = text.strip()
+        text = _FILLER.sub("", text.strip()) or text.strip()
         if m := _LEAD.fullmatch(text):
             lead = Act("yes") if m.group("lead") in ("네", "예") else Act("no")
             rest = self.parse(m.group("rest"), ctx)

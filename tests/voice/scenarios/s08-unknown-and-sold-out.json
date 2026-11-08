@@ -1,0 +1,66 @@
+{
+  "id": "s08-unknown-and-sold-out",
+  "title": "없는 메뉴 → 목록 안내, 품절 → 대안 권하기 (메도빅 품절)",
+  "now": "2026-11-08T17:10:00+09:00",
+  "sold_out": [
+    "m01"
+  ],
+  "turns": [
+    {
+      "user": "짜장면 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [],
+      "expect_say": [
+        "죄송해요, 그 메뉴는 없어요. 저희는 나폴레옹, 아메리카노, 블린이 있어요.",
+        "어떤 걸로 드릴까요?"
+      ]
+    },
+    {
+      "user": "메도빅 두 개요",
+      "expect_state": "clarify",
+      "expect_cart": [],
+      "expect_say": [
+        "죄송해요, 메도빅은 오늘 다 떨어졌어요.",
+        "나폴레옹이나 아메리카노는 어떠세요?"
+      ]
+    },
+    {
+      "user": "나폴레옹 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m02",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "나폴레옹 두 개요."
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm",
+      "expect_say": [
+        "나폴레옹 두 개, 6시 반 픽업, 총 14,000원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m02",
+        "quantity": 2
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

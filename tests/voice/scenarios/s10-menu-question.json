@@ -1,0 +1,104 @@
+{
+  "id": "s10-menu-question",
+  "title": "메뉴 질문 끼어들기. 상태는 그대로, 근거 없으면 모른다고",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "메도빅 많이 달아요?",
+      "expect_state": "ordering",
+      "expect_cart": [],
+      "expect_say": [
+        "메도빅은 꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크예요.",
+        "어떤 걸로 드릴까요?"
+      ]
+    },
+    {
+      "user": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "user": "글루텐 프리예요?",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "그건 제가 정확히 모르겠어요.",
+        "더 필요하신 거 있으세요?"
+      ]
+    },
+    {
+      "user": "아메리카노 디카페인 돼요?",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "네, 아메리카노는 디카페인 변경 할 수 있어요. 500원 추가예요.",
+        "더 필요하신 거 있으세요?"
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "블린 얼마예요?",
+      "expect_state": "ask_pickup",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "블린은 9,000원이에요.",
+        "몇 시쯤 오세요?"
+      ]
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "user": "메도빅 알레르기 있어요?",
+      "expect_state": "confirm",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "메도빅에는 밀, 우유, 계란이 들어가요.",
+        "총 7,500원이에요. 맞으세요?"
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

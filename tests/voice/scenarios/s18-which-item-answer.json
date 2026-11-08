@@ -1,0 +1,72 @@
+{
+  "id": "s18-which-item-answer",
+  "title": "덤(한계): '어떤 메뉴에 해 드릴까요?'에 메뉴 이름으로 답하면 그 줄에 옵션을 붙여야 한다",
+  "now": "2026-11-08T17:10:00+09:00",
+  "xfail": "05 알려진 한계. 대상 없는 옵션에 '어떤 메뉴에 해 드릴까요?'라고 물은 뒤 '아메리카노요'는 add_item으로 읽혀 한 잔이 더 담긴다. 옵션 대기 상태가 따로 필요하다",
+  "turns": [
+    {
+      "user": "아메리카노 차갑게 하나랑 블린 하나요",
+      "expect_state": "ordering"
+    },
+    {
+      "user": "블린 빼 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "options": [
+            "차갑게"
+          ]
+        }
+      ]
+    },
+    {
+      "user": "디카페인으로 해 주세요",
+      "expect_state": "ordering",
+      "expect_say": [
+        "어떤 메뉴에 해 드릴까요?"
+      ]
+    },
+    {
+      "user": "아메리카노요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "options": [
+            "차갑게",
+            "디카페인 변경"
+          ]
+        }
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m03",
+        "quantity": 1,
+        "options": [
+          "차갑게",
+          "디카페인 변경"
+        ]
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

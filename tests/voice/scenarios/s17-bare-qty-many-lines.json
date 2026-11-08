@@ -1,0 +1,72 @@
+{
+  "id": "s17-bare-qty-many-lines",
+  "title": "덤(한계): 여러 줄 복창 뒤 메뉴 없이 '아니요, 두 개요'는 어느 줄인지 물어야 한다",
+  "now": "2026-11-08T17:10:00+09:00",
+  "xfail": "05 알려진 한계. 복창 직후 메뉴 없는 수량 정정은 마지막에 다룬 줄(블린)을 고친다. '어떤 메뉴를 두 개로 해 드릴까요?'로 물으려면 CONFIRM에 새 대기 상태가 필요해서 1단계에서는 고치지 않는다",
+  "turns": [
+    {
+      "user": "메도빅 하나랑 블린 하나요",
+      "expect_state": "ordering"
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "user": "아니요, 두 개요",
+      "expect_state": "confirm",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "어떤 메뉴"
+      ]
+    },
+    {
+      "user": "메도빅이요",
+      "expect_state": "confirm",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 2
+        },
+        {
+          "menu_id": "m04",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "메도빅 두 개로 바꿨어요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 2
+      },
+      {
+        "menu_id": "m04",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "id": "s11-handoff-owner",
+  "title": "덤: 사장님 연결 → handoff 주문서(담은 것 그대로)",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "블린 2개요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 2
+        }
+      ]
+    },
+    {
+      "user": "사장님 바꿔 주세요",
+      "expect_state": "fallback",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "사장님께 메모 남겨 드릴게요."
+      ]
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m04",
+        "quantity": 2
+      }
+    ],
+    "pickup_time": "",
+    "status": "handoff"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "id": "s16-correction-through-clarify",
+  "title": "덤: 복창 뒤 새 메뉴를 오타로 → 되묻기 → 네 → 바로 다시 복창",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "메도빅 하나요",
+      "expect_state": "ordering"
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "user": "나폴래옹 하나요",
+      "expect_state": "clarify",
+      "expect_say": [
+        "혹시 나폴레옹 말씀하신 거 맞으세요?"
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "confirm",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m02",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "나폴레옹 하나요.",
+        "그럼 메도빅 하나, 나폴레옹 하나, 6시 반 픽업, 총 14,500원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      },
+      {
+        "menu_id": "m02",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

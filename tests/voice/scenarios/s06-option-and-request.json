@@ -1,0 +1,130 @@
+{
+  "id": "s06-option-and-request",
+  "title": "선택 옵션(사워크림 빼기·디카페인) + 요청사항이 복창에 들어간다",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "블린 하나 사워크림 빼고 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 1,
+          "options": [
+            "사워크림 빼기"
+          ]
+        }
+      ],
+      "expect_say": [
+        "블린 사워크림 빼기 하나요."
+      ]
+    },
+    {
+      "user": "아메리카노 디카페인으로 한잔이요",
+      "expect_state": "clarify",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 1,
+          "options": [
+            "사워크림 빼기"
+          ]
+        },
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "options": [
+            "디카페인 변경"
+          ]
+        }
+      ],
+      "expect_say": [
+        "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+      ]
+    },
+    {
+      "user": "따뜻하게",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 1,
+          "options": [
+            "사워크림 빼기"
+          ]
+        },
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "options": [
+            "디카페인 변경",
+            "따뜻하게"
+          ]
+        }
+      ]
+    },
+    {
+      "user": "블린에 소스 따로 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m04",
+          "qty": 1,
+          "options": [
+            "사워크림 빼기"
+          ],
+          "request": "소스 따로 주세요"
+        },
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "options": [
+            "디카페인 변경",
+            "따뜻하게"
+          ]
+        }
+      ],
+      "expect_say": [
+        "블린에 소스 따로 주세요라고 적어 둘게요."
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "6시 반이요",
+      "expect_state": "confirm",
+      "expect_say": [
+        "총 14,000원이에요.",
+        "블린에 소스 따로 주세요라고 적어 뒀어요. 맞으세요?"
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m04",
+        "quantity": 1,
+        "options": [
+          "사워크림 빼기"
+        ],
+        "request": "소스 따로 주세요"
+      },
+      {
+        "menu_id": "m03",
+        "quantity": 1,
+        "options": [
+          "디카페인 변경",
+          "따뜻하게"
+        ]
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

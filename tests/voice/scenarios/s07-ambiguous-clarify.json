@@ -1,0 +1,171 @@
+{
+  "id": "s07-ambiguous-clarify",
+  "title": "매칭 애매 → 되묻기. 자모 하나 바뀐 표기, '아니요'면 목록 안내",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "메도빜 하나요",
+      "expect_state": "clarify",
+      "expect_cart": [],
+      "expect_say": [
+        "혹시 메도빅 말씀하신 거 맞으세요?"
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "메도빅 하나요.",
+        "더 필요하신 거 있으세요?"
+      ]
+    },
+    {
+      "user": "아메리까노 2잔이요",
+      "expect_state": "clarify",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "혹시 아메리카노 말씀하신 거 맞으세요?"
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "clarify",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m03",
+          "qty": 2
+        }
+      ],
+      "expect_say": [
+        "아메리카노 두 잔이요.",
+        "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
+      ]
+    },
+    {
+      "user": "따뜻한 거요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m03",
+          "qty": 2,
+          "options": [
+            "따뜻하게"
+          ]
+        }
+      ]
+    },
+    {
+      "user": "블링 하나요",
+      "expect_state": "clarify",
+      "expect_say": [
+        "혹시 블린 말씀하신 거 맞으세요?"
+      ]
+    },
+    {
+      "user": "아니요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m03",
+          "qty": 2,
+          "options": [
+            "따뜻하게"
+          ]
+        }
+      ],
+      "expect_say": [
+        "죄송해요. 저희는 메도빅, 나폴레옹, 아메리카노, 블린이 있어요."
+      ]
+    },
+    {
+      "user": "나폴래옹 하나요",
+      "expect_state": "clarify",
+      "expect_say": [
+        "혹시 나폴레옹 말씀하신 거 맞으세요?"
+      ]
+    },
+    {
+      "user": "나폴레옹이요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m03",
+          "qty": 2,
+          "options": [
+            "따뜻하게"
+          ]
+        },
+        {
+          "menu_id": "m02",
+          "qty": 1
+        }
+      ],
+      "expect_say": [
+        "나폴레옹 하나요."
+      ]
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "6시 반",
+      "expect_state": "confirm",
+      "expect_say": [
+        "총 23,500원이에요."
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      },
+      {
+        "menu_id": "m03",
+        "quantity": 2,
+        "options": [
+          "따뜻하게"
+        ]
+      },
+      {
+        "menu_id": "m02",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  }
+}

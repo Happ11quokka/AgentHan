@@ -181,3 +181,17 @@ def test_request_without_menu() -> None:
     assert parse("포크 두 개 넣어 주세요") == [
         Act("set_request", free_text="포크 두 개 넣어 주세요")
     ]
+
+
+@pytest.mark.parametrize(
+    ("text", "act"),
+    [
+        ("아 그거 빼 주세요", Act("remove_item")),
+        ("어 메도빅 하나요", Act("add_item", menu_text="메도빅", menu_guess="메도빅", qty=1)),
+        ("음, 저기 블린 두 개요", Act("add_item", menu_text="블린", menu_guess="블린", qty=2)),
+        ("아니요", Act("no")),  # "아니요"의 "아"는 군말이 아니다
+    ],
+)
+def test_leading_filler_is_dropped(text: str, act: Act) -> None:
+    """티켓 06: STT가 넘기는 말 앞 군말("아", "어", "음")은 떼고 읽는다."""
+    assert parse(text) == [act]

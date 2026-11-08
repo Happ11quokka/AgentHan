@@ -1,0 +1,44 @@
+{
+  "id": "s13-pickup-asap-and-close",
+  "title": "덤: 영업 종료 뒤 시각 거절 → '지금 갈게요'는 준비 시간 뒤로",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "user": "블린 하나요",
+      "expect_state": "ordering"
+    },
+    {
+      "user": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "user": "10시에 갈게요",
+      "expect_state": "ask_pickup",
+      "expect_say": [
+        "죄송해요, 저희가 9시에 문을 닫아요. 그 전에 몇 시쯤 오세요?"
+      ]
+    },
+    {
+      "user": "그럼 지금 갈게요",
+      "expect_state": "confirm",
+      "expect_say": [
+        "준비에 15분 정도 걸려서 5시 25분으로 잡아 둘게요.",
+        "5시 25분 픽업"
+      ]
+    },
+    {
+      "user": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m04",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T17:25:00+09:00",
+    "status": "confirmed"
+  }
+}
