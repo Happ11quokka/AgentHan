@@ -31,12 +31,17 @@ TOOL_MAX_TOKENS = 1024
 
 def make_client(*, max_retries: int | None = None, timeout: float | None = None):
     """OpenAI 호환 CLOVA Studio 클라이언트. 키가 없으면 KeyError("CLOVASTUDIO_API_KEY")."""
-    from openai import OpenAI  # 테스트에서 가짜 client를 넣을 수 있도록 지연 import
+    import ssl
+
+    from openai import DefaultHttpxClient, OpenAI  # 테스트에서 가짜 client를 넣도록 지연 import
 
     key = os.environ.get("CLOVASTUDIO_API_KEY")
     if not key:
         raise KeyError("CLOVASTUDIO_API_KEY")
-    kwargs = {}
+    # SDK 기본 HTTP 클라이언트는 truststore(macOS 키체인)로 인증서를 검증한다.
+    # 샌드박스(Claude Code·Codex·geass)는 키체인 접근을 막아 SSL 오류(OSStatus -26276)가 난다.
+    # 그래서 urllib(임베딩)과 같은 OpenSSL 기본 검증을 쓴다.
+    kwargs = {"http_client": DefaultHttpxClient(verify=ssl.create_default_context())}
     if timeout is not None:
         kwargs["timeout"] = timeout
     return OpenAI(
