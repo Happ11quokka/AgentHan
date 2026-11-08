@@ -104,5 +104,9 @@ class Cart:
         """복창용 한 줄. 예: "메도빅 하나, 아메리카노 두 잔"."""
         return ", ".join(line.phrase() for line in self.lines)
 
+    def requests(self) -> list[tuple[str, str]]:
+        """복창용 요청사항. (메뉴 이름, 요청 원문)을 장바구니 순서대로."""
+        return [(line.item.name_ko, line.request) for line in self.lines if line.request]
+
     def to_order_lines(self) -> list[OrderLine]:
         return [line.to_order_line() for line in self.lines]

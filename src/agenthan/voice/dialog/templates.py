@@ -177,9 +177,22 @@ def pickup_not_understood() -> str:
     return "죄송해요, 몇 시쯤 오실지 한 번 더 말씀해 주세요."
 
 
-def final_readback(cart_summary: str, pickup: datetime, total: int) -> str:
-    """최종 복창. 장바구니 객체에서 만든다 (D6)."""
-    return f"{cart_summary}, {spoken_time(pickup)} 픽업, 총 {won(total)}이에요. 맞으세요?"
+def final_readback(
+    cart_summary: str,
+    pickup: datetime,
+    total: int,
+    *,
+    requests: Sequence[tuple[str, str]] = (),
+    after_fix: bool = False,
+) -> str:
+    """최종 복창. 장바구니 객체에서 만든다 (D6).
+
+    `requests`는 (메뉴 이름, 요청 원문). 정정한 뒤 다시 복창할 때는 앞에 "그럼"을 붙인다.
+    """
+    head = "그럼 " if after_fix else ""
+    parts = [f"{head}{cart_summary}, {spoken_time(pickup)} 픽업, 총 {won(total)}이에요."]
+    parts += [f"{name}에 {request}라고 적어 뒀어요." for name, request in requests]
+    return " ".join([*parts, "맞으세요?"])
 
 
 def ask_what_to_fix() -> str:
