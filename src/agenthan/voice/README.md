@@ -41,3 +41,6 @@
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
 - 테스트: `tests/voice/test_call_session*.py`, 도구는 `tests/voice/call_harness.py`
+- TTS 어댑터(`tts_clova.py`, 티켓 03): `ClovaVoiceTts.from_env()` → `Tts` 포트. 문장 하나를 CLOVA Voice Premium(`nara_call`, wav 16kHz)에 POST하고 WAV `data` 청크만 돌려준다. 키는 환경 변수 → `.env`(지금 폴더)의 `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`
+  - 오류 `code`: `tts_auth`(401·403, 다시 걸어도 안 됨) · `tts_429` · `tts_vsNN`(VS26·VS99만 재시도 가능) · `tts_http_NNN` · `tts_timeout` · `tts_network` · `tts_bad_audio`(16kHz mono PCM16 아님) · `tts_config`(키 없음)
+  - 실측(opt-in, 호출 9번): `AGENTHAN_ENV_FILE=<저장소 루트>/.env uv run pytest tests/voice/test_tts_clova_live.py -m live -s`. `live` 마커 테스트는 `-m live`일 때만 돈다(`tests/voice/conftest.py`)
