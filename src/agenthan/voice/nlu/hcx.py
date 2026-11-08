@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, get_args
 
-from agenthan.voice.jamo import jamo_levenshtein
+from agenthan.voice.matching import similarity
 from agenthan.voice.nlu.base import Act, ActType, NluContext
 from agenthan.voice.nlu.clova import ClovaClient, ClovaError, load_api_key
 
@@ -192,7 +192,8 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
 
     모델이 발화에 없는 메뉴를 지어내거나("6시 반에 갈게요" → 아메리카노 추가) 시각을 바꿔 쓰는
     ("6시 반" → "6:30") 일이 스파이크에서 보였다. 그래서 원문에 근거가 없는 조각은 믿지 않는다.
-    - menu_text가 발화에 없으면 menu_text·menu_guess를 비운다. 메뉴 없는 add_item은 버린다
+    - menu_text는 발화의 원래 구간으로 바꾼다. 비슷한 구간이 없으면 menu_text·menu_guess를
+      비우고, 메뉴 없는 add_item은 버린다
     - time_text가 발화에 없으면 발화 전체를 넣는다 (timeparse가 문장에서 시각을 찾는다)
     - 질문(ask_*)의 free_text는 늘 발화 원문이다 (menu_info.py가 손님 말의 낱말을 본다)
     - 메뉴 질문에 메뉴가 비었으면 발화에 그대로 나온 메뉴명을 넣는다
@@ -203,7 +204,9 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
     fields = {k: v.strip() for k in _TEXT_FIELDS if isinstance(v := item.get(k), str)}
     if fields.get("menu_guess") not in ctx.menu_names:
         fields.pop("menu_guess", None)  # 목록 밖 추정("없음" 등)은 버린다. 판정은 매처가 한다
-    if not _grounded(fields.get("menu_text", ""), text):
+    if said := _said_span(fields.get("menu_text", ""), text):
+        fields["menu_text"] = said
+    else:
         fields.pop("menu_text", None)
         fields.pop("menu_guess", None)
         if kind == "add_item":
@@ -222,24 +225,33 @@ def _to_act(item: Any, text: str, ctx: NluContext) -> Act | None:
 
 
 _SPACE = re.compile(r"[\s.,!?~]+")
-_GROUNDED_AT = 0.6
+_PUNCT = ".,!?~"
+_SAID_AT = 0.5  # 이보다 낮으면 발화에 없는 메뉴로 본다 ("블리니" ↔ "블린" = 0.56)
 
 
 def _squash(s: str) -> str:
     return _SPACE.sub("", s)
 
 
-def _grounded(fragment: str, text: str) -> bool:
-    """`fragment`가 발화의 어느 구간과 자모로 비슷한지. 표기 변형("메도비크" ↔ "메도빅")은 통과."""
-    f, t = _squash(fragment), _squash(text)
-    if not f or f in t:
-        return bool(f)
-    n = len(f)
-    for size in {max(1, n - 1), n, n + 1}:
-        for i in range(len(t) - size + 1):
-            if 1 - jamo_levenshtein(t[i : i + size], f) / max(size, n) >= _GROUNDED_AT:
-                return True
-    return False
+def _said_span(fragment: str, text: str) -> str:
+    """모델이 쓴 메뉴 조각 → 손님이 실제로 말한 구간. 근거가 없으면 "".
+
+    모델은 표기를 고쳐 쓴다("메도빜" → "메도빅"). 그대로 넘기면 매처가 보는 근거가 모델 추정
+    둘(menu_text·menu_guess)뿐이 된다. 판정은 손님 말로 하므로(D5) 발화에서 가장 비슷한
+    어절 묶음을 찾아 그 원문을 넘긴다. 모델 추정은 menu_guess로만 남는다.
+    """
+    f = _squash(fragment)
+    if not f or f in _squash(text):
+        return fragment if f else ""
+    words = [w.strip(_PUNCT) for w in text.split()]
+    k = len(fragment.split())
+    best, best_score = "", 0.0
+    for size in sorted({max(1, k - 1), k, k + 1}):
+        for i in range(len(words) - size + 1):
+            span = " ".join(words[i : i + size])
+            if (score := similarity(_squash(span), f)) > best_score:
+                best, best_score = span, score
+    return best if best_score >= _SAID_AT else ""
 
 
 def _qty(value: Any) -> int | None:

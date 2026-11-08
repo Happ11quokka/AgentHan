@@ -145,10 +145,15 @@ def test_invented_menu_on_other_acts_is_cleared() -> None:
     assert acts_from_args(args, "두 개요", CTX) == [Act("change_qty", qty=2)]
 
 
-def test_spelling_variant_of_said_menu_is_kept() -> None:
+@pytest.mark.parametrize(("said", "want"), [
+    ("메도비크 두 개요", "메도비크"),
+    ("메도빜 하나요", "메도빜"),  # 판정은 매처가 손님 말 + menu_guess로 한다
+    ("어 메도비크하나 주세요", "메도비크하나"),
+])
+def test_respelled_menu_goes_back_to_what_was_said(said: str, want: str) -> None:
     args = {"acts": [{"type": "add_item", "menu_text": "메도빅", "menu_guess": "메도빅", "qty": 2}]}
-    acts = acts_from_args(args, "메도비크 두 개요", CTX)
-    assert acts == [Act("add_item", menu_text="메도빅", menu_guess="메도빅", qty=2)]
+    acts = acts_from_args(args, said, CTX)
+    assert acts == [Act("add_item", menu_text=want, menu_guess="메도빅", qty=2)]
 
 
 def test_rewritten_time_falls_back_to_whole_utterance() -> None:
