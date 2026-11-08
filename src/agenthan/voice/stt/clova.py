@@ -263,7 +263,7 @@ class ClovaSttStream:
             await self._conn.write(pcm, ep_flag, seq_id)
         except grpc.aio.AioRpcError as err:
             raise _port_error(err) from None
-        except asyncio.InvalidStateError:
+        except (asyncio.InvalidStateError, grpc.aio.UsageError):  # 이미 끝난 RPC에 쓰기
             raise SttDisconnected() from None
         self._written_bytes += len(pcm)
         if ep_flag and self._age() >= self._settings.reconnect_after_s:
