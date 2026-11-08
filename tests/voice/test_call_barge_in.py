@@ -148,6 +148,30 @@ def test_a_backchannel_ducks_then_restores_the_voice_and_the_bot_goes_on(tmp_pat
     assert "interrupt" not in record
 
 
+def test_a_duck_with_no_text_within_two_seconds_of_the_sound_is_restored(tmp_path) -> None:
+    # 기침·잡음: 글이 안 온다(여기서는 STT가 5초 늦는다). 소리가 끝나고 2초면 되돌린다
+    async def call() -> Call:
+        stt = FakeSttStream(replies=["메도빅 하나요"], voiced_start=True, lag_ms=5_000)
+        async with Call(tmp_path, stt=stt, tts=FakeTts(pcm=LONG), settings=ON) as c:
+            await c.session.feed_event({"type": "call.start", "turn": 0, "voice_barge_in": True})
+            await c.out.wait_for("bot.done", turn=0)
+            await c.played(0)
+            await c.feed(tone(800) + silence(6_000))
+            await c.out.wait_for("bot.done", turn=1)
+            await c.feed(tone(300) + silence(1_900))
+            assert kinds(c) == [("bot.duck", 1)]
+            await c.feed(silence(200))
+            await c.out.wait_for("bot.unduck", turn=1)
+            await c.session.feed_event({"type": "call.end", "turn": 1})
+            return c
+
+    c = run(call())
+    record = next(line for line in lines(c) if line["turn"] == 1)
+    assert [(e["act"], e["by"]) for e in record["barge"]["events"]] == [
+        ("duck", "sound"), ("unduck", "sound")
+    ]
+
+
 def test_a_short_non_backchannel_word_stops_the_bot_by_its_text(tmp_path) -> None:
     async def call() -> Call:
         async with barge_call(tmp_path, ["메도빅 하나요", "아니요"]) as c:
