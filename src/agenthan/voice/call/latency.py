@@ -19,7 +19,9 @@
   - `bot_turn`: 봇이 먼저 말한 턴의 이유(무음 되묻기 등). `end_by`: 말 끝 판정 경로
   - `tts_trim_ms`: 첫 문장 앞에서 잘라 낸 무음 길이
   - `empty`: 말소리는 있었는데 글이 빈 epFlag 응답 `[{start_ms, end_ms, epd_type, ep_flag}]`
-    (빈 턴, 합성 `eof` 제외)
+    (빈 턴, 합성 `eof` 제외). 티켓 04부터 `voiced_ms`(그 epFlag까지의 말소리 길이)도 있다
+- `end_reason`(3단계 티켓 04): 서버가 통화를 끝낸 턴의 이유. confirmed · handoff · cancelled ·
+  no_input (`call.end` 이벤트와 같다)
 - `client`는 그 턴의 `client.metrics` 이벤트 내용을 합친 것(`turn`·`type` 뺌).
   턴 0에는 `call.start`의 값(마이크 실제 설정값 등)도 들어간다
 - 줄은 다음 턴이 시작될 때나 통화가 끝날 때 쓴다.

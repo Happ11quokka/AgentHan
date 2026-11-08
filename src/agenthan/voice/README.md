@@ -67,7 +67,7 @@
 - 끝말 규칙(`classify_turn_end`, 순수 함수): 글·대화 상태·직전 질문 종류(`question_kind`: 확인/닫힌/열린)·메뉴 이름 → 라벨·근거·`firm`(확실함)·`filler_only`·`backchannel`
   - 이어짐: 끝 토큰이 연결어미(-랑·-고·-아서/-어서·-면, 단어 예외 목록), 접속사(그리고·또·근데·그럼…), 필러(음·어·저기…, 띄어쓰기로 봄), 단위 없는 수(두·세·"2"), 메뉴 이름 앞부분("나폴")
   - 끝남(확실): 확인 질문 뒤 예/아니요(`dialog/rules.yes_or_no`와 같은 목록), 끝 마침표, 종결어미 -요·-다·-까·-죠. 애매(-고요·-이고요·-는데)는 끝남이지만 확실하지 않다(턴 모델이 가를 자리)
-  - 기다림 요청: 말 끝의 잠깐만(요)·잠시만(요). 응답 문장은 티켓 04
+  - 기다림 요청: 말 끝의 잠깐만(요)·잠시만(요). 엔진에 `wait_request=True`로 넘긴다(응답 문장·15초 대기는 아래 티켓 04)
   - 반례 표는 `tests/voice/test_turn_end.py`(아무거나·뭐라고·짜장면·여기서·김민서·"2"·나폴)
 - 규칙 + 턴 모델 합치기(`combine_turn_end`): 점수 ≥ 0.7이면 끝남, ≤ 0.3이면 이어짐, 그 사이와 점수 없음은 규칙. 확실한 판정은 모델보다 앞선다. 티켓 02에서는 점수가 늘 없다(Smart Turn은 티켓 03)
 - 필러만 있는 말("음…")이 상한까지 안 이어지면 엔진에 넘기지 않는다(실패로 세지 않음). 지금 턴 기록의 `fillers`에 남는다
@@ -96,8 +96,19 @@
 - 서버: 끊으면 문장 보내기 작업(`_speak`)을 취소해 남은 TTS 합성과 `bot.say`를 멈추고, 송신 큐에 남은 그 턴 오디오·자막을 버리고, 바로 듣기로 간다. 문장 보내기는 턴 작업과 따로 돌아서 끼어든 말의 엔진 호출이 남은 TTS를 기다리지 않는다. 엔진은 되돌리지 않는다(소리가 나간 턴은 들었다고 본다)
 - 브라우저(`phoneCall.interrupt`, `Player.interrupt`): 재생을 멈추고, 그 턴 이하 오디오를 헤더 `turn`으로 버리고, 마이크를 서버 답 없이 바로 연다. 끊은 턴의 `playback.done`은 보내지 않는다
 - JSONL: `interrupt {by, seq, played_ms, heard: [{seq, heard(heard·partial·unheard), ms, played_ms, chars}]}`, `marks.interrupted`. `ms`는 보낸 문장 소리 길이(보내기 전에 끊긴 문장은 `null`), `chars`는 일부 들은 문장의 들은 글자 수 어림(글자 비율)
-- 무응답 타이머는 이 티켓에 없다. 티켓 04가 `playback.done`과 `playback.interrupted`에 건다
+- 무응답 타이머는 티켓 04가 `_after_playback`(재생 끝·끊김 둘 다)에 건다
 - 테스트: `tests/voice/test_call_interrupt.py`, 웹 `callState.test.ts`·`phoneCall.test.ts`
+
+## 3단계: 무응답·되묻기·"잠깐만요" (티켓 04)
+
+- 엔진이 할 말을 정하고(`dialog/engine.py`, `templates.py`) 세션은 타이머만 맡는다
+  - `engine.no_input(now)`: 1·2번째는 "여보세요?" + 직전 질문(`_question_again`, 복창 중이면 지금 장바구니 복창). 3번째(`MAX_NO_INPUT`)는 "연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요." 뒤 DONE(Order 없음). 횟수는 받아들인 말(unknown이 아닌 act가 하나라도 있는 `handle`)에 0. 못 알아들음 실패 횟수와 따로 센다
+  - `engine.handle(text, now, wait_request=True)`: 앞부분이 없거나 예/아니요·필러뿐이면 NLU 없이 "네, 천천히 말씀하세요."(실패로 안 셈, 무응답 횟수 0). 앞부분이 있으면 그것만 해석하고, 주문 중이면 다음 질문 문장 대신 "천천히 말씀하세요."(직전 질문은 남아 다음 되묻기가 한다). 복창 중에는 "네, 잠시만요"가 확정이 되지 않는다
+  - `engine.not_heard(now)`: "죄송해요, 잘 못 들었어요. 다시 말씀해 주세요." 실패·무응답 횟수 둘 다 그대로
+- 세션 무음 타이머: `_after_playback`(`playback.done`·안전망·말 끊기)에서 `no_input_s` 6초(`PHONE_NO_INPUT_S`), 지난 손님 말이 기다림 요청이면 `wait_request_s` 15초(`PHONE_WAIT_REQUEST_S`). VAD 말 구간 중에는 멈추고 그 말 끝(무음 400ms)부터 다시 센다. 손님 말을 붙잡거나 판정하는 중이면 기다린다. 글 없는 소리가 계속 와도 처음 마감 + 6초(`no_input_slack_s`)에는 되묻는다. 되묻기는 `bot_turn("no_input", …)`로 새 턴 번호를 받는다
+- 말했는데 글 없음: 그 `epFlag`까지 말소리 프레임이 500ms(`not_heard_min_ms`) 이상인데 빈 `epFlag` 응답이 오면, 1초(`not_heard_wait_s`) 안에 글 있는 결과(늦은 gap 조각)가 없을 때 `bot_turn("not_heard", …)`. 어댑터 재연결 `eof`, 말 없이 누른 버튼, 말하는 중, 판정 중이면 하지 않는다. JSONL `empty[].voiced_ms`
+- 대화가 끝나 서버가 통화를 끝낼 때 `call.end {turn, reason}`을 보낸다(reason: confirmed · handoff · cancelled · no_input). 그 턴 JSONL에 `end_reason`. 브라우저는 이 이벤트를 몰라도 소켓이 닫혀 끝난다
+- 테스트: 시나리오 `s22`~`s25`(`scenario_runner`에 `{"event": "no_input"|"not_heard"}`·`"wait_request": true` 턴), `test_engine_no_input.py`, `test_call_no_input.py`(세션)
 
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
@@ -108,7 +119,7 @@
 - 설정: 환경 변수 → `.env`(지금 폴더). 변수 표는 `settings.py` 머리 주석
   - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
   - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시각 고정, 시연용), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
-  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
+  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
   - 엔진 스레드: 라우터 하나가 엔진 전용 스레드 풀(`phone-engine-*`, `PHONE_MAX_CALLS` × 2개)을 갖고 NLU 만들기·엔진 생성·턴을 거기서 돌린다. 루프 기본 풀(2 vCPU에서 6개)은 DNS 조회 등과 같이 쓰고, 시간을 넘긴 엔진 스레드는 취소되지 않고 남기 때문이다(티켓 09)
   - 배포(NCP + Caddy + DuckDNS): 저장소 루트 `deploy/phone/README.md`
   - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)

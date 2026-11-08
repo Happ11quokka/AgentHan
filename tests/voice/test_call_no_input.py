@@ -188,3 +188,19 @@ def test_the_timer_starts_when_the_guest_cuts_the_bot_off(tmp_path) -> None:
     c, cut, first = run(call())
     assert first - cut >= QUIET - 0.05
     assert said(c, 1) == f"{HELLO} 어떤 걸로 드릴까요?"
+
+
+def test_a_confirmed_order_ends_the_call_with_the_confirmed_reason(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요", "6시 반이요", "네"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            for turn in (1, 2, 3, 4):
+                await c.turn(turn)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert c.out.of("call.end") == [{"type": "call.end", "turn": 4, "reason": "confirmed"}]
+    assert records(c)[4]["end_reason"] == "confirmed"
