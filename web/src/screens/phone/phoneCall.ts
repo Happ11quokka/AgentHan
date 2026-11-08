@@ -11,6 +11,7 @@ import {
   SLOW_LINK_BYTES,
   type ServerEvent,
   callReducer,
+  canInterrupt,
   initialCallState,
   micLive,
 } from './callState.ts'
@@ -95,6 +96,23 @@ export class PhoneCall {
 
   endOfSpeech(): void {
     this.send({ type: 'user.end_of_speech', turn: this.state.turn })
+  }
+
+  /**
+   * "말 끊기" 버튼(티켓 05). 서버가 허용한 턴의 봇 소리가 나는 중일 때만 듣는다.
+   * 재생을 멈추고, 이 턴 이하의 오디오를 버리고(cutTurn), 마이크를 바로 연 뒤 서버에
+   * `user.interrupt`와 들은 자리(`playback.interrupted {turn, seq, played_ms}`)를 보낸다.
+   * 끊은 턴의 `playback.done`은 보내지 않는다.
+   */
+  interrupt(): void {
+    if (!canInterrupt(this.state)) return
+    const turn = this.state.turn
+    const spot = this.player?.interrupt(turn) ?? { seq: 0, playedMs: 0 }
+    this.cue?.stop()
+    this.clocks.delete(turn)
+    this.dispatch({ type: 'interrupt' })
+    this.send({ type: 'user.interrupt', turn })
+    this.send({ type: 'playback.interrupted', turn, seq: spot.seq, played_ms: spot.playedMs })
   }
 
   /** AudioContext가 suspended·interrupted일 때 화면의 "소리 다시 켜기" 버튼. */
@@ -226,7 +244,7 @@ export class PhoneCall {
     }
     this.dispatch({ type: 'server', event })
     this.onCueEvent(event)
-    if (event.type === 'bot.done') {
+    if (event.type === 'bot.done' && event.turn > this.state.cutTurn) {
       const progress = this.playback.botDone(event.turn, event.sentences)
       if (progress === 'turn-finished') this.finishTurn(event.turn, event.sentences - 1)
     }
@@ -255,6 +273,7 @@ export class PhoneCall {
       console.warn(err)
       return
     }
+    if (frame.turn <= this.state.cutTurn) return // 끊은 턴의 늦은 소리 (8바이트 헤더의 turn)
     this.cue?.stop() // 봇 목소리가 왔다
     const clock = this.clock(frame.turn)
     clock.firstAudio ??= performance.now()
@@ -267,6 +286,7 @@ export class PhoneCall {
   }
 
   private onSentenceEnded(turn: number, seq: number): void {
+    if (turn <= this.state.cutTurn) return
     if (this.playback.sentenceEnded(turn, seq) === 'turn-finished') this.finishTurn(turn, seq)
   }
 

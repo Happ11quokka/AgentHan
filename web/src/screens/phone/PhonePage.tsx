@@ -1,7 +1,7 @@
 // Part C 전화 주문 통화 화면. 이 폴더(src/screens/phone/)는 Part C 몫이다.
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { type CallState, canEndSpeech } from './callState.ts'
+import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { pickupLabel } from './format.ts'
 import { PhoneCall } from './phoneCall.ts'
 import './phone.css'
@@ -116,6 +116,12 @@ export default function PhonePage() {
       <div className="phone-actions">
         {inCall ? (
           <>
+            {canInterrupt(state) && (
+              // 봇이 말하는 동안만 보인다. 최종 복창·마무리·사장님 연결 안내 중에는 서버가 막는다(티켓 05)
+              <button type="button" className="phone-btn phone-btn-interrupt" onClick={() => call.interrupt()}>
+                말 끊기
+              </button>
+            )}
             <button
               type="button"
               className="phone-btn"

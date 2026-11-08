@@ -260,3 +260,78 @@ describe('thinking cue (bot.thinking)', () => {
     expect(cueSources(FakeAudioContext.instances[0])).toHaveLength(0)
   })
 })
+
+describe('말 끊기 button (user.interrupt · playback.interrupted)', () => {
+  const speaking = (turn: number, interruptible = true) => ({
+    type: 'state',
+    turn,
+    phase: 'speaking',
+    interruptible,
+    dialog: 'ordering',
+    cart: [],
+    total: 0,
+  })
+  const events = (ws: FakeSocket) =>
+    ws.sent.filter((m): m is string => typeof m === 'string').map((m) => JSON.parse(m) as Record<string, unknown>)
+  const botSources = (ctx: FakeAudioContext) => ctx.sources.filter((s) => !cueSources(ctx).includes(s))
+  const micFrame = () => {
+    const frame = new ArrayBuffer(3200)
+    FakeWorkletNode.last!.port.onmessage!({ data: frame })
+    return frame
+  }
+
+  it('stops playback, reports where it stopped and opens the mic at once', async () => {
+    const { call, ws } = await liveCall()
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) }) // 지금(0초)에 시작하도록 예약된다
+    expect(micFrame()).not.toBe(ws.sent.at(-1)) // 봇이 말하는 동안은 0 프레임
+    ctx.currentTime = 0.15 // 시작 뒤 150ms, 스피커 지연 20ms → 손님 귀에는 130ms
+    call.interrupt()
+    const [source] = botSources(ctx)
+    expect(source.stopped).toBe(true)
+    expect(events(ws).filter((e) => String(e.type).includes('interrupt'))).toEqual([
+      { type: 'user.interrupt', turn: 1 },
+      { type: 'playback.interrupted', turn: 1, seq: 0, played_ms: 130 },
+    ])
+    const frame = micFrame()
+    expect(ws.sent.at(-1)).toBe(frame) // 서버 답을 기다리지 않고 진짜 마이크 소리
+  })
+
+  it('drops late audio of the cut turn but plays the next turn', async () => {
+    const { call, ws } = await liveCall()
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    call.interrupt()
+    ws.onmessage!({ data: audioFrame(1, 1) }) // 서버가 끊기 전에 이미 보낸 소리
+    expect(botSources(ctx)).toHaveLength(1)
+    ws.server({ type: 'state', turn: 1, phase: 'listening', interruptible: false, dialog: 'ordering', cart: [], total: 0 })
+    ws.server(speaking(2))
+    ws.onmessage!({ data: audioFrame(2, 0) })
+    expect(botSources(ctx)).toHaveLength(2)
+    expect(botSources(ctx)[1].started).toBe(true)
+  })
+
+  it('never reports playback.done for the cut turn', async () => {
+    const { call, ws } = await liveCall()
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    call.interrupt()
+    ws.server({ type: 'bot.done', turn: 1, sentences: 1, interrupted: true })
+    await new Promise((r) => setTimeout(r, 250)) // 마이크 다시 열기 지연(스피커 지연 + 150ms)보다 길게
+    expect(events(ws).filter((e) => e.type === 'playback.done' || e.type === 'client.metrics')).toEqual([])
+  })
+
+  it('does nothing while the server blocks the button (final readback)', async () => {
+    const { call, ws } = await liveCall()
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(3, false))
+    ws.onmessage!({ data: audioFrame(3, 0) })
+    call.interrupt()
+    expect(botSources(ctx)[0].stopped).toBe(false)
+    expect(events(ws).filter((e) => String(e.type).includes('interrupt'))).toEqual([])
+    expect(micFrame()).not.toBe(ws.sent.at(-1)) // 반이중 그대로
+    expect(call.getState().botTalking).toBe(true)
+  })
+})
