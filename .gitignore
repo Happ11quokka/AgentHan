@@ -54,6 +54,7 @@ GEMINI.md
 
 # 사장님 비서 로컬 더미 저장소 (실행 중 생성)
 .agenthan/
+eval_results/
 
 # tests/data/는 공개용으로 새로 쓴 평가 문장만 올린다
 !tests/data/
