@@ -249,15 +249,25 @@ class DialogEngine:
         """
         if self._state in TERMINAL or self._state is State.CONFIRM:
             return
-        at = turn.question_at
-        if self._state is State.ORDERING and at is not None:
-            kept = [s for s in _SENTENCE_END.split(turn.utterances[at]) if not s.endswith("?")]
-            if kept:
-                turn.utterances[at] = " ".join(kept)
-            else:
-                del turn.utterances[at]
-            turn.question_at = None
+        if self._state is State.ORDERING:
+            self._drop_question(turn)
         self._say(turn, templates.take_your_time(after_reply=bool(turn.utterances)))
+
+    def _drop_question(self, turn: _Turn) -> None:
+        """이번 턴 질문에서 질문 문장("…있으세요?")만 뺀다. 질문은 `_last_question`에 남는다.
+
+        `_take_time`·`_hold_for_owner`가 같이 쓴다. 복창(CONFIRM)은 손대지 않는다(복창 불변식:
+        복창이 그 턴의 마지막 말이어야 이른 "네" 거르기·버튼 막기가 걸린다, 리뷰 C3).
+        """
+        at = turn.question_at
+        if self._state is State.CONFIRM or at is None:
+            return
+        kept = [s for s in _SENTENCE_END.split(turn.utterances[at]) if not s.endswith("?")]
+        if kept:
+            turn.utterances[at] = " ".join(kept)
+        else:
+            del turn.utterances[at]
+        turn.question_at = None
 
     def not_heard(self, now: datetime) -> TurnResult:
         """말소리는 있었는데 STT 글이 없었다(세션이 불렀다, 3단계 티켓 04). 다시 말해 달라고 한다.
@@ -452,18 +462,20 @@ class DialogEngine:
         같은 턴에 다른 질문이 붙었으면("메도빅 하나요. 더 필요하신 거 있으세요?") 질문 문장만 뺀다.
         그 질문은 `_last_question`에 남아 사장님 답 뒤에 다시 한다. 같은 턴에 대화가 끝났으면
         (사장님 연결 등) 질문을 열지 않는다.
+
+        같은 턴 뒤쪽 말로 복창(CONFIRM)에 들어갔으면("견과 들어가요? 6시 반에 갈게요") 질문을
+        거둔다(막는 조건과 같다, 리뷰 C3). 그 질문에는 막혔을 때 문장을 복창 앞에 넣는다.
         """
-        if self._state in TERMINAL:
-            self._owner_open = turn.owner_question = None
+        question = turn.owner_question
+        if question is None:
             return
-        at = turn.question_at
-        if at is not None:
-            kept = [s for s in _SENTENCE_END.split(turn.utterances[at]) if not s.endswith("?")]
-            if kept:
-                turn.utterances[at] = " ".join(kept)
-            else:
-                del turn.utterances[at]
-            turn.question_at = None
+        if self._state in TERMINAL or self._state is State.CONFIRM:
+            self._owner_open = turn.owner_question = None
+            self._owner_asked -= 1  # 연 질문이 아니니 번호를 돌려놓는다
+            if self._state is State.CONFIRM:
+                self._cannot_answer(turn, question.key, question.menu_name, before_question=True)
+            return
+        self._drop_question(turn)
         self._say(turn, templates.ask_owner_hold())
 
     def _finish_pickup_items(self, turn: _Turn) -> None:
@@ -738,12 +750,27 @@ class DialogEngine:
             self._say(turn, known)
         elif self._ask_owner and answer.for_owner and self._may_ask_owner():
             self._open_owner_question(turn, item, answer)
-        elif self._knowledge is not None:  # 사장님께 전해 둔다 (티켓 13, Q17)
-            self._say(turn, templates.pass_on_to_owner())
-            turn.knowledge_requests.append(
-                KnowledgeRequest(key, menu_name=item.name_ko, text=turn.heard))
         else:
-            self._say(turn, templates.dont_know())
+            self._cannot_answer(turn, key, item.name_ko)
+
+    def _cannot_answer(self, turn: _Turn, key: KnowledgeKey, menu_name: str, *,
+                       before_question: bool = False) -> None:
+        """근거 없는 메뉴 질문에 사장님께 묻지 않고 답한다. 보충 지식 저장소가 붙었으면 "사장님께
+        전해 둘게요" + 보충 요청(티켓 13, Q17), 아니면 1단계 "그건 제가 정확히 모르겠어요".
+
+        `before_question`이면 이번 턴 질문(복창) 앞에 넣는다(복창이 마지막 말로 남게).
+        """
+        if self._knowledge is not None:
+            line = templates.pass_on_to_owner()
+            turn.knowledge_requests.append(
+                KnowledgeRequest(key, menu_name=menu_name, text=turn.heard))
+        else:
+            line = templates.dont_know()
+        if before_question and turn.question_at is not None:
+            turn.utterances.insert(turn.question_at, line)
+            turn.question_at += 1
+        else:
+            self._say(turn, line)
 
     def _known(self, key: KnowledgeKey, item: MenuItem, answer: MenuAnswer) -> str | None:
         """사장님 보충 지식으로 한 답(티켓 13). 없으면 None.

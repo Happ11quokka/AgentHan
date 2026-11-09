@@ -27,6 +27,7 @@ NUTS = "메도빅에 견과류 들어가요?"
 
 
 ONE_BREATH = "메도빅 하나요 그리고 메도빅에 견과류 들어가요?"
+ASK_THEN_TIME = "메도빅에 견과류 들어가요? 6시 반에 갈게요"  # 리뷰 C3: 메뉴 질문 + 시각 한 턴
 
 
 class _OtherNlu(FakeNlu):
@@ -38,6 +39,8 @@ class _OtherNlu(FakeNlu):
         if text == ONE_BREATH:
             return [Act("add_item", menu_text="메도빅", qty=1),
                     Act("ask_menu_info", menu_text="메도빅", free_text=text)]
+        if text == ASK_THEN_TIME:
+            return super().parse(NUTS, context) + super().parse("6시 반이요", context)
         return super().parse(text, context)
 
 
@@ -213,6 +216,21 @@ def test_no_question_opens_in_the_final_readback() -> None:
     assert r.state is State.CONFIRM
     blocked = _blocked(engine, NUTS)
     assert blocked.readback  # 복창 불변식: 복창으로 다시 끝난다
+
+
+def test_a_menu_question_and_the_time_in_one_turn_keep_the_readback_last() -> None:
+    # 리뷰 C3: 같은 턴에 시각을 말해 복창에 들어가면 질문을 열지 않는다. 복창 "맞으세요?"를 지우면
+    # 이른 "네" 거르기·버튼 막기가 안 걸린다(복창 불변식)
+    engine = make_engine()
+    talk(engine, "메도빅 하나요", "그게 다예요")
+    r = talk(engine, ASK_THEN_TIME)
+    assert r.state is State.CONFIRM
+    assert r.owner_question is None
+    assert r.readback
+    assert HOLD_ON not in r.utterances
+    assert r.utterances[0] == DONT_KNOW
+    assert r.utterances[-1].endswith("맞으세요?")
+    assert engine.owner_answered(1, "yes", NOW).utterances == []  # 열린 질문이 없다
 
 
 def test_no_question_opens_after_the_readback_started_even_when_fixing() -> None:
