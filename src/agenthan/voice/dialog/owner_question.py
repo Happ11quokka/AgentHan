@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from agenthan.voice.dialog.knowledge import KnowledgeKey
+
 # 사장님 버튼 답: 돼요 · 안 돼요 · 모르겠어요 (grilling Q6). 사장님 화면 POST가 받는 값이다
 OwnerButton = Literal["yes", "no", "unsure"]
 OWNER_BUTTONS: tuple[OwnerButton, ...] = ("yes", "no", "unsure")
@@ -30,6 +32,15 @@ class OwnerQuestion:
     menu_id: str
     menu_name: str  # 한국어 메뉴명
     text: str  # 손님 질문 원문(STT 글)
+    # 질문 종류·대상(`menu_info.MenuAnswer`, 티켓 13). 허브가 버튼 답을 보충 지식으로 넣거나
+    # (예/아니오로 답할 질문만, `yes_no`) 모르겠어요·시간 초과를 보충 요청 카드로 보낼 때 쓴다
+    kind: str = "other"
+    subject: str = ""
+    yes_no: bool = False  # "견과류 들어가요?"처럼 돼요/안 돼요가 들어간다/안 들어간다는 뜻이다
+
+    @property
+    def key(self) -> KnowledgeKey:
+        return KnowledgeKey(self.menu_id, self.kind, self.subject)
 
 
 @dataclass(frozen=True)

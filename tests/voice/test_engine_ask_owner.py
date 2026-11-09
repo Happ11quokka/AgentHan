@@ -63,7 +63,8 @@ def test_an_ungrounded_menu_question_opens_an_owner_question() -> None:
     r = talk(engine, NUTS)
     assert r.utterances == [HOLD_ON]
     assert r.owner_question == OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅",
-                                             text=NUTS)
+                                             text=NUTS, kind="allergen", subject="견과",
+                                             yes_no=True)
     assert r.state is State.ORDERING
     assert r.cart.is_empty()
 

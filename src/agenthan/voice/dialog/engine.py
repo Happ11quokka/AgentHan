@@ -34,7 +34,8 @@ from typing import Literal
 from agenthan.core.contracts import MenuItem, MenuOption, Order, StoreKnowledge
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.cart import Cart, CartLine
-from agenthan.voice.dialog.menu_info import menu_answer
+from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeReader, KnowledgeRequest
+from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
 from agenthan.voice.dialog.options import find_options
 from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion
 from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
@@ -75,6 +76,9 @@ class TurnResult:
     # 이번 턴에 연 사장님 질문(4단계 티켓 05). 세션이 사장님 화면에 보낸다. 세션은 열린 질문을
     # 엔진 속성으로 읽지 않고 이 칸으로만 안다(엔진이 다른 스레드에서 돌 수 있다, V1 놓친 것 3)
     owner_question: OwnerQuestion | None = None
+    # 이번 턴의 보충 요청(티켓 13): 답하지 못하고 "사장님께 전해 둘게요"라고 한 메뉴 질문. 세션이
+    # 사장님 쪽(`OwnerChannel.knowledge_wanted`)에 넘긴다
+    knowledge_requests: tuple[KnowledgeRequest, ...] = ()
 
 
 @dataclass
@@ -107,6 +111,7 @@ class _Turn:
     # 4단계 티켓 05. 이번 손님 말 원문(사장님 질문 카드에 그대로 간다)과 이번 턴에 연 사장님 질문
     heard: str = ""
     owner_question: OwnerQuestion | None = None
+    knowledge_requests: list[KnowledgeRequest] = field(default_factory=list)  # 티켓 13
 
     @property
     def question(self) -> str:
@@ -147,10 +152,14 @@ def on(act_type: ActType, *states: State) -> Callable[[Handler], Handler]:
 class DialogEngine:
     def __init__(
         self, store: StoreKnowledge, nlu: Nlu, config: StoreConfig, *, order_id: str,
-        ask_owner: bool = False,
+        ask_owner: bool = False, knowledge: KnowledgeReader | None = None,
     ) -> None:
         """`ask_owner`면 근거 없는 메뉴 질문을 사장님께 묻는다(4단계 티켓 05). 아니면 1단계처럼
         "그건 제가 정확히 모르겠어요". 사장님 쪽이 붙은 통화 세션만 켠다.
+
+        `knowledge`(티켓 13)를 주면 필드 근거가 없는 메뉴 질문에 사장님 보충 지식으로 먼저 답하고,
+        그것도 없고 사장님께 바로 묻지도 않으면 "사장님께 전해 둘게요" + 보충 요청을 턴 결과에
+        싣는다. 없으면 1단계 그대로.
         """
         self._nlu = nlu
         self._config = config
@@ -181,6 +190,7 @@ class DialogEngine:
         # 4단계 티켓 05. 상태는 그대로 두고 열린 사장님 질문 하나만 든다(`_cancel_resume`과 같은
         # 모양). 하던 질문은 `_last_question`에 그대로 있고 답이 오면 `_question_again`으로 돌아간다
         self._ask_owner = ask_owner
+        self._knowledge = knowledge
         self._owner_open: OwnerQuestion | None = None
         self._owner_asked = 0  # 이 통화에서 연 질문 수 (질문 번호)
         # 티켓 06 막는 조건: 복창이 한 번이라도 나갔다(고치러 ORDERING으로 돌아가도 그대로) ·
@@ -542,7 +552,8 @@ class DialogEngine:
             turn.order = self._build_order(turn.order_status, turn.now)
         readback = self._state is State.CONFIRM and turn.question in self._readbacks()
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
-                            readback=readback, owner_question=turn.owner_question)
+                            readback=readback, owner_question=turn.owner_question,
+                            knowledge_requests=tuple(turn.knowledge_requests))
         if self._state is State.CONFIRM:
             self._read_back = True
         if self._state in TERMINAL:
@@ -720,12 +731,34 @@ class DialogEngine:
                 return
             item = line.item
         answer = menu_answer(item, act.free_text or act.menu_text)
+        key = KnowledgeKey(item.id, answer.kind, answer.subject)
         if answer.text is not None:
             self._say(turn, answer.text)
+        elif (known := self._known(key, item, answer)) is not None:
+            self._say(turn, known)
         elif self._ask_owner and answer.for_owner and self._may_ask_owner():
-            self._open_owner_question(turn, item)
+            self._open_owner_question(turn, item, answer)
+        elif self._knowledge is not None:  # 사장님께 전해 둔다 (티켓 13, Q17)
+            self._say(turn, templates.pass_on_to_owner())
+            turn.knowledge_requests.append(
+                KnowledgeRequest(key, menu_name=item.name_ko, text=turn.heard))
         else:
             self._say(turn, templates.dont_know())
+
+    def _known(self, key: KnowledgeKey, item: MenuItem, answer: MenuAnswer) -> str | None:
+        """사장님 보충 지식으로 한 답(티켓 13). 없으면 None.
+
+        예/아니오로 답할 질문("견과류 들어가요?")이면 사장님 확인을 먼저 고정 문장으로, 아니면
+        사장님 설명을 인용 틀로 말한다(사장님 글을 다듬지 않는다).
+        """
+        known = self._knowledge.lookup(key) if self._knowledge is not None else None
+        if known is None:
+            return None
+        if answer.yes_no and known.contains is not None:
+            return templates.owner_checked(item.name_ko, answer.subject, known.contains)
+        if known.note:
+            return templates.owner_said(known.note)
+        return None
 
     def _may_ask_owner(self) -> bool:
         """막는 조건(티켓 06): 복창이 나간 뒤 · 이미 열린 질문 · 통화당 `MAX_OWNER_QUESTIONS`번 ·
@@ -735,7 +768,7 @@ class DialogEngine:
                     or self._owner_open is not None
                     or self._owner_asked >= MAX_OWNER_QUESTIONS or self._owner_timed_out)
 
-    def _open_owner_question(self, turn: _Turn, item: MenuItem) -> None:
+    def _open_owner_question(self, turn: _Turn, item: MenuItem, answer: MenuAnswer) -> None:
         """근거 없는 메뉴 질문을 사장님 질문으로 연다(4단계 티켓 05). 대사는 `_hold_for_owner`가.
 
         상태와 직전 질문은 그대로 둔다. 막는 조건은 `_may_ask_owner`.
@@ -743,7 +776,8 @@ class DialogEngine:
         self._owner_asked += 1
         self._owner_seen_said = False
         question = OwnerQuestion(number=self._owner_asked, menu_id=item.id,
-                                 menu_name=item.name_ko, text=turn.heard)
+                                 menu_name=item.name_ko, text=turn.heard, kind=answer.kind,
+                                 subject=answer.subject, yes_no=answer.yes_no)
         self._owner_open = turn.owner_question = question
 
     @on("ask_other", *_ACTIVE)

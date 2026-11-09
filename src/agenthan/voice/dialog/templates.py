@@ -455,3 +455,28 @@ def owner_answer(answer: str) -> str:
 
 def owner_answer_label(answer: str) -> str:
     return _OWNER_ANSWER_LABEL[answer]
+
+
+# ---------------------------------------------------------------- 사장님 보충 지식 (4단계 티켓 13)
+
+
+def pass_on_to_owner() -> str:
+    """근거 없는 메뉴 질문을 사장님께 바로 묻지 않을 때(grilling Q17). 뒤에 하던 질문."""
+    return "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께 전해 둘게요."
+
+
+def owner_said(note: str) -> str:
+    """사장님이 저장한 설명(한국어)을 인용 틀에 넣는다. 사장님 글은 다듬지 않고, 문장 끝 부호만
+    없으면 붙인다(TTS 문장 나누기).
+    """
+    note = note.strip()
+    if not note.endswith((".", "?", "!")):
+        note += "."
+    return f"사장님 말씀으로는 {note}"
+
+
+def owner_checked(name: str, subject: str, contains: bool) -> str:
+    """질문 카드에서 사장님이 확인한 예/아니오 사실(Q20). 사장님께 다시 묻지 않고 출처를 붙인다."""
+    if contains:
+        return f"사장님 확인으로는 {name}에 {i_ga(subject)} 들어간대요."
+    return f"사장님 확인으로는 {name}에 {eun_neun(subject)} 안 들어간대요."

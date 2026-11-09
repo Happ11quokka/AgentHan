@@ -56,7 +56,8 @@ def test_an_owner_who_answers_at_once_is_heard_after_the_hold_line(tmp_path) -> 
     assert said(c, 2) == HOLD_ON
     assert said(c, 3) == "사장님께 여쭤보니 네, 된다고 하세요. 더 필요하신 거 있으세요?"
     assert owner.questions == [
-        ("test-call", OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅", text=NUTS)),
+        ("test-call", OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅", text=NUTS,
+                                   kind="allergen", subject="견과", yes_no=True)),
     ]
     assert len(c.sink.orders) == 1  # 답 뒤에도 주문은 평소처럼 확정된다
     assert owner.ended == ["confirmed"]

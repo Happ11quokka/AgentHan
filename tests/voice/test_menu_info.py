@@ -3,7 +3,7 @@
 import pytest
 
 from agenthan.core.fakes import FakeStoreKnowledge
-from agenthan.voice.dialog.menu_info import answer_menu_question
+from agenthan.voice.dialog.menu_info import answer_menu_question, menu_answer
 
 DONT_KNOW = "그건 제가 정확히 모르겠어요."
 
@@ -99,3 +99,32 @@ def test_eolmana_is_not_a_price_question(q: str) -> None:
 @pytest.mark.parametrize("q", ["메도빅 얼마예요?", "메도빅 얼마에요", "메도빅 얼마죠?", "얼마야"])
 def test_eolma_is_still_price(q: str) -> None:
     assert answer_menu_question(item("m01"), q) == "메도빅은 7,500원이에요."
+
+
+# ---------------------------------------------------------------- 보충 지식 대상 (4단계 티켓 13)
+
+
+@pytest.mark.parametrize(("menu_id", "q", "kind", "subject", "yes_no"), [
+    ("m01", "메도빅에 견과류 들어가요?", "allergen", "견과", True),
+    ("m01", "메도빅 땅콩 있어요?", "allergen", "땅콩", True),
+    ("m01", "메도빅 땅콩 빼 주실 수 있어요?", "allergen", "땅콩", False),  # 빼기
+    ("m01", "땅콩 알레르기 있는데 괜찮아요?", "allergen", "땅콩", False),
+    ("m04", "블린에 시나몬 들어가요?", "ingredient", "시나몬", True),  # 이름 붙은 재료
+    ("m04", "블린에 고수가 들어있어요?", "ingredient", "고수", True),  # 조사를 뗀다
+    ("m04", "블린에 오이 들어가요?", "ingredient", "오이", True),  # "이"가 조사가 아니다
+    ("m03", "아메리카노 재료가 뭐예요?", "ingredient", "", False),  # 재료 전체
+    ("m03", "아메리카노 어떤 맛이에요?", "taste", "", False),
+    ("m03", "아메리카노 알레르기 있어요?", "allergy", "", False),
+    ("m01", "메도빅은 비건이에요?", "other", "비건이에요", False),  # 그 밖: 메뉴명 뺀 원문
+    ("m01", "메도빅 몇 인분이에요?", "other", "몇인분이에요", False),
+])
+def test_the_answer_names_what_owner_knowledge_would_be_about(
+        menu_id: str, q: str, kind: str, subject: str, yes_no: bool) -> None:
+    answer = menu_answer(item(menu_id), q)
+    assert (answer.kind, answer.text, answer.subject, answer.yes_no) == (
+        kind, None, subject, yes_no)
+
+
+def test_a_named_ingredient_in_the_description_is_still_not_inferred() -> None:
+    # 블린 설명에 "사워크림"이 있어도 들어가는지는 필드로 답하지 않는다(1단계와 같음)
+    assert answer_menu_question(item("m04"), "블린에 사워크림 들어가요?") == DONT_KNOW
