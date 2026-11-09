@@ -403,6 +403,18 @@ def test_bundled_recording_covers_existing_kinds():
     assert all(group["total"] >= 2 for group in metrics["flow"]["per_kind"].values())
 
 
+def test_live_recording_replays_full_sets_without_network(offline):
+    backend = Replay(run.REPLAY_PATH.with_name("live.json"))
+    assert backend.data["provenance"] == "live"
+    case_sets = {"route": load_cases(run.ROUTE_CASES), "flow": load_cases(run.FLOW_CASES)}
+    _, results, _ = run.evaluate(case_sets, backend)
+    for metrics in results.values():
+        assert metrics["api_errors"] == metrics["unexecuted"] == 0
+    baseline = json.loads((run.BASELINES / "m0.json").read_text(encoding="utf-8"))
+    assert baseline["conditions"]["git_dirty"] is False
+    assert set(baseline["results"]) == set(results)
+
+
 def test_saved_summaries_have_no_local_absolute_paths():
     for path in run.BASELINES.glob("*.json"):
         text = path.read_text(encoding="utf-8")
