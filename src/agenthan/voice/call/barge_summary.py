@@ -24,8 +24,10 @@
 - `listen_rms`: 듣는 동안 손님 말소리 프레임(`voiced`, 무음 감지 문턱 이상)과 조용할 때(`quiet`,
   말 구간 밖)의 RMS. 턴마다 낸 값을 모은다(voiced p10은 턴 p10의 중앙값, quiet p95는 턴 p95의
   p95). `PHONE_VAD_THRESHOLD`는 quiet p95와 voiced p10 사이, 끼어들기 문턱은 에코 p95 위에 둔다
-- `turn_model`: Smart Turn 점수 출처(model·late·error·none) 수, 걸린 ms, 점수 대역(0.3 이하·
-  가운데·0.7 이상) 수. 실기기 소리에서 점수가 어디에 몰리는지 본다
+- `turn_model`: Smart Turn 점수 출처(model·late·error·none) 수, 걸린 ms, 점수 대역(`low` 이하·
+  가운데·`high` 이상) 수. 대역은 기본값(`defaults.py`, 0.3/0.7)이고, 서버를 다른
+  `PHONE_TURN_LOW/HIGH`로 띄웠으면 `--low`·`--high`로 같은 값을 준다. 실기기 소리에서 점수가
+  어디에 몰리는지 본다
 """
 
 from __future__ import annotations
@@ -37,8 +39,8 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from agenthan.voice.call.turn_summary import percentile, read_lines
-from agenthan.voice.call.turn_summary import spread as _spread
+from agenthan.voice.call.defaults import MODEL_HIGH, MODEL_LOW
+from agenthan.voice.call.turn_summary import percentile, read_lines, spread
 
 
 def _duck_to_unduck(events: list[dict[str, Any]]) -> list[int]:
@@ -86,18 +88,18 @@ def _listen_rms(lines: list[dict[str, Any]]) -> dict[str, int | None]:
     }
 
 
-def _turn_model(lines: list[dict[str, Any]]) -> dict[str, Any]:
+def _turn_model(lines: list[dict[str, Any]], low: float, high: float) -> dict[str, Any]:
     infos = [line["turn_model"] for line in lines if isinstance(line.get("turn_model"), dict)]
     scores = [line["turn_end"]["score"] for line in lines
               if isinstance(line.get("turn_end"), dict)
               and isinstance(line["turn_end"].get("score"), int | float)]
     return {
         "src": dict(sorted(Counter(i.get("src") for i in infos).items())),
-        "ms": _spread([round(i["ms"]) for i in infos if isinstance(i.get("ms"), int | float)]),
-        "score_bands": {
-            "le_0.3": sum(s <= 0.3 for s in scores),
-            "middle": sum(0.3 < s < 0.7 for s in scores),
-            "ge_0.7": sum(s >= 0.7 for s in scores),
+        "ms": spread([round(i["ms"]) for i in infos if isinstance(i.get("ms"), int | float)]),
+        "score_bands": {  # 판정과 같은 대역 (`combine_turn_end`)
+            f"le_{low}": sum(s <= low for s in scores),
+            "middle": sum(low < s < high for s in scores),
+            f"ge_{high}": sum(s >= high for s in scores),
         },
     }
 
@@ -125,7 +127,10 @@ def _call_row(call: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
+def summarize(
+    lines: Iterable[dict[str, Any]], *, low: float = MODEL_LOW, high: float = MODEL_HIGH
+) -> dict[str, Any]:
+    """`low`·`high`는 서버의 Smart Turn 대역(`PHONE_TURN_LOW`·`PHONE_TURN_HIGH`)이다."""
     lines = list(lines)
     by_call: dict[str, list[dict[str, Any]]] = {}
     for line in lines:
@@ -145,25 +150,30 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
             f"{e.get('act')}:{e.get('by')}" + (":shadow" if e.get("shadow") else "")
             for e in events
         ).items())),
-        "duck_to_unduck_ms": _spread([d for w in windows
+        "duck_to_unduck_ms": spread([d for w in windows
                                       for d in _duck_to_unduck(w.get("events", []))]),
         "false_stops": sum(_is_false_stop(w) for w in windows),
-        "backchannel_ms": _spread([
+        "backchannel_ms": spread([
             r["end_ms"] - r["start_ms"] for w in windows for r in w.get("results", [])
             if r.get("verdict") in ("backchannel", "early_yes")
             and isinstance(r.get("start_ms"), int) and isinstance(r.get("end_ms"), int)
         ]),
-        "stop_report_ms": _spread([c["report_ms"] for c in voice_cuts if "report_ms" in c]),
+        "stop_report_ms": spread([c["report_ms"] for c in voice_cuts if "report_ms" in c]),
         "listen_rms": _listen_rms(lines),
-        "turn_model": _turn_model(lines),
+        "turn_model": _turn_model(lines, low, high),
     }
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="음성 끼어들기 측정 요약 (숫자만)")
     parser.add_argument("jsonl", nargs="+", type=Path)
+    parser.add_argument("--low", type=float, default=MODEL_LOW,
+                        help=f"서버의 PHONE_TURN_LOW (기본 {MODEL_LOW})")
+    parser.add_argument("--high", type=float, default=MODEL_HIGH,
+                        help=f"서버의 PHONE_TURN_HIGH (기본 {MODEL_HIGH})")
     args = parser.parse_args(argv)
-    print(json.dumps(summarize(read_lines(args.jsonl)), ensure_ascii=False, indent=2))
+    summary = summarize(read_lines(args.jsonl), low=args.low, high=args.high)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

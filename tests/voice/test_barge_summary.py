@@ -89,6 +89,21 @@ def test_listening_rms_and_smart_turn_scores_for_the_thresholds() -> None:
                                "score_bands": {"le_0.3": 0, "middle": 0, "ge_0.7": 1}}
 
 
+def test_score_bands_follow_the_bands_the_server_used(tmp_path, capsys) -> None:
+    # 감사 7번: `PHONE_TURN_LOW/HIGH`를 바꿔 띄운 서버의 기록은 그 대역으로 센다
+    scores = [{"call": "c", "turn": i, "turn_end": {"score": s}}
+              for i, s in enumerate([0.1, 0.25, 0.5, 0.75, 0.9])]
+    assert summarize(scores)["turn_model"]["score_bands"] == {
+        "le_0.3": 2, "middle": 1, "ge_0.7": 2}
+    assert summarize(scores, low=0.2, high=0.8)["turn_model"]["score_bands"] == {
+        "le_0.2": 1, "middle": 3, "ge_0.8": 1}
+
+    path = tmp_path / "phone.jsonl"
+    path.write_text("\n".join(json.dumps(line) for line in scores))
+    main([str(path), "--low", "0.2", "--high", "0.8"])
+    assert json.loads(capsys.readouterr().out)["turn_model"]["score_bands"]["ge_0.8"] == 1
+
+
 def test_the_summary_prints_numbers_only(tmp_path, capsys) -> None:
     path = tmp_path / "phone.jsonl"
     path.write_text("\n".join(json.dumps(line, ensure_ascii=False) for line in LINES))
