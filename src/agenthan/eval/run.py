@@ -21,6 +21,10 @@ from agenthan.tools.feature_tools import all_tool_schemas
 ROOT = Path(__file__).resolve().parents[3]
 FLOW_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
 ROUTE_CASES = ROOT / "tests/data/place_request_cases.jsonl"
+# Augmented cases (scripts/augment_cases.py) live apart so the M0 files stay untouched.
+FLOW_AUG = ROOT / "tests/data/tool_selection_cases_aug.jsonl"
+ROUTE_AUG = ROOT / "tests/data/place_request_cases_aug.jsonl"
+DEFAULT_PATHS = {"route": [ROUTE_CASES, ROUTE_AUG], "flow": [FLOW_CASES, FLOW_AUG]}
 REPLAY_PATH = ROOT / "tests/fixtures/replay/m0.json"
 SPLITS_PATH = ROOT / "tests/data/splits.json"
 MODES = ("route", "flow")
@@ -29,6 +33,17 @@ MODES = ("route", "flow")
 def load_splits(path: Path = SPLITS_PATH) -> dict[str, str]:
     """Fixed id → dev/holdout assignment (see cases.make_splits)."""
     return json.loads(path.read_text(encoding="utf-8"))["splits"] if path.is_file() else {}
+
+
+def load_case_files(
+    paths: list[Path], *, split: str | None = None, splits: dict[str, str] | None = None
+) -> list[Case]:
+    """Concatenate case files in order; IDs must stay unique across them."""
+    cases = [c for path in paths for c in load_cases(path, split=split, splits=splits)]
+    ids = [c.id for c in cases]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate case id across case files")
+    return cases
 
 
 def display_path(path: Path) -> str:
@@ -137,8 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=["live", "replay"], default="live")
     parser.add_argument("--cases", type=Path, help="common schema JSONL for both route and flow")
-    parser.add_argument("--route-cases", type=Path, default=ROUTE_CASES)
-    parser.add_argument("--flow-cases", type=Path, default=FLOW_CASES)
+    parser.add_argument("--route-cases", type=Path, nargs="+", default=DEFAULT_PATHS["route"])
+    parser.add_argument("--flow-cases", type=Path, nargs="+", default=DEFAULT_PATHS["flow"])
     parser.add_argument("--split", choices=["dev", "holdout"])
     parser.add_argument("--only", help="comma-separated IDs (union of both evaluation paths)")
     parser.add_argument("--repeat", type=int, default=1)
@@ -163,10 +178,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("baseline name must contain only letters, numbers, underscores, or hyphens")
     if args.record and args.backend != "live":
         parser.error("--record requires --backend live")
-    paths = {"route": args.cases or args.route_cases, "flow": args.cases or args.flow_cases}
+    paths = {
+        "route": [args.cases] if args.cases else args.route_cases,
+        "flow": [args.cases] if args.cases else args.flow_cases,
+    }
     splits = load_splits()
     case_sets = {
-        mode: load_cases(path, split=args.split, splits=splits) for mode, path in paths.items()
+        mode: load_case_files(files, split=args.split, splits=splits)
+        for mode, files in paths.items()
     }
     if args.only:
         wanted = set(args.only.split(","))
@@ -201,11 +220,13 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "case_sets": {
                 mode: {
-                    "path": display_path(path),
-                    "file_sha256": sha256(path.read_bytes()),
+                    "files": [
+                        {"path": display_path(p), "file_sha256": sha256(p.read_bytes())}
+                        for p in files
+                    ],
                     "selected_ids": [c.id for c in case_sets[mode]],
                 }
-                for mode, path in paths.items()
+                for mode, files in paths.items()
             },
             "tool_schemas_sha256": sha256(canonical(all_tool_schemas()).encode()),
             "catalog_sha256": place_matcher.catalog_sha256(),
