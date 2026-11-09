@@ -1,3 +1,4 @@
+import OwnerPage from './screens/owner/OwnerPage.tsx'
 import PhonePage from './screens/phone/PhonePage.tsx'
 
 // 라우터 라이브러리 없이 주소 경로로 화면을 고른다.
@@ -7,6 +8,10 @@ export default function App() {
 
   if (path === '/phone') {
     return <PhonePage />
+  }
+
+  if (path === '/owner') {
+    return <OwnerPage />
   }
 
   return (

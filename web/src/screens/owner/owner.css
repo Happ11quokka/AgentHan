@@ -1,0 +1,116 @@
+/* 사장님 화면 전용. 클래스는 모두 owner- 접두어(다른 화면과 겹치지 않게). 노트북·태블릿 가로 화면 기준. */
+.owner {
+  --owner-accent: #1f7a4d;
+  --owner-danger: #c0392b;
+  --owner-muted: #6b7280;
+  --owner-line: rgba(127, 127, 127, 0.3);
+  --owner-new-bg: rgba(31, 122, 77, 0.1);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.owner-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+
+.owner-head h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.owner-status {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+.owner-status-live {
+  color: var(--owner-accent);
+  font-weight: 700;
+}
+
+.owner-status-failed {
+  color: var(--owner-danger);
+}
+
+.owner-btn {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 28px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  color: #fff;
+  background: var(--owner-accent);
+}
+
+.owner-orders {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.owner-empty {
+  color: var(--owner-muted);
+}
+
+.owner-card {
+  border: 1px solid var(--owner-line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.owner-card-new {
+  background: var(--owner-new-bg);
+  border-color: var(--owner-accent);
+}
+
+.owner-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.owner-pickup {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.owner-total {
+  font-size: 20px;
+}
+
+.owner-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 20px;
+}
+
+.owner-lines li + li {
+  margin-top: 6px;
+}
+
+.owner-qty {
+  font-weight: 700;
+}
+
+.owner-request {
+  margin: 2px 0 0;
+  font-size: 16px;
+  color: var(--owner-muted);
+}
+
+.owner-accepted {
+  margin: 0;
+  color: var(--owner-muted);
+  font-weight: 700;
+}
