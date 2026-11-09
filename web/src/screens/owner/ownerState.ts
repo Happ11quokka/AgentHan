@@ -393,9 +393,24 @@ export function questionsWaiting(state: OwnerState): boolean {
   return state.questions.some((q) => q.status === 'open')
 }
 
-/** 화면에 뜬 이 카드를 봤다고 서버에 알릴까. 통화가 기다리는 중이고 아직 안 알린 카드만 */
+/** 이 카드를 봤다고 서버에 알릴까. 통화가 기다리는 중이고 아직 안 알린 카드만 */
 export function needsSeen(card: QuestionCard): boolean {
   return card.status === 'open' && !card.seen_at
+}
+
+/**
+ * 질문 카드 열람 알림(티켓 06). 사장님이 카드를 눌러 펼칠 때만, 카드마다 한 번 보낸다. 화면이
+ * 켜져 있는 것만으로는 보내지 않는다(아무도 안 보는데 "사장님이 보고 계세요"가 나가지 않게, 리뷰 P4)
+ */
+export class SeenReports {
+  private readonly sent = new Set<string>()
+
+  /** 사장님이 이 카드를 펼쳤다. 서버에 알려야 하면 true(그 뒤로는 false) */
+  opened(card: QuestionCard): boolean {
+    if (!needsSeen(card) || this.sent.has(card.id)) return false
+    this.sent.add(card.id)
+    return true
+  }
 }
 
 /** 질문 카드 오른쪽 위: 남은 초(1 이상), 시간 지남, 통화 끝. 문구는 `ownerText` 사전이 붙인다 */

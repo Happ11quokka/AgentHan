@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  SeenReports,
   type OwnerAction,
   type OwnerState,
   type QuestionCard,
@@ -119,5 +120,20 @@ describe('store clock on the owner screen (review C2)', () => {
   it('uses the device clock when the server sends no time', () => {
     const s = run(withQuestions(question('call-1-q1')))
     expect(storeNow(s, 1234)).toBe(1234)
+  })
+})
+
+describe('seen signal only when the owner opens the card (review P4)', () => {
+  it('reports a waiting card once, when the owner opens it', () => {
+    // 화면이 켜져 있는 것만으로는 "사장님이 보고 계세요"를 보내지 않는다. 카드를 눌러 펼칠 때만
+    const seen = new SeenReports()
+    expect(seen.opened(question('q1'))).toBe(true)
+    expect(seen.opened(question('q1'))).toBe(false) // 두 번 펼쳐도 한 번
+  })
+
+  it('does not report a card the call is no longer waiting on or one already seen', () => {
+    const seen = new SeenReports()
+    expect(seen.opened(question('q1', 'timeout'))).toBe(false)
+    expect(seen.opened({ ...question('q2'), seen_at: '2026-11-08T16:02:03+09:00' })).toBe(false)
   })
 })

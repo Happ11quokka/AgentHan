@@ -48,6 +48,8 @@ export interface OwnerText {
   sectionQuestions: string
   /** 질문 카드 제목 (티켓 05) */
   question: string
+  /** 접힌 질문 카드를 펼치라는 안내 (리뷰 P4: 펼칠 때만 열람을 알린다) */
+  questionOpen: string
   secondsLeft: (seconds: number) => string
   late: string
   /** 답 전에 통화가 끝난 질문 카드 (티켓 06) */
@@ -118,6 +120,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sectionOrders: 'Заказы',
     sectionQuestions: 'Вопросы клиентов',
     question: 'Вопрос клиента',
+    questionOpen: 'Нажмите, чтобы открыть',
     secondsLeft: (n) => `${n} сек`,
     late: 'Время вышло',
     callEnded: 'Звонок завершён',
@@ -196,6 +199,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sectionOrders: '주문',
     sectionQuestions: '손님 질문',
     question: '손님 질문',
+    questionOpen: '눌러서 열기',
     secondsLeft: (n) => `${n}초`,
     late: '시간 지남',
     callEnded: '통화 끝',

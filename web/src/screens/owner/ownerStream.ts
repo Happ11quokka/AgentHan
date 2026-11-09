@@ -1,14 +1,6 @@
 // 사장님 화면 ↔ 서버 (서버 `voice/owner/http.py`). SSE 하나로 받고 POST로 보낸다.
 // 모든 경로에 쿼리 `key`(사장님 화면 비밀 토큰)를 붙인다. `EventSource`는 헤더를 못 붙인다.
-import type {
-  CallCard,
-  KnowledgeCard,
-  KnowledgePreview,
-  OrderCard,
-  OwnerAction,
-  OwnerAnswer,
-  QuestionCard,
-} from './ownerState.ts'
+import type { KnowledgePreview, OwnerAction, OwnerAnswer } from './ownerState.ts'
 
 const BASE = '/api/owner'
 
@@ -49,56 +41,56 @@ export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => vo
   return () => source.close()
 }
 
-/** 접수 버튼. 성공하면 바뀐 카드(같은 카드는 SSE `order.update`로도 온다). 실패면 null */
-export async function acceptOrder(key: string, id: string): Promise<OrderCard | null> {
-  const res = await fetch(
-    `${BASE}/orders/${encodeURIComponent(id)}/accept?key=${encodeURIComponent(key)}`,
-    { method: 'POST' },
-  )
-  return res.ok ? ((await res.json()) as OrderCard) : null
-}
-
-/** 닫기 버튼(넘김·미완료 통화 카드). 성공하면 닫힌 카드(SSE `call.update`로도 온다). 실패면 null */
-export async function dismissCall(key: string, id: string): Promise<CallCard | null> {
-  const res = await fetch(
-    `${BASE}/calls/${encodeURIComponent(id)}/dismiss?key=${encodeURIComponent(key)}`,
-    { method: 'POST' },
-  )
-  return res.ok ? ((await res.json()) as CallCard) : null
+/** 사장님 화면 POST 하나. 경로는 `/api/owner/` 뒤, 토큰은 쿼리 `key`로 붙인다 */
+async function post(key: string, path: string, body?: unknown): Promise<Response> {
+  const url = `${BASE}/${path}?key=${encodeURIComponent(key)}`
+  if (body === undefined) return fetch(url, { method: 'POST' })
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
 /**
- * 질문 카드 열람(티켓 06). 통화가 기다리는 중이면 손님이 "사장님이 보고 계세요"를 한 번 듣는다.
- * 성공하면 열람 시각이 찍힌 카드, 실패면 null
+ * 사장님 동작 POST. 됐는지만 돌려준다. 바뀐 카드는 SSE로만 받는다(서버가 늘 같은 카드를 다시
+ * 보낸다). 응답 카드를 화면에 넣으면 늦게 온 응답이 SSE로 먼저 온 더 새 카드를 덮는다 (리뷰 C8)
  */
-export async function seeQuestion(key: string, id: string): Promise<QuestionCard | null> {
-  const res = await fetch(
-    `${BASE}/questions/${encodeURIComponent(id)}/seen?key=${encodeURIComponent(key)}`,
-    { method: 'POST' },
-  )
-  return res.ok ? ((await res.json()) as QuestionCard) : null
+async function act(key: string, path: string, body?: unknown): Promise<boolean> {
+  return (await post(key, path, body)).ok
+}
+
+const id = (value: string) => encodeURIComponent(value)
+
+/** 접수 버튼. 실패(없는 카드 404)면 false */
+export function acceptOrder(key: string, orderId: string): Promise<boolean> {
+  return act(key, `orders/${id(orderId)}/accept`)
+}
+
+/** 닫기 버튼(넘김·미완료 통화 카드). 실패(통화 중·주문됨 409 등)면 false */
+export function dismissCall(key: string, callId: string): Promise<boolean> {
+  return act(key, `calls/${id(callId)}/dismiss`)
+}
+
+/**
+ * 질문 카드 열람(티켓 06). 사장님이 카드를 눌러 펼칠 때만 보낸다(리뷰 P4). 통화가 기다리는 중이면
+ * 손님이 "사장님이 보고 계세요"를 한 번 듣는다
+ */
+export function seeQuestion(key: string, questionId: string): Promise<boolean> {
+  return act(key, `questions/${id(questionId)}/seen`)
 }
 
 /**
  * 질문 카드 답: 버튼(티켓 05) 또는 자유 입력(`'free'` + 사장님 글, 티켓 07). 자유 입력 글은 손님에게
- * 말하지 않고 번역해 문자로만 간다. 성공하면 답한 카드(SSE `owner.question.update`로도 온다).
- * 실패면 null(이미 답함 409, 빈 글 422 등)
+ * 말하지 않고 번역해 문자로만 간다. 실패(이미 답함 409, 빈 글 422 등)면 false
  */
-export async function answerQuestion(
+export function answerQuestion(
   key: string,
-  id: string,
+  questionId: string,
   answer: OwnerAnswer | 'free',
   text = '',
-): Promise<QuestionCard | null> {
-  const res = await fetch(
-    `${BASE}/questions/${encodeURIComponent(id)}/answer?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(answer === 'free' ? { answer, text } : { answer }),
-    },
-  )
-  return res.ok ? ((await res.json()) as QuestionCard) : null
+): Promise<boolean> {
+  return act(key, `questions/${id(questionId)}/answer`, answer === 'free' ? { answer, text } : { answer })
 }
 
 /**
@@ -107,35 +99,19 @@ export async function answerQuestion(
  */
 export async function previewKnowledge(
   key: string,
-  id: string,
+  cardId: string,
   text: string,
 ): Promise<KnowledgePreview | null> {
-  const res = await fetch(
-    `${BASE}/knowledge/${encodeURIComponent(id)}/preview?key=${encodeURIComponent(key)}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) },
-  )
+  const res = await post(key, `knowledge/${id(cardId)}/preview`, { text })
   return res.ok ? ((await res.json()) as KnowledgePreview) : null
 }
 
 /**
  * "저장"(티켓 13): 한국어(번역문 또는 사장님이 고친 글)를 그대로 보충 지식으로. 다음 통화부터 AI가
- * "사장님 말씀으로는 …"으로 말한다. 성공하면 채운 카드(SSE `knowledge.update`로도 온다), 실패면 null
+ * "사장님 말씀으로는 …"으로 말한다. 실패면 false
  */
-export async function saveKnowledge(
-  key: string,
-  id: string,
-  textKo: string,
-  text: string,
-): Promise<KnowledgeCard | null> {
-  const res = await fetch(
-    `${BASE}/knowledge/${encodeURIComponent(id)}/save?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text_ko: textKo, text }),
-    },
-  )
-  return res.ok ? ((await res.json()) as KnowledgeCard) : null
+export function saveKnowledge(key: string, cardId: string, textKo: string, text: string): Promise<boolean> {
+  return act(key, `knowledge/${id(cardId)}/save`, { text_ko: textKo, text })
 }
 
 /**

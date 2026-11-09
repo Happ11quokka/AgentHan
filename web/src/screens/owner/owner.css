@@ -391,6 +391,28 @@
   color: var(--owner-band-late);
 }
 
+/* 접힌 질문 카드 머리: 누르면 펼쳐지고 그때 열람을 알린다 (리뷰 P4) */
+.owner-question-head {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.owner-question-head::-webkit-details-marker {
+  display: none;
+}
+
+.owner-question-open {
+  flex-basis: 100%;
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
+.owner-question[open] .owner-question-open {
+  display: none;
+}
+
 .owner-question-text {
   margin: 0;
   font-size: 18px;
