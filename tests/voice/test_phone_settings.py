@@ -142,6 +142,14 @@ def test_the_owner_screen_key_comes_from_the_env_and_is_empty_by_default() -> No
     assert "own3r" not in repr(s)
 
 
+def test_the_papago_request_time_limit_is_a_setting() -> None:
+    assert VoiceSettings.from_env({}, env_file=None).translate_timeout_s == 3.0
+    s = VoiceSettings.from_env({"PHONE_TRANSLATE_TIMEOUT_S": "1.5"}, env_file=None)
+    assert s.translate_timeout_s == 1.5
+    with pytest.raises(SettingsError, match="PHONE_TRANSLATE_TIMEOUT_S"):
+        VoiceSettings.from_env({"PHONE_TRANSLATE_TIMEOUT_S": "0"}, env_file=None)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)

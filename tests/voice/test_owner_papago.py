@@ -1,0 +1,181 @@
+"""Papago 번역 어댑터 (4단계 티켓 03). 키·네트워크 없이 돈다.
+
+- 요청 모양·오류는 `httpx.MockTransport`로 꾸민 응답으로 본다
+- 실제 응답 형식은 녹화본(cassette)을 재생한다. 녹화 다시 하기(실제 호출 3번, 키 필요):
+
+    AGENTHAN_ENV_FILE=/path/to/AgentHan/.env \\
+        uv run pytest tests/voice/test_owner_papago.py -k recorded --record-mode=rewrite
+
+  녹화본에는 키 헤더(`X-NCP-APIGW-API-KEY-ID`·`X-NCP-APIGW-API-KEY`)를 남기지 않는다
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+from agenthan.voice.owner.papago import PAPAGO_URL, PapagoTranslator, papago_from_env
+from agenthan.voice.owner.translate import TranslateError
+from agenthan.voice.settings import read_env_file
+
+CASSETTES = Path(__file__).with_name("cassettes") / "test_owner_papago"
+ID, SECRET = "test-id-not-real", "test-secret-not-real"
+
+FILTERED_REQUEST_HEADERS = ("x-ncp-apigw-api-key-id", "x-ncp-apigw-api-key", "cookie")
+KEPT_RESPONSE_HEADERS = frozenset({"content-type"})
+
+
+def _drop_response_headers(response: dict[str, Any]) -> dict[str, Any]:
+    response["headers"] = {
+        k: v for k, v in response["headers"].items() if k.lower() in KEPT_RESPONSE_HEADERS
+    }
+    return response
+
+
+@pytest.fixture(scope="module")
+def vcr_config() -> dict[str, Any]:
+    return {
+        "filter_headers": list(FILTERED_REQUEST_HEADERS),
+        "match_on": ["method", "scheme", "host", "path", "body"],
+        "decode_compressed_response": True,
+        "before_record_response": _drop_response_headers,
+    }
+
+
+def ok(text: str) -> httpx.Response:
+    return httpx.Response(200, json={"message": {"result": {
+        "srcLangType": "ko", "tarLangType": "ru", "translatedText": text}}})
+
+
+def papago(handler, **kw) -> PapagoTranslator:
+    return PapagoTranslator(ID, SECRET, http=httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)), **kw)
+
+
+def translate(translator: PapagoTranslator, texts: list[str]) -> list[str]:
+    async def run():
+        try:
+            return await translator.translate(texts, "ko", "ru")
+        finally:
+            await translator.aclose()
+
+    return asyncio.run(run())
+
+
+def test_each_sentence_is_one_request_and_answers_keep_the_order() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        text = json.loads(request.content)["text"]
+        return ok({"하나": "один", "둘": "два"}[text])
+
+    assert translate(papago(handler), ["하나", "둘"]) == ["один", "два"]
+
+    request = seen[0]
+    assert (request.method, str(request.url)) == ("POST", PAPAGO_URL)
+    assert request.headers["X-NCP-APIGW-API-KEY-ID"] == ID
+    assert request.headers["X-NCP-APIGW-API-KEY"] == SECRET
+    assert request.headers["Content-Type"].startswith("application/json")
+    assert sorted(json.loads(r.content)["text"] for r in seen) == ["둘", "하나"]
+    assert json.loads(request.content)["source"] == "ko"
+    assert json.loads(request.content)["target"] == "ru"
+
+
+def test_an_empty_sentence_is_not_sent() -> None:
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return ok("да")
+
+    assert translate(papago(handler), ["", "네"]) == ["", "да"]
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize(("status", "code"), [
+    (401, "translate_auth"),
+    (403, "translate_auth"),
+    (429, "translate_429"),
+    (400, "translate_http"),
+    (500, "translate_http"),
+])
+def test_an_error_status_fails_without_leaking_keys_or_body(status: int, code: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": {"errorCode": "N2MT99", "message": "secret"}})
+
+    with pytest.raises(TranslateError) as err:
+        translate(papago(handler), ["고수 빼 주세요"])
+
+    assert err.value.code == code
+    assert ID not in str(err.value) and SECRET not in str(err.value)
+    assert "secret" not in str(err.value)
+
+
+def test_an_unexpected_body_fails() -> None:
+    with pytest.raises(TranslateError) as err:
+        translate(papago(lambda r: httpx.Response(200, json={"message": {}})), ["네"])
+    assert err.value.code == "translate_bad_response"
+
+
+def test_a_slow_answer_fails_as_a_timeout() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    with pytest.raises(TranslateError) as err:
+        translate(papago(handler), ["네"])
+    assert err.value.code == "translate_timeout"
+
+
+def test_keys_never_show_in_repr() -> None:
+    text = repr(PapagoTranslator(ID, SECRET))
+    assert ID not in text and SECRET not in text
+
+
+def test_without_both_keys_there_is_no_translator() -> None:
+    assert papago_from_env({}) is None
+    assert papago_from_env({"PAPAGO_CLIENT_ID": ID}) is None
+    assert papago_from_env({"PAPAGO_CLIENT_ID": ID, "PAPAGO_CLIENT_SECRET": " "}) is None
+    assert isinstance(
+        papago_from_env({"PAPAGO_CLIENT_ID": ID, "PAPAGO_CLIENT_SECRET": SECRET}),
+        PapagoTranslator,
+    )
+
+
+# ---------------------------------------------------------------- 녹화본
+
+
+def _recording_translator() -> PapagoTranslator:
+    """녹화할 때는 `AGENTHAN_ENV_FILE`(없으면 지금 폴더 `.env`)의 키, 재생할 때는 가짜 키."""
+    env = {**read_env_file(Path(os.environ.get("AGENTHAN_ENV_FILE", ".env"))), **os.environ}
+    return papago_from_env(env, timeout=10.0) or PapagoTranslator(ID, SECRET)
+
+
+@pytest.mark.vcr
+def test_recorded_papago_answers_in_russian_and_keeps_the_placeholder() -> None:
+    """실제 Papago ko→ru 응답(2026-11-10 녹화). 형식과 자리표시자 `[1]`이 살아남는지만 본다."""
+    out = translate(_recording_translator(), [
+        "[1] 빼 주세요",
+        "메도빅에 견과류 들어가요?",
+        "[1] 따로 포장해 주세요",
+    ])
+
+    assert len(out) == 3
+    assert all(re.search("[а-яА-Я]", t) for t in out)
+    assert "[1]" in out[0] and "[1]" in out[2]
+
+
+def test_cassettes_hold_no_key() -> None:
+    files = list(CASSETTES.rglob("*.yaml"))
+    assert files, "녹화본이 없어요. --record-mode=rewrite로 녹화하세요"
+    for f in files:
+        lower = f.read_text(encoding="utf-8").lower()
+        assert "x-ncp-apigw-api-key" not in lower
+        assert "cookie" not in lower
