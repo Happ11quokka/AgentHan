@@ -1,4 +1,4 @@
-// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02, 서버 `voice/owner/hub.py`).
+// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·05, 서버 `voice/owner/hub.py`).
 // 화면 상태는 순수 리듀서 하나로 정한다: 이전 상태 + 이벤트 → 다음 상태.
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
 
@@ -65,11 +65,41 @@ export interface CallCard {
   heard: string[]
 }
 
+/** 사장님 버튼 답 (티켓 05): 돼요 · 안 돼요 · 모르겠어요 */
+export type OwnerAnswer = 'yes' | 'no' | 'unsure'
+
+/** 질문 카드 상태. open: 답 기다림. answered: 답함. 시간 초과·통화 끝은 티켓 06·07이 더한다 */
+export type QuestionStatus = 'open' | 'answered'
+
+/** 질문 카드 (티켓 05): 손님이 한 근거 없는 메뉴 질문. `id`는 `{통화 id}-q{번호}` */
+export interface QuestionCard {
+  id: string
+  call_id: string
+  /** 통화 안 질문 번호 (1부터) */
+  number: number
+  menu_id: string
+  /** 한국어 메뉴명 (원어 이름은 티켓 03) */
+  menu_name: string
+  /** 손님 질문 원문 (한국어) */
+  text: string
+  /** 서버가 카드를 보낸 시각(ISO 8601). 카운트다운은 마감 시각까지 센다 */
+  sent_at: string
+  deadline_at: string
+  status: QuestionStatus
+  answer: OwnerAnswer | ''
+}
+
 /** SSE 이벤트 이름(`event:`)과 `data:` JSON */
 export type OwnerServerEvent =
-  | { type: 'snapshot'; data: { orders: OrderCard[]; calls: CallCard[] } }
+  | {
+      type: 'snapshot'
+      /** `questions`는 티켓 05부터 온다. 없으면 빈 목록으로 본다 */
+      data: { orders: OrderCard[]; calls: CallCard[]; questions?: QuestionCard[] }
+    }
   | { type: 'order.update'; data: OrderCard }
   | { type: 'call.update'; data: CallCard }
+  | { type: 'owner.question'; data: QuestionCard }
+  | { type: 'owner.question.update'; data: QuestionCard }
 
 export type OwnerAction =
   | OwnerServerEvent
@@ -89,9 +119,16 @@ export interface OwnerState {
   orders: OrderCard[]
   /** 화면에 둘 통화 카드(live·handoff·missed). 먼저 걸려 온 통화가 앞 */
   calls: CallCard[]
+  /** 질문 카드 전부(답한 것 포함). 먼저 온 질문이 앞 */
+  questions: QuestionCard[]
 }
 
-export const initialOwnerState: OwnerState = { connection: 'closed', orders: [], calls: [] }
+export const initialOwnerState: OwnerState = {
+  connection: 'closed',
+  orders: [],
+  calls: [],
+  questions: [],
+}
 
 export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState {
   switch (action.type) {
@@ -102,7 +139,12 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
     case 'failed':
       return { ...state, connection: 'failed' }
     case 'snapshot':
-      return { connection: 'live', orders: action.data.orders, calls: action.data.calls.filter(shown) }
+      return {
+        connection: 'live',
+        orders: action.data.orders,
+        calls: action.data.calls.filter(shown),
+        questions: action.data.questions ?? [],
+      }
     case 'order.update': {
       const card = action.data
       const at = state.orders.findIndex((o) => o.id === card.id)
@@ -115,6 +157,13 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
       if (!shown(card)) return { ...state, calls: rest }
       const at = state.calls.findIndex((c) => c.id === card.id)
       return { ...state, calls: at < 0 ? [...state.calls, card] : state.calls.with(at, card) }
+    }
+    case 'owner.question':
+    case 'owner.question.update': {
+      const card = action.data
+      const at = state.questions.findIndex((q) => q.id === card.id)
+      const questions = at < 0 ? [...state.questions, card] : state.questions.with(at, card)
+      return { ...state, questions }
     }
   }
 }
@@ -140,4 +189,19 @@ export function canDismiss(card: CallCard): boolean {
 
 export function canAccept(card: OrderCard): boolean {
   return card.status === 'new'
+}
+
+/** 버튼으로 답할 질문 카드 (먼저 온 것이 앞) */
+export function openQuestions(state: OwnerState): QuestionCard[] {
+  return state.questions.filter(canAnswer)
+}
+
+export function canAnswer(card: QuestionCard): boolean {
+  return card.status === 'open'
+}
+
+/** 마감까지 남은 초(올림). 지났으면 0. 서버가 보낸 시각부터 센 마감과 같은 시계다 */
+export function secondsLeft(card: QuestionCard, nowMs: number): number {
+  const left = Date.parse(card.deadline_at) - nowMs
+  return Number.isNaN(left) || left <= 0 ? 0 : Math.ceil(left / 1000)
 }

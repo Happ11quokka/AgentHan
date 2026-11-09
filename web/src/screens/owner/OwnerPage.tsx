@@ -3,6 +3,7 @@
 // 이 티켓(01)의 카드는 한국어 메뉴명·수량·옵션·픽업 시각·총액만 보인다(사장님 언어는 티켓 03).
 // 통화 카드(티켓 02): 맨 위 줄에 통화 중 카드, 그 아래 "손님 연락 필요"(넘김)·회색 미완료 카드(닫기 버튼).
 // 알림 소리·깜빡임·리마인드·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
+// 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문 원문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
@@ -12,13 +13,24 @@ import {
   type CallEndReason,
   type Connection,
   type OrderCardLine,
+  type OwnerAnswer,
+  type QuestionCard,
   canAccept,
   followUpCalls,
   initialOwnerState,
   liveCalls,
+  openQuestions,
   ownerReducer,
+  secondsLeft,
 } from './ownerState.ts'
-import { acceptOrder, connectOwnerStream, dismissCall, ownerKey, wakeDevice } from './ownerStream.ts'
+import {
+  acceptOrder,
+  answerQuestion,
+  connectOwnerStream,
+  dismissCall,
+  ownerKey,
+  wakeDevice,
+} from './ownerStream.ts'
 import { pickupBand } from './pickupBand.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
 import './owner.css'
@@ -39,6 +51,16 @@ const END_REASON_LABEL: Record<CallEndReason, string> = {
   hangup: '손님이 끊음',
   error: '연결 오류',
 }
+
+/** 질문 카드 버튼 (사장님 언어는 티켓 03). 순서가 화면 순서다 */
+const ANSWER_BUTTONS: { answer: OwnerAnswer; label: string }[] = [
+  { answer: 'yes', label: '돼요' },
+  { answer: 'no', label: '안 돼요' },
+  { answer: 'unsure', label: '모르겠어요' },
+]
+
+/** 질문 카드 카운트다운을 다시 그리는 간격 */
+const QUESTION_TICK_MS = 1_000
 
 /** locked: 가게 열기 전(브라우저가 사용자 동작 전 소리를 막는다). on: 알림음 켜짐. unavailable: 켤 수 없음 */
 type Sound = 'locked' | 'on' | 'unavailable'
@@ -84,6 +106,19 @@ export default function OwnerPage() {
     return () => clearInterval(timer)
   }, [])
 
+  // 답을 기다리는 질문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
+  const waiting = openQuestions(state).length > 0
+  useEffect(() => {
+    if (!waiting) return
+    const tick = () => setNow(Date.now())
+    const first = setTimeout(tick, 0) // 15초 시계가 늦어 있을 수 있어 바로 한 번 맞춘다
+    const timer = setInterval(tick, QUESTION_TICK_MS)
+    return () => {
+      clearTimeout(first)
+      clearInterval(timer)
+    }
+  }, [waiting])
+
   function openStore() {
     close.current?.()
     dispatch({ type: 'open' })
@@ -107,9 +142,15 @@ export default function OwnerPage() {
     if (card) dispatch({ type: 'call.update', data: card })
   }
 
+  async function answer(id: string, value: OwnerAnswer) {
+    const card = await answerQuestion(key.current, id, value)
+    if (card) dispatch({ type: 'owner.question.update', data: card })
+  }
+
   const showOpen = state.connection === 'closed' || state.connection === 'failed'
   const live = liveCalls(state)
   const followUps = followUpCalls(state)
+  const questions = openQuestions(state)
 
   return (
     <main className="owner">
@@ -141,6 +182,19 @@ export default function OwnerPage() {
               )}
               {call.lines.length > 0 && <strong className="owner-total">{call.total_label}</strong>}
             </article>
+          ))}
+        </section>
+      )}
+
+      {questions.length > 0 && (
+        <section className="owner-questions" aria-label="손님 질문">
+          {questions.map((q) => (
+            <QuestionCardView
+              key={q.id}
+              question={q}
+              left={secondsLeft(q, now)}
+              onAnswer={(value) => void answer(q.id, value)}
+            />
           ))}
         </section>
       )}
@@ -225,6 +279,41 @@ function FollowUpCard({ call, onDismiss }: { call: CallCard; onDismiss: () => vo
       <button type="button" className="owner-btn owner-btn-dismiss" onClick={onDismiss}>
         닫기
       </button>
+    </article>
+  )
+}
+
+/** 손님 질문 카드. 버튼 하나로 답한다. 시간이 지나도 카드는 남는다(늦은 답은 티켓 07) */
+function QuestionCardView({
+  question,
+  left,
+  onAnswer,
+}: {
+  question: QuestionCard
+  left: number
+  onAnswer: (answer: OwnerAnswer) => void
+}) {
+  return (
+    <article className="owner-card owner-question">
+      <header className="owner-card-head">
+        <span className="owner-question-title">손님 질문 · {question.menu_name}</span>
+        <span className={`owner-question-left${left === 0 ? ' owner-question-late' : ''}`} role="timer">
+          {left > 0 ? `${left}초` : '시간 지남'}
+        </span>
+      </header>
+      <p className="owner-question-text">“{question.text}”</p>
+      <div className="owner-question-answers">
+        {ANSWER_BUTTONS.map(({ answer, label }) => (
+          <button
+            key={answer}
+            type="button"
+            className={`owner-btn owner-btn-answer owner-btn-${answer}`}
+            onClick={() => onAnswer(answer)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </article>
   )
 }

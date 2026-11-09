@@ -248,3 +248,56 @@
 .owner-btn-dismiss {
   background: var(--owner-muted);
 }
+
+/* 질문 카드 (티켓 05): 답을 기다리는 손님 질문. 통화 중 줄 바로 아래, 가장 눈에 띄게 */
+.owner-questions {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.owner-question {
+  border-color: var(--owner-band-soon);
+  border-width: 2px;
+}
+
+.owner-question-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.owner-question-left {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--owner-band-soon);
+}
+
+.owner-question-late {
+  color: var(--owner-band-late);
+}
+
+.owner-question-text {
+  margin: 0;
+  font-size: 18px;
+}
+
+.owner-question-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owner-btn-answer {
+  flex: 1 1 0;
+  padding: 12px 8px;
+}
+
+.owner-btn-no {
+  background: var(--owner-danger);
+}
+
+.owner-btn-unsure {
+  background: var(--owner-muted);
+}
