@@ -17,10 +17,13 @@ from test_owner_calls import Screen
 
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
+from agenthan.voice.dialog.engine import DialogEngine, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeRequest, KnowledgeStore, Known
 from agenthan.voice.dialog.owner_question import OwnerQuestion
+from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.owner.fakes import FakeTranslator
 from agenthan.voice.owner.hub import OwnerHub, UnknownCard
+from agenthan.voice.store_config import StoreConfig
 
 NOW = datetime.fromisoformat("2026-11-10T16:02:00+09:00")
 LATER = datetime.fromisoformat("2026-11-10T17:30:00+09:00")
@@ -270,3 +273,30 @@ def test_free_answers_and_unanswered_question_cards_make_no_knowledge() -> None:
     hub.call_ended("call-2", "confirmed")  # 통화 끝(문자 약속) 카드는 늦은 답을 기다린다
     assert store.lookup(NUTS_KEY) is None
     assert hub.knowledge_cards() == []
+
+
+# ------------------------------------------------- 허브가 쓰고 다음 통화 엔진이 읽는다
+
+
+def _next_call(hub: OwnerHub, text: str) -> TurnResult:
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), StoreConfig.from_fixture(),
+                          order_id="call-2", ask_owner=True, knowledge=hub.knowledge)
+    engine.start(NOW)
+    return engine.handle(text, NOW)
+
+
+def test_a_yes_on_the_question_card_answers_the_next_caller_without_a_card() -> None:
+    hub, _ = _hub()
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.answer_question("call-1-q1", "yes")
+    r = _next_call(hub, NUTS.text)
+    assert r.owner_question is None
+    assert r.utterances[0] == "사장님 확인으로는 메도빅에 견과가 들어간대요."
+
+
+def test_unsure_is_not_reused_so_the_next_caller_opens_a_card_again() -> None:
+    hub, _ = _hub()
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.answer_question("call-1-q1", "unsure")
+    r = _next_call(hub, NUTS.text)
+    assert r.owner_question is not None
