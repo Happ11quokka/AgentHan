@@ -86,6 +86,8 @@ from agenthan.voice.call.defaults import (
     MODEL_HIGH,
     MODEL_LOW,
     NO_INPUT_S,
+    NO_INPUT_SLACK_S,
+    NO_INPUT_SPEECH_MAX_S,
     WAIT_REQUEST_S,
 )
 from agenthan.voice.call.frames import (
@@ -200,7 +202,10 @@ class SessionSettings:
     no_input_s: float = NO_INPUT_S
     wait_request_s: float = WAIT_REQUEST_S  # "잠깐만요" 뒤 첫 대기 (`PHONE_WAIT_REQUEST_S`, 결정 5)
     # 글 없는 말소리(배경 소리)가 마감을 계속 밀어도 처음 마감 + 이만큼에는 되묻는다 (검증 결정 6)
-    no_input_slack_s: float = NO_INPUT_S
+    no_input_slack_s: float = NO_INPUT_SLACK_S
+    # 상한에서도 손님이 말하는 중이면 미룬다(리뷰 P4). 다만 쉼 없는 말 구간이 이만큼을 넘으면
+    # 끊기지 않는 배경 소리로 보고 되묻는다(감사 2번). 안 그러면 소음이 `max_call_s`까지 막는다
+    no_input_speech_max_s: float = NO_INPUT_SPEECH_MAX_S
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
     not_heard_min_ms: int = 500
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
@@ -354,6 +359,7 @@ class CallSession:
         self._button_at: float | None = None
         # 마지막 말소리 프레임이 온 때 = 마지막 말 끝. 이어짐 마감·무음 대기·지연 기록이 같이 쓴다
         self._last_voice_at: float | None = None
+        self._speech_from: float | None = None  # 지금 말 구간이 시작된 때 (무응답 소음 거르기)
         self._ep_at: float | None = None  # 마지막 epFlag 프레임을 쓰기 큐에 넣은 때
         self._ep_reply_at: float | None = None  # 마지막 epFlag 응답을 받은 때
         self._speak_from_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각 (반이중 기준)
@@ -405,8 +411,11 @@ class CallSession:
         frame_from = self._vad.offset_ms
         ended = self._vad.feed(pcm)
         now = self._clock.monotonic()
+        started = self._vad.in_speech and not was_speaking
+        if started:
+            self._speech_from = now
         if self._ring is not None:
-            self._keep_turn_audio(pcm, started=self._vad.in_speech and not was_speaking)
+            self._keep_turn_audio(pcm, started=started)
         if self._vad.last_voiced:
             self._last_voice_at = now
             self._voiced_ms += len(pcm) // BYTES_PER_MS
@@ -1381,8 +1390,9 @@ class CallSession:
     # `no_input_s`(지난 손님 말이 "잠깐만요"면 `wait_request_s`)를 센다. 손님 말 턴이나 봇 턴이
     # 열리면 끈다. VAD 말 구간 중에는 멈추고, 그 말 끝(`_last_voice_at`)부터 다시 센다. 그 말이
     # 턴이 되면(받아들인 말) 엔진이 횟수를 0으로 돌린다. 글 없는 소리가 계속 와도 처음 마감 +
-    # `no_input_slack_s`에는 되묻는다(손님이 말하는 중이면 그 말이 끝나자마자, 리뷰 P4).
-    # 무엇을 말할지(되묻기·마지막 인사)는 엔진 `no_input`이 정한다
+    # `no_input_slack_s`에는 되묻는다(손님이 말하는 중이면 그 말이 끝나자마자, 리뷰 P4). 쉼 없는
+    # 말 구간이 `no_input_speech_max_s`를 넘으면 끊기지 않는 소음으로 보고 상한에서 되묻는다
+    # (감사 2번). 무엇을 말할지(되묻기·마지막 인사)는 엔진 `no_input`이 정한다
 
     def _start_quiet(self, turn: int) -> None:
         self._quiet_timer.cancel()
@@ -1403,15 +1413,23 @@ class CallSession:
         now = self._clock.monotonic()
         start, delay = self._quiet_since, self._quiet_delay
         # 손님 말을 붙잡거나 판정하는 중이면 그 말이 먼저다. 손님이 지금 말하는 중이면 상한이
-        # 지나도 끼어들지 않는다(리뷰 P4). 글 없는 소리가 마감을 밀어도 상한에는 되묻는다
+        # 지나도 끼어들지 않는다(리뷰 P4). 글 없는 소리가 마감을 밀어도 상한에는 되묻는다.
+        # 쉼 없는 말 구간이 `no_input_speech_max_s`를 넘으면 소음으로 본다(감사 2번)
         handling = bool(self._parts or self._held is not None or self._cont is not None
                         or self._pending)
         if self._quiet_timer.wait(now, due=max(start, self._last_voice_at or start) + delay,
                                   cap=start + delay + self._settings.no_input_slack_s,
                                   busy=self._ep_waiting(),
-                                  hold=handling or self._vad.in_speech):
+                                  hold=handling or self._talking(now)):
             return
         self.bot_turn("no_input", lambda engine, at: engine.no_input(at))
+
+    def _talking(self, now: float) -> bool:
+        """손님이 지금 말하는 중인가. 쉼 없이 `no_input_speech_max_s`를 넘긴 말 구간은 소음이다."""
+        if not self._vad.in_speech:
+            return False
+        since = self._speech_from if self._speech_from is not None else now
+        return now - since < self._settings.no_input_speech_max_s
 
     # ------------------------------------------------------------ 음성 끼어들기 (티켓 06)
     # 플래그(`barge`)가 켜져 있고 브라우저가 알린 통화만. 봇이 말하는 동안에도 진짜 마이크 소리가

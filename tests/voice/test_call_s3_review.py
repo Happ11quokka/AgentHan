@@ -286,6 +286,31 @@ def test_the_no_input_limit_does_not_reprompt_while_the_guest_is_speaking(tmp_pa
     assert c.out.of("bot.say", 1)[0]["text"] == "여보세요?"
 
 
+def test_steady_background_noise_cannot_hold_off_the_reprompt_forever(tmp_path) -> None:
+    # 감사 2번: 문턱 위 소음이 끊기지 않으면 무음 감지가 말 구간을 끝내지 않는다. 말 구간이
+    # `no_input_speech_max_s`보다 길어지면 그 소리는 말하는 중으로 보지 않고 상한에서 되묻는다
+    quiet = SessionSettings(no_input_s=0.3, no_input_slack_s=0.3, no_input_speech_max_s=0.8)
+
+    async def call() -> tuple[Call, float, float]:
+        async with Call(tmp_path, stt=FakeSttStream(), settings=quiet) as c:
+            await c.start()
+            began = time.monotonic()
+            asked = None
+            while time.monotonic() - began < 3.0:  # 소음이 100ms마다 계속 올라온다
+                await c.feed(tone(100))
+                if c.out.of("bot.say", 1) and asked is None:
+                    asked = time.monotonic()
+                    break
+                await asyncio.sleep(0.1)
+            assert asked is not None, "소음이 이어져도 되묻는다"
+            await c.out.wait_for("bot.done", turn=1)
+            return c, began, asked
+
+    c, began, asked = run(call())
+    assert c.out.of("bot.say", 1)[0]["text"] == "여보세요?"
+    assert asked - began >= 0.8 - 0.05  # 말 구간 상한 전에는 말하는 중으로 본다
+
+
 # ---------------------------------------------------------------- C2
 
 
