@@ -122,7 +122,7 @@
   - `engine.not_heard(now)`: "죄송해요, 잘 못 들었어요. 다시 말씀해 주세요." 실패·무응답 횟수 둘 다 그대로
 - 세션 무음 타이머: `_after_playback`(`playback.done`·안전망·말 끊기)에서 `no_input_s` 6초(`PHONE_NO_INPUT_S`), 지난 손님 말이 기다림 요청이면 `wait_request_s` 15초(`PHONE_WAIT_REQUEST_S`). VAD 말 구간 중에는 멈추고 그 말 끝(무음 400ms)부터 다시 센다. 손님 말을 붙잡거나 판정하는 중이면 기다린다. 글 없는 소리가 계속 와도 처음 마감 + 6초(`no_input_slack_s`)에는 되묻는다. 되묻기는 `bot_turn("no_input", …)`로 새 턴 번호를 받는다
 - 말했는데 글 없음: 그 `epFlag`까지 말소리 프레임이 500ms(`not_heard_min_ms`) 이상인데 빈 `epFlag` 응답이 오면, 1초(`not_heard_wait_s`) 안에 글 있는 결과(늦은 gap 조각)가 없을 때 `bot_turn("not_heard", …)`. 어댑터 재연결 `eof`, 말 없이 누른 버튼, 말하는 중, 판정 중이면 하지 않는다. JSONL `empty[].voiced_ms`
-- 대화가 끝나 서버가 통화를 끝낼 때 `call.end {turn, reason}`을 보낸다(reason: confirmed · handoff · cancelled · no_input). 그 턴 JSONL에 `end_reason`. 브라우저는 이 이벤트를 몰라도 소켓이 닫혀 끝난다
+- 대화가 끝나 서버가 통화를 끝낼 때 `call.ended {turn, reason}`을 보낸다(reason: confirmed · handoff · cancelled · no_input). 그 턴 JSONL에 `end_reason`. 위로 오는 `call.end`는 손님이 끊은 것이다(리뷰 S13에서 이름을 나눔). 브라우저는 이유를 남겼다가 소켓이 닫히면 통화 종료 화면에 적는다("통화가 끝났어요 · 말씀이 없어 끊었어요"). 가짜 휴대폰은 `end_reason`에 남긴다
 - 테스트: 시나리오 `s22`~`s25`(`scenario_runner`에 `{"event": "no_input"|"not_heard"}`·`"wait_request": true` 턴), `test_engine_no_input.py`, `test_call_no_input.py`(세션)
 
 ## 3단계: 음성 끼어들기 (`call/barge.py`, 티켓 06)

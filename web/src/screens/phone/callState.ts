@@ -53,6 +53,8 @@ export type ServerEvent =
   | { type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number }
   | { type: 'metrics'; turn: number; [key: string]: unknown }
   | { type: 'error'; turn: number; code: string; message: string; retry: boolean }
+  /** 대화가 끝나 서버가 통화를 끝낸다(리뷰 S13). 마지막 인사 재생 뒤 소켓이 닫힌다. 위로 보내는 `call.end`는 손님이 끊은 것 */
+  | { type: 'call.ended'; turn: number; reason: string }
 
 export type Status = 'idle' | 'starting' | 'live' | 'ended' | 'failed'
 
@@ -87,6 +89,8 @@ export interface CallState {
   audioBlocked: boolean
   /** 올려 보낼 소리가 소켓에 많이 쌓였다(회선이 느림). 프레임은 버리지 않고 안내만 한다 */
   slowLink: boolean
+  /** 서버가 통화를 끝낸 이유(`call.ended`): confirmed · handoff · cancelled · no_input. 손님이 끊었으면 null */
+  endReason: string | null
 }
 
 /** 소켓에 이만큼(약 2초 분량) 쌓이면 "회선이 느려요" 안내 (리뷰 1번). 100ms 프레임은 3,200바이트 */
@@ -122,6 +126,7 @@ export const initialCallState: CallState = {
   error: null,
   audioBlocked: false,
   slowLink: false,
+  endReason: null,
 }
 
 const MIC_MESSAGES: Record<MicFailure, string> = {
@@ -200,6 +205,9 @@ function onServer(state: CallState, event: ServerEvent): CallState {
       return { ...state, captions: [...state.captions, { who: 'bot', turn: event.turn, text: event.text }] }
     case 'order':
       return { ...state, order: { order: event.order, cart: event.cart, total: event.total } }
+    case 'call.ended':
+      // 끝난 이유만 남긴다. 마지막 인사가 아직 재생 중일 수 있어 끝내기는 소켓 닫힘이 한다
+      return { ...state, endReason: event.reason }
     case 'error':
       return {
         ...state,

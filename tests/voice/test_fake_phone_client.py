@@ -89,6 +89,7 @@ def test_four_spoken_clips_in_one_call_end_with_the_confirmed_order() -> None:
     assert [c.texts for c in run.clips] == [[t] for t in ORDER_SCRIPT]
     assert run.order is not None and run.order["order"]["status"] == "confirmed"
     assert run.error is None
+    assert run.end_reason == "confirmed"  # 서버가 끝낸 이유 `call.ended {reason}` (리뷰 S13)
     assert run.closed_by_server
     by_turn = {m["turn"]: m for m in run.metrics}
     assert sorted(by_turn) == [0, 1, 2, 3, 4]

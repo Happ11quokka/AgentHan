@@ -2,7 +2,7 @@
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
-import { pickupLabel } from './format.ts'
+import { endReasonLabel, pickupLabel } from './format.ts'
 import { PhoneCall, phoneOptions } from './phoneCall.ts'
 import './phone.css'
 
@@ -21,8 +21,11 @@ function statusLabel(s: CallState): string {
       return s.mic ? '연결 중…' : '마이크 켜는 중…'
     case 'live':
       return s.phase ? PHASE_LABEL[s.phase] : '연결됨'
-    case 'ended':
-      return '통화가 끝났어요'
+    case 'ended': {
+      // 서버가 끝냈으면 이유를 붙인다(`call.ended`, 리뷰 S13)
+      const why = s.endReason ? endReasonLabel(s.endReason) : null
+      return why ? `통화가 끝났어요 · ${why}` : '통화가 끝났어요'
+    }
     case 'failed':
       return '통화가 끊겼어요'
   }

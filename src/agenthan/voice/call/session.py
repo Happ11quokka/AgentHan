@@ -8,7 +8,7 @@
     # 읽기 작업 하나에서:
     #   binary → await session.feed_audio(pcm), text → await session.feed_event(dict)
     #   (둘 다 STT·엔진을 기다리지 않는다. 읽기 작업이 밀리지 않게)
-    await session.wait_done()   # 확정·handoff 뒤 재생 끝, call.end, 오류 중 하나
+    await session.wait_done()   # 확정·handoff 뒤 재생 끝, 손님 call.end, 오류 중 하나
     await session.close()       # STT 닫기, 지연 기록 쓰기, 남은 송신 비우기
 
 작업은 넷이다.
@@ -48,8 +48,9 @@ epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중
 `no_input_s`(기다림 요청 뒤에는 `wait_request_s`) 동안 말이 없으면 봇이 먼저 말하는 턴
 (`bot_turn`)으로 엔진 `no_input`을 부른다. 엔진이 횟수를 세고 되묻거나 마지막 인사를 정한다.
 말소리는 있었는데 글 없는 epFlag 응답만 오면 엔진 `not_heard`로 다시 말해 달라고 한다.
-대화가 끝나 서버가 통화를 끝낼 때는 `call.end {turn, reason}`을 보낸다
-(reason: confirmed · handoff · cancelled · no_input).
+대화가 끝나 서버가 통화를 끝낼 때는 `call.ended {turn, reason}`을 보낸다
+(reason: confirmed · handoff · cancelled · no_input). 위로 오는 `call.end`는 손님이 끊은 것이다
+(리뷰 S13: 같은 이름이 두 뜻이던 것을 나눴다).
 
 엔진 시간 제한(`turn_timeout_s`)을 넘으면 `error`를 내고 통화를 끝낸다. 다음 턴은 시작하지 않는다
 (스레드는 취소되지 않아서, 다음 턴이 같은 엔진을 동시에 건드리게 되기 때문, verify-web D5).
@@ -371,7 +372,7 @@ class CallSession:
         self._wait_requested = False
         self._voiced_ms = 0  # 이번 말 구간의 말소리 프레임 길이
         self._ep_voiced_ms = 0  # 마지막 epFlag 프레임까지의 말소리 길이 (빈 응답 되묻기 기준)
-        self._end_reason: str | None = None  # 대화가 끝난 이유 (`call.end`)
+        self._end_reason: str | None = None  # 대화가 끝난 이유 (`call.ended`)
         self._not_heard_timer = OneShot(self._on_not_heard_timer)
         # 음성 끼어들기 (티켓 06). 설정이 켜져 있고 브라우저가 할 수 있다고 알린 통화만 만든다
         self._barge: BargeTracker | None = None
@@ -517,7 +518,7 @@ class CallSession:
             record = self._log.get(turn)
             if record is not None:
                 record.client.update({k: v for k, v in event.items() if k not in ("type", "turn")})
-        elif kind == "call.end":
+        elif kind == "call.end":  # 손님이 끊었다
             self._end()
 
     async def close(self) -> None:
@@ -1369,12 +1370,12 @@ class CallSession:
         return True
 
     def _say_call_end(self, turn: int) -> None:
-        """대화가 끝나 서버가 통화를 끝낸다. 이유를 `call.end`와 그 턴 기록에 남긴다 (티켓 04)."""
+        """대화가 끝나 서버가 통화를 끝낸다. 이유를 `call.ended`와 그 턴 기록에 남긴다 (티켓 04)."""
         reason = self._end_reason or "done"
         record = self._log.get(turn)
         if record is not None:
             record.fields["end_reason"] = reason
-        self._emit({"type": "call.end", "turn": turn, "reason": reason})
+        self._emit({"type": "call.ended", "turn": turn, "reason": reason})
 
     # 무응답 타이머 (티켓 04, grilling Q6). 봇 재생이 끝나거나 끊긴 때(`_after_playback`)부터
     # `no_input_s`(지난 손님 말이 "잠깐만요"면 `wait_request_s`)를 센다. 손님 말 턴이나 봇 턴이
@@ -1604,7 +1605,7 @@ class CallSession:
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
-    """대화가 끝난 이유 (`call.end`). 봇이 먼저 말한 턴이면 그 이유(no_input 등)."""
+    """대화가 끝난 이유 (`call.ended`). 봇이 먼저 말한 턴이면 그 이유(no_input 등)."""
     if isinstance(u, _BotTurn):
         return u.reason
     if result.state is State.CLOSING:

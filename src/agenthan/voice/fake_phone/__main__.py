@@ -72,6 +72,7 @@ def _jsonable(run: CallRun) -> dict[str, Any]:
         "events": run.events,
         "sent": run.sent,
         "metrics": run.metrics,
+        "end_reason": run.end_reason,
         "closed_by_server": run.closed_by_server,
     }
 

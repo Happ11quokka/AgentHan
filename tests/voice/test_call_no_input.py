@@ -1,7 +1,7 @@
 """무응답·되묻기·"잠깐만요" (3단계 티켓 04). 통화 세션의 바깥 행동만 본다.
 
 - 봇 재생 끝(`playback.done`·말 끊기)부터 `no_input_s` 동안 말이 없으면 봇이 먼저 되묻는다
-  (새 턴 번호). 세 번째 무응답이면 마지막 인사 뒤 `call.end {reason: no_input}`로 끝난다
+  (새 턴 번호). 세 번째 무응답이면 마지막 인사 뒤 `call.ended {reason: no_input}`로 끝난다
 - VAD 말 시작이면 타이머가 멈추고 그 말 끝부터 다시 센다. 받아들인 말은 횟수를 0으로
 - "잠깐만요" 뒤 첫 대기는 `wait_request_s`
 - 말소리 `not_heard_min_ms` 이상 + 빈 epFlag 응답 → "잘 못 들었어요". 합성 `eof`·짧은 소리는 빼고
@@ -69,7 +69,7 @@ def test_silence_reprompts_twice_then_says_goodbye_and_ends_the_call(tmp_path) -
     assert said(c, 1) == f"{HELLO} 어떤 걸로 드릴까요?"
     assert said(c, 2) == f"{HELLO} 어떤 걸로 드릴까요?"
     assert said(c, 3) == GOODBYE
-    assert c.out.of("call.end") == [{"type": "call.end", "turn": 3, "reason": "no_input"}]
+    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 3, "reason": "no_input"}]
     lines = records(c)
     assert [line.get("bot_turn") for line in lines] == [None, "no_input", "no_input", "no_input"]
     assert lines[3]["end_reason"] == "no_input"
@@ -108,7 +108,7 @@ def test_accepted_speech_resets_the_count(tmp_path) -> None:
     c = run(call())
     assert said(c, 3) == f"{HELLO} 더 필요하신 거 있으세요?"
     assert said(c, 4) == f"{HELLO} 더 필요하신 거 있으세요?"
-    assert c.out.of("call.end") == []
+    assert c.out.of("call.ended") == []
 
 
 def test_a_wait_request_answers_and_waits_longer_before_the_first_reprompt(tmp_path) -> None:
@@ -202,5 +202,5 @@ def test_a_confirmed_order_ends_the_call_with_the_confirmed_reason(tmp_path) -> 
             return c
 
     c = run(call())
-    assert c.out.of("call.end") == [{"type": "call.end", "turn": 4, "reason": "confirmed"}]
+    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 4, "reason": "confirmed"}]
     assert records(c)[4]["end_reason"] == "confirmed"

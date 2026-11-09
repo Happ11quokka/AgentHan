@@ -169,6 +169,18 @@ describe('callReducer', () => {
     expect(s.order?.order.status).toBe('confirmed')
   })
 
+  it('keeps why the server ended the call (call.ended) for the end-of-call screen', () => {
+    // 리뷰 S13: 서버가 끝낸 이유는 아래쪽 call.ended로 온다. 남은 재생은 소켓이 닫힐 때까지 둔다
+    const ended: CallAction = { type: 'server', event: { type: 'call.ended', turn: 3, reason: 'no_input' } }
+    const live = run(dial, micReady, ready, ended)
+    expect(live.status).toBe('live')
+    expect(live.endReason).toBe('no_input')
+    const closed = callReducer(live, { type: 'socket.closed' })
+    expect(closed.status).toBe('ended')
+    expect(closed.endReason).toBe('no_input')
+    expect(run(dial, micReady, ready, { type: 'socket.closed' }).endReason).toBeNull()
+  })
+
   it('shows the server error message and offers a redial when retry is true', () => {
     const s = run(dial, micReady, ready, {
       type: 'server',

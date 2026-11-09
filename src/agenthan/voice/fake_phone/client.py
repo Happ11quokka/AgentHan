@@ -10,7 +10,8 @@
   봇이 대답을 마쳐 다시 듣는 중이 되면 다음 녹음. 녹음을 다 보낸 뒤 `no_turn_timeout_s` 안에
   `stt.final`이 없으면 그 녹음은 턴을 못 만든 것으로 보고 넘어간다
 - 서버가 소켓을 닫으면(확정·handoff 재생 끝, 오류) 끝. 녹음을 다 썼는데 안 닫히면
-  `no_turn_timeout_s` 뒤에 `call.end`를 보낸다
+  `no_turn_timeout_s` 뒤에 `call.end`(손님이 끊음)를 보낸다. 서버가 끝내면 `call.ended`의
+  이유를 `end_reason`에 남긴다
 
 시각은 모두 연결 시작부터의 ms(이 프로세스 단조 시계). 받은 이벤트(`events`)와 보낸 제어
 이벤트(`sent`)에 `t`를 붙여 남긴다. 서버의 턴별 지연 기록은 `metrics` 이벤트로 받는다.
@@ -58,6 +59,7 @@ class CallRun:
     metrics: list[dict[str, Any]] = field(default_factory=list)
     order: dict[str, Any] | None = None
     error: dict[str, Any] | None = None
+    end_reason: str | None = None  # 서버가 끝낸 이유 (`call.ended {reason}`)
     closed_by_server: bool = False
 
 
@@ -167,6 +169,8 @@ class _Phone:
             self.run.order = event
         elif kind == "error":
             self.run.error = event
+        elif kind == "call.ended":
+            self.run.end_reason = event.get("reason")
 
     def on_audio(self, raw: bytes) -> None:
         frame = unpack_audio_frame(raw)

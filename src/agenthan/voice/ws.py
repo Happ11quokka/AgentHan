@@ -4,8 +4,8 @@
 
 - 올리는 binary(PCM16LE 16kHz mono 100ms)는 `feed_audio`, text(JSON)는 `feed_event`로 넘긴다
 - 내보내기는 세션의 송신 작업 하나가 `WsOutbound`로만 한다 (Starlette `send`에 잠금이 없음)
-- 세션이 끝나거나(확정·handoff·`call.end`·오류) 손님이 끊으면 세션을 닫고(STT 닫기·JSONL 쓰기)
-  소켓을 닫는다
+- 세션이 끝나거나(확정·handoff·무응답 등 `call.ended`, 오류) 손님이 끊으면(`call.end`·소켓
+  끊김) 세션을 닫고(STT 닫기·JSONL 쓰기) 소켓을 닫는다
 - 동시 통화가 `max_calls`를 넘으면 세션 없이 `error{code: "busy"}`를 보내고 닫는다 (리뷰 17번).
   통화 길이(`max_call_s`)와 `call.start` 대기(10초)는 세션이 지킨다
 - 턴 모델(Smart Turn, 3단계 티켓 03)은 라우터를 만들 때 한 번 연다(체크섬 확인). 없거나 틀리면
