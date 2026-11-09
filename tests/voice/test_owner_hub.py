@@ -62,6 +62,8 @@ def test_a_confirmed_order_becomes_a_new_order_card_for_the_owner() -> None:
     assert card["id"] == "call-1"
     assert card["status"] == "new"
     assert card["received_at"] == "2026-11-08T16:02:00+09:00"
+    assert card["received_label"] == "16:02"  # 리뷰 P1: 주문 시각을 카드에 (이야기 25)
+    assert card["customer_name"] == ""  # 엔진이 이름을 받지 않는다. 있으면 그대로
     assert card["pickup_time"] == "2026-11-08T18:30:00+09:00"
     assert card["pickup_label"] == "18:30"
     assert card["lines"] == [
@@ -164,3 +166,18 @@ def test_an_order_submitted_from_another_thread_reaches_the_screen() -> None:
     update = asyncio.run(scenario())
 
     assert (update.name, update.data["id"]) == ("order.update", "call-9")
+
+
+def test_the_order_card_shows_the_customer_name_when_the_order_has_one() -> None:
+    # 리뷰 P1 (이야기 25): 계약 `Order.customer_name`이 차 있으면 카드에 싣는다
+    async def scenario():
+        hub = _hub()
+        stream = hub.events()
+        await _next(stream)
+        hub.submit(_order(customer_name="김", created_at="2026-11-08T16:05:30+09:00"))
+        update = await _next(stream)
+        await stream.aclose()
+        return update.data
+
+    card = asyncio.run(scenario())
+    assert (card["customer_name"], card["received_label"]) == ("김", "16:05")

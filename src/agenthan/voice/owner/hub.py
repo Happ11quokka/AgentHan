@@ -769,10 +769,14 @@ class OwnerHub:
     def _order_card(self, order: Order) -> dict[str, Any]:
         lines = self._card_lines(order.lines)
         total = sum(line["subtotal"] for line in lines)
+        received_at = order.created_at or self._clock.now().isoformat()
         return {
             "id": order.id,
             "status": "new",
-            "received_at": order.created_at or self._clock.now().isoformat(),
+            "received_at": received_at,
+            "received_label": clock_label(received_at),  # 주문 시각 `16:05` (이야기 25, 리뷰 P1)
+            # 손님 이름(성). 지금 통화 엔진은 이름을 받지 않아 비어 있다. 차 있으면 카드에 보인다
+            "customer_name": order.customer_name,
             "pickup_time": order.pickup_time,
             "pickup_label": clock_label(order.pickup_time),
             "lines": lines,

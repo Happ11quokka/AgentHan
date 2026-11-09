@@ -166,6 +166,14 @@
   color: var(--owner-muted);
 }
 
+/* 주문 카드 주문 시각 · 손님 이름 (리뷰 P1) */
+.owner-order-meta {
+  margin: 0;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--owner-muted);
+}
+
 /* Papago 표기 (이용 조건: 브랜드 표기와 링크) */
 .owner-foot {
   margin: 24px 0 8px;

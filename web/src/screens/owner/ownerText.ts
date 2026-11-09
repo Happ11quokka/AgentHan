@@ -7,6 +7,7 @@ import type {
   CaptionLine,
   KnowledgeCard,
   KnowledgeKind,
+  OrderCard,
   OrderCardLine,
   OwnerAnswer,
   QuestionCard,
@@ -37,6 +38,8 @@ export interface OwnerText {
   dismiss: string
   noOrders: string
   pickup: string
+  /** 주문 카드 주문 시각 앞말 (리뷰 P1) */
+  orderedAt: string
   accept: string
   accepted: string
   sectionLive: string
@@ -107,6 +110,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     dismiss: 'Закрыть',
     noOrders: 'Заказов пока нет.',
     pickup: 'Забрать в',
+    orderedAt: 'Заказ в',
     accept: 'Принять',
     accepted: 'Принят',
     sectionLive: 'Идут звонки',
@@ -184,6 +188,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     dismiss: '닫기',
     noOrders: '아직 들어온 주문이 없어요.',
     pickup: '픽업',
+    orderedAt: '주문',
     accept: '접수',
     accepted: '접수함',
     sectionLive: '통화 중',
@@ -295,6 +300,19 @@ export function questionView(
 export function answerLabel(yesNo: boolean | undefined, answer: OwnerAnswer, lang: OwnerLang): string {
   const text = OWNER_TEXT[lang]
   return yesNo && answer !== 'unsure' ? text.answerContains[answer] : text.answer[answer]
+}
+
+/**
+ * 주문 카드의 주문 시각과 손님 이름(성) 한 줄 (이야기 25, 리뷰 P1). 이름이 없으면 시각만,
+ * 둘 다 없으면(리뷰 전 서버) 빈 글
+ */
+export function orderMeta(
+  card: Partial<Pick<OrderCard, 'received_label' | 'customer_name'>>,
+  lang: OwnerLang,
+): string {
+  const parts = [card.received_label ? `${OWNER_TEXT[lang].orderedAt} ${card.received_label}` : '']
+  if (card.customer_name) parts.push(card.customer_name)
+  return parts.filter(Boolean).join(' · ')
 }
 
 export interface CaptionView {

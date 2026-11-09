@@ -49,6 +49,10 @@ export interface OrderCard {
   status: OrderStatus
   /** 허브가 받은 시각(ISO 8601, 가게 시간대) */
   received_at: string
+  /** 주문 시각 고정 표기 `16:05` (이야기 25, 리뷰 P1). 리뷰 전 서버는 안 보낸다 */
+  received_label?: string
+  /** 손님 이름(성). 지금 통화 엔진은 이름을 받지 않아 빈 글이다 */
+  customer_name?: string
   pickup_time: string
   /** 서버가 넣은 고정 표기 `18:30` (Intl을 쓰지 않는다) */
   pickup_label: string

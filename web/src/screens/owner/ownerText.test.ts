@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type OrderCardLine, type SentText, WRITTEN_ANSWER_MAX, writtenAnswer } from './ownerState.ts'
-import { OWNER_TEXT, answerLabel, lineView, ownerLang, questionView, sentTextView } from './ownerText.ts'
+import { OWNER_TEXT, answerLabel, lineView, orderMeta, ownerLang, questionView, sentTextView } from './ownerText.ts'
 
 function line(over: Partial<OrderCardLine> = {}): OrderCardLine {
   return {
@@ -140,5 +140,17 @@ describe('answer buttons on a contains question (review P2)', () => {
   it('keeps can / cannot for other questions', () => {
     expect([answerLabel(false, 'yes', 'ru'), answerLabel(false, 'no', 'ru')]).toEqual(['Можно', 'Нельзя'])
     expect(answerLabel(undefined, 'yes', 'ko')).toBe('돼요')
+  })
+})
+
+describe('order time and customer name on the order card (review P1, story 25)', () => {
+  it('shows when the order came in, and the customer name when there is one', () => {
+    expect(orderMeta({ received_label: '16:05', customer_name: '' }, 'ru')).toBe('Заказ в 16:05')
+    expect(orderMeta({ received_label: '16:05', customer_name: '김' }, 'ru')).toBe('Заказ в 16:05 · 김')
+    expect(orderMeta({ received_label: '16:05', customer_name: '김' }, 'ko')).toBe('주문 16:05 · 김')
+  })
+
+  it('shows nothing for an older server that sends neither', () => {
+    expect(orderMeta({}, 'ru')).toBe('')
   })
 })
