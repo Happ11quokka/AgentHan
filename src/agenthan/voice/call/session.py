@@ -40,7 +40,7 @@
 epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 epFlag 응답을 기다리는
 중이어도 붙잡는다(티켓 10, `_continues_after`). 그때 턴은 epFlag 응답으로 넘어간다.
 `hold_max_s` 안에 새 결과가 없으면 그대로 턴을 넘긴다(`end_by: hold_timeout`,
-`_on_hold_timer` 앞 주석).
+`_on_hold_timer` 설명).
 마지막으로 글을 붙잡은 때부터 `hold_cap_s`를 넘겨 붙잡지는 않는다(리뷰 C4).
 버린 결과(반이중·확정 뒤·통화 끝)는 그 턴 기록의 `dropped`에 남긴다.
 
@@ -152,8 +152,6 @@ def turn_pool() -> ThreadPoolExecutor:
     if _turn_pool is None:
         _turn_pool = ThreadPoolExecutor(TURN_THREADS, thread_name_prefix=TURN_THREAD_PREFIX)
     return _turn_pool
-
-
 
 
 @dataclass(frozen=True)
@@ -810,7 +808,6 @@ class CallSession:
             return  # 새 말이 제 결과를 낸다
         self.bot_turn("not_heard", lambda engine, now: engine.not_heard(now))
 
-
     def _release(self, r: SttResult, end_by: str) -> None:
         """모아 둔 조각을 손님 말 하나로 만든다. 마지막 끝 후보 결과가 `r`이다."""
         forced = end_by == "button"
@@ -833,13 +830,6 @@ class CallSession:
         else:
             self._pending.append(utterance)
 
-    # 붙잡기 시간 제한 (리뷰 2번). 붙잡은 뒤 `hold_max_s` 동안 새 결과가 없으면 푼다. 다만 그때
-    # 이어진 말 구간이 아직 열려 있거나 그 구간의 `epFlag` 응답을 기다리는 중이면 `hold_cap_s`까지
-    # 늘린다(마지막 글부터 센다). 그래야 "메도빅 두 개… 랑 아메리카노 하나요"처럼 긴 뒷말이
-    # 쪼개지지 않는다
-
-
-
     def _clear_hold(self) -> None:
         """붙잡아 둔 조각·시간 제한을 모두 지운다."""
         self._hold_timer.cancel()
@@ -849,6 +839,12 @@ class CallSession:
         self._hold_text_at = None
 
     def _on_hold_timer(self) -> None:
+        """붙잡기 시간 제한 (리뷰 2번). 붙잡은 뒤 `hold_max_s` 동안 새 결과가 없으면 푼다.
+
+        다만 그때 이어진 말 구간이 아직 열려 있거나 그 구간의 `epFlag` 응답을 기다리는 중이면
+        `hold_cap_s`까지 늘린다(마지막 글부터 센다, 리뷰 C4). 그래야 "메도빅 두 개… 랑 아메리카노
+        하나요"처럼 긴 뒷말이 쪼개지지 않는다
+        """
         held = self._held
         if held is None or not self._parts or self.done:
             return
@@ -975,8 +971,6 @@ class CallSession:
     def _submit(self, fn: Callable[[], None]) -> None:
         self._in_thread(fn).add_done_callback(_retrieve)
 
-
-
     def _on_cont_timer(self) -> None:
         """이어짐 마감: 마지막 말 끝 + `cont_wait_s`. 말하는 중이거나 아직 STT 글을 기다리면 미룬다.
 
@@ -1082,7 +1076,6 @@ class CallSession:
         now = self._clock.monotonic()
         self._thinking_timer.arm((now if ref is None else ref) + self._settings.thinking_after_s
                                  - now, turn)
-
 
     def _on_thinking(self, turn: int) -> None:
         if self.done or turn != self._turn or self._phase != "thinking":
@@ -1278,7 +1271,6 @@ class CallSession:
             record.fields["play_done_timeout"] = True
         self._after_playback(turn)
 
-
     # 말 끊기 (3단계 티켓 05). 기본은 반이중이라 봇이 말하는 동안 브라우저는 0 프레임을 보낸다.
     # 버튼을 누르면 브라우저가 재생을 멈추고 지금 턴 이하 오디오를 버리고 마이크를 연 뒤
     # `user.interrupt`와 `playback.interrupted {turn, seq, played_ms}`를 보낸다. 서버는 남은 문장
@@ -1403,8 +1395,6 @@ class CallSession:
         self._quiet_since = self._clock.monotonic()
         self._quiet_turn = turn
         self._quiet_timer.arm(self._quiet_delay)
-
-
 
     def _on_quiet_timer(self) -> None:
         if self.done or self._terminal or self._phase != "listening" or self._quiet_since is None:
