@@ -2,8 +2,9 @@
 
     app.include_router(owner_router(hub, key=settings.owner_key))
 
-- `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [카드…], "calls": [카드…]}`),
-  그 뒤 `order.update`·`call.update`(카드 전체)
+- `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [...], "calls": [...],
+  "questions": [...]}`), 그 뒤 `order.update`·`call.update`·`owner.question`·`owner.question.update`
+  (카드 전체)
 - `POST /api/owner/orders/{id}/accept?key=…`: 접수(new → accepted). 바뀐 카드를 돌려준다.
   없는 주문은 404
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
