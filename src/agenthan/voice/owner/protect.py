@@ -12,6 +12,8 @@
   "파이"·"초코"·"밤에"(시간)는 안 가린다
 - 가린 낱말 바로 뒤 격조사(은/는/이/가/을/를)는 뗀다. 남겨 두면 Papago가 조사를 낱말로 옮긴다
   ("[1]은 빼 주세요" → "Снимите серебро", 은 = 銀)
+- 가린 낱말 바로 뒤 "(이)랑"은 "하고"로 바꿔 보낸다. "[1]이랑 [2]"는 Papago가 자리표시자 하나를
+  지웠고(티켓 04 실측 2/2), "[1]하고 [2]"는 둘 다 남았다(티켓 12 재확인 3/3). 원문(`source`)은 그대로
 - 확인(`restore`): 자리표시자가 하나라도 사라지거나 늘거나 번호가 틀리면 버린다(None).
   원문 숫자(아라비아 숫자)가 번역문에 숫자나 사전의 수사(`numerals`, "2" → "два·две…")로 없거나,
   번역문에 원문에 없는 숫자가 있으면 버린다. 한글 수사("두 개")는 아직 안 본다
@@ -54,6 +56,14 @@ def _case_particle(word: str, rest: str) -> int:
     return 0
 
 
+def _rang(word: str, rest: str) -> int:
+    """`rest`가 `word`에 맞는 "(이)랑" 하나로 시작하고 그 뒤가 낱말 끝이면 그 길이, 아니면 0."""
+    joiner = "이랑" if has_batchim(word) else "랑"
+    if rest.startswith(joiner) and not _is_hangul(rest[len(joiner):][:1]):
+        return len(joiner)
+    return 0
+
+
 def _term_ends_here(word: str, rest: str) -> bool:
     if not rest or not _is_hangul(rest[0]):
         return True
@@ -88,6 +98,9 @@ def mask(text: str, *, names: Mapping[str, str], terms: Mapping[str, str]) -> Ma
         out.append(f"[{len(fills)}]")
         i += len(ko)
         i += _case_particle(ko, text[i:])
+        if joiner := _rang(ko, text[i:]):
+            out.append("하고")
+            i += joiner
     return Masked(text="".join(out), fills=tuple(fills), source=text)
 
 
@@ -106,7 +119,9 @@ def restore(
         value = masked.fills[int(m.group(1)) - 1]
         before = translated[m.start() - 1:m.start()]
         after = translated[m.end():m.end() + 1]
-        return (" " if before.isalnum() else "") + value + (" " if after.isalnum() else "")
+        # 붙어 나온 자리표시자(`[1][2]`)는 뒤 낱말 앞에 빈칸 하나("Блины лосось")
+        return (" " if before.isalnum() else "") + value + (
+            " " if after.isalnum() or after == "[" else "")
 
     return PLACEHOLDER.sub(fill, translated)
 

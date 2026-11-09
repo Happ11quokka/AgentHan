@@ -399,3 +399,38 @@ def test_a_new_lexicon_word_inside_another_word_is_not_masked(request_ko: str) -
     _request_events(papago, request_ko)
 
     assert papago.calls == [((request_ko,), "ko", "ru")]
+
+
+@pytest.mark.parametrize(("request_ko", "papago_table", "shown"), [
+    # 실측: 안 가리면 "연어를 주세요"로 뒤집혔다. 가리면 맞지만 자리표시자가 붙어 나온다
+    ("러시아 팬케이크에 연어 빼 주세요", {
+        "러시아 팬케이크에 연어 빼 주세요":
+            "Пожалуйста, пожалуйста, дайте мне лосося в русские блины.",
+        "[1]에 [2] 빼 주세요": "[1][2] Уберите это, пожалуйста.",
+    }, "Блины лосось Уберите это, пожалуйста."),
+    ("블린에 밤 넣을 수 있어요?", {
+        "[1]에 [2] 넣을 수 있어요?": "[1][2] Можно положить в?",
+    }, "Блины каштаны Можно положить в?"),
+])
+def test_placeholders_that_come_back_stuck_together_get_a_space(
+    request_ko: str, papago_table: dict[str, str], shown: str
+) -> None:
+    """"Блиныкаштаны"처럼 두 낱말이 붙어 한 낱말로 읽히지 않게 한다."""
+    assert _request_events(FakeTranslator(papago_table), request_ko)[-1] == (request_ko, shown)
+
+
+@pytest.mark.parametrize(("request_ko", "papago_table", "shown"), [
+    ("메도빅이랑 나폴레옹 하나씩 따로 담아 주세요", {
+        "[1]이랑 [2] 하나씩 따로 담아 주세요": "[1]Пожалуйста, положите их по одному.",
+        "[1]하고 [2] 하나씩 따로 담아 주세요": "[1][2] Пожалуйста, положите по одному.",
+    }, "Медовик Наполеон Пожалуйста, положите по одному."),
+    ("블린은 고수랑 파 둘 다 빼 주세요", {
+        "[1] [2]랑 [3] 둘 다 빼 주세요": "[1] [2]Уберите их обоих.",
+        "[1] [2]하고 [3] 둘 다 빼 주세요": "[1] [2]И [3] Уберите их обоих.",
+    }, "Блины кинза И зелёный лук Уберите их обоих."),
+])
+def test_two_masked_words_joined_by_rang_are_sent_joined_by_hago(
+    request_ko: str, papago_table: dict[str, str], shown: str
+) -> None:
+    """실측: "[1]이랑 [2]"는 Papago가 자리표시자 하나를 지웠다(2/2). "[1]하고 [2]"는 둘 다 남았다(3/3)."""
+    assert _request_events(FakeTranslator(papago_table), request_ko)[-1] == (request_ko, shown)
