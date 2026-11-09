@@ -1,16 +1,27 @@
-// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·05, 서버 `voice/owner/hub.py`).
+// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·03·05, 서버 `voice/owner/hub.py`).
 // 화면 상태는 순수 리듀서 하나로 정한다: 이전 상태 + 이벤트 → 다음 상태.
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
 
 /** 사장님 처리 상태 (Part A 어휘). 4단계 버튼은 접수 하나 */
 export type OrderStatus = 'new' | 'accepted'
 
+/** 손님 요청 배지 (서버 `badges.py`, 한국어 원문 규칙). remove = 빼기, allergy = 알레르기 */
+export type RequestBadge = 'remove' | 'allergy'
+
 export interface OrderCardLine {
   menu_id: string
   name_ko: string
+  /** 사장님 원어 이름(`MenuItem.name_native`). 비면 서버가 `name_ko`를 넣는다 (티켓 03) */
+  name_owner: string
   quantity: number
   options: string[]
+  /** 옵션 이름의 사장님 언어(서버 정적 사전). 사전에 없으면 한국어 그대로 */
+  options_owner: string[]
+  /** 손님 요청 한국어 원문 */
   request: string
+  /** 요청 번역(Papago). 아직 안 왔거나 실패·버림이면 빈 글. 번역이 오면 같은 카드가 다시 온다 */
+  request_owner: string
+  badges: RequestBadge[]
   subtotal: number
 }
 
@@ -63,6 +74,8 @@ export interface CallCard {
   total_label: string
   /** 넘김 카드만: 마지막 손님 말 3줄(한국어 원문, 오래된 것부터). 나머지는 빈 목록 */
   heard: string[]
+  /** `heard`의 줄마다 번역(아직·실패면 빈 글). 길이는 `heard`와 같다 (티켓 03) */
+  heard_owner: string[]
 }
 
 /** 사장님 버튼 답 (티켓 05): 돼요 · 안 돼요 · 모르겠어요 */

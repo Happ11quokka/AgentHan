@@ -23,7 +23,20 @@ function card(id: string, status: OrderCard['status'] = 'new'): OrderCard {
     received_at: '2026-11-08T16:02:00+09:00',
     pickup_time: '2026-11-08T18:30:00+09:00',
     pickup_label: '18:30',
-    lines: [{ menu_id: 'm01', name_ko: '메도빅', quantity: 1, options: [], request: '', subtotal: 7500 }],
+    lines: [
+      {
+        menu_id: 'm01',
+        name_ko: '메도빅',
+        name_owner: 'Медовик',
+        quantity: 1,
+        options: [],
+        options_owner: [],
+        request: '',
+        request_owner: '',
+        badges: [],
+        subtotal: 7500,
+      },
+    ],
     total: 7500,
     total_label: '7,500₩',
   }
@@ -89,6 +102,7 @@ function call(id: string, status: CallCard['status'] = 'live', reason: CallCard[
     total: 0,
     total_label: '0₩',
     heard: [],
+    heard_owner: [],
   }
 }
 
@@ -136,5 +150,32 @@ describe('owner screen call cards (ticket 02)', () => {
     const s = run(withCalls(call('a')), withCalls(call('b', 'missed', 'no_input')))
     expect(callIds(liveCalls(s))).toEqual([])
     expect(callIds(followUpCalls(s))).toEqual(['b'])
+  })
+})
+
+describe('owner screen translations (ticket 03)', () => {
+  it('shows the translation when the same order card comes again translated', () => {
+    const korean = card('a')
+    korean.lines = [{ ...korean.lines[0], request: '고수는 빼 주세요', badges: ['remove'] }]
+    const translated = {
+      ...korean,
+      lines: [{ ...korean.lines[0], request_owner: 'кинза Уберите, пожалуйста.' }],
+    }
+    const s = run(snapshot(korean, card('b')), update(translated))
+    expect(ids(s)).toEqual(['a', 'b'])
+    expect(s.orders[0].lines[0]).toMatchObject({
+      request: '고수는 빼 주세요',
+      request_owner: 'кинза Уберите, пожалуйста.',
+      badges: ['remove'],
+    })
+  })
+
+  it('shows the translated last customer lines on the handoff card', () => {
+    const handoff = { ...call('a', 'handoff', 'handoff'), heard: ['사장님이랑 통화할래요'], heard_owner: [''] }
+    const translated = { ...handoff, heard_owner: ['Я хочу поговорить с хозяином.'] }
+    const s = run(withCalls(handoff), callUpdate(translated))
+    expect(followUpCalls(s).map((c) => [c.heard, c.heard_owner])).toEqual([
+      [['사장님이랑 통화할래요'], ['Я хочу поговорить с хозяином.']],
+    ])
   })
 })

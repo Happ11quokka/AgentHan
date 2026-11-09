@@ -1,17 +1,17 @@
 // Part C 사장님 화면 (4단계). 이 폴더(src/screens/owner/)는 Part C 몫이다.
-// `/owner?key=…`로 연다. "가게 열기"를 누르면 소리 잠금 풀기·화면 꺼짐 방지·SSE 연결을 한 번에 한다.
-// 이 티켓(01)의 카드는 한국어 메뉴명·수량·옵션·픽업 시각·총액만 보인다(사장님 언어는 티켓 03).
+// `/owner?key=…&lang=ru`로 연다(언어 기본 ru). "가게 열기"를 누르면 소리 잠금 풀기·화면 꺼짐 방지·SSE 연결을 한 번에 한다.
+// 카드(티켓 03): 메뉴명은 사장님 원어 이름을 크게, 한국어를 작게. 옵션은 서버 정적 사전, 시각·금액은 서버 고정 표기.
+// 손님 요청은 번역(Papago) + 한국어 원문 + 배지(한국어 원문 규칙). 번역이 오면 같은 카드가 다시 와서 덮어쓴다.
+// 고정 문구는 `ownerText.ts` 사전. 화면 아래에 Papago 표기(이용 조건).
 // 통화 카드(티켓 02): 맨 위 줄에 통화 중 카드, 그 아래 "손님 연락 필요"(넘김)·회색 미완료 카드(닫기 버튼).
 // 알림 소리·깜빡임·리마인드·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
-// 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문 원문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
+// 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
 import {
   type CallCard,
-  type CallEndReason,
-  type Connection,
   type OrderCardLine,
   type OwnerAnswer,
   type QuestionCard,
@@ -31,33 +31,13 @@ import {
   ownerKey,
   wakeDevice,
 } from './ownerStream.ts'
+import { OWNER_TEXT, type OwnerLang, type OwnerText, PAPAGO_URL, lineView, ownerLang } from './ownerText.ts'
 import { pickupBand } from './pickupBand.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
 import './owner.css'
 
-const CONNECTION_LABEL: Record<Connection, string> = {
-  closed: '가게 문을 열면 주문을 받아요',
-  connecting: '연결 중…',
-  live: '주문 받는 중',
-  failed: '연결할 수 없어요. 주소의 토큰을 확인해 주세요',
-}
-
-/** 미완료 카드의 끝난 이유 (사장님 언어는 티켓 03) */
-const END_REASON_LABEL: Record<CallEndReason, string> = {
-  confirmed: '주문 확정',
-  handoff: '사장님 연결 요청',
-  cancelled: '손님이 주문 취소',
-  no_input: '손님 응답 없음',
-  hangup: '손님이 끊음',
-  error: '연결 오류',
-}
-
-/** 질문 카드 버튼 (사장님 언어는 티켓 03). 순서가 화면 순서다 */
-const ANSWER_BUTTONS: { answer: OwnerAnswer; label: string }[] = [
-  { answer: 'yes', label: '돼요' },
-  { answer: 'no', label: '안 돼요' },
-  { answer: 'unsure', label: '모르겠어요' },
-]
+/** 질문 카드 버튼. 순서가 화면 순서다. 문구는 `ownerText.ts` */
+const ANSWERS: OwnerAnswer[] = ['yes', 'no', 'unsure']
 
 /** 질문 카드 카운트다운을 다시 그리는 간격 */
 const QUESTION_TICK_MS = 1_000
@@ -65,15 +45,11 @@ const QUESTION_TICK_MS = 1_000
 /** locked: 가게 열기 전(브라우저가 사용자 동작 전 소리를 막는다). on: 알림음 켜짐. unavailable: 켤 수 없음 */
 type Sound = 'locked' | 'on' | 'unavailable'
 
-const SOUND_LABEL: Record<Sound, string> = {
-  locked: '소리 꺼짐 · 가게 열기를 누르면 켜져요',
-  on: '알림 소리 켜짐',
-  unavailable: '알림 소리를 켤 수 없어요',
-}
-
 export default function OwnerPage() {
   const [state, dispatch] = useReducer(ownerReducer, initialOwnerState)
   const key = useRef(ownerKey(location.search))
+  const [lang] = useState<OwnerLang>(() => ownerLang(location.search))
+  const text = OWNER_TEXT[lang]
   const close = useRef<(() => void) | null>(null)
   const chime = useRef<OrderChime | null>(null)
   const releaseWake = useRef<(() => void) | null>(null)
@@ -153,32 +129,32 @@ export default function OwnerPage() {
   const questions = openQuestions(state)
 
   return (
-    <main className="owner">
+    <main className="owner" lang={lang}>
       <header className="owner-head">
-        <h1>사장님 화면</h1>
+        <h1>{text.title}</h1>
         <p className={`owner-status owner-status-${state.connection}`} role="status">
-          {CONNECTION_LABEL[state.connection]}
+          {text.connection[state.connection]}
         </p>
-        <p className={`owner-sound owner-sound-${sound}`}>{SOUND_LABEL[sound]}</p>
+        <p className={`owner-sound owner-sound-${sound}`}>{text.sound[sound]}</p>
         {showOpen && (
           <button type="button" className="owner-btn owner-btn-open" onClick={openStore}>
-            가게 열기
+            {text.openStore}
           </button>
         )}
       </header>
 
       {live.length > 0 && (
-        <section className="owner-calls owner-calls-live" aria-label="통화 중">
+        <section className="owner-calls owner-calls-live" aria-label={text.sectionLive}>
           {live.map((call) => (
             <article key={call.id} className="owner-card owner-call owner-call-live">
               <header className="owner-card-head">
-                <span className="owner-call-title">통화 중</span>
+                <span className="owner-call-title">{text.liveCall}</span>
                 <span className="owner-call-time">{call.started_label}</span>
               </header>
               {call.lines.length > 0 ? (
-                <CardLines lines={call.lines} />
+                <CardLines lines={call.lines} lang={lang} text={text} />
               ) : (
-                <p className="owner-call-empty">아직 담은 메뉴가 없어요</p>
+                <p className="owner-call-empty">{text.liveEmpty}</p>
               )}
               {call.lines.length > 0 && <strong className="owner-total">{call.total_label}</strong>}
             </article>
@@ -187,12 +163,13 @@ export default function OwnerPage() {
       )}
 
       {questions.length > 0 && (
-        <section className="owner-questions" aria-label="손님 질문">
+        <section className="owner-questions" aria-label={text.sectionQuestions}>
           {questions.map((q) => (
             <QuestionCardView
               key={q.id}
               question={q}
               left={secondsLeft(q, now)}
+              text={text}
               onAnswer={(value) => void answer(q.id, value)}
             />
           ))}
@@ -200,16 +177,22 @@ export default function OwnerPage() {
       )}
 
       {followUps.length > 0 && (
-        <section className="owner-calls" aria-label="확인할 통화">
+        <section className="owner-calls" aria-label={text.sectionFollowUp}>
           {followUps.map((call) => (
-            <FollowUpCard key={call.id} call={call} onDismiss={() => void dismiss(call.id)} />
+            <FollowUpCard
+              key={call.id}
+              call={call}
+              lang={lang}
+              text={text}
+              onDismiss={() => void dismiss(call.id)}
+            />
           ))}
         </section>
       )}
 
-      <section className="owner-orders" aria-label="주문">
+      <section className="owner-orders" aria-label={text.sectionOrders}>
         {state.connection === 'live' && state.orders.length === 0 && (
-          <p className="owner-empty">아직 들어온 주문이 없어요.</p>
+          <p className="owner-empty">{text.noOrders}</p>
         )}
         {state.orders.map((card) => (
           <article
@@ -222,62 +205,117 @@ export default function OwnerPage() {
             ].join(' ')}
           >
             <header className="owner-card-head">
-              <span className="owner-pickup">{card.pickup_label}</span>
+              <span className="owner-pickup">
+                <small className="owner-pickup-label">{text.pickup}</small> {card.pickup_label}
+              </span>
               <strong className="owner-total">{card.total_label}</strong>
             </header>
-            <CardLines lines={card.lines} />
+            <CardLines lines={card.lines} lang={lang} text={text} />
             {canAccept(card) ? (
               <button type="button" className="owner-btn owner-btn-accept" onClick={() => void accept(card.id)}>
-                접수
+                {text.accept}
               </button>
             ) : (
-              <p className="owner-accepted">접수함</p>
+              <p className="owner-accepted">{text.accepted}</p>
             )}
           </article>
         ))}
       </section>
+
+      <footer className="owner-foot">
+        <a href={PAPAGO_URL} target="_blank" rel="noreferrer">
+          {text.papago}
+        </a>
+      </footer>
     </main>
   )
 }
 
-function CardLines({ lines }: { lines: OrderCardLine[] }) {
+function CardLines({ lines, lang, text }: { lines: OrderCardLine[]; lang: OwnerLang; text: OwnerText }) {
   return (
     <ul className="owner-lines">
-      {lines.map((line, i) => (
-        <li key={i}>
-          <span className="owner-qty">{line.quantity}×</span> {line.name_ko}
-          {line.options.length > 0 && <small> ({line.options.join(', ')})</small>}
-          {line.request && <p className="owner-request">{line.request}</p>}
-        </li>
-      ))}
+      {lines.map((line, i) => {
+        const view = lineView(line, lang)
+        return (
+          <li key={i}>
+            <span className="owner-qty">{line.quantity}×</span> <span className="owner-name">{view.name}</span>
+            {view.nameKo && (
+              <small className="owner-name-ko" lang="ko">
+                {view.nameKo}
+              </small>
+            )}
+            {view.options.length > 0 && <small className="owner-options"> ({view.options.join(', ')})</small>}
+            {line.request && (
+              <div className="owner-request">
+                {line.badges.length > 0 && (
+                  <span className="owner-badges">
+                    {line.badges.map((badge) => (
+                      <span key={badge} className={`owner-badge owner-badge-${badge}`}>
+                        {text.badge[badge]}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                {view.request && <p className="owner-request-owner">{view.request}</p>}
+                <p className="owner-request-ko" lang="ko">
+                  {view.requestKo}
+                </p>
+              </div>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
 /** "손님 연락 필요"(넘김) 또는 회색 "미완료 통화" 카드. 사장님이 닫을 때까지 남는다 */
-function FollowUpCard({ call, onDismiss }: { call: CallCard; onDismiss: () => void }) {
+function FollowUpCard({
+  call,
+  lang,
+  text,
+  onDismiss,
+}: {
+  call: CallCard
+  lang: OwnerLang
+  text: OwnerText
+  onDismiss: () => void
+}) {
   const handoff = call.status === 'handoff'
   return (
     <article className={`owner-card owner-call owner-call-${call.status}`}>
       <header className="owner-card-head">
-        <span className="owner-call-title">{handoff ? '손님 연락 필요' : '미완료 통화'}</span>
+        <span className="owner-call-title">{handoff ? text.handoff : text.missed}</span>
         <span className="owner-call-time">{call.started_label}</span>
       </header>
-      {!handoff && call.reason && <p className="owner-call-reason">{END_REASON_LABEL[call.reason]}</p>}
+      {!handoff && call.reason && <p className="owner-call-reason">{text.endReason[call.reason]}</p>}
       {call.lines.length > 0 ? (
-        <CardLines lines={call.lines} />
+        <CardLines lines={call.lines} lang={lang} text={text} />
       ) : (
-        <p className="owner-call-empty">담은 메뉴 없음</p>
+        <p className="owner-call-empty">{text.endedEmpty}</p>
       )}
       {handoff && call.heard.length > 0 && (
-        <ol className="owner-heard" aria-label="마지막 손님 말">
-          {call.heard.map((text, i) => (
-            <li key={i}>“{text}”</li>
-          ))}
+        <ol className="owner-heard" aria-label={text.heard}>
+          {call.heard.map((korean, i) => {
+            const translated = lang === 'ko' ? '' : (call.heard_owner[i] ?? '')
+            return translated ? (
+              <li key={i}>
+                “{translated}”
+                <details className="owner-heard-ko">
+                  <summary>{text.korean}</summary>
+                  <span lang="ko">{korean}</span>
+                </details>
+              </li>
+            ) : (
+              <li key={i} lang="ko">
+                “{korean}”
+              </li>
+            )
+          })}
         </ol>
       )}
       <button type="button" className="owner-btn owner-btn-dismiss" onClick={onDismiss}>
-        닫기
+        {text.dismiss}
       </button>
     </article>
   )
@@ -287,30 +325,36 @@ function FollowUpCard({ call, onDismiss }: { call: CallCard; onDismiss: () => vo
 function QuestionCardView({
   question,
   left,
+  text,
   onAnswer,
 }: {
   question: QuestionCard
   left: number
+  text: OwnerText
   onAnswer: (answer: OwnerAnswer) => void
 }) {
   return (
     <article className="owner-card owner-question">
       <header className="owner-card-head">
-        <span className="owner-question-title">손님 질문 · {question.menu_name}</span>
+        <span className="owner-question-title">
+          {text.question} · {question.menu_name}
+        </span>
         <span className={`owner-question-left${left === 0 ? ' owner-question-late' : ''}`} role="timer">
-          {left > 0 ? `${left}초` : '시간 지남'}
+          {left > 0 ? text.secondsLeft(left) : text.late}
         </span>
       </header>
-      <p className="owner-question-text">“{question.text}”</p>
+      <p className="owner-question-text" lang="ko">
+        “{question.text}”
+      </p>
       <div className="owner-question-answers">
-        {ANSWER_BUTTONS.map(({ answer, label }) => (
+        {ANSWERS.map((answer) => (
           <button
             key={answer}
             type="button"
             className={`owner-btn owner-btn-answer owner-btn-${answer}`}
             onClick={() => onAnswer(answer)}
           >
-            {label}
+            {text.answer[answer]}
           </button>
         ))}
       </div>
