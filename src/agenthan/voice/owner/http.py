@@ -3,8 +3,9 @@
     app.include_router(owner_router(hub, key=settings.owner_key))
 
 - `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [...], "calls": [...],
-  "questions": [...], "captions": [...], "knowledge": [...]}`), 그 뒤 `order.update`·`call.update`·
-  `call.caption`·`owner.question`·`owner.question.update`·`knowledge.update`(카드 전체)
+  "questions": [...], "captions": [...], "knowledge": [...], "now": 허브 시각}`), 그 뒤
+  `order.update`·`call.update`·`call.caption`·`owner.question`·`owner.question.update`·
+  `knowledge.update`(카드 전체)
 - `POST /api/owner/orders/{id}/accept?key=…`: 접수(new → accepted). 바뀐 카드를 돌려준다.
   없는 주문은 404
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
@@ -37,8 +38,8 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from collections.abc import AsyncIterator
-from contextlib import aclosing
+from collections.abc import AsyncIterator, Iterator, Mapping
+from contextlib import aclosing, contextmanager
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -60,6 +61,28 @@ CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
 TEXTS_WINDOW_S = 120.0
 # 사장님 자유 입력 글 최대 길이 (문자 한 통 분량)
 FREE_TEXT_MAX = 500
+
+
+# 허브 예외 → HTTP 상태 (리뷰 S8). 경로마다 그 상태의 화면 문구를 `_hub_errors`에 준다
+_STATUS: tuple[tuple[type[Exception], int], ...] = (
+    (UnknownCard, 404),  # 그런 카드가 없다
+    (CardBusy, 409),  # 지금 닫을 수 없다(통화 중·주문됨)
+    (AlreadyAnswered, 409),  # 답은 한 번만
+    (ValueError, 422),  # 모르는 답·빈 글
+)
+
+
+@contextmanager
+def _hub_errors(details: Mapping[int, str]) -> Iterator[None]:
+    """허브 호출을 감싸 `_STATUS` 표대로 HTTP 오류로 바꾼다. `details`에 없는 상태의 예외는
+    그대로 올린다."""
+    try:
+        yield
+    except Exception as err:
+        status = next((code for kind, code in _STATUS if isinstance(err, kind)), None)
+        if status is None or status not in details:
+            raise
+        raise HTTPException(status_code=status, detail=details[status]) from err
 
 
 class KnowledgeDraft(BaseModel):
@@ -100,55 +123,35 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
 
     @router.post("/orders/{order_id}/accept")
     async def accept(order_id: str) -> dict[str, Any]:
-        try:
+        with _hub_errors({404: "그런 주문이 없어요"}):
             return hub.accept(order_id)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 주문이 없어요") from err
 
     @router.post("/calls/{call_id}/dismiss")
     async def dismiss(call_id: str) -> dict[str, Any]:
-        try:
+        with _hub_errors({404: "그런 통화 카드가 없어요", 409: "통화 중이거나 주문이 된 카드예요"}):
             return hub.dismiss(call_id)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 통화 카드가 없어요") from err
-        except CardBusy as err:
-            raise HTTPException(status_code=409, detail="통화 중이거나 주문이 된 카드예요") from err
 
     @router.post("/questions/{question_id}/answer")
     async def answer(question_id: str, body: AnswerBody) -> dict[str, Any]:
-        try:
+        # 422: 자유 입력인데 글이 비었다
+        with _hub_errors({404: "그런 질문이 없어요", 409: "이미 답한 질문이에요",
+                          422: "답할 글을 적어 주세요"}):
             return hub.answer_question(question_id, body.answer, body.text)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 질문이 없어요") from err
-        except AlreadyAnswered as err:
-            raise HTTPException(status_code=409, detail="이미 답한 질문이에요") from err
-        except ValueError as err:  # 자유 입력인데 글이 비었다
-            raise HTTPException(status_code=422, detail="답할 글을 적어 주세요") from err
 
     @router.post("/knowledge/{card_id}/preview")
     async def preview_knowledge(card_id: str, body: KnowledgeDraft) -> dict[str, Any]:
-        try:
+        with _hub_errors({404: "그런 카드가 없어요", 422: "답할 글을 적어 주세요"}):
             return await hub.preview_knowledge(card_id, body.text)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 카드가 없어요") from err
-        except ValueError as err:
-            raise HTTPException(status_code=422, detail="답할 글을 적어 주세요") from err
 
     @router.post("/knowledge/{card_id}/save")
     async def save_knowledge(card_id: str, body: KnowledgeSave) -> dict[str, Any]:
-        try:
+        with _hub_errors({404: "그런 카드가 없어요", 422: "저장할 한국어를 적어 주세요"}):
             return hub.save_knowledge(card_id, body.text_ko, body.text)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 카드가 없어요") from err
-        except ValueError as err:
-            raise HTTPException(status_code=422, detail="저장할 한국어를 적어 주세요") from err
 
     @router.post("/questions/{question_id}/seen")
     async def seen(question_id: str) -> dict[str, Any]:
-        try:
+        with _hub_errors({404: "그런 질문이 없어요"}):
             return hub.see_question(question_id)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 질문이 없어요") from err
 
     return router
 
@@ -163,10 +166,8 @@ def customer_texts_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) ->
 
     def watch(call_id: str) -> AsyncIterator[OwnerEvent]:
         # 스트림을 열기 전에(의존성에서) 모르는 통화를 404로 거절한다
-        try:
+        with _hub_errors({404: "그런 통화가 없어요"}):
             return hub.watch_texts(call_id)
-        except UnknownCard as err:
-            raise HTTPException(status_code=404, detail="그런 통화가 없어요") from err
 
     router = APIRouter()
 

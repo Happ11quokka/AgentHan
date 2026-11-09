@@ -32,11 +32,11 @@ from typing import Any, Literal
 import httpx
 
 from agenthan.voice.owner.badges import request_badges
+from agenthan.voice.owner.card_texts import menu_names  # `CardTexts`와 같은 메뉴명 표
 from agenthan.voice.owner.lexicon import RU
 from agenthan.voice.owner.papago import KEY_ENVS, PAPAGO_URL, PapagoTranslator, papago_from_env
 from agenthan.voice.owner.protect import PLACEHOLDER, Masked, mask, restore
 from agenthan.voice.owner.translate import TranslateError
-from agenthan.voice.owner.translation import menu_names  # `CardTexts`와 같은 메뉴명 표
 from agenthan.voice.settings import read_env_file
 
 # ── 문장 세트 ──────────────────────────────────────────────────────────────

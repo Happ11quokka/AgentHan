@@ -64,7 +64,7 @@
 - 질문 카드는 `menu_name_owner`(원어 이름, 비면 한국어)와 `text_owner`(손님 질문 번역 또는 "")
 - 번역은 비동기다. 카드는 원문으로 먼저 보내고, 번역이 오면 같은 카드를 다시 보낸다(주문 카드와,
   ordered·closed가 아닌 통화 카드, 질문 카드는 `owner.question.update`). 같은 문장은 통화 동안
-  한 번만 번역한다(`translation.py`). 번역기가 없으면(키 없음) 원문만
+  한 번만 번역한다(`card_texts.py`). 번역기가 없으면(키 없음) 원문만
 """
 
 from __future__ import annotations
@@ -92,9 +92,9 @@ from agenthan.voice.dialog.owner_question import (
 )
 from agenthan.voice.owner import sms
 from agenthan.voice.owner.badges import request_badges
+from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.lexicon import lexicon_for
 from agenthan.voice.owner.translate import Translator
-from agenthan.voice.owner.translation import SOURCE_LANG, CardTexts
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +126,8 @@ HEARD_LINES = 3
 CAPTION_LINES = 4
 # 사장님이 닫을 수 있는 통화 카드 상태
 _CLOSABLE = frozenset({"handoff", "missed"})
+# 화면에서 빠진 통화 카드 상태: 주문 카드가 됨 · 사장님이 닫음. 다시 보내지 않는다 (리뷰 S5)
+_OFF_SCREEN = frozenset({"ordered", "closed"})
 # 사장님 답을 아직 못 받은 질문 카드 상태 (확정 주문에 "사장님 확인 필요")
 _UNANSWERED = frozenset({"open", "timeout"})
 # 이 상태에서 받은 답은 늦은 답이다. 통화가 말하지 않으니 손님 문자로 간다 (티켓 07)
@@ -158,14 +160,15 @@ class OwnerHub:
         self._passed_on: set[str] = set()  # 보충 카드로 보낸 질문 id (한 질문은 한 번, 리뷰 C6)
         self._lexicon = lexicon_for(owner_lang)
         self._translator = translator  # 사장님 자유 입력 글 → 한국어 (티켓 07)
-        self._texts = CardTexts(translator, store=store, lexicon=self._lexicon)
+        # 카드 자유 문장 번역 캐시 (티켓 03, `card_texts.py`)
+        self._translations = CardTexts(translator, store=store, lexicon=self._lexicon)
         self._tasks: set[asyncio.Task[None]] = set()  # 진행 중인 번역 (GC 막기)
-        self._cards: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
+        self._orders: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
         self._heard: dict[str, deque[str]] = {}  # 통화 중인 id → 마지막 손님 말들
         self._captions: dict[str, _Captions] = {}  # 통화 중인 id → 자막 (티켓 10)
         # 통화 id → 손님에게 보낸 문자 미리보기, 보낸 순서 (티켓 07)
-        self._texts_out: dict[str, list[dict[str, Any]]] = {}
+        self._customer_sms: dict[str, list[dict[str, Any]]] = {}
         self._subscribers: set[asyncio.Queue[OwnerEvent]] = set()
         # 통화 id → 손님 통화 화면의 문자 스트림 구독자 (티켓 07)
         self._text_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
@@ -219,12 +222,12 @@ class OwnerHub:
 
         이미 접수한 카드면 그대로 돌려준다(두 화면에서 같이 눌러도 된다).
         """
-        card = self._cards.get(order_id)
+        card = self._orders.get(order_id)
         if card is None:
             raise UnknownCard(order_id)
         if card["status"] != "accepted":
             card = {**card, "status": "accepted"}
-            self._cards[order_id] = card
+            self._orders[order_id] = card
             self._publish("order.update", card)
         return card
 
@@ -329,7 +332,7 @@ class OwnerHub:
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         """그 통화의 손님에게 보낸 문자(보낸 순서). 없거나 모르는 통화면 빈 목록 (티켓 07)."""
-        return list(self._texts_out.get(call_id, ()))
+        return list(self._customer_sms.get(call_id, ()))
 
     def watch_texts(self, call_id: str) -> AsyncIterator[OwnerEvent]:
         """손님 통화 화면의 "받은 문자" 구독 (티켓 07). 처음에 `sms.snapshot`(`{"call_id", "sms":
@@ -337,8 +340,8 @@ class OwnerHub:
 
         허브가 모르는 통화(카드도 문자도 없음)면 바로 `UnknownCard`. 시간 제한은 HTTP 쪽이 둔다.
         """
-        if call_id not in self._calls and call_id not in self._cards \
-                and call_id not in self._texts_out:
+        if call_id not in self._calls and call_id not in self._orders \
+                and call_id not in self._customer_sms:
             raise UnknownCard(call_id)
         return self._watch_texts(call_id)
 
@@ -383,7 +386,7 @@ class OwnerHub:
             base["total"], base["pickup_label"]))
         card = {**self._dressed(base), "owner_check": self._owner_check(order.id),
                 "sms": self.customer_texts(order.id)}
-        self._cards[order.id] = card
+        self._orders[order.id] = card
         self._publish("order.update", card)
         self._translate_later(card)
         call = self._calls.get(order.id)
@@ -397,15 +400,15 @@ class OwnerHub:
 
     def _recheck_order(self, call_id: str) -> None:
         """질문 상태가 바뀌었다. 주문 카드의 `owner_check`가 달라졌으면 다시 보낸다 (리뷰 C9)."""
-        order = self._cards.get(call_id)
+        order = self._orders.get(call_id)
         if order is not None and order["owner_check"] != (check := self._owner_check(call_id)):
-            self._cards[call_id] = {**order, "owner_check": check}
-            self._publish("order.update", self._cards[call_id])
+            self._orders[call_id] = {**order, "owner_check": check}
+            self._publish("order.update", self._orders[call_id])
 
     def _add_text(self, call_id: str, kind: str, text: str, *, question_id: str = "",
                   translate_failed: bool = False) -> dict[str, Any]:
         """손님 문자 미리보기 하나를 남긴다(실제 발송 없음)."""
-        texts = self._texts_out.setdefault(call_id, [])
+        texts = self._customer_sms.setdefault(call_id, [])
         now = self._clock.now()
         entry = {
             "id": f"{call_id}-s{len(texts) + 1}",
@@ -427,14 +430,14 @@ class OwnerHub:
         """문자를 남기고 그 통화의 사장님 카드(주문 카드, 화면에 있는 통화 카드)를 다시 보낸다."""
         self._add_text(call_id, kind, text, **kw)
         texts = self.customer_texts(call_id)
-        order = self._cards.get(call_id)
+        order = self._orders.get(call_id)
         if order is not None:
-            self._cards[call_id] = {**order, "sms": texts,
+            self._orders[call_id] = {**order, "sms": texts,
                                     "owner_check": self._owner_check(call_id)}
-            self._publish("order.update", self._cards[call_id])
+            self._publish("order.update", self._orders[call_id])
         call = self._calls.get(call_id)
         if call is not None:
-            if call["status"] in ("ordered", "closed"):
+            if call["status"] in _OFF_SCREEN:
                 self._calls[call_id] = {**call, "sms": texts}  # 화면에 없는 카드: 보내지 않는다
             else:
                 self._put_call({**call, "sms": texts})
@@ -489,7 +492,7 @@ class OwnerHub:
             return
         event = {"call_id": call_id, "lines": [
             {"n": n, "who": who, "text": text,
-             "text_owner": self._texts.known(call_id, text) if who == "customer" else ""}
+             "text_owner": self._translations.known(call_id, text) if who == "customer" else ""}
             for n, who, text in captions.lines]}
         if event != captions.sent:
             captions.sent = event
@@ -526,7 +529,7 @@ class OwnerHub:
         return (question["status"] == "answered" and question["answer"] in OWNER_BUTTONS
                 and question["id"] not in self._said
                 and not any(t["question_id"] == question["id"]
-                            for t in self._texts_out.get(question["call_id"], ())))
+                            for t in self._customer_sms.get(question["call_id"], ())))
 
     def _text_late_answer(self, question_id: str) -> None:
         """버튼 답을 손님 문자로(늦은 답·통화가 말하지 못한 답, 티켓 07). 통화 문장과 같은 틀."""
@@ -581,8 +584,8 @@ class OwnerHub:
         """보충 요청 하나. 같은 열쇠의 열린 카드가 있으면 횟수를 늘리고 문구를 마지막 질문으로."""
         now = self._clock.now().isoformat()
         found = self._open_wanted(key)
-        asked = {"call_id": call_id, "text": text, "text_owner": self._texts.known(call_id, text),
-                 "last_asked_at": now}
+        asked = {"call_id": call_id, "text": text,
+                 "text_owner": self._translations.known(call_id, text), "last_asked_at": now}
         if found is not None:
             self._put_wanted({**found, **asked, "count": found["count"] + 1})
         else:
@@ -626,7 +629,7 @@ class OwnerHub:
             "menu_name": question.menu_name,  # 한국어
             "menu_name_owner": self._owner_name(question.menu_id, question.menu_name),  # 티켓 03
             "text": question.text,  # 손님 질문 원문 (한국어)
-            "text_owner": self._texts.known(call_id, question.text),  # 번역, 아직·실패면 ""
+            "text_owner": self._translations.known(call_id, question.text),  # 번역, 아직·실패면 ""
             # 들어가는지만 묻는 질문: 화면 버튼 yes·no가 들어가요/안 들어가요 뜻이다 (리뷰 P2)
             "yes_no": question.yes_no,
             "sent_at": now.isoformat(),
@@ -667,11 +670,11 @@ class OwnerHub:
     def _dressed(self, card: dict[str, Any]) -> dict[str, Any]:
         """카드의 자유 문장(요청사항, 넘김 카드 손님 말)에 캐시에 있는 번역을 붙인다(없으면 "")."""
         call_id = card["id"]
-        lines = [{**line, "request_owner": self._texts.known(call_id, line["request"])}
+        lines = [{**line, "request_owner": self._translations.known(call_id, line["request"])}
                  for line in card["lines"]]
         dressed = {**card, "lines": lines}
         if "heard" in card:
-            dressed["heard_owner"] = [self._texts.known(call_id, t) for t in card["heard"]]
+            dressed["heard_owner"] = [self._translations.known(call_id, t) for t in card["heard"]]
         return dressed
 
     def _translate_later(self, card: dict[str, Any]) -> None:
@@ -679,38 +682,38 @@ class OwnerHub:
         self._translate_soon(card["id"], texts)
 
     def _translate_soon(self, call_id: str, texts: list[str]) -> None:
-        todo = self._texts.claim(call_id, texts)
+        todo = self._translations.claim(call_id, texts)
         if not todo:
             return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # 루프 밖(구독자 없이 부른 동기 코드): 번역 없이 원문만
-            self._texts.release(call_id, todo)
+            self._translations.release(call_id, todo)
             return
         task = loop.create_task(self._translate(call_id, todo))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
     async def _translate(self, call_id: str, texts: list[str]) -> None:
-        if not await self._texts.fetch(call_id, texts):
+        if not await self._translations.fetch(call_id, texts):
             return  # 실패·버림: 원문 카드 그대로, 다시 보내지 않는다
-        order = self._cards.get(call_id)
+        order = self._orders.get(call_id)
         if order is not None and (dressed := self._dressed(order)) != order:
-            self._cards[call_id] = dressed
+            self._orders[call_id] = dressed
             self._publish("order.update", dressed)
         call = self._calls.get(call_id)
-        if (call is not None and call["status"] not in ("ordered", "closed")
+        if (call is not None and call["status"] not in _OFF_SCREEN
                 and (dressed := self._dressed(call)) != call):
             self._calls[call_id] = dressed
             self._publish("call.update", dressed)
         self._publish_captions(call_id)  # 자막 손님 줄도 같은 자리에서 번역으로 덮어쓴다
         for question_id, question in list(self._questions.items()):
-            text_owner = self._texts.known(call_id, question["text"])
+            text_owner = self._translations.known(call_id, question["text"])
             if question["call_id"] == call_id and question["text_owner"] != text_owner:
                 self._questions[question_id] = {**question, "text_owner": text_owner}
                 self._publish("owner.question.update", self._questions[question_id])
         for card in list(self._wanted.values()):  # "손님이 궁금해한 것" 카드 (티켓 13)
-            text_owner = self._texts.known(call_id, card["text"])
+            text_owner = self._translations.known(call_id, card["text"])
             if card["call_id"] == call_id and card["text_owner"] != text_owner:
                 self._put_wanted({**card, "text_owner": text_owner})
 
@@ -823,12 +826,12 @@ class OwnerHub:
         return item.name_ko, item.price + sum(extra.get(o, 0) for o in line.options)
 
     def _snapshot(self) -> dict[str, Any]:
-        calls = [c for c in self._calls.values() if c["status"] not in ("ordered", "closed")]
+        calls = [c for c in self._calls.values() if c["status"] not in _OFF_SCREEN]
         captions = [c.sent for call_id, c in self._captions.items()
                     if c.sent is not None and self._calls[call_id]["status"] == "live"]
         # `now`: 허브 시계 지금 시각. 화면이 기기 시계와의 차이를 재서 카운트다운·픽업 색에 쓴다
         # (`PHONE_NOW` 시연·기기 시계가 틀린 태블릿, 리뷰 C2)
-        return {"orders": list(self._cards.values()), "calls": calls,
+        return {"orders": list(self._orders.values()), "calls": calls,
                 "questions": list(self._questions.values()), "captions": captions,
                 "knowledge": self.knowledge_cards(), "now": self._clock.now().isoformat()}
 

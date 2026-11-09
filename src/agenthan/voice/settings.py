@@ -55,6 +55,8 @@ from agenthan.voice.call.defaults import (
     MODEL_LOW,
     NO_INPUT_S,
     OWNER_WAIT_S,
+    TRANSLATE_KEEPALIVE_S,
+    TRANSLATE_TIMEOUT_S,
     WAIT_REQUEST_S,
 )
 from agenthan.voice.call.vad import VadSettings
@@ -104,10 +106,10 @@ class VoiceSettings:
     # 사장님 화면 비밀 토큰 (4단계 티켓 01). 비면 사장님 경로가 모두 잠긴다(401)
     owner_key: str = field(default="", repr=False)
     # Papago 요청 시간 제한 (4단계 티켓 03). 키(`PAPAGO_CLIENT_ID`·`_SECRET`)는 `env`에서 꺼낸다
-    translate_timeout_s: float = 3.0
+    translate_timeout_s: float = TRANSLATE_TIMEOUT_S
     # Papago 유휴 연결 유지 (티켓 12). httpx 기본 5초면 턴 사이마다 다시 연결한다
     # (실측 쉬었다 부르기 중앙값 0.82초 → 60초 유지 0.60초)
-    translate_keepalive_s: float = 60.0
+    translate_keepalive_s: float = TRANSLATE_KEEPALIVE_S
     # 사장님 질문 답 대기 (4단계 티켓 06). 허브 카드 마감과 세션 시간 초과가 같이 쓴다
     owner_wait_s: float = OWNER_WAIT_S
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
@@ -199,9 +201,11 @@ class VoiceSettings:
             barge=_barge(get),
             owner_key=get("PHONE_OWNER_KEY", ""),
             translate_timeout_s=_number("PHONE_TRANSLATE_TIMEOUT_S",
-                                        get("PHONE_TRANSLATE_TIMEOUT_S", ""), 3.0),
+                                        get("PHONE_TRANSLATE_TIMEOUT_S", ""),
+                                        TRANSLATE_TIMEOUT_S),
             translate_keepalive_s=_number("PHONE_TRANSLATE_KEEPALIVE_S",
-                                          get("PHONE_TRANSLATE_KEEPALIVE_S", ""), 60.0),
+                                          get("PHONE_TRANSLATE_KEEPALIVE_S", ""),
+                                          TRANSLATE_KEEPALIVE_S),
             owner_wait_s=_number("PHONE_OWNER_WAIT_S", get("PHONE_OWNER_WAIT_S", ""),
                                  OWNER_WAIT_S),
             env=env,

@@ -24,10 +24,10 @@ import httpx
 import pytest
 
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.owner.card_texts import CardTexts
 from agenthan.voice.owner.lexicon import RU
 from agenthan.voice.owner.papago import PAPAGO_URL, PapagoTranslator, papago_from_env
 from agenthan.voice.owner.translate import TranslateError
-from agenthan.voice.owner.translation import CardTexts
 from agenthan.voice.settings import read_env_file
 
 CASSETTES = Path(__file__).with_name("cassettes") / "test_owner_papago"

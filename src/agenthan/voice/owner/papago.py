@@ -26,14 +26,16 @@ from collections.abc import Mapping, Sequence
 
 import httpx
 
+from agenthan.voice.call.defaults import TRANSLATE_KEEPALIVE_S, TRANSLATE_TIMEOUT_S
 from agenthan.voice.owner.translate import TranslateError
 
 log = logging.getLogger(__name__)
 
 PAPAGO_URL = "https://papago.apigw.ntruss.com/nmt/v1/translation"
 KEY_ENVS = ("PAPAGO_CLIENT_ID", "PAPAGO_CLIENT_SECRET")
-TIMEOUT_S = 3.0
-KEEPALIVE_S = 60.0
+# 기본값은 서버 설정과 같은 곳(`call/defaults.py`)에 둔다 (리뷰 S6)
+TIMEOUT_S = TRANSLATE_TIMEOUT_S
+KEEPALIVE_S = TRANSLATE_KEEPALIVE_S
 WARM_TEXT = "네"  # 데우기 글(1자)
 
 

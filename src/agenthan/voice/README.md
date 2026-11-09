@@ -180,7 +180,7 @@
 
 - 번역기 포트 `owner/translate.py` `Translator.translate(texts, source, target) -> list[str]`(실패 `TranslateError`). 구현은 Papago 하나(`owner/papago.py`, 키 `PAPAGO_CLIENT_ID`·`PAPAGO_CLIENT_SECRET`, 요청 시간 제한 `PHONE_TRANSLATE_TIMEOUT_S` 3초, 유휴 연결 유지 `PHONE_TRANSLATE_KEEPALIVE_S` 60초, 개발 서버는 시작 때 한 번 데우고 끝날 때 닫는다). 키가 없으면 개발 서버는 번역 없이 원문만 보인다. 가짜 `owner/fakes.py` `FakeTranslator`
 - 카드 줄: `name_owner`(원어 이름, 비면 한국어), `options_owner`(정적 사전 `owner/lexicon.py`), `request` + `request_owner`(번역) + `badges`(`remove`·`allergy`, 한국어 원문 규칙 `owner/badges.py`). 넘김 카드는 `heard` 옆에 `heard_owner`. 질문 카드는 `menu_name_owner`·`text_owner`(번역이 오면 `owner.question.update`)
-- 번역은 비동기: 카드는 원문으로 먼저, 번역이 오면 같은 카드를 다시 보낸다. 같은 문장은 통화 동안 한 번(`owner/translation.py`)
+- 번역은 비동기: 카드는 원문으로 먼저, 번역이 오면 같은 카드를 다시 보낸다. 같은 문장은 통화 동안 한 번(`owner/card_texts.py`)
 - 보호(`owner/protect.py`): 메뉴명·별칭과 Papago가 뜻을 틀리는 재료 낱말(고수·파·초·밤)을 `[1]`처럼 가리고 번역 뒤 원어 이름·사전 값으로 채운다. 자리표시자가 사라지거나 늘거나, 숫자가 원문과 다르면 번역을 버린다
 - 화면 `/owner?key=…&lang=ru`(기본 ru, `lang=ko`는 확인용 한국어). 고정 문구 `web/src/screens/owner/ownerText.ts`, 아래에 Papago 표기
 - 테스트: `test_owner_ru_card.py`(허브, 가짜 번역기), `test_owner_papago.py`(어댑터, 녹화본 `cassettes/test_owner_papago/`. 다시 녹화: `AGENTHAN_ENV_FILE=<.env 경로> uv run pytest tests/voice/test_owner_papago.py -k recorded --record-mode=rewrite`)
@@ -190,7 +190,7 @@
 
 - 04 실측(이어 쓰기 P50 601·P90 673ms)으로 넣기로 했다. 자막은 손님 말 끝 + 턴 확정 0.9~1.1초 + 번역 0.6초 = 1.5~1.8초 뒤에 뜬다(손님 다음 말보다 먼저)
 - 허브 이벤트 `call.caption`: 통화 중(live) 카드 하나의 자막 전체 `{"call_id", "lines": [{"n", "who": "customer"|"bot", "text", "text_owner"}]}`, 최근 4줄(`CAPTION_LINES`), 번호 `n`은 통화 안 1부터. 세션의 `customer_said`·`bot_said`가 줄을 더한다
-- 손님 말은 원문으로 먼저 보내고 카드 번역과 같은 캐시·보호(`owner/translation.py`)로 번역을 맡긴다. 번역이 오면 같은 번호 줄의 `text_owner`를 채워 다시 보낸다. 실패·버림·키 없음이면 원문만. AI 말은 번역하지 않는다(화면은 한국어 원문 회색 한 줄)
+- 손님 말은 원문으로 먼저 보내고 카드 번역과 같은 캐시·보호(`owner/card_texts.py`)로 번역을 맡긴다. 번역이 오면 같은 번호 줄의 `text_owner`를 채워 다시 보낸다. 실패·버림·키 없음이면 원문만. AI 말은 번역하지 않는다(화면은 한국어 원문 회색 한 줄)
 - CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다)
 - snapshot의 `captions`에는 통화 중 카드 자막만. `call_ended`가 오면 자막을 버린다
 - 화면: 통화 중 카드 아래 자막 4줄(`web/src/screens/owner/ownerState.ts` `captionLines`, `ownerText.ts` `captionView`). 테스트 `test_owner_captions.py`, vitest `ownerCaptions.test.ts`

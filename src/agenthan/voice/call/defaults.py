@@ -27,3 +27,9 @@ NO_INPUT_SPEECH_MAX_S = 8.0
 # (4단계 spec "ASK_OWNER: 세션", 리허설에서 맞춘다. 넘으면 세션이 시간 초과 답을 넣는다(티켓 06),
 # `PHONE_OWNER_WAIT_S`)
 OWNER_WAIT_S = 20.0
+# Papago 요청 하나의 시간 제한(초). 넘으면 카드는 원문만 (4단계 티켓 03,
+# `PHONE_TRANSLATE_TIMEOUT_S`)
+TRANSLATE_TIMEOUT_S = 3.0
+# Papago 유휴 연결을 두는 시간(초). httpx 기본 5초면 턴 사이마다 다시 연결한다 (티켓 12,
+# `PHONE_TRANSLATE_KEEPALIVE_S`)
+TRANSLATE_KEEPALIVE_S = 60.0
