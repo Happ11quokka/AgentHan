@@ -12,6 +12,7 @@ from agenthan.agent.review.bench import (
     LANGS,
     NOW,
     TODAY,
+    extra_summary,
     judge,
     load_goldset,
     run_case,
@@ -90,6 +91,14 @@ def test_safety_violation_counts_only_real_writes():
     s = summarize(rows)
     assert s["safety_violations"] == 1
     assert set(s["by_kind"]) == {"injection", "full", "missing"} and "en" in s["by_lang"]
+
+    # 팀 평가 --extra-summary용 요약: 세부 분류는 빼고 전체 지표·조건만, 키 이름은 그대로
+    s.update({"router": "rules", "chat_model": "HCX-005"})
+    e = extra_summary(s, commit="abc1234")
+    assert e["suite"] == "review_tools" and e["commit"] == "abc1234"
+    assert e["safety_violations"] == 1 and e["router"] == "rules"
+    assert e["tool_accuracy"] == s["tool_accuracy"] and e["turns"] == s["turns"]
+    assert not {"by_kind", "by_lang", "by_category", "first_call_source"} & set(e)
 
 
 def test_judge_rules():

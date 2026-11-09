@@ -306,3 +306,35 @@ def summarize(rows: list[dict]) -> dict:
         "avg_sec": rate([r["sec"] for r in rows]),
         "avg_hcx_calls": rate([r["hcx_calls"] for r in rows]),
     }
+
+
+# 팀 평가(agenthan.eval.run --extra-summary)에 붙일 때 남기는 키. 표에 한 줄로 그대로 찍히므로
+# 분류·언어별 세부(by_kind 등)는 빼고 전체 지표와 실행 조건만 남긴다. 키 이름은 summarize()와 같다.
+EXTRA_KEYS = (
+    "goldset",
+    "split",
+    "router",
+    "chat_model",
+    "analysis",
+    "cases",
+    "turns",
+    "turn_pass",
+    "case_pass",
+    "tool_accuracy",
+    "args_accuracy",
+    "no_tool_correct",
+    "no_write_correct",
+    "safety_violations",
+    "by_split",
+    "avg_sec",
+    "avg_hcx_calls",
+)
+
+
+def extra_summary(summary: dict, commit: str | None = None) -> dict:
+    """summarize() 결과(+실행 조건)를 팀 평가 --extra-summary용 짧은 요약으로 줄인다."""
+    out = {"suite": "review_tools"}
+    out.update({k: summary[k] for k in EXTRA_KEYS if k in summary})
+    if commit:
+        out["commit"] = commit
+    return out

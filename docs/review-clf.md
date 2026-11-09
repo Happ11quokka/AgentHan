@@ -410,6 +410,15 @@ dev 실패는 기간 해석·항목 사전·러시아어/몽골어 번역 등 �
 - 이후 턴의 인자는 실제 도구 명세를 따른다: `draft_review_reply`는 `review_id`가 아니라 `target`(first·negative·all_listed)을 받는다.
   더미 시드 기준 미답글은 r03 → r02 순서다
 
+리뷰 에이전트 안의 결과(골드셋 벤치마크)는 팀 표에 `--extra-summary`로 한 줄 붙인다.
+`scripts/run_benchmark.py`가 `reports/bench-*.json` 옆에 `.extra.json`(전체 지표·실행 조건·커밋만,
+키 이름은 `summarize()` 그대로)을 같이 쓴다. 그 전에 만든 결과는 `scripts/bench_extra_summary.py <요약.json>`로 바꾼다.
+
+```bash
+uv run python -m agenthan.eval.run --backend live --cases tests/data/review_route_cases.jsonl \
+    --extra-summary reports/bench-rules-<날짜시각>.extra.json
+```
+
 ## 의도 분류 라우터 실험 (`feature/review-intent`, 2026-11-08)
 
 `ReviewToolbox(router="intent")`: HCX-007이 JSON 스키마로 의도 1개를 고르고, 의도 → 도구는 시스템이 정한다

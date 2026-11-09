@@ -4,18 +4,26 @@
     uv run --env-file .env python scripts/run_benchmark.py --only A01 H01  # 일부
     uv run --env-file .env python scripts/run_benchmark.py --category 답글
 
-결과: reports/bench-<날짜시각>.csv (턴별), .json (요약)
+결과: reports/bench-<날짜시각>.csv (턴별), .json (요약), .extra.json (팀 평가 --extra-summary용)
 """
 
 import argparse
 import csv
 import json
+import subprocess
 import time
 from pathlib import Path
 
 from agenthan.agent.review import MenuCatalog, SnapshotRepo
 from agenthan.agent.review.agent import ReviewToolbox, run_turn, system_prompt
-from agenthan.agent.review.bench import NOW, TODAY, load_goldset, run_case, summarize
+from agenthan.agent.review.bench import (
+    NOW,
+    TODAY,
+    extra_summary,
+    load_goldset,
+    run_case,
+    summarize,
+)
 from agenthan.agent.review.clova import ClovaClient
 from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 from agenthan.agent.review.replies import MockReplyStore
@@ -112,5 +120,14 @@ with stem.with_suffix(".csv").open("w", encoding="utf-8-sig", newline="") as f:
 stem.with_suffix(".json").write_text(
     json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
 )
+try:
+    commit = subprocess.check_output(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+except (OSError, subprocess.CalledProcessError):
+    commit = None
+stem.with_suffix(".extra.json").write_text(
+    json.dumps(extra_summary(summary, commit), ensure_ascii=False, indent=2), encoding="utf-8"
+)
 print(json.dumps(summary, ensure_ascii=False, indent=2))
-print(f"saved {stem.relative_to(ROOT)}.csv / .json")
+print(f"saved {stem.relative_to(ROOT)}.csv / .json / .extra.json")
