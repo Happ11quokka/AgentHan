@@ -28,9 +28,7 @@
       "phone number",
       "store profile",
       "map",
-      "business name",
-      "business information",
-      "business info"
+      "business name"
     ],
     "input_supported": false
   },
@@ -110,8 +108,7 @@
       "마감",
       "브레이크",
       "영업 종료",
-      "시간 변경",
-      "문 열"
+      "시간 변경"
     ],
     "keywords_en": [
       "opening hours",
@@ -122,11 +119,7 @@
       "day off",
       "break time",
       "open late",
-      "closing time",
-      "open at",
-      "close at",
-      "opening time",
-      "store hours"
+      "closing time"
     ],
     "input_supported": false
   },
@@ -301,9 +294,7 @@
       "신장개업",
       "새로 문",
       "새로 생긴",
-      "오픈 소식",
-      "새로 열",
-      "오픈했"
+      "오픈 소식"
     ],
     "keywords_en": [
       "new opening",
@@ -541,8 +532,7 @@
       "도움말",
       "고장",
       "오류",
-      "이용 방법",
-      "상담"
+      "이용 방법"
     ],
     "keywords_en": [
       "business school",
@@ -554,10 +544,7 @@
       "tutorial",
       "learn",
       "learning",
-      "error",
-      "customer center",
-      "customer service",
-      "contact support"
+      "error"
     ],
     "input_supported": false
   }
