@@ -154,7 +154,7 @@ def test_yes_after_an_open_question_ends_but_not_firmly() -> None:
 def test_end_reasons(text: str, reason: str) -> None:
     verdict = judge(text)
     assert (verdict.label, verdict.reason) == ("end", reason)
-    assert verdict.firm is (reason != "default")
+    assert verdict.firm is ("메도빅" in text)  # 열린 질문 뒤에는 메뉴가 든 말만 확실 (리뷰 P2)
 
 
 @pytest.mark.parametrize(
@@ -254,3 +254,30 @@ def test_a_continue_verdict_carries_the_extra_wait_and_an_end_carries_none() -> 
 
 def test_yes_after_confirm_beats_a_low_model_score() -> None:
     assert combined("네", 0.05, kind="confirm").label == "end"
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("메도빅 하나요", "open"),  # 메뉴가 든 주문
+        ("아메리카노 두 잔 주세요.", "open"),
+        ("메도빅 많이 달아요?", "open"),
+        ("두 개요", "closed"),  # 닫힌 질문(몇 개·언제)에 대한 답
+        ("6시 반에 갈게요.", "closed"),
+    ],
+)
+def test_a_firm_end_needs_a_complete_order(text: str, kind: str) -> None:
+    # 리뷰 P2: 확실한 끝 = 마침표·종결어미 + 완결된 주문(메뉴가 들었거나 닫힌·확인 질문의 답)
+    verdict = judge(text, kind=kind)
+    assert (verdict.label, verdict.firm) == ("end", True)
+    assert combined(text, 0.1, kind=kind).path == "rule"
+
+
+@pytest.mark.parametrize("text", ["그게 다예요", "포장해 갈게요", "짜장면있나요.", "제가 어제요."])
+def test_a_final_ending_without_an_order_ends_but_the_model_can_hold_it(text: str) -> None:
+    # 리뷰 P2: 열린 질문 뒤 메뉴 없는 "-요"·마침표는 끝이지만 확실하지 않다. 낮은 점수면 기다린다
+    verdict = judge(text, kind="open")
+    assert (verdict.label, verdict.firm) == ("end", False)
+    decision = combined(text, 0.1)
+    assert (decision.label, decision.path) == ("continue", "model")
+    assert combined(text, 0.5).label == "end"  # 가운데 점수면 규칙대로 끝

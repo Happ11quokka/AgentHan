@@ -55,7 +55,8 @@ _FINAL_ENDINGS = ("요", "다", "까", "죠")
 class TurnEndVerdict:
     label: Label
     reason: str
-    # 확실한 판정. 확실한 끝(확인 질문 뒤 예/아니요, 마침표, 종결어미)은 턴 모델보다 앞선다
+    # 확실한 판정. 확실한 끝(확인 질문 뒤 예/아니요, 마침표·종결어미 + 완결된 주문)은
+    # 턴 모델보다 앞선다
     firm: bool = False
     filler_only: bool = False  # 필러만 있는 말. 상한까지 안 이어지면 엔진에 넘기지 않는다
     backchannel: bool = False  # 맞장구로 보이는 말 (기록용)
@@ -172,11 +173,24 @@ def _judge(
     for tail in _AMBIGUOUS:
         if last.endswith(tail):
             return TurnEndVerdict("end", f"ambiguous:{tail}")
+    # 마침표·종결어미는 완결된 주문일 때만 확실한 끝이다(spec, 리뷰 P2). 아니면 턴 모델이 가른다
+    complete = _complete_order(tokens, question_kind, menu_names)
     if text.rstrip().endswith("."):
-        return TurnEndVerdict("end", "period", firm=True)  # CLOVA usePeriodEpd (검증 교정 10)
+        return TurnEndVerdict("end", "period", firm=complete)  # CLOVA usePeriodEpd (검증 교정 10)
     if last.endswith(_FINAL_ENDINGS):
-        return TurnEndVerdict("end", "final_ending", firm=True)
+        return TurnEndVerdict("end", "final_ending", firm=complete)
     return TurnEndVerdict("end", "default")
+
+
+def _complete_order(tokens: list[str], question_kind: str, menu_names: tuple[str, ...]) -> bool:
+    """완결된 주문인가: 닫힌·확인 질문의 답이거나, 메뉴 이름이 통째로 든 말.
+
+    열린 질문 뒤 메뉴 없는 "-요"·마침표("그게 다예요", "제가 어제요.")는 말 중간 쉼일 수 있다.
+    """
+    if question_kind in ("confirm", "closed"):
+        return True
+    joined = "".join(tokens)
+    return any(name.replace(" ", "") in joined for name in menu_names if name.strip())
 
 
 # ---------------------------------------------------------------- 규칙 + 턴 모델 합치기
@@ -216,9 +230,9 @@ def combine_turn_end(
 ) -> TurnDecision:
     """끝말 규칙 판정 + 턴 모델 점수 → 판정 (spec "규칙과 모델 합치기").
 
-    확실한 판정(`firm`: 확인 질문 뒤 예/아니요, 마침표·종결어미, 기다림 요청, 필러만)은 모델보다
-    앞선다. 점수가 없으면(모델 꺼짐·늦음·실패) 규칙만 쓴다. 티켓 02에서는 늘 `score=None`이다.
-    Smart Turn(티켓 03)은 세션이 점수를 받아 여기에 넘기기만 하면 된다.
+    확실한 판정(`firm`: 확인 질문 뒤 예/아니요, 마침표·종결어미 + 완결된 주문, 기다림 요청,
+    필러만)은 모델보다 앞선다. 점수가 없으면(모델 꺼짐·늦음·실패) 규칙만 쓴다. Smart Turn은
+    세션이 점수를 받아 여기에 넘긴다.
     """
     if score is None or verdict.firm or low < score < high:
         return TurnDecision(verdict.label, verdict.reason, "rule", score, verdict, verdict.wait_s)

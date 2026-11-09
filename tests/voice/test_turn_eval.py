@@ -15,9 +15,9 @@ from agenthan.voice.turn_eval import POLICIES, Pause, Policy, simulate, summariz
 
 
 def pause(label: str, dur: float, text: str = "메도빅 하나", score: float | None = None,
-          kind: str = "open") -> Pause:
+          kind: str = "open", menu_names: tuple[str, ...] = ()) -> Pause:
     return Pause(source="t", item="x", index=0, label=label, dur=dur, text=text,
-                 question_kind=kind, score=score)
+                 question_kind=kind, score=score, menu_names=menu_names)
 
 
 NOW = Policy("now", rules=False, model=False)
@@ -69,10 +69,12 @@ def test_combined_uses_the_bands_and_lets_firm_rules_win() -> None:
         pause("eot", 3.0, text="메도빅 두 개랑", score=0.9),  # 모델 끝남 → 1.0
         pause("eot", 3.0, text="메도빅 하나", score=0.1),  # 모델 이어짐 → 2.0
         pause("eot", 3.0, text="메도빅 두 개랑", score=0.5),  # 가운데 → 규칙 이어짐 → 2.0
-        pause("eot", 3.0, text="메도빅 하나요", score=0.1),  # 확실한 끝(종결어미) → 1.0
+        # 확실한 끝(종결어미 + 메뉴가 든 주문) → 1.0
+        pause("eot", 3.0, text="메도빅 하나요", score=0.1, menu_names=("메도빅",)),
         pause("eot", 3.0, text="네", score=0.1, kind="confirm"),  # 확인 뒤 예 → 1.0
+        pause("eot", 3.0, text="그게 다예요", score=0.1),  # 메뉴 없는 종결어미 → 모델 이어짐 2.0
     ]
-    assert simulate(pauses, BOTH).waits == [1.0, 2.0, 2.0, 1.0, 1.0]
+    assert simulate(pauses, BOTH).waits == [1.0, 2.0, 2.0, 1.0, 1.0, 2.0]
 
 
 def test_without_a_score_the_combined_policy_is_the_rules() -> None:
