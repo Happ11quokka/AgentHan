@@ -63,7 +63,8 @@ def test_select_sends_candidates_as_enum_and_reads_choice(index):
     enum = tools[0]["function"]["parameters"]["properties"]["feature_id"]["enum"]
     assert enum == ["menu", "reservation", "none", "clarify"]
     assert "직전 대화: 비서가 물었다" in messages[0]["content"]
-    assert messages[-1] == {"role": "user", "content": "예약 확정"}
+    # The utterance is framed as data to classify, not a question to answer.
+    assert messages[-1] == {"role": "user", "content": '분류할 사장님 요청:\n"""예약 확정"""'}
 
 
 @pytest.mark.parametrize(

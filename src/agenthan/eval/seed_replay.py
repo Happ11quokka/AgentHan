@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 
 from agenthan.agent.clova_chat import CHAT_MODEL
+from agenthan.agent.feature_selector import USER_TEMPLATE
 from agenthan.eval.cases import load_cases
 from agenthan.eval.replay import Recorder, canonical
 from agenthan.eval.run import FLOW_CASES, REPLAY_PATH, ROUTE_CASES, evaluate, load_splits
@@ -48,7 +49,8 @@ class Synthetic:
         }
 
     def select(self, messages, *, tools):
-        case = self.cases.get(messages[-1]["content"])
+        prefix, suffix = USER_TEMPLATE.split("{text}")
+        case = self.cases.get(messages[-1]["content"].removeprefix(prefix).removesuffix(suffix))
         allowed = tools[0]["function"]["parameters"]["properties"]["feature_id"]["enum"]
         feature = (case.expected_feature or TOOL_FEATURES.get(case.expected_tool)) if case else None
         choice = feature if feature in allowed else "none"
