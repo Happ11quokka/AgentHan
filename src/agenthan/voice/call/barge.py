@@ -134,6 +134,19 @@ class BargeTracker:
     rms: list[float] = field(default_factory=list)  # 이 구간 프레임 RMS (에코 바닥 측정)
 
     @property
+    def mode(self) -> Literal["shadow", "on"]:
+        return self.settings.mode
+
+    @property
+    def acting(self) -> bool:
+        """켜짐(on)이면 줄이고 멈춘다. 그림자(shadow)면 판정만 남긴다."""
+        return self.settings.mode == "on"
+
+    def answer_gap_ms(self, text: str) -> int:
+        """봇 말 끝 뒤 이만큼 안에 시작한 이 말은 봇 말 중으로 본다. 맞장구만 여유가 있다."""
+        return self.settings.answer_gap_ms if is_backchannel(text) else 0
+
+    @property
     def stop_ms(self) -> int:
         s = self.settings
         return min(s.stop_ms + s.stop_step_ms * self.false_barges, max(s.stop_max_ms, s.stop_ms))

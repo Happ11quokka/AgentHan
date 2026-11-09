@@ -606,7 +606,7 @@ class CallSession:
         ready: dict[str, Any] = {"type": "call.ready", "turn": 0, "call": self.call_id,
                                  "sample_rate": SAMPLE_RATE}
         if self._barge is not None:  # 꺼져 있으면 2단계와 같은 모양 (필드 없음)
-            ready["voice_barge_in"] = self._barge.settings.mode
+            ready["voice_barge_in"] = self._barge.mode
         self._emit(ready)
 
     async def _write_stt(self) -> None:
@@ -1458,7 +1458,7 @@ class CallSession:
     def _window_of(self, r: SttResult) -> BotWindow | None:
         """그 말을 시작한 봇 말 구간. 봇 말 끝 바로 뒤(`answer_gap_ms`)의 맞장구도 구간 안이다."""
         assert self._barge is not None
-        gap = self._barge.settings.answer_gap_ms if is_backchannel(r.text) else 0
+        gap = self._barge.answer_gap_ms(r.text)
         for window in reversed(self._windows):
             if window.holds(r.start_ms, gap):
                 return window
@@ -1475,7 +1475,7 @@ class CallSession:
 
     def _barge_act(self, window: BotWindow, action: Action, by: str) -> None:
         assert self._barge is not None
-        on = self._barge.settings.mode == "on"
+        on = self._barge.acting
         window.log["events"].append({"act": action, "by": by, "at_ms": self._vad.offset_ms,
                                      **({} if on else {"shadow": True})})
         if not on:
@@ -1520,7 +1520,7 @@ class CallSession:
             # 아직 말하는 중: 글로 멈춘다 (그림자 측정은 소리로 멈춘 셈이면 다시 남기지 않는다)
             barge.stop_by_text(self._vad.offset_ms)
             self._barge_act(window, "stop", "text")
-        if verdict != "accept" or barge.settings.mode != "on":
+        if verdict != "accept" or not barge.acting:
             self._log_dropped(r, verdict)  # 그림자 측정은 반이중처럼 버린다
             return False
         return True
