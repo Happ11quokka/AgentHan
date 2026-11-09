@@ -267,10 +267,15 @@ class OwnerAssistant:
             context = f"비서가 {name} 기능에서 물었다: {self.history[-1]['content'][:200]}"
         elif self._clarify_options and self.history:
             context = "비서가 되물었다: " + self.history[-1]["content"][:200]
-        choice = feature_selector.select(text, ids, select_chat=self.select_chat, context=context)
+        relevant = [m.feature_id for m in ranked if m.score > RELEVANCE_THRESHOLD]
+        above = relevant[:3]
+        # A text answer after a DASH rejection is trusted only for these (see feature_selector).
+        confident = {*relevant, *([self.pending_feature] if self.pending_feature else [])}
+        choice = feature_selector.select(
+            text, ids, select_chat=self.select_chat, context=context, confident=confident
+        )
         if choice is None:
             # DASH failed: previous rule (pending feature, then thresholded top-1).
-            above = [m.feature_id for m in ranked if m.score > RELEVANCE_THRESHOLD][:3]
             if self.pending_feature and (not above or self.pending_feature in above):
                 return Route(self.pending_feature, "fallback", candidates=tuple(ids))
             return Route(feature_selector.fallback(ranked), "fallback", candidates=tuple(ids))

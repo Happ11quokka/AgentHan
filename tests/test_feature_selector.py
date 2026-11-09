@@ -73,12 +73,79 @@ def test_select_sends_candidates_as_enum_and_reads_choice(index):
         picked("coupon"),  # Outside the candidates.
         picked("menu", name="other_tool"),
         {"role": "assistant", "content": "메뉴입니다."},
-        ClovaRequestRejected("400"),
         ClovaChatError("down"),
     ],
 )
 def test_unusable_answers_fall_back(reply):
     assert fs.select("메뉴", ["menu"], select_chat=Select(reply)) is None
+
+
+def test_rejection_retries_once_as_text_answer():
+    # DASH rejects the forced call (40009) at random; the retry has no tools and reads the ID.
+    select = Select(ClovaRequestRejected("400"), {"role": "assistant", "content": "ai_review: AI"})
+    choice = fs.select("리뷰 요약", ["review_reply", "ai_review"], select_chat=select)
+    assert choice == fs.Selection("ai_review", "feature", ("review_reply", "ai_review"))
+    (first, first_tools), (retry, retry_tools) = select.requests
+    assert first_tools and retry_tools == []
+    assert "항상 select_feature만 호출한다" in first[0]["content"]
+    assert "select_feature" not in retry[0]["content"]
+    assert "답은 후보 ID, none, clarify 중 하나만 쓴다" in retry[0]["content"]
+    assert retry[1] == first[1]  # Same utterance, same framing.
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("none", fs.Selection(None, "none", ("menu",))),
+        ('select_feature("clarify")', fs.Selection(None, "clarify", ("menu",))),
+        ("menu — 메뉴 등록", fs.Selection("menu", "feature", ("menu",))),
+        ("coupon", None),  # Outside the candidates.
+        ("메뉴입니다.", None),
+    ],
+)
+def test_text_retry_reads_first_allowed_id(content, expected):
+    select = Select(ClovaRequestRejected("400"), {"role": "assistant", "content": content})
+    assert fs.select("메뉴", ["menu"], select_chat=select) == expected
+
+
+@pytest.mark.parametrize("retry", [ClovaRequestRejected("400"), ClovaChatError("down")])
+def test_failed_text_retry_falls_back(retry):
+    select = Select(ClovaRequestRejected("400"), retry)
+    assert fs.select("메뉴", ["menu"], select_chat=select) is None and len(select.requests) == 2
+
+
+def test_text_retry_feature_needs_confident_score():
+    # DASH often rejects unrelated questions it wants to answer; a weak text pick must not stick.
+    def run(confident):
+        reply = {"role": "assistant", "content": "menu"}
+        select = Select(ClovaRequestRejected("400"), reply)
+        return fs.select("김치찌개 만드는 법", ["menu"], select_chat=select, confident=confident)
+
+    assert run(set()) is None  # Caller falls back to the thresholded rule.
+    assert run({"menu"}) == fs.Selection("menu", "feature", ("menu",))
+    none = Select(ClovaRequestRejected("400"), {"role": "assistant", "content": "none"})
+    assert fs.select("x", ["menu"], select_chat=none, confident=set()).decision == "none"
+
+
+def test_assistant_passes_threshold_features_as_confident(tmp_path, index, monkeypatch):
+    seen = {}
+
+    def fake_select(text, ids, **kw):
+        seen.update(kw)
+        return fs.Selection(None, "none", tuple(ids))
+
+    monkeypatch.setattr(owner.feature_selector, "select", fake_select)
+    assistant = owner.OwnerAssistant(
+        tmp_path / "store.json", chat=Select(), embed=lambda _: index["menu"], select_chat=Select()
+    )
+    assistant.route("메뉴")
+    assert seen["confident"] == {"menu"}
+
+
+def test_read_choice_takes_the_earliest_whole_id():
+    ids = ["review_reply", "ai_review"]
+    assert fs.read_choice("ai_review 또는 review_reply", ids) == "ai_review"
+    assert fs.read_choice("my_ai_review_x", ids) is None
 
 
 def test_no_candidates_skip_the_call():
