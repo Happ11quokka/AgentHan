@@ -88,6 +88,7 @@ from agenthan.voice.call.defaults import (
     NO_INPUT_S,
     NO_INPUT_SLACK_S,
     NO_INPUT_SPEECH_MAX_S,
+    OWNER_WAIT_S,
     WAIT_REQUEST_S,
 )
 from agenthan.voice.call.frames import (
@@ -116,7 +117,7 @@ from agenthan.voice.call.ports import (
 )
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
 from agenthan.voice.call.spoken import SpokenTurn
-from agenthan.voice.call.timers import Deadline, OneShot
+from agenthan.voice.call.timers import POLL_S, Deadline, OneShot
 from agenthan.voice.call.trim import TrimSettings, trim_leading_silence
 from agenthan.voice.call.turn_end import (
     TurnDecision,
@@ -128,7 +129,12 @@ from agenthan.voice.call.turn_end import (
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
-from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import (
+    OwnerNote,
+    OwnerQuestion,
+    OwnerReply,
+    OwnerSeen,
+)
 from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.nlu.base import Nlu
@@ -208,6 +214,9 @@ class SessionSettings:
     # 상한에서도 손님이 말하는 중이면 미룬다(리뷰 P4). 다만 쉼 없는 말 구간이 이만큼을 넘으면
     # 끊기지 않는 배경 소리로 보고 되묻는다(감사 2번). 안 그러면 소음이 `max_call_s`까지 막는다
     no_input_speech_max_s: float = NO_INPUT_SPEECH_MAX_S
+    # 사장님 질문 답 대기 (4단계 티켓 06). 질문 카드를 보낸 때부터 센다. 넘으면 "확인해서 문자로
+    # 알려 드릴게요" (`PHONE_OWNER_WAIT_S`, 허브 카드 마감과 같은 값)
+    owner_wait_s: float = OWNER_WAIT_S
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
     not_heard_min_ms: int = 500
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
@@ -395,11 +404,16 @@ class CallSession:
         self._listen_rms: dict[str, list[float]] = {"voiced": [], "quiet": []}
         self._broken = False
         self._report_due: int | None = None  # 끊겨서 들은 만큼 보고를 기다리는 턴 (리뷰 C2)
-        # 사장님께 묻기 (4단계 티켓 05). 엔진 턴 결과로 안 열린 질문 번호와, 받았지만 아직 말하지
-        # 못한 사장님 답들(듣는 중이 되면 봇 턴으로 넣는다)
+        # 사장님께 묻기 (4단계 티켓 05·06). 엔진 턴 결과로 안 열린 질문 번호와, 받았지만 아직 말하지
+        # 못한 사장님 쪽 알림들(답·열람, 받은 때와 함께. 말해도 될 때 봇 턴으로 넣는다)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._owner_open: int | None = None
-        self._owner_inbox: list[OwnerReply] = []
+        self._owner_inbox: list[tuple[OwnerNote, float]] = []
+        self._owner_opened_at: float | None = None  # 질문 카드를 보낸 때 (시간 초과 기준)
+        self._owner_seen_at: float | None = None  # 사장님이 그 카드를 처음 본 때
+        self._owner_seen_said = False  # "사장님이 보고 계세요"를 이 질문에 이미 말했다
+        self._owner_timer = OneShot(self._on_owner_timeout)  # 답 대기 시간 초과
+        self._owner_retry = OneShot(self._say_owner_reply)  # 손님이 말하는 중이라 미룬 답 다시 보기
 
     # ------------------------------------------------------------ 바깥 진입점
 
@@ -1140,7 +1154,7 @@ class CallSession:
             said = " ".join(result.utterances)
             self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.owner_question is not None:
-            self._open_owner_question(result.owner_question)
+            self._open_owner_question(turn, result.owner_question)
         if result.order is not None:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -1422,6 +1436,11 @@ class CallSession:
 
     def _start_quiet(self, turn: int) -> None:
         self._quiet_timer.cancel()
+        if self._owner_open is not None:
+            # 사장님 답을 기다리는 중에는 되묻지 않는다 (4단계 티켓 06, V1 AO-6). 답·시간 초과를
+            # 말한 봇 턴의 재생이 끝나면 다시 건다
+            self._quiet_since = None
+            return
         self._quiet_delay = (self._settings.wait_request_s if self._wait_requested
                              else self._settings.no_input_s)
         self._wait_requested = False
@@ -1657,6 +1676,10 @@ class CallSession:
         self._cont_timer.cancel()
         self._play_timer.cancel()
         self._score_timer.cancel()
+        self._owner_timer.cancel()
+        self._owner_retry.cancel()
+        self._owner_open = None  # 통화 뒤 사장님 답은 버린다(늦은 답 문자는 허브 몫, 티켓 07)
+        self._owner_inbox.clear()
         self._drop_score()  # 줄 선 점수 작업을 공유 풀에서 뺀다 (다른 통화가 늦지 않게, 감사 11번)
         self._phase = "ended"
         self._ready = False
@@ -1664,52 +1687,128 @@ class CallSession:
         if first:
             self._tell_owner(lambda owner: owner.call_ended(self.call_id, reason))
 
-    # 사장님께 묻기 (4단계 티켓 05, spec "ASK_OWNER: 세션"). 기다림은 세션이 맡는다(엔진 스레드에서
-    # 기다리지 않는다). 질문은 `OwnerChannel.open_question`으로 열고 바로 돌아온다. 답은 받는 곳
-    # (`_owner_replied`)으로 들어와 큐에 쌓이고, 듣는 중이 되면 봇이 먼저 말하는 턴으로 엔진
-    # `owner_answered`에 넣는다. 시간 초과·미루는 조건(VAD·말 끝 대기)·무응답 타이머 멈춤은 티켓 06
+    # 사장님께 묻기 (4단계 티켓 05·06, spec "ASK_OWNER: 세션"). 기다림은 세션이 맡는다(엔진
+    # 스레드에서 기다리지 않는다). 질문은 `OwnerChannel.open_question`으로 열고 바로 돌아온다.
+    # 사장님 쪽 알림(답·카드 열람)은 받는 곳(`_owner_replied`)으로 들어와 큐에 쌓인다. 카드를 보낸
+    # 때부터 `owner_wait_s`가 지나면 세션이 시간 초과 답을 큐에 넣는다. 큐는 말해도 될 때
+    # (`_owner_may_speak`, 무응답 타이머와 같은 조건) 봇이 먼저 말하는 턴으로 엔진에 넣는다. 안
+    # 되면 미뤘다가 재생 끝(`_after_playback`)·짧은 재시도(`_owner_retry`)에서 다시 본다. 기다리는
+    # 동안 무응답 타이머는 멈춘다(`_start_quiet`). 통화가 끝나면(`_end`) 질문·큐·타이머를 비운다
 
-    def _open_owner_question(self, question: OwnerQuestion) -> None:
+    def _open_owner_question(self, turn: int, question: OwnerQuestion) -> None:
         self._owner_open = question.number
+        self._owner_opened_at = self._clock.monotonic()
+        self._owner_seen_at = None
+        self._owner_seen_said = False
+        self._owner_timer.arm(self._settings.owner_wait_s, question.number)
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["owner_question"] = {"number": question.number,
+                                               "menu_id": question.menu_id,
+                                               "opened_at": self._clock.now().isoformat()}
         self._tell_owner(lambda owner: owner.open_question(self.call_id, question,
                                                            self._owner_replied))
 
-    def _owner_replied(self, reply: OwnerReply) -> None:
-        """사장님 답을 받는 곳. 바로 돌아온다.
+    def _owner_replied(self, note: OwnerNote) -> None:
+        """사장님 쪽 알림(답·열람)을 받는 곳. 바로 돌아온다. 어느 스레드에서 불려도 된다.
 
         처리는 루프의 다음 차례에 한다(부른 쪽 안에서 턴을 열지 않게).
         """
         loop = self._loop
         if loop is None or self.done:
             return
-        self._owner_inbox.append(reply)
-        loop.call_soon_threadsafe(self._say_owner_reply)
+        loop.call_soon_threadsafe(self._owner_got, note, self._clock.monotonic())
+
+    def _owner_got(self, note: OwnerNote, at: float) -> None:
+        if self.done:
+            return
+        if (isinstance(note, OwnerSeen) and note.question == self._owner_open
+                and self._owner_seen_at is None):
+            self._owner_seen_at = at  # 열람 시각은 말하지 못해도(답이 먼저 옴) 답 턴 기록에 남는다
+        self._owner_inbox.append((note, at))
+        self._say_owner_reply()
+
+    def _on_owner_timeout(self, number: int) -> None:
+        """질문 카드를 보낸 뒤 `owner_wait_s`. 허브에 알리고 시간 초과 답을 큐에 넣는다."""
+        if self.done or self._owner_open != number:
+            return
+        self._tell_owner(lambda owner: owner.question_timed_out(self.call_id, number))
+        self._owner_got(OwnerReply(number, "timeout"), self._clock.monotonic())
+
+    def _owner_may_speak(self, now: float) -> bool:
+        """사장님 답·열람을 지금 말해도 되나. 무응답 타이머가 되묻는 조건과 같다 (V1 판정 1).
+
+        듣는 중이고, 손님 말을 붙잡거나 판정하는 중이 아니고, 손님이 말하는 중(VAD 말 구간)이
+        아니고, 말 끝 epFlag 응답을 기다리는 중이 아니다. epFlag 응답이 `hold_cap_s`를 넘게 안
+        오면 더 기다리지 않는다(응답이 사라져도 답이 영영 막히지 않게)
+        """
+        if self._phase != "listening":
+            return False
+        if self._parts or self._held is not None or self._cont is not None or self._pending:
+            return False
+        ep_waiting = (self._ep_waiting() and self._ep_at is not None
+                      and now - self._ep_at < self._settings.hold_cap_s)
+        return not (self._talking(now) or ep_waiting)
 
     def _say_owner_reply(self) -> None:
-        """받은 사장님 답을 말한다. 듣는 중이 아니면(`bot_turn`이 거절) 두었다가 재생 끝에 본다.
+        """받은 사장님 답·열람을 말한다. 지금 말하면 안 되면 미룬다.
 
-        열린 질문과 번호가 다른 답(낡은 답·이미 말한 답)은 버린다.
+        열린 질문과 번호가 다른 것(낡은 답·닫힌 질문의 답)은 버린다. 답이 와 있으면 열람은 버린다
+        (답을 바로 말한다). 열람은 질문마다 한 번만 말한다.
         """
+        self._owner_retry.cancel()
         if self.done:
             self._owner_inbox.clear()
             return
-        kept = [r for r in self._owner_inbox if r.question == self._owner_open]
+        kept = [(n, at) for n, at in self._owner_inbox if n.question == self._owner_open]
         if len(kept) != len(self._owner_inbox):
             log.info("낡은 사장님 답을 버림 (%s)", self.call_id)
-        self._owner_inbox = kept
+        answers = [(n, at) for n, at in kept if isinstance(n, OwnerReply)]
+        if answers:
+            kept = answers[:1]
+        elif self._owner_seen_said:
+            kept = []
+        self._owner_inbox = kept[:1]
         if not kept:
             return
-        reply = kept[0]
-        opened = self.bot_turn(
-            "owner_answer", lambda engine, now: engine.owner_answered(reply.question, reply.answer,
-                                                                      now))
-        if opened is None:
+        now = self._clock.monotonic()
+        if self._phase != "listening":
+            return  # 봇이 말하는 중·생각 중. 그 턴의 재생 끝(`_after_playback`)에서 다시 본다
+        if not self._owner_may_speak(now):
+            self._owner_retry.arm(POLL_S)
             return
-        self._owner_open = None
+        note, at = kept[0]
+        if isinstance(note, OwnerReply):
+            number, answer = note.question, note.answer
+            opened = self.bot_turn(
+                "owner_answer",
+                lambda engine, when: engine.owner_answered(number, answer, when))
+        else:
+            number = note.question
+            opened = self.bot_turn("owner_seen",
+                                   lambda engine, when: engine.owner_seen(number, when))
+        if opened is None:
+            self._owner_retry.arm(POLL_S)
+            return
         self._owner_inbox.clear()
         record = self._log.get(opened)
-        if record is not None:
-            record.fields["owner_answer"] = {"question": reply.question, "answer": reply.answer}
+        since = self._owner_opened_at if self._owner_opened_at is not None else at
+        timing = {"received_at": self._clock.now().isoformat(),
+                  "wait_ms": round((at - since) * 1000),  # 질문 카드를 보낸 때부터 받은 때까지
+                  "deferred_ms": round((now - at) * 1000)}  # 받은 때부터 말을 시작한 때까지
+        if isinstance(note, OwnerReply):
+            self._owner_open = None
+            self._owner_timer.cancel()
+            seen = self._owner_seen_at
+            if record is not None:
+                record.fields["owner_answer"] = {
+                    "question": note.question, "answer": note.answer, **timing,
+                    "seen_ms": None if seen is None else round((seen - since) * 1000),
+                }
+        else:
+            self._owner_seen_said = True
+            if record is not None:
+                record.fields["owner_seen"] = {"question": note.question, **timing}
 
     def _tell_owner(self, note: Callable[[OwnerChannel], None]) -> None:
         """사장님 쪽에 알린다. 실패해도 통화는 잇는다(사장님 화면 탓에 손님 통화가 끊기지 않게)."""

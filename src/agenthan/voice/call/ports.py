@@ -22,7 +22,7 @@ from datetime import datetime, tzinfo
 from typing import Any, Protocol
 
 from agenthan.core.contracts import OrderLine, OrderSink
-from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import OwnerNote, OwnerQuestion
 from agenthan.voice.store_config import KST
 
 __all__ = [
@@ -211,13 +211,21 @@ class OwnerChannel(Protocol):
         """
 
     def open_question(
-        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerNote], None]
     ) -> None:
         """근거 없는 메뉴 질문을 사장님께 연다(티켓 05). 기다리지 않고 바로 돌아온다.
 
-        사장님 답은 나중에 `reply(OwnerReply)`로 넘긴다(이벤트 루프에서, 질문당 한 번). `reply`는
-        세션의 받는 곳이라 바로 돌아오고, 이 호출 안에서 바로 불러도 된다. 통화가 끝난 뒤의 답은
-        세션이 버린다(늦은 답 문자는 허브 몫, 티켓 07).
+        사장님 쪽 일은 나중에 `reply`로 넘긴다: 카드 열람 `OwnerSeen`(티켓 06), 답 `OwnerReply`
+        (질문당 한 번). `reply`는 세션의 받는 곳이라 바로 돌아오고, 이 호출 안에서 바로 불러도 되고
+        다른 스레드에서 불러도 된다. 시간 초과·통화 끝 뒤의 답은 세션이 버린다(늦은 답 문자는 허브
+        몫, 티켓 07).
+        """
+
+    def question_timed_out(self, call_id: str, number: int) -> None:
+        """질문 카드를 보낸 뒤 답 대기 시간(`owner_wait_s`)이 지났다(티켓 06). 세션 시계로 잰다.
+
+        손님에게는 "확인해서 문자로 알려 드릴게요"가 나간다(손님이 말하는 중이면 조금 뒤). 카드는
+        닫지 않는다(늦은 답을 받는다).
         """
 
 
@@ -240,6 +248,9 @@ class NullOwnerChannel:
         pass
 
     def open_question(
-        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerNote], None]
     ) -> None:
+        pass
+
+    def question_timed_out(self, call_id: str, number: int) -> None:
         pass

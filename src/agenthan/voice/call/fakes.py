@@ -28,7 +28,13 @@ from typing import Any
 from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
-from agenthan.voice.dialog.owner_question import OwnerButton, OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import (
+    OwnerButton,
+    OwnerNote,
+    OwnerQuestion,
+    OwnerReply,
+    OwnerSeen,
+)
 
 STT_LAG_MS = 600  # CLOVA 실측: epFlag 보낸 뒤 결과까지 0.5~0.6초
 
@@ -199,14 +205,25 @@ class RecordingOwnerChannel:
     """`OwnerChannel` 가짜. 받은 알림을 `notes`에 차례로 쌓는다.
 
     알림 모양: `("started", id)` · `("cart", id, 줄 튜플)` · `("customer", id, 글)` ·
-    `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)`
+    `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)` ·
+    `("timeout", id, 질문 번호)`
 
-    `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다.
+    `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다
+    (시간 초과·늦은 답 시험은 나중에 `answer`·`see`를 부른다).
     """
 
     def __init__(self, *, answer: OwnerButton | None = None) -> None:
         self.notes: list[tuple[Any, ...]] = []
         self._answer = answer
+        self._replies: dict[int, Callable[[OwnerNote], None]] = {}  # 질문 번호 → 세션의 받는 곳
+
+    def answer(self, number: int, answer: OwnerButton) -> None:
+        """사장님이 그 질문에 버튼으로 답했다(늦은 답·낡은 답 흉내도 그대로 넘긴다)."""
+        self._replies[number](OwnerReply(number, answer))
+
+    def see(self, number: int) -> None:
+        """사장님이 그 질문 카드를 봤다."""
+        self._replies[number](OwnerSeen(number))
 
     def call_started(self, call_id: str) -> None:
         self.notes.append(("started", call_id))
@@ -224,11 +241,15 @@ class RecordingOwnerChannel:
         self.notes.append(("ended", call_id, reason))
 
     def open_question(
-        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerNote], None]
     ) -> None:
         self.notes.append(("question", call_id, question))
+        self._replies[question.number] = reply
         if self._answer is not None:
             reply(OwnerReply(question.number, self._answer))
+
+    def question_timed_out(self, call_id: str, number: int) -> None:
+        self.notes.append(("timeout", call_id, number))
 
     def _of(self, kind: str) -> list[Any]:
         return [note[-1] for note in self.notes if note[0] == kind]
@@ -249,6 +270,11 @@ class RecordingOwnerChannel:
     def questions(self) -> list[tuple[str, OwnerQuestion]]:
         """연 질문들 (통화 id, 질문)."""
         return [(note[1], note[2]) for note in self.notes if note[0] == "question"]
+
+    @property
+    def timeouts(self) -> list[int]:
+        """시간 초과를 알린 질문 번호들."""
+        return self._of("timeout")
 
     @property
     def ended(self) -> list[str]:
