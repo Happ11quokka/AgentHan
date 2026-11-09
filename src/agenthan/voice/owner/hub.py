@@ -64,16 +64,17 @@ from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
 from agenthan.voice.call.defaults import OWNER_WAIT_S
 from agenthan.voice.call.ports import Clock
 from agenthan.voice.dialog.owner_question import (
-    OWNER_BUTTONS,
+    OWNER_POSTS,
     OwnerNote,
     OwnerQuestion,
     OwnerReply,
     OwnerSeen,
 )
+from agenthan.voice.owner import sms
 from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.lexicon import lexicon_for
 from agenthan.voice.owner.translate import Translator
-from agenthan.voice.owner.translation import CardTexts
+from agenthan.voice.owner.translation import SOURCE_LANG, CardTexts
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +108,8 @@ CAPTION_LINES = 4
 _CLOSABLE = frozenset({"handoff", "missed"})
 # 사장님 답을 아직 못 받은 질문 카드 상태 (확정 주문에 "사장님 확인 필요")
 _UNANSWERED = frozenset({"open", "timeout"})
+# 이 상태에서 받은 답은 늦은 답이다. 통화가 말하지 않으니 손님 문자로 간다 (티켓 07)
+_LATE = frozenset({"timeout", "call_ended"})
 
 
 class OwnerHub:
@@ -127,13 +130,18 @@ class OwnerHub:
         self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
         self._replies: dict[str, Callable[[OwnerNote], None]] = {}  # 답을 아직 안 넘긴 질문
         self._lexicon = lexicon_for(owner_lang)
+        self._translator = translator  # 사장님 자유 입력 글 → 한국어 (티켓 07)
         self._texts = CardTexts(translator, store=store, lexicon=self._lexicon)
         self._tasks: set[asyncio.Task[None]] = set()  # 진행 중인 번역 (GC 막기)
         self._cards: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
         self._heard: dict[str, deque[str]] = {}  # 통화 중인 id → 마지막 손님 말들
         self._captions: dict[str, _Captions] = {}  # 통화 중인 id → 자막 (티켓 10)
+        # 통화 id → 손님에게 보낸 문자 미리보기, 보낸 순서 (티켓 07)
+        self._texts_out: dict[str, list[dict[str, Any]]] = {}
         self._subscribers: set[asyncio.Queue[OwnerEvent]] = set()
+        # 통화 id → 손님 통화 화면의 문자 스트림 구독자 (티켓 07)
+        self._text_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -202,24 +210,39 @@ class OwnerHub:
             raise CardBusy(call_id)
         return self._put_call({**card, "status": "closed"})
 
-    def answer_question(self, question_id: str, answer: str) -> dict[str, Any]:
-        """질문 카드 버튼 답(yes·no·unsure). 바뀐 카드를 돌려주고 답을 통화 세션에 넘긴다.
+    def answer_question(self, question_id: str, answer: str, text: str = "") -> dict[str, Any]:
+        """질문 카드 답: 버튼(yes·no·unsure) 또는 자유 입력(free + 사장님 글 `text`, 티켓 07).
+        바뀐 카드를 돌려주고 답 종류를 통화 세션에 넘긴다(사장님 글은 통화에 넘기지 않는다).
 
-        없는 질문이면 `UnknownCard`, 이미 답했으면 `AlreadyAnswered`, 모르는 답이면 `ValueError`.
-        세션의 받는 곳이 실패해도(통화가 이미 끝남 등) 카드는 답함으로 남는다.
+        늦은 버튼 답(시간 초과·통화 끝 카드)은 고정 문장 손님 문자가 된다. 자유 입력은 언제든
+        사장님 글을 한국어로 번역해 손님 문자가 된다(번역은 비동기, 안 되면 원문).
+        없는 질문이면 `UnknownCard`, 이미 답했으면 `AlreadyAnswered`, 모르는 답이거나 자유 입력
+        글이 비면 `ValueError`. 세션의 받는 곳이 실패해도(통화가 이미 끝남 등) 카드는 답함으로
+        남는다.
         """
         card = self._questions.get(question_id)
         if card is None:
             raise UnknownCard(question_id)
-        if answer not in OWNER_BUTTONS:
+        if answer not in OWNER_POSTS:
             raise ValueError(f"모르는 답: {answer!r}")
+        written = text.strip() if answer == "free" else ""
+        if answer == "free" and not written:
+            raise ValueError("자유 입력 답에 글이 없어요")
         if card["status"] == "answered":
             raise AlreadyAnswered(question_id)
-        # 시간 초과·통화 끝 카드의 늦은 답도 받는다. 세션은 번호로 버린다(문자 미리보기는 티켓 07)
-        card = self._put_question({**card, "status": "answered", "answer": answer})
+        # 시간 초과·통화 끝 카드의 늦은 답도 받는다. 세션은 번호로 버리고 손님에게는 문자로 간다
+        late = card["status"] in _LATE
+        card = self._put_question({**card, "status": "answered", "answer": answer,
+                                   "answer_text": written})
         reply = self._replies.pop(question_id, None)
         if reply is not None:
             self._tell_call(reply, OwnerReply(card["number"], answer), question_id)
+        if answer == "free":
+            self._text_written_answer_soon(question_id)
+        elif late:
+            self._text_customer(card["call_id"], "late_answer",
+                                sms.late_answer_text(card["menu_name"], answer),
+                                question_id=question_id)
         return card
 
     def see_question(self, question_id: str) -> dict[str, Any]:
@@ -237,6 +260,36 @@ class OwnerHub:
         if reply is not None and card["status"] == "open":
             self._tell_call(reply, OwnerSeen(card["number"]), question_id)
         return card
+
+    def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
+        """그 통화의 손님에게 보낸 문자(보낸 순서). 없거나 모르는 통화면 빈 목록 (티켓 07)."""
+        return list(self._texts_out.get(call_id, ()))
+
+    def watch_texts(self, call_id: str) -> AsyncIterator[OwnerEvent]:
+        """손님 통화 화면의 "받은 문자" 구독 (티켓 07). 처음에 `sms.snapshot`(`{"call_id", "sms":
+        [...]}`, 지금까지의 문자), 그 뒤 새 문자마다 `sms`(문자 하나). 닫으면 구독을 푼다.
+
+        허브가 모르는 통화(카드도 문자도 없음)면 바로 `UnknownCard`. 시간 제한은 HTTP 쪽이 둔다.
+        """
+        if call_id not in self._calls and call_id not in self._cards \
+                and call_id not in self._texts_out:
+            raise UnknownCard(call_id)
+        return self._watch_texts(call_id)
+
+    async def _watch_texts(self, call_id: str) -> AsyncIterator[OwnerEvent]:
+        self._bind()
+        queue: asyncio.Queue[OwnerEvent] = asyncio.Queue()
+        watchers = self._text_watchers.setdefault(call_id, set())
+        watchers.add(queue)
+        try:
+            yield OwnerEvent("sms.snapshot",
+                             {"call_id": call_id, "sms": self.customer_texts(call_id)}, self._seq)
+            while True:
+                yield await queue.get()
+        finally:
+            watchers.discard(queue)
+            if not watchers:
+                self._text_watchers.pop(call_id, None)
 
     async def events(self) -> AsyncIterator[OwnerEvent]:
         """구독. 처음에 `snapshot` 하나, 그 뒤 바뀐 카드마다 이벤트 하나. 닫으면 구독을 푼다."""
@@ -258,15 +311,55 @@ class OwnerHub:
             return
         if order.status != "confirmed":
             return
-        card = {**self._dressed(self._order_card(order)), "owner_check": any(
+        base = self._order_card(order)
+        self._add_text(order.id, "order", sms.order_text(
+            [(line["name_ko"], line["quantity"]) for line in base["lines"]],
+            base["total"], base["pickup_label"]))
+        card = {**self._dressed(base), "owner_check": any(
             q["call_id"] == order.id and q["status"] in _UNANSWERED
-            for q in self._questions.values())}
+            for q in self._questions.values()), "sms": self.customer_texts(order.id)}
         self._cards[order.id] = card
         self._publish("order.update", card)
         self._translate_later(card)
         call = self._calls.get(order.id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered"})  # 화면은 통화 카드를 빼고 주문 카드만
+
+    def _add_text(self, call_id: str, kind: str, text: str, *, question_id: str = "",
+                  translate_failed: bool = False) -> dict[str, Any]:
+        """손님 문자 미리보기 하나를 남긴다(실제 발송 없음)."""
+        texts = self._texts_out.setdefault(call_id, [])
+        now = self._clock.now()
+        entry = {
+            "id": f"{call_id}-s{len(texts) + 1}",
+            "call_id": call_id,
+            "kind": kind,  # order · late_answer · free_answer
+            "text": text,  # 손님이 받는 한국어 문장
+            "sent_at": now.isoformat(),
+            "sent_label": now.strftime("%H:%M"),
+            "question_id": question_id,  # 사장님 답 문자면 그 질문 id
+            "translate_failed": translate_failed,  # 자유 입력 글을 번역하지 못해 원문을 넣었다
+        }
+        texts.append(entry)
+        self._seq += 1
+        for queue in self._text_watchers.get(call_id, ()):
+            queue.put_nowait(OwnerEvent("sms", entry, self._seq))
+        return entry
+
+    def _text_customer(self, call_id: str, kind: str, text: str, **kw: Any) -> None:
+        """문자를 남기고 그 통화의 사장님 카드(주문 카드, 화면에 있는 통화 카드)를 다시 보낸다."""
+        self._add_text(call_id, kind, text, **kw)
+        texts = self.customer_texts(call_id)
+        order = self._cards.get(call_id)
+        if order is not None:
+            self._cards[call_id] = {**order, "sms": texts}
+            self._publish("order.update", self._cards[call_id])
+        call = self._calls.get(call_id)
+        if call is not None:
+            if call["status"] in ("ordered", "closed"):
+                self._calls[call_id] = {**call, "sms": texts}  # 화면에 없는 카드: 보내지 않는다
+            else:
+                self._put_call({**call, "sms": texts})
 
     def _start_call(self, call_id: str) -> None:
         if call_id in self._calls:
@@ -281,6 +374,7 @@ class OwnerHub:
             "reason": "",  # 끝난 이유 (`CallSession._end`): handoff·hangup·cancelled·no_input·error
             **self._cart_fields(()),
             "heard": [],  # 넘김 카드만: 마지막 손님 말 (한국어 원문, 오래된 것부터)
+            "sms": self.customer_texts(call_id),  # 손님에게 보낸 문자 (티켓 07)
         })
 
     def _change_cart(self, call_id: str, lines: tuple[OrderLine, ...]) -> None:
@@ -364,8 +458,10 @@ class OwnerHub:
             "sent_at": now.isoformat(),
             "deadline_at": (now + self._question_wait).isoformat(),  # 화면 카운트다운과 같은 시계
             "status": "open",  # open · answered · timeout · call_ended (티켓 06)
-            "answer": "",  # yes · no · unsure
+            "answer": "",  # yes · no · unsure · free (자유 입력, 티켓 07)
             "seen_at": "",  # 사장님이 카드를 처음 본 시각 (허브 시계 ISO, 티켓 06)
+            "answer_text": "",  # 자유 입력 답의 사장님 글 원문 (사장님 언어, 티켓 07)
+            "answer_text_ko": "",  # 그 글의 한국어 번역 (손님 문자에 들어감). 아직·실패면 ""
         }
         self._questions[question_id] = card
         self._replies[question_id] = reply
@@ -438,6 +534,46 @@ class OwnerHub:
             if question["call_id"] == call_id and question["text_owner"] != text_owner:
                 self._questions[question_id] = {**question, "text_owner": text_owner}
                 self._publish("owner.question.update", self._questions[question_id])
+
+    # --- 자유 입력 답 → 손님 문자 (티켓 07): 사장님 글(ru) → ko. 메뉴명 보호 없음, 다듬지 않음 ---
+
+    def _text_written_answer_soon(self, question_id: str) -> None:
+        if self._translator is None:
+            self._text_written_answer(question_id, "")  # 키 없음: 원문 문자
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 루프 밖(동기 코드): 번역 없이 원문 문자
+            self._text_written_answer(question_id, "")
+            return
+        task = loop.create_task(self._translate_written_answer(question_id))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _translate_written_answer(self, question_id: str) -> None:
+        assert self._translator is not None
+        original = self._questions[question_id]["answer_text"]
+        try:
+            [translated] = await self._translator.translate(
+                [original], self._lexicon.lang, SOURCE_LANG)
+        except Exception as err:  # noqa: BLE001 — 번역이 안 되면 원문으로 보낸다
+            log.warning("자유 입력 답 번역 실패(%s): 원문을 문자로 (%s)",
+                        type(err).__name__, question_id)
+            translated = ""
+        translated = translated.strip()
+        if translated:
+            card = self._questions[question_id]
+            self._put_question({**card, "answer_text_ko": translated})
+        self._text_written_answer(question_id, translated)
+
+    def _text_written_answer(self, question_id: str, translated: str) -> None:
+        card = self._questions[question_id]
+        if translated:
+            text = sms.free_answer_text(card["menu_name"], translated)
+        else:
+            text = sms.untranslated_answer_text(card["menu_name"], card["answer_text"])
+        self._text_customer(card["call_id"], "free_answer", text, question_id=question_id,
+                            translate_failed=not translated)
 
     def _cart_fields(self, lines: Sequence[OrderLine]) -> dict[str, Any]:
         card_lines = self._card_lines(lines)

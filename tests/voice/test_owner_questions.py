@@ -40,6 +40,8 @@ CARD = {
     "status": "open",
     "answer": "",
     "seen_at": "",
+    "answer_text": "",  # 티켓 07: 자유 입력 답의 사장님 글
+    "answer_text_ko": "",
 }
 
 

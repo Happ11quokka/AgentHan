@@ -86,7 +86,7 @@ def test_a_call_shows_a_live_card_whose_cart_follows_the_call() -> None:
     assert started.data == {
         "id": "call-1", "status": "live", "started_at": "2026-11-08T16:02:00+09:00",
         "started_label": "16:02", "reason": "", "lines": [], "total": 0, "total_label": "0₩",
-        "heard": [], "heard_owner": [],
+        "heard": [], "heard_owner": [], "sms": [],  # 손님에게 보낸 문자 (티켓 07)
     }
     assert [(line["name_ko"], line["quantity"]) for line in one.data["lines"]] == [("메도빅", 1)]
     assert (one.data["total_label"], two.data["total_label"]) == ("7,500₩", "15,000₩")

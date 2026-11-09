@@ -290,3 +290,18 @@ def test_a_turn_that_ends_the_call_closes_the_open_question(ending: tuple[str, .
     r = talk(engine, *ending)
     assert r.state in (State.DONE, State.FALLBACK)
     assert engine.owner_answered(asked.number, "yes", NOW).utterances == []
+
+
+# ---------------------------------------------------------------- 자유 입력 (티켓 07)
+
+
+def test_a_written_answer_is_not_read_out_and_promises_a_text_message() -> None:
+    engine = make_engine()
+    talk(engine, "메도빅 하나요")
+    r = engine.owner_answered(_open(engine).number, "free", NOW)
+    assert r.utterances == ["사장님이 답을 남기셨어요. 문자로 보내 드릴게요.", MORE_Q]
+    assert r.state is State.ORDERING
+    r = talk(engine, "그게 다예요", "6시 반이요", "네")
+    assert r.utterances == ["6시 반에 준비해 둘게요. 감사합니다."]  # 답이 왔으니 문자 약속 없음
+    assert r.order is not None
+    assert "사장님: (글로 답함, 문자로 보냄)" in r.order.transcript

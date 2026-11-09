@@ -13,9 +13,13 @@ from typing import Literal
 # 사장님 버튼 답: 돼요 · 안 돼요 · 모르겠어요 (grilling Q6). 사장님 화면 POST가 받는 값이다
 OwnerButton = Literal["yes", "no", "unsure"]
 OWNER_BUTTONS: tuple[OwnerButton, ...] = ("yes", "no", "unsure")
-# 엔진이 받는 답 종류: 버튼 셋 + 시간 초과(티켓 06, 세션이 넣는다). 자유 입력은 티켓 07.
+# 사장님 화면이 보내는 답: 버튼 셋 + 자유 입력(free, 티켓 07). 자유 입력 글은 허브가 번역해 손님
+# 문자로만 보낸다. 통화에는 종류만 간다
+OwnerPost = Literal["yes", "no", "unsure", "free"]
+OWNER_POSTS: tuple[OwnerPost, ...] = ("yes", "no", "unsure", "free")
+# 엔진이 받는 답 종류: 버튼 셋 + 시간 초과(티켓 06, 세션이 넣는다) + 자유 입력(티켓 07).
 # 엔진은 답 종류마다 고정 존댓말 문장을 말한다(`templates.owner_answer`)
-OwnerAnswer = Literal["yes", "no", "unsure", "timeout"]
+OwnerAnswer = Literal["yes", "no", "unsure", "timeout", "free"]
 
 
 @dataclass(frozen=True)
