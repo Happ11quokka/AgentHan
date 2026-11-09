@@ -150,7 +150,7 @@ def phone_router(
             nlu=settings.nlu,
             stt=stt,
             tts=tts,
-            clock=_clock(settings),
+            clock=store_clock(settings),
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             log_dir=settings.log_dir,
@@ -178,7 +178,8 @@ def phone_router(
     return router
 
 
-def _clock(settings: VoiceSettings) -> Clock:
+def store_clock(settings: VoiceSettings) -> Clock:
+    """가게 시계. `PHONE_NOW`가 있으면 그 시각에 멈춘 시계 (통화 세션·사장님 허브가 같이 쓴다)."""
     if settings.now is not None:
         return FakeClock(settings.now.astimezone(settings.tz))
     return SystemClock(settings.tz)

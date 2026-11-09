@@ -135,6 +135,13 @@ def test_the_call_session_gets_the_server_settings_under_the_same_names() -> Non
     assert VoiceSettings().session_settings() == SessionSettings()  # 기본값이 한 곳에서 온다
 
 
+def test_the_owner_screen_key_comes_from_the_env_and_is_empty_by_default() -> None:
+    assert VoiceSettings.from_env({}, env_file=None).owner_key == ""
+    s = VoiceSettings.from_env({"PHONE_OWNER_KEY": "own3r"}, env_file=None)
+    assert s.owner_key == "own3r"
+    assert "own3r" not in repr(s)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)

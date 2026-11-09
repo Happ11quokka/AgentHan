@@ -28,6 +28,7 @@
 | `PHONE_BARGE_THRESHOLD` | 봇 말 중 손님 소리로 볼 RMS (PCM16) | `1500` |
 | `PHONE_BARGE_DUCK_MS` | 이만큼 소리가 이어지면 봇 목소리를 줄인다(ms) | `250` |
 | `PHONE_BARGE_STOP_MS` | 이만큼 이어지면 봇 말을 멈춘다(ms, 1000 이상) | `1000` |
+| `PHONE_OWNER_KEY` | 사장님 화면 비밀 토큰. `/owner?key=…`. 없으면 사장님 경로가 모두 401 | 없음 |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -96,6 +97,8 @@ class VoiceSettings:
     turn_model_high: float = MODEL_HIGH
     # 음성 끼어들기 (3단계 티켓 06). None이면 꺼짐(기본, 반이중 + 말 끊기 버튼)
     barge: BargeSettings | None = None
+    # 사장님 화면 비밀 토큰 (4단계 티켓 01). 비면 사장님 경로가 모두 잠긴다(401)
+    owner_key: str = field(default="", repr=False)
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -183,6 +186,7 @@ class VoiceSettings:
             turn_model_low=_fraction("PHONE_TURN_LOW", get("PHONE_TURN_LOW", ""), MODEL_LOW),
             turn_model_high=_fraction("PHONE_TURN_HIGH", get("PHONE_TURN_HIGH", ""), MODEL_HIGH),
             barge=_barge(get),
+            owner_key=get("PHONE_OWNER_KEY", ""),
             env=env,
         )
 

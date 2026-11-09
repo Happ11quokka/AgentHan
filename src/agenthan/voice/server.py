@@ -5,8 +5,11 @@
 
 저장소 루트에서 실행한다(`.env`·`web/dist`·`logs/`를 지금 폴더 기준으로 찾는다).
 설정은 `settings.py` 머리 주석의 `PHONE_*` 변수. 키가 없어도 기본값(전부 `fake`)으로 뜬다.
+확정 주문은 사장님 허브(4단계)로 간다. 사장님 화면은 `/owner?key=<PHONE_OWNER_KEY>`,
+SSE는 `/api/owner/stream?key=…` (`owner/http.py`).
 
-11/17 통합 때 `app/`은 이 파일을 쓰지 않고 `ws.phone_router(...)`만 붙인다.
+11/17 통합 때 `app/`은 이 파일을 쓰지 않고 허브·`ws.phone_router(...)`·`owner_router(...)`를
+조립한다.
 """
 
 from __future__ import annotations
@@ -17,22 +20,14 @@ from collections.abc import Sequence
 
 from fastapi import FastAPI
 
-from agenthan.core.contracts import Order
-from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
+from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.owner.http import owner_router
+from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
-from agenthan.voice.ws import phone_router
+from agenthan.voice.ws import phone_router, store_clock
 
 log = logging.getLogger(__name__)
-
-
-class LoggedOrderSink(MemoryOrderSink):
-    """2단계 `OrderSink`: 메모리에 쌓고 로그 한 줄 (주문 내용은 `order` 이벤트로 화면에 간다)."""
-
-    def submit(self, order: Order) -> None:
-        super().submit(order)
-        log.info("주문 %s: %s, 항목 %d개, 픽업 %s",
-                 order.id, order.status, len(order.lines), order.pickup_time)
 
 
 def create_app(settings: VoiceSettings | None = None) -> FastAPI:
@@ -42,15 +37,21 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     store = (
         FakeStoreKnowledge.from_fixture(fixture) if fixture else FakeStoreKnowledge.from_fixture()
     )
+    # 확정 주문을 받아 사장님 화면으로 보낸다(로그 한 줄도 남긴다).
+    # 손님 화면의 `order` 이벤트는 그대로
+    hub = OwnerHub(store=store, clock=store_clock(settings))
     app = FastAPI(title="AgentHan 전화 주문 (개발용)")
     app.include_router(
         phone_router(
             store=store,
             config=StoreConfig.from_fixture(fixture),
-            order_sink=LoggedOrderSink(),
+            order_sink=hub,
             settings=settings,
         )
     )
+    app.include_router(owner_router(hub, key=settings.owner_key))
+    if not settings.owner_key:
+        log.warning("PHONE_OWNER_KEY가 없어 사장님 화면(/api/owner/*)이 잠겨 있음 (모두 401)")
     if (settings.web_dist / "index.html").is_file():
         # 일반 라우트(WS 포함)가 먼저고, 없는 화면 경로(`/phone`)는 index.html로 (Accept: text/html)
         app.frontend("/", directory=settings.web_dist)
