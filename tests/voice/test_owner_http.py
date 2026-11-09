@@ -80,11 +80,17 @@ def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
             events = _sse(stream.iter_lines())
             snapshot = next(events)
             assert snapshot["event"] == "snapshot"
-            assert snapshot["data"] == {"orders": []}
+            assert snapshot["data"] == {"orders": [], "calls": []}
 
             _call_and_confirm(client)
 
+            live = _until(events, "call.update")["data"]
+            assert (live["status"], live["lines"]) == ("live", [])
             card = _until(events, "order.update")["data"]
+            assert card["id"] == live["id"]  # 같은 통화 id로 통화 카드가 주문 카드가 된다
+            ordered = _until(events, "call.update")["data"]
+            assert (ordered["id"], ordered["status"]) == (live["id"], "ordered")
+            assert ordered["lines"] == card["lines"]
             assert card["status"] == "new"
             assert [(line["name_ko"], line["quantity"]) for line in card["lines"]] == [
                 ("메도빅", 1)
@@ -105,6 +111,7 @@ def test_owner_paths_need_the_secret_key(tmp_path) -> None:
         assert client.get(f"{STREAM}?key=wrong").status_code == 401
         assert client.post("/api/owner/orders/call-1/accept").status_code == 401
         assert client.post("/api/owner/orders/call-1/accept?key=wrong").status_code == 401
+        assert client.post("/api/owner/calls/call-1/dismiss").status_code == 401
 
 
 def test_accepting_an_unknown_order_is_not_found(tmp_path) -> None:
@@ -117,3 +124,43 @@ def test_without_a_configured_key_the_owner_screen_stays_locked(tmp_path) -> Non
     with TestClient(create_app(settings)) as client:
         assert client.get(f"{STREAM}?key=").status_code == 401
         assert client.get(f"{STREAM}?key=anything").status_code == 401
+
+
+def test_a_call_the_customer_hangs_up_stays_as_a_missed_card_until_the_owner_closes_it(
+    tmp_path,
+) -> None:
+    with _client(tmp_path) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            events = _sse(stream.iter_lines())
+            next(events)  # snapshot
+            with client.websocket_connect(WS_PATH) as ws:
+                phone = Phone(ws)
+                phone.send(type="call.start", turn=0)
+                phone.until("call.ready", 0)
+                phone.played(0)
+                phone.say(1)
+                phone.played(1)
+                live = _until(events, "call.update")["data"]
+                assert live["status"] == "live"
+                busy = client.post(f"/api/owner/calls/{live['id']}/dismiss?key={KEY}")
+                assert busy.status_code == 409  # 통화 중 카드는 닫지 않는다
+                phone.send(type="call.end", turn=1)
+
+            card = _until(events, "call.update")["data"]
+            while card["status"] == "live":  # 장바구니가 바뀐 통화 중 카드를 지나 끝난 카드까지
+                card = _until(events, "call.update")["data"]
+            assert (card["id"], card["status"], card["reason"]) == (live["id"], "missed", "hangup")
+            assert [(line["name_ko"], line["quantity"]) for line in card["lines"]] == [
+                ("메도빅", 1)
+            ]
+
+            closed = client.post(f"/api/owner/calls/{card['id']}/dismiss?key={KEY}")
+            assert closed.status_code == 200
+            assert closed.json()["status"] == "closed"
+            update = _until(events, "call.update")["data"]
+            assert (update["id"], update["status"]) == (card["id"], "closed")
+
+
+def test_closing_an_unknown_call_card_is_not_found(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        assert client.post(f"/api/owner/calls/nope/dismiss?key={KEY}").status_code == 404

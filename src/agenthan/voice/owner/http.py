@@ -2,10 +2,12 @@
 
     app.include_router(owner_router(hub, key=settings.owner_key))
 
-- `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [카드…]}`),
-  그 뒤 `order.update`(카드 전체)
+- `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [카드…], "calls": [카드…]}`),
+  그 뒤 `order.update`·`call.update`(카드 전체)
 - `POST /api/owner/orders/{id}/accept?key=…`: 접수(new → accepted). 바뀐 카드를 돌려준다.
   없는 주문은 404
+- `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
+  바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 
 - 모든 경로가 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를 못 붙여서
   쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -23,7 +25,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from agenthan.voice.owner.hub import OwnerHub, UnknownCard
+from agenthan.voice.owner.hub import CardBusy, OwnerHub, UnknownCard
 
 OWNER_PREFIX = "/api/owner"
 
@@ -50,5 +52,14 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
             return hub.accept(order_id)
         except UnknownCard as err:
             raise HTTPException(status_code=404, detail="그런 주문이 없어요") from err
+
+    @router.post("/calls/{call_id}/dismiss")
+    async def dismiss(call_id: str) -> dict[str, Any]:
+        try:
+            return hub.dismiss(call_id)
+        except UnknownCard as err:
+            raise HTTPException(status_code=404, detail="그런 통화 카드가 없어요") from err
+        except CardBusy as err:
+            raise HTTPException(status_code=409, detail="통화 중이거나 주문이 된 카드예요") from err
 
     return router

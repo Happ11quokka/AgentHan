@@ -1,6 +1,7 @@
 """WS 라우터 `/api/phone/ws` (spec WS 계약, 티켓 04). 연결 하나 = 통화 세션 하나.
 
-    app.include_router(phone_router(store=..., config=..., order_sink=..., settings=...))
+    app.include_router(phone_router(store=..., config=..., order_sink=..., settings=...,
+                                    owner=...))
 
 - 올리는 binary(PCM16LE 16kHz mono 100ms)는 `feed_audio`, text(JSON)는 `feed_event`로 넘긴다
 - 내보내기는 세션의 송신 작업 하나가 `WsOutbound`로만 한다 (Starlette `send`에 잠금이 없음)
@@ -16,6 +17,7 @@
   엔진 스레드는 취소되지 않고 남으므로 통화당 2개(`ENGINE_THREADS_PER_CALL`)를 잡는다
 
 가게 지식·설정·`OrderSink`는 만드는 쪽이 넣는다. 여기에는 가짜 기본값이 없다.
+`owner`(`OwnerChannel`, 사장님 허브)를 주면 통화마다 시작·장바구니·말·끝을 알린다(없으면 안 알림).
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from agenthan.voice.call.ports import (
     CUSTOMER_RETRY,
     ClientGone,
     Clock,
+    OwnerChannel,
     PortError,
     SystemClock,
     Tts,
@@ -95,6 +98,7 @@ def phone_router(
     stt_factory: SttFactory | None = None,
     tts_factory: TtsFactory | None = None,
     turn_model: TurnModel | None = None,
+    owner: OwnerChannel | None = None,
 ) -> APIRouter:
     """`settings.stt`·`tts`가 `clova`인데 어댑터가 없으면 여기서 `AdapterMissing`.
 
@@ -153,6 +157,7 @@ def phone_router(
             clock=store_clock(settings),
             outbound=WsOutbound(ws),
             order_sink=order_sink,
+            owner=owner,
             log_dir=settings.log_dir,
             settings=session_settings,
             executor=engine_pool,

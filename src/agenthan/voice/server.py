@@ -37,8 +37,8 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     store = (
         FakeStoreKnowledge.from_fixture(fixture) if fixture else FakeStoreKnowledge.from_fixture()
     )
-    # 확정 주문을 받아 사장님 화면으로 보낸다(로그 한 줄도 남긴다).
-    # 손님 화면의 `order` 이벤트는 그대로
+    # 확정 주문과 통화 상황(통화 중·넘김·미완료)을 받아 사장님 화면으로 보낸다(주문은 로그 한 줄도
+    # 남긴다). 손님 화면의 `order` 이벤트는 그대로
     hub = OwnerHub(store=store, clock=store_clock(settings))
     app = FastAPI(title="AgentHan 전화 주문 (개발용)")
     app.include_router(
@@ -47,6 +47,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
             config=StoreConfig.from_fixture(fixture),
             order_sink=hub,
             settings=settings,
+            owner=hub,
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))
