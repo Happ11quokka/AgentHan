@@ -13,9 +13,9 @@ CLOVA Voice가 문장 앞에 넣는 무음 길이는 아직 재지 않았다(합
 
 from __future__ import annotations
 
-import array
-import sys
 from dataclasses import dataclass
+
+import numpy as np
 
 from agenthan.voice.call.frames import SAMPLE_RATE
 
@@ -44,24 +44,20 @@ def trim_leading_silence(pcm: bytes, settings: TrimSettings) -> tuple[bytes, int
 
 
 def _first_audible_sample(pcm: bytes, settings: TrimSettings) -> int | None:
+    """numpy로 창 RMS를 한 번에 잰다. 이벤트 루프에서 돌아서 파이썬 반복을 쓰지 않는다 (리뷰 C9)."""
     window = settings.window_ms * SAMPLES_PER_MS
     hop = max(1, settings.hop_ms * SAMPLES_PER_MS)
     scan = (settings.max_ms + settings.window_ms) * SAMPLES_PER_MS
-    samples = array.array("h")
     head = pcm[: min(len(pcm), scan * 2)]
-    samples.frombytes(head[: len(head) - len(head) % 2])
-    if sys.byteorder == "big":
-        samples.byteswap()
+    samples = np.frombuffer(head[: len(head) - len(head) % 2], dtype="<i2").astype(np.int64)
     if len(samples) < window:
         return None
-    squares = [0]  # 앞에서부터 제곱합 (창 RMS를 창마다 다시 더하지 않게)
-    for s in samples:
-        squares.append(squares[-1] + s * s)
-    limit = settings.threshold**2 * window
-    for start in range(0, min(len(samples) - window, settings.max_ms * SAMPLES_PER_MS) + 1, hop):
-        if squares[start + window] - squares[start] >= limit:
-            for i in range(start, start + window):
-                if abs(samples[i]) >= settings.threshold:
-                    return i
-            return start
-    return None
+    squares = np.concatenate(([0], np.cumsum(samples * samples)))  # 앞에서부터 제곱합
+    starts = np.arange(0, min(len(samples) - window, settings.max_ms * SAMPLES_PER_MS) + 1, hop)
+    loud_windows = np.flatnonzero(squares[starts + window] - squares[starts]
+                                  >= settings.threshold**2 * window)
+    if loud_windows.size == 0:
+        return None
+    start = int(starts[loud_windows[0]])
+    loud = np.flatnonzero(np.abs(samples[start:start + window]) >= settings.threshold)
+    return start + int(loud[0]) if loud.size else start
