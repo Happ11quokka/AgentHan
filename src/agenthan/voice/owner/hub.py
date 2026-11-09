@@ -11,8 +11,11 @@
 - 통화 카드(`call.update`, 티켓 02): 통화 중(live) → 확정되면 ordered(같은 id의 주문 카드가 생기고
   통화 카드는 빠진다) · 넘김이면 handoff("손님 연락 필요", 장바구니 + 마지막 손님 말 3줄) · 확정
   없이 끝나면 missed(회색 미완료, 담긴 메뉴 + 끝난 이유). handoff·missed는 사장님이 닫는다(closed)
-- 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...]}`, 통화 카드는 ordered·closed
-  빼고)을 받고, 그 뒤 `order.update`·`call.update`를 받는다.
+- 질문 카드(`owner.question` 새 카드 · `owner.question.update` 바뀐 카드, 티켓 05): 근거 없는 메뉴
+  질문. 열림(open) → 사장님 버튼 답(돼요/안 돼요/모르겠어요)이면 답함(answered). 답은 한 번만 받고
+  통화 세션의 받는 곳(`open_question`의 `reply`)으로 넘긴다. 마감 = 보낸 시각 + `question_wait_s`
+- 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...]}`, 통화
+  카드는 ordered·closed 빼고)을 받고, 그 뒤 `order.update`·`call.update`·`owner.question*`을 받는다.
   이벤트마다 늘어나는 번호(`id`)를 단다. 재연결 때 이어 받기 버퍼는 없다(늘 snapshot부터)
 - `submit`·통화 알림은 이벤트 루프에서 불리면 바로 처리한다(구독자 큐에 `put_nowait`만, 막히지
   않음). 다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다
@@ -29,13 +32,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
+from agenthan.voice.call.defaults import OWNER_WAIT_S
 from agenthan.voice.call.ports import Clock
+from agenthan.voice.dialog.owner_question import OWNER_ANSWERS, OwnerQuestion, OwnerReply
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +49,7 @@ log = logging.getLogger(__name__)
 class OwnerEvent:
     """사장님 화면으로 가는 이벤트 하나. HTTP 쪽이 SSE `event`·`data`·`id`로 옮긴다."""
 
-    name: str  # snapshot · order.update · call.update
+    name: str  # snapshot · order.update · call.update · owner.question · owner.question.update
     data: dict[str, Any]
     id: int
 
@@ -57,6 +62,10 @@ class CardBusy(Exception):
     """그 카드는 지금 닫을 수 없다: 통화 중이거나 주문이 됐다 (HTTP 409)."""
 
 
+class AlreadyAnswered(Exception):
+    """이미 답한 질문이다. 답은 한 번만 받는다 (HTTP 409)."""
+
+
 # 넘김 카드에 붙이는 마지막 손님 말 줄 수 (spec 이야기 49)
 HEARD_LINES = 3
 # 사장님이 닫을 수 있는 통화 카드 상태
@@ -66,9 +75,14 @@ _CLOSABLE = frozenset({"handoff", "missed"})
 class OwnerHub:
     """`OrderSink`·`OwnerChannel` 구현 + 사장님 화면 구독. 이벤트 루프 하나에 묶여 쓴다."""
 
-    def __init__(self, *, store: StoreKnowledge, clock: Clock) -> None:
+    def __init__(
+        self, *, store: StoreKnowledge, clock: Clock, question_wait_s: float = OWNER_WAIT_S
+    ) -> None:
         self._store = store
         self._clock = clock
+        self._question_wait = timedelta(seconds=question_wait_s)
+        self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
+        self._replies: dict[str, Callable[[OwnerReply], None]] = {}  # 답을 아직 안 넘긴 질문
         self._cards: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
         self._heard: dict[str, deque[str]] = {}  # 통화 중인 id → 마지막 손님 말들
@@ -101,6 +115,11 @@ class OwnerHub:
     def call_ended(self, call_id: str, reason: str) -> None:
         self._on_loop(self._end_call, call_id, reason)
 
+    def open_question(
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+    ) -> None:
+        self._on_loop(self._open_question, call_id, question, reply)
+
     # --- 사장님 화면 ---------------------------------------------------------------------
 
     def accept(self, order_id: str) -> dict[str, Any]:
@@ -131,6 +150,30 @@ class OwnerHub:
         if card["status"] not in _CLOSABLE:
             raise CardBusy(call_id)
         return self._put_call({**card, "status": "closed"})
+
+    def answer_question(self, question_id: str, answer: str) -> dict[str, Any]:
+        """질문 카드 버튼 답(yes·no·unsure). 바뀐 카드를 돌려주고 답을 통화 세션에 넘긴다.
+
+        없는 질문이면 `UnknownCard`, 이미 답했으면 `AlreadyAnswered`, 모르는 답이면 `ValueError`.
+        세션의 받는 곳이 실패해도(통화가 이미 끝남 등) 카드는 답함으로 남는다.
+        """
+        card = self._questions.get(question_id)
+        if card is None:
+            raise UnknownCard(question_id)
+        if answer not in OWNER_ANSWERS:
+            raise ValueError(f"모르는 답: {answer!r}")
+        if card["status"] == "answered":
+            raise AlreadyAnswered(question_id)
+        card = {**card, "status": "answered", "answer": answer}
+        self._questions[question_id] = card
+        self._publish("owner.question.update", card)
+        reply = self._replies.pop(question_id, None)
+        if reply is not None:
+            try:
+                reply(OwnerReply(card["number"], answer))  # type: ignore[arg-type]
+            except Exception:
+                log.exception("사장님 답을 통화에 넘기지 못함 (%s)", question_id)
+        return card
 
     async def events(self) -> AsyncIterator[OwnerEvent]:
         """구독. 처음에 `snapshot` 하나, 그 뒤 바뀐 카드마다 이벤트 하나. 닫으면 구독을 푼다."""
@@ -202,6 +245,27 @@ class OwnerHub:
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "missed", "reason": reason})
 
+    def _open_question(
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+    ) -> None:
+        question_id = f"{call_id}-q{question.number}"
+        now = self._clock.now()
+        card = {
+            "id": question_id,
+            "call_id": call_id,
+            "number": question.number,
+            "menu_id": question.menu_id,
+            "menu_name": question.menu_name,  # 한국어. 원어 이름·질문 번역은 티켓 03 몫
+            "text": question.text,  # 손님 질문 원문 (한국어)
+            "sent_at": now.isoformat(),
+            "deadline_at": (now + self._question_wait).isoformat(),  # 화면 카운트다운과 같은 시계
+            "status": "open",  # open → answered (시간 초과·통화 끝은 티켓 06·07)
+            "answer": "",  # yes · no · unsure
+        }
+        self._questions[question_id] = card
+        self._replies[question_id] = reply
+        self._publish("owner.question", card)
+
     def _put_call(self, card: dict[str, Any]) -> dict[str, Any]:
         self._calls[card["id"]] = card
         self._publish("call.update", card)
@@ -257,7 +321,8 @@ class OwnerHub:
 
     def _snapshot(self) -> dict[str, Any]:
         calls = [c for c in self._calls.values() if c["status"] not in ("ordered", "closed")]
-        return {"orders": list(self._cards.values()), "calls": calls}
+        return {"orders": list(self._cards.values()), "calls": calls,
+                "questions": list(self._questions.values())}
 
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         self._seq += 1

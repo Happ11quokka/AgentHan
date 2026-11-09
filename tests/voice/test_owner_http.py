@@ -23,10 +23,14 @@ KEY = "test-owner-key"
 STREAM = "/api/owner/stream"
 
 
-def _client(tmp_path) -> TestClient:
+NUTS = "메도빅에 견과류 들어가요?"
+ASK_SCRIPT = ("메도빅 하나요", NUTS, "그게 다예요", "6시 반이요", "네")
+
+
+def _client(tmp_path, replies: tuple[str, ...] = ORDER_SCRIPT) -> TestClient:
     settings = VoiceSettings(
         log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
-        fake_replies=ORDER_SCRIPT, turn_model="off", owner_key=KEY,
+        fake_replies=replies, turn_model="off", owner_key=KEY,
     )
     return TestClient(create_app(settings))
 
@@ -80,7 +84,7 @@ def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
             events = _sse(stream.iter_lines())
             snapshot = next(events)
             assert snapshot["event"] == "snapshot"
-            assert snapshot["data"] == {"orders": [], "calls": []}
+            assert snapshot["data"] == {"orders": [], "calls": [], "questions": []}
 
             _call_and_confirm(client)
 
@@ -112,6 +116,8 @@ def test_owner_paths_need_the_secret_key(tmp_path) -> None:
         assert client.post("/api/owner/orders/call-1/accept").status_code == 401
         assert client.post("/api/owner/orders/call-1/accept?key=wrong").status_code == 401
         assert client.post("/api/owner/calls/call-1/dismiss").status_code == 401
+        answer = "/api/owner/questions/call-1-q1/answer"
+        assert client.post(answer, json={"answer": "yes"}).status_code == 401
 
 
 def test_accepting_an_unknown_order_is_not_found(tmp_path) -> None:
@@ -164,3 +170,50 @@ def test_a_call_the_customer_hangs_up_stays_as_a_missed_card_until_the_owner_clo
 def test_closing_an_unknown_call_card_is_not_found(tmp_path) -> None:
     with _client(tmp_path) as client:
         assert client.post(f"/api/owner/calls/nope/dismiss?key={KEY}").status_code == 404
+
+
+def test_the_owner_answers_a_question_card_and_the_customer_hears_it(tmp_path) -> None:
+    with _client(tmp_path, ASK_SCRIPT) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            events = _sse(stream.iter_lines())
+            next(events)  # snapshot
+            with client.websocket_connect(WS_PATH) as ws:
+                phone = Phone(ws)
+                phone.send(type="call.start", turn=0)
+                phone.until("call.ready", 0)
+                phone.played(0)
+                phone.say(1)
+                phone.played(1)
+                phone.say(2)  # 메도빅에 견과류 들어가요?
+                phone.played(2)
+
+                card = _until(events, "owner.question")["data"]
+                assert (card["menu_name"], card["text"], card["status"]) == ("메도빅", NUTS, "open")
+                url = f"/api/owner/questions/{card['id']}/answer?key={KEY}"
+                answered = client.post(url, json={"answer": "yes"})
+                assert answered.status_code == 200
+                assert answered.json()["status"] == "answered"
+                assert client.post(url, json={"answer": "no"}).status_code == 409
+                update = _until(events, "owner.question.update")["data"]
+                assert (update["id"], update["answer"]) == (card["id"], "yes")
+
+                phone.played(3)  # 봇이 먼저 말하는 턴: 사장님 답 + 하던 질문
+                for turn in (4, 5, 6):
+                    phone.say(turn)
+                    if turn < 6:
+                        phone.played(turn)
+                phone.until("order", 6)
+                phone.played(6)
+                assert phone.closed_by_server()
+
+    held = " ".join(e["text"] for e in phone.of("bot.say", 2))
+    heard = " ".join(e["text"] for e in phone.of("bot.say", 3))
+    assert held == "잠시만요, 사장님께 여쭤볼게요."
+    assert heard == "사장님께 여쭤보니 네, 된다고 하세요. 더 필요하신 거 있으세요?"
+
+
+def test_answering_an_unknown_question_or_with_an_unknown_answer_is_refused(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        url = f"/api/owner/questions/nope/answer?key={KEY}"
+        assert client.post(url, json={"answer": "yes"}).status_code == 404
+        assert client.post(url, json={"answer": "maybe"}).status_code == 422

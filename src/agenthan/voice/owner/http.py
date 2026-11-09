@@ -8,6 +8,8 @@
   없는 주문은 404
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
+- `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}`: 질문 카드
+  버튼 답(티켓 05). 바뀐 카드를 돌려준다. 없는 질문은 404, 이미 답한 질문은 409, 모르는 답은 422
 
 - 모든 경로가 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를 못 붙여서
   쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -24,10 +26,18 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from pydantic import BaseModel
 
-from agenthan.voice.owner.hub import CardBusy, OwnerHub, UnknownCard
+from agenthan.voice.dialog.owner_question import OwnerAnswer
+from agenthan.voice.owner.hub import AlreadyAnswered, CardBusy, OwnerHub, UnknownCard
 
 OWNER_PREFIX = "/api/owner"
+
+
+class AnswerBody(BaseModel):
+    """질문 카드 버튼 답. 자유 입력(티켓 07)은 칸을 더한다."""
+
+    answer: OwnerAnswer
 
 
 def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
@@ -61,5 +71,14 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
             raise HTTPException(status_code=404, detail="그런 통화 카드가 없어요") from err
         except CardBusy as err:
             raise HTTPException(status_code=409, detail="통화 중이거나 주문이 된 카드예요") from err
+
+    @router.post("/questions/{question_id}/answer")
+    async def answer(question_id: str, body: AnswerBody) -> dict[str, Any]:
+        try:
+            return hub.answer_question(question_id, body.answer)
+        except UnknownCard as err:
+            raise HTTPException(status_code=404, detail="그런 질문이 없어요") from err
+        except AlreadyAnswered as err:
+            raise HTTPException(status_code=409, detail="이미 답한 질문이에요") from err
 
     return router
