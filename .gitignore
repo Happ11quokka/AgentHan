@@ -64,8 +64,8 @@ tests/data/*
 # 리뷰 기능 분기용 공통 케이스 (근형)
 !tests/data/review_route_cases.jsonl
 # 위 두 세트의 증강 (가상 값만 쓴 합성 문장, scripts/augment_cases.py)
-!tests/data/place_request_cases_aug.jsonl
-!tests/data/tool_selection_cases_aug.jsonl
+!tests/data/place_request_cases_aug*.jsonl
+!tests/data/tool_selection_cases_aug*.jsonl
 # 위 두 세트의 고정 dev/holdout 배정 (ID만)
 !tests/data/splits.json
 # 저작권을 확인한 공개 음식 사진 테스트 fixture

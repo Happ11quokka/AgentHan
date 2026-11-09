@@ -22,9 +22,10 @@ ROOT = Path(__file__).resolve().parents[3]
 FLOW_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
 ROUTE_CASES = ROOT / "tests/data/place_request_cases.jsonl"
 # Augmented cases (scripts/augment_cases.py) live apart so the M0 files stay untouched.
-FLOW_AUG = ROOT / "tests/data/tool_selection_cases_aug.jsonl"
-ROUTE_AUG = ROOT / "tests/data/place_request_cases_aug.jsonl"
-DEFAULT_PATHS = {"route": [ROUTE_CASES, ROUTE_AUG], "flow": [FLOW_CASES, FLOW_AUG]}
+# Every *_aug*.jsonl batch next to them is part of the default set, in name order.
+FLOW_AUG = sorted(ROOT.glob("tests/data/tool_selection_cases_aug*.jsonl"))
+ROUTE_AUG = sorted(ROOT.glob("tests/data/place_request_cases_aug*.jsonl"))
+DEFAULT_PATHS = {"route": [ROUTE_CASES, *ROUTE_AUG], "flow": [FLOW_CASES, *FLOW_AUG]}
 REPLAY_PATH = ROOT / "tests/fixtures/replay/m0.json"
 SPLITS_PATH = ROOT / "tests/data/splits.json"
 MODES = ("route", "flow")

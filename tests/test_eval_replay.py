@@ -99,17 +99,18 @@ def test_default_replay_outputs_conditions_table_rows_and_splits(offline, tmp_pa
     directory = next(tmp_path.glob("*-test"))
     summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
     rows = [json.loads(line) for line in (directory / "rows.jsonl").read_text().splitlines()]
-    assert len(rows) == 239
+    assert len(rows) == 378
     assert set(summary["results"]) == {"route", "flow"}
-    assert summary["results"]["route"]["cases"] == 119
-    assert summary["results"]["flow"]["cases"] == summary["results"]["flow"]["flow_cases"] == 120
+    assert summary["results"]["route"]["cases"] == 141
+    assert summary["results"]["flow"]["flow_cases"] == 193
+    assert summary["results"]["flow"]["cases"] == 237  # turns; multi-turn cases since aug2
     assert summary["status"] == "COMPLETE"
     assert set(summary["by_split"]) == {"null", "dev", "holdout"}
     # Fixed stratified split (tests/data/splits.json); no case is left without one.
     assert summary["by_split"]["null"]["route"]["cases"] == 0
-    assert summary["by_split"]["dev"]["route"]["cases"] == 85
-    assert summary["by_split"]["holdout"]["route"]["cases"] == 34
-    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 30
+    assert summary["by_split"]["dev"]["route"]["cases"] == 100
+    assert summary["by_split"]["holdout"]["route"]["cases"] == 41
+    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 45
     conditions = summary["conditions"]
     assert conditions["model_id"] == CHAT_MODEL
     assert conditions["backend"] == "replay" and conditions["repeat"] == 1
@@ -462,6 +463,6 @@ def test_splits_are_fixed_stratified_and_cover_every_case():
         }
         assert len(holdout) >= 14
     # Augmented files are split on their own so the M0 assignment never moves.
-    for path in (run.ROUTE_AUG, run.FLOW_AUG):
+    for path in (*run.ROUTE_AUG, *run.FLOW_AUG):
         cases = load_cases(path)
         assert cases and make_splits(cases) == {c.id: splits[c.id] for c in cases}

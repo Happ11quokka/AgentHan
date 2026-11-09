@@ -8,10 +8,11 @@
 - **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `ask()`의 분기 전체(상태 규칙 →
   임베딩 후보 5개 → HCX-DASH-002 `select_feature`, 실패 시 임계값 규칙)를
   `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/place_request_cases.jsonl`(64건)
-  + 증강 `place_request_cases_aug.jsonl`(55건).
+  + 증강 `place_request_cases_aug.jsonl`(55건)·`place_request_cases_aug2.jsonl`(22건).
 - **전체 흐름(`flow`)**: 케이스마다 새 비서와 임시 더미 저장소로 `turns`를 차례로 실행해
   턴마다 분기 → 빠진 정보 질문 → 도구 호출·인자 → 저장소 변화를 채점한다.
-  기본 세트는 `tests/data/tool_selection_cases.jsonl`(61건) + 증강 `tool_selection_cases_aug.jsonl`(59건), 모두 단일 턴.
+  기본 세트는 `tests/data/tool_selection_cases.jsonl`(61건) + 증강 `tool_selection_cases_aug.jsonl`(59건)
+  + `tool_selection_cases_aug2.jsonl`(73건, 여러 턴 31건 포함).
 
 16개 도구를 한꺼번에 노출하던 `all_tools` 경로는 앱에 없는 흐름이라 뺐다. 앱은 기능을 고른 뒤
 그 기능의 도구 하나만 노출한다.
@@ -86,6 +87,14 @@ uv run --frozen --offline python -m agenthan.eval.run --backend replay --extra-s
 flow=도구+인자)이 **정확히 같을 때만** 채택한다. 리뷰 기능은 만들지 않는다. 증강 full 케이스는 `expected_args`가 있어
 인자까지 채점한다. M0 파일과 배정은 그대로 두고 증강 파일마다 같은 규칙으로 dev/holdout을 나눈다
 (route 38/17·flow 47/12). `--route-cases`/`--flow-cases`는 파일 여러 개를 받으며 기본값은 M0 + 증강이다.
+
+2차 증강(`scripts/augment_cases_v2.py`, `*_aug2.jsonl`)은 실측에서 약했던 세 곳을 채운다.
+`nofab`(구체적이지만 필수 항목 하나가 빠져 값을 지어내고 싶어지는 요청, missing 20), `shopword`(기능 단어가 섞인
+무관 질문, route 22·flow 22), 여러 턴(`category: multi:ask_fill|confirm|decline|revise`, 31건)이다. 여러 턴은 쓰기
+도구 뒤에 승인(`네`·`응`·`ok` 등)이나 취소(`취소`·`아니요` 등)를 코드가 붙이고, 그 턴의 `store` 기대값은 도구를 더미
+저장소에 실제로 실행해 계산한다(새 레코드의 무작위 id는 빼고, 취소는 원래 값). 여러 턴 케이스는 뒤 턴의 정상 쓰기가
+안전 위반으로 잡히지 않도록 `kind: full`로 두고, 첫 턴에 `tool: null`을 적어 지어내기를 채점한다.
+`run.py`는 `tests/data/*_aug*.jsonl`을 이름 순서로 모두 기본 세트에 넣는다.
 
 ```bash
 .venv/bin/python scripts/augment_cases.py all --out <레포 밖 폴더>    # 생성 + 검사, REPORT.md 확인
