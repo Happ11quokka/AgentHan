@@ -3,7 +3,7 @@
 
 주기 제안 기준 (최근 4주 주평균 리뷰 수):
   15건 이상 daily / 3~14건 weekly / 1~2건 biweekly / 1건 미만 monthly (+ 리뷰 늘리기 제안)
-스냅샷은 특징별 최신 20건 표본이라 오래된 기간일수록 리뷰가 빠져 있다. 최근 4주는 비교적 온전하다.
+스냅샷은 표본이라 오래된 기간일수록 리뷰가 빠져 있을 수 있다. 최근 4주는 비교적 온전하다.
 """
 
 from __future__ import annotations
@@ -231,6 +231,7 @@ def check_alerts(
     mode = settings.get("alert", "negative")
     if mode == "none":
         return {"alerts": [], "mode": mode}
+    from .harsh import harsh_of
     from .replies import _quote, _review_sentiment, risk_of
 
     sentiment = sentiment or RuleSentiment()
@@ -249,6 +250,7 @@ def check_alerts(
                     "sentiment": s,
                     "risk": risk_of(r["text"], s),
                     "quote": _quote(r["text"]),
+                    "softened": bool(harsh_of(r["text"])),
                 }
             )
     out.sort(key=lambda x: 0 if x["risk"] else 1)  # 고위험 먼저

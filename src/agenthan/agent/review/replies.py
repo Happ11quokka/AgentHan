@@ -13,6 +13,7 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from .harsh import harsh_of, soften_quote
 from .repo import ReviewRepo
 from .sentiment import RuleSentiment, prefetch_reviews
 
@@ -99,8 +100,8 @@ def _review_sentiment(review: dict, sentiment) -> str:
 
 
 def _quote(text: str, limit: int = 60) -> str:
-    t = " ".join(text.split())
-    return t if len(t) <= limit else t[: limit - 1] + "…"
+    """사장님에게 보여 줄 인용. 상처 되는 표현은 거른다 (harsh.py)."""
+    return soften_quote(text, limit)[0]
 
 
 def get_unanswered_reviews(
@@ -127,6 +128,7 @@ def get_unanswered_reviews(
                 "sentiment": senti,
                 "risk": risk_of(r["text"], senti),
                 "quote": _quote(r["text"]),
+                "softened": bool(harsh_of(r["text"])),
             }
         )
     if priority == "negative_first":
@@ -207,6 +209,15 @@ def _first_sentence(t: str) -> str:
     return re.split(r"(?<=[.!?])\s", t.strip(), maxsplit=1)[0]
 
 
+# 팀 용어 규칙(PRD §0): 리뷰를 쓴 사람은 '손님'. 답글에도 그대로 적용한다 (2026-11-08 팀 결정)
+_CUSTOMER = re.compile(r"고객\s?(님|분)")
+
+
+def to_sonnim(reply: str) -> str:
+    """'고객님'·'고객분' → '손님'. 모델이 지시를 어겨도 답글에는 남지 않게 한다."""
+    return _CUSTOMER.sub("손님", reply)
+
+
 def check_reply(
     reply: str,
     recent: list[str] | None = None,
@@ -239,6 +250,8 @@ def check_reply(
         issues.append("리뷰·별점 수정이나 삭제 요구")
     if _CAUSE.search(reply):
         issues.append("확인 전 원인 추정·단정")
+    if _CUSTOMER.search(reply):
+        issues.append("'고객님' 대신 '손님'")
     if not reply.strip():
         issues.append("빈 답글")
     return {"passed": not issues, "issues": issues, "warnings": warnings}
@@ -330,6 +343,7 @@ def draft_review_reply(
                 )
         else:
             reply = prev if (prev and not edit_request) else _TEMPLATE[route]
+        reply = to_sonnim(reply)
         chk = check_reply(reply, recent_all, owner_promise=owner_promise)
         checklist = build_checklist(reply, glossary)
         translated, promises_tr = None, []
@@ -342,6 +356,7 @@ def draft_review_reply(
                 "draft_id": f"d-{rid}",
                 "review_id": rid,
                 "review_quote": _quote(r["text"], 80),
+                "softened": bool(harsh_of(r["text"])),
                 "sentiment": senti,
                 "route": route,
                 "risk": risk,

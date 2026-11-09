@@ -2,7 +2,6 @@
 
 import json
 from datetime import date
-from types import SimpleNamespace as NS
 
 import pytest
 
@@ -10,6 +9,7 @@ from agenthan.agent import owner_assistant as owner
 from agenthan.agent import place_matcher as matcher
 from agenthan.agent import review_delegate
 from agenthan.agent.review.topic import resolve_from_utterance
+from agenthan.agent.review.translate import Translator
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore
 from agenthan.tools.review_adapters import (
     DummyStoreMenuCatalog,
@@ -41,11 +41,10 @@ class SilentHCX:
 
     def __init__(self):
         self.calls = []
-        self.chat = NS(completions=NS(create=self._create))
 
-    def _create(self, **kw):
-        self.calls.append(kw)
-        return NS(choices=[NS(message=NS(content="네 알겠습니다", tool_calls=None))])
+    def chat(self, model, messages, **kw):  # ClovaClient.chat과 같은 모양
+        self.calls.append({"model": model, "messages": messages, **kw})
+        return {"role": "assistant", "content": "네 알겠습니다"}
 
 
 class FakeWriter:
@@ -103,13 +102,27 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     assert SEED_PATH.read_bytes() == seed
 
 
+class TagTranslator:
+    """번역 대신 '<언어>' 꼬리표만 붙인다. 영어 → 한국어 입력은 고정 문장으로 바꾼다."""
+
+    name = "tag"
+
+    def translate(self, texts, source, target):
+        if target == "ko":
+            return ["답글 안 단 리뷰 있어?" for _ in texts]
+        return [f"<{target}> {t}" for t in texts]
+
+
 def test_handle_splits_answer_and_blocks(tmp_path):
     store = DummyStore(tmp_path / "store.json")
     session = factory(SilentHCX())(store, owner_lang="en")
+    session.translator = Translator(None, TagTranslator())
     out = review_delegate.handle("Are there reviews I haven't replied to?", session)
-    assert out["text"].startswith("There are 2 reviews without a reply")
-    assert out["blocks"].startswith("**Reviews without a reply**")
-    assert session.messages[0]["role"] == "system" and "English" in session.messages[0]["content"]
+    # 안에서는 한국어로 처리하고 사장님 언어로는 출력만 번역한다 (run_turn)
+    assert out["text"].startswith("<en> 답글 안 단 리뷰는 2건")
+    assert "**" in out["blocks"] and "<en>" in out["blocks"]
+    assert session.messages[1]["content"] == "답글 안 단 리뷰 있어?"  # HCX는 한국어 대화만 본다
+    assert "한국어" in session.messages[0]["content"]
 
 
 def test_adapters_share_store_data(tmp_path):

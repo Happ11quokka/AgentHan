@@ -1,9 +1,7 @@
 """답글 흐름 테스트 (API 키 불필요): 미답글 → 초안 → 수정 → 확정 없이 등록 시도 → 등록."""
 
-import json
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace as NS
 
 from agenthan.agent.review import MenuCatalog, SnapshotRepo
 from agenthan.agent.review.agent import ReviewToolbox, run_turn
@@ -12,8 +10,8 @@ from agenthan.agent.review.replies import MockReplyStore, check_reply
 ROOT = Path(__file__).resolve().parents[1]
 
 TODAY = date(2026, 11, 7)
-REPO = SnapshotRepo(ROOT / "tests" / "fixtures" / "review_snapshot.jsonl")
-CAT = MenuCatalog.load(ROOT / "tests" / "fixtures" / "menus.json")
+REPO = SnapshotRepo(ROOT / "fixtures" / "review_snapshot.jsonl")
+CAT = MenuCatalog.load(ROOT / "fixtures" / "review_menus.json")
 
 
 class FakeWriter:
@@ -53,7 +51,7 @@ class FakeWriter:
 
 def toolbox(lang="ko"):
     return ReviewToolbox(
-        "연습떡집",
+        "달빛모찌",
         TODAY,
         REPO,
         CAT,
@@ -66,7 +64,7 @@ def toolbox(lang="ko"):
 def test_unanswered_seed_and_priority():
     tb = toolbox()
     r = tb.dispatch("get_unanswered_reviews", {}, utterance="답글 안 단 리뷰 있어?")
-    # 데모 가정: 최근 14일(10-24 이후) 리뷰만 답글 없음 → 연습떡집 10-25, 10-29, 10-30
+    # 데모 가정: 최근 14일(10-24 이후) 리뷰만 답글 없음 → 달빛모찌 10-25, 10-29, 10-30
     assert r["total"] == 3 and [x["visit_date"] for x in r["reviews"]] == [
         "2026-10-30",
         "2026-10-29",
@@ -86,9 +84,9 @@ def test_draft_edit_confirm_post():
     )
     dr = d["drafts"][0]
     assert (
-        dr["review_id"] == "r00732"
+        dr["review_id"] == "m003"
         and "경로로 쓴 답글" in dr["reply_ko"]
-        and dr["reply_translated"].startswith("<ru>")
+        and not dr.get("reply_translated")  # 번역은 run_turn 출력 단계에서 (Papago)
     )
     assert dr["checks"]["passed"] and d["posted"] is False
     e = tb.dispatch(
@@ -123,23 +121,21 @@ def test_failed_check_blocks_posting():
     assert r["posted_count"] == 0 and r["results"][0]["issues"] == ["전화번호 등 개인정보"]
 
 
+def _tc(id_, name, args):
+    return {"id": id_, "type": "function", "function": {"name": name, "arguments": args}}
+
+
 class ReplyFlowHCX:
     """도구를 차례로 부르는 가짜 HCX: 미답글 → 초안. 최종 답변에 초안을 베껴 쓰지 않는다."""
 
     def __init__(self, tool, args):
         self.tool, self.args, self.calls = tool, args, []
-        self.chat = NS(completions=NS(create=self._create))
 
-    def _create(self, **kw):
-        self.calls.append(kw)
-        if kw["messages"][-1]["role"] == "tool":
-            return NS(
-                choices=[
-                    NS(message=NS(content="초안을 만들었어요. 이대로 올릴까요?", tool_calls=None))
-                ]
-            )
-        call = NS(id="c1", function=NS(name=self.tool, arguments=json.dumps(self.args)))
-        return NS(choices=[NS(message=NS(content="", tool_calls=[call]))])
+    def chat(self, model, messages, **kw):  # ClovaClient.chat과 같은 모양
+        self.calls.append({"model": model, "messages": messages, **kw})
+        if messages[-1]["role"] == "tool":
+            return {"role": "assistant", "content": "초안을 만들었어요. 이대로 올릴까요?"}
+        return {"role": "assistant", "content": "", "toolCalls": [_tc("c1", self.tool, self.args)]}
 
 
 def test_agent_attaches_draft_block():
@@ -158,23 +154,11 @@ def test_agent_attaches_draft_block():
 class SilentHCX:
     """도구를 전혀 부르지 않고 그럴듯하게 답하는 HCX (3·4번째 질문에서 실제 발생)."""
 
-    def __init__(self):
-        self.chat = NS(
-            completions=NS(
-                create=lambda **kw: NS(
-                    choices=[
-                        NS(
-                            message=NS(
-                                content=(
-                                    "알겠습니다. 지금 바로 해당 리뷰에 대한 답글을 등록하겠습니다."
-                                ),
-                                tool_calls=None,
-                            )
-                        )
-                    ]
-                )
-            )
-        )
+    def chat(self, model, messages, **kw):
+        return {
+            "role": "assistant",
+            "content": "알겠습니다. 지금 바로 해당 리뷰에 대한 답글을 등록하겠습니다.",
+        }
 
 
 def test_edit_and_post_run_even_if_model_skips_tools():
@@ -192,7 +176,7 @@ def test_edit_and_post_run_even_if_model_skips_tools():
     msgs.append({"role": "user", "content": "이대로 올려줘"})
     out = run_turn(SilentHCX(), "HCX-005", msgs, tb)
     assert (
-        out.startswith("답글 1건을 등록했어요") and "r00732" in tb.reply_store.posted
+        out.startswith("답글 1건을 등록했어요") and "m003" in tb.reply_store.posted
     )  # 실제로 등록됨
 
 
@@ -217,7 +201,7 @@ def test_router_handles_reply_flow_without_llm():
     ]:
         msgs.append({"role": "user", "content": q})
         assert run_turn(SilentHCX(), "HCX-005", msgs, tb).startswith(expect), q
-    assert "r00732" in tb.reply_store.posted
+    assert "m003" in tb.reply_store.posted
 
 
 def test_rereview_request_is_blocked():
@@ -247,16 +231,16 @@ def test_fixed_messages():
 def test_high_risk_detection_avoids_false_positives():
     from agenthan.agent.review.replies import risk_of
 
-    assert risk_of("식탁 위에서 바퀴벌레 기어다녀요", "negative")["words"] == ["바퀴", "벌레"]
-    assert risk_of("오코노미야끼에서 머리카락 나옴. 환불해줌", "negative")["words"] == [
+    assert risk_of("테이블 밑에서 바퀴벌레가 나왔어요", "negative")["words"] == ["바퀴", "벌레"]
+    assert risk_of("돈가스에 머리카락이 있었음. 환불받음", "negative")["words"] == [
         "머리카락",
         "환불",
     ]
     assert risk_of("고소하고 맛있어요", "positive") is None  # '고소하다'는 맛 표현
     assert (
-        risk_of("크림소스가 고소하니 좋은데 양이 적어요", "mixed") is None
+        risk_of("치즈가 고소하니 좋은데 양이 적어요", "mixed") is None
     )  # 부정이어도 '고소한 맛'은 아님
-    assert risk_of("이상한맛 남 맛이 없어요", "negative") is None  # '이상한'의 '상한' 오탐 방지
+    assert risk_of("이상한맛이 나고 맛이 없어요", "negative") is None  # '이상한'의 '상한' 오탐 방지
     assert (
         risk_of("알레르기 메뉴 안내가 좋았어요", "positive") is None
     )  # 실습이 지적한 오탐: 감정으로 거름
@@ -265,7 +249,7 @@ def test_high_risk_detection_avoids_false_positives():
 
 def test_escalate_route_for_cockroach_review():
     tb = ReviewToolbox(
-        "연습돈까스",
+        "별빛돈가스",
         TODAY,
         REPO,
         CAT,
@@ -282,7 +266,7 @@ def test_escalate_route_for_cockroach_review():
     )["drafts"][0]
     assert d["route"] == "escalate" and d["owner_check"] and "바퀴" in d["risk"]["words"]
     call = tb.writer.calls[-1]
-    assert call["route"] == "escalate" and call["profile"]["name"].startswith("연습돈까스")
+    assert call["route"] == "escalate" and call["profile"]["name"].startswith("별빛돈가스")
     from agenthan.agent.review.agent import reply_message
 
     msg = reply_message("draft_review_reply", {"drafts": [d]}, "ko")
@@ -331,20 +315,27 @@ def test_english_and_russian_list_questions_use_router():
 class ListThenDraftHCX:
     """목록만 물었는데 미답글 조회와 초안 작성을 한 응답에서 같이 부르는 HCX (2026-11-07 실측)."""
 
-    def __init__(self):
-        self.chat = NS(completions=NS(create=self._create))
-
-    def _create(self, **kw):
-        if kw["messages"][-1]["role"] == "tool":
-            return NS(choices=[NS(message=NS(content="Here are the drafts.", tool_calls=None))])
+    def chat(self, model, messages, **kw):
+        if messages[-1]["role"] == "tool":
+            return {"role": "assistant", "content": "Here are the drafts."}
         calls = [
-            NS(id="c1", function=NS(name="get_unanswered_reviews", arguments="{}")),
-            NS(
-                id="c2",
-                function=NS(name="draft_review_reply", arguments='{"target": "all_listed"}'),
-            ),
+            _tc("c1", "get_unanswered_reviews", {}),
+            _tc("c2", "draft_review_reply", {"target": "all_listed"}),
         ]
-        return NS(choices=[NS(message=NS(content="", tool_calls=calls))])
+        return {"role": "assistant", "content": "", "toolCalls": calls}
+
+
+class FakeTr:
+    """Papago 흉내: '<언어> 원문'으로 돌려준다."""
+
+    last_engine = "fake"
+
+    def __init__(self):
+        self.calls = []
+
+    def translate(self, texts, source, target):
+        self.calls.append((list(texts), source, target))
+        return [f"<{target}> {t}" for t in texts]
 
 
 def test_no_draft_in_same_turn_as_list_question():
@@ -352,9 +343,11 @@ def test_no_draft_in_same_turn_as_list_question():
     q = "Anything new from customers that needs my answer?"  # 규칙에 안 걸리는 표현
     assert tb.route(q) is None
     msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": q}]
-    out = run_turn(ListThenDraftHCX(), "HCX-005", msgs, tb, owner_lang="en")
-    assert out.startswith("There are 3 reviews without a reply")  # 목록 안내로 끝난다
-    assert "Reply draft" not in out and tb.drafts == {}  # 초안은 만들지 않는다
+    tr = FakeTr()
+    out = run_turn(ListThenDraftHCX(), "HCX-005", msgs, tb, owner_lang="en", translator=tr)
+    assert msgs[1]["content"].startswith("<ko> ")  # HCX에는 한국어로 번역한 질문이 간다
+    assert out.startswith("<en> 답글 안 단 리뷰는 3건이에요")  # 한국어 목록 안내를 번역해 끝낸다
+    assert "답글 초안" not in out and tb.drafts == {}  # 초안은 만들지 않는다
     # 다음 턴에 쓰라고 하면 그때 만든다
     assert tb.dispatch(
         "draft_review_reply", {"target": "negative"}, utterance="Reply to the bad one"
@@ -363,9 +356,9 @@ def test_no_draft_in_same_turn_as_list_question():
 
 def test_cause_speculation_is_blocked():
     real = (
-        "딸기모찌에서 화장품 맛이 느껴졌다는 부분은 특히 안타깝습니다. 이는 원재료 중 일부가 "
+        "딸기모찌가 시큼했다는 부분은 특히 안타깝습니다. 이는 원재료 중 일부가 "
         "잘못 사용되었거나 보관 과정에서 문제가 발생했을 가능성이 큽니다."
-    )  # 2026-11-07 실제 초안
+    )  # 2026-11-07 실제 초안의 구조를 본뜬 예시
     assert "확인 전 원인 추정·단정" in check_reply(real)["issues"]
     assert "확인 전 원인 추정·단정" in check_reply("직원 실수로 늦어진 것 같습니다. ")["issues"]
     for ok in [
@@ -391,7 +384,7 @@ class PromiseWriter(FakeWriter):
 
 def test_owner_instruction_reaches_first_draft():
     tb = ReviewToolbox(
-        "연습떡집",
+        "달빛모찌",
         TODAY,
         REPO,
         CAT,
@@ -413,7 +406,7 @@ def test_owner_requested_promise_is_warning_not_block():
     # 지시에 약속이 있으면 등록 가능 (확정 후), 없으면 막힌다
     for q, ok in [("lần sau tặng nước uống", True), ("Reply to the bad one", False)]:
         tb = ReviewToolbox(
-            "연습떡집",
+            "달빛모찌",
             TODAY,
             REPO,
             CAT,
@@ -425,12 +418,13 @@ def test_owner_requested_promise_is_warning_not_block():
         assert d["checks"]["passed"] is ok and d["owner_promise"] is ok, q
 
 
-def test_checklist_in_owner_language():
-    from agenthan.agent.review.agent import render_block
+def test_checklist_translated_at_output():
+    from agenthan.agent.review.agent import menu_glossary, render_block
+    from agenthan.agent.review.translate import localize
 
-    cat = MenuCatalog({"연습떡집": [{"name": "딸기모찌", "aliases": ["Mochi dâu"]}]})
+    cat = MenuCatalog({"달빛모찌": [{"name": "딸기모찌", "aliases": ["Mochi dâu"]}]})
     tb = ReviewToolbox(
-        "연습떡집",
+        "달빛모찌",
         TODAY,
         REPO,
         cat,
@@ -441,27 +435,18 @@ def test_checklist_in_owner_language():
     res = tb.dispatch("draft_review_reply", {"target": "negative"}, utterance="lần sau tặng nước")
     c = res["drafts"][0]["checklist"]
     assert c["apology"] and c["promises"] == ["다음 주문 때 음료를 서비스로 드릴게요."]
-    assert c["menus"] == [("딸기모찌", "Mochi dâu")]
-    out = render_block(None, "m", "draft_review_reply", res, "vi")
+    # 블록은 한국어로 만들고, 출력 단계에서 사장님 언어로 옮긴다
+    ko = render_block(None, "m", "draft_review_reply", res, "ko")
+    assert "⚠️ 약속: 다음 주문 때 음료를 서비스로 드릴게요." in ko
+    out = localize(ko, "vi", FakeTr(), menu_glossary(cat, "달빛모찌", "vi"))
     lines = out.splitlines()
-    i = lines.index("**Kiểm tra ý định**")
-    assert lines[i + 1].startswith("- ⚠️ Hứa: <vi> 다음 주문 때")  # 약속이 맨 위, 사장님 언어로
-    assert "- ✔ Đã xin lỗi" in lines and "- Món: Mochi dâu (딸기모찌)" in lines
-    assert any(x.startswith("> (Bản dịch đầy đủ: <vi>") for x in lines)  # 전체 번역은 아래에
-    # 한국어 사장님에게는 약속만 표시
-    ko = ReviewToolbox(
-        "연습떡집",
-        TODAY,
-        REPO,
-        cat,
-        writer=PromiseWriter(),
-        reply_store=MockReplyStore(today=TODAY),
-    )
-    r = ko.dispatch(
-        "draft_review_reply", {"target": "negative"}, utterance="음료 서비스 준다고 해줘"
-    )
-    out = render_block(None, "m", "draft_review_reply", r, "ko")
-    assert "⚠️ 약속: 다음 주문 때 음료를 서비스로 드릴게요." in out and "확인할 점" not in out
+    warn = next(x for x in lines if x.startswith("⚠️"))
+    assert warn == "⚠️ <vi> 약속: <vi> 다음 주문 때 음료를 서비스로 드릴게요."  # 콜론 앞뒤 따로
+    reply_ko = next(x for x in lines if x.startswith("> ") and "<vi>" not in x)
+    nxt = lines[lines.index(reply_ko) + 1]
+    assert (
+        nxt.startswith("> (<vi> ") and "Mochi dâu" in nxt
+    )  # 게시할 한국어 답글 + 번역, 메뉴명 보호
 
 
 def test_apology_is_not_a_promise():
@@ -473,3 +458,30 @@ def test_apology_is_not_a_promise():
     ]:
         assert check_reply(ok)["passed"], ok
     assert not check_reply("사과의 의미로 음료를 무료로 드리겠습니다.")["passed"]
+
+
+def test_reply_calls_reviewer_sonnim():
+    from agenthan.agent.review.replies import to_sonnim
+
+    assert to_sonnim("고객님께서 말씀해주신 부분과 고객분들의 의견") == (
+        "손님께서 말씀해주신 부분과 손님들의 의견"
+    )
+    assert "'고객님' 대신 '손님'" in check_reply("고객님 감사합니다")["issues"]
+
+    class CustomerWriter(FakeWriter):
+        def write_reply(self, text, sentiment, **kw):
+            super().write_reply(text, sentiment, **kw)
+            return "고객님께서 말씀해주신 맛은 다시 확인하겠습니다. 죄송합니다."
+
+    tb = ReviewToolbox(
+        "달빛모찌",
+        TODAY,
+        REPO,
+        CAT,
+        writer=CustomerWriter(),
+        reply_store=MockReplyStore(today=TODAY),
+    )
+    d = tb.dispatch("draft_review_reply", {"target": "negative"}, utterance="답글 써줘")["drafts"][
+        0
+    ]
+    assert d["reply_ko"].startswith("손님께서") and d["checks"]["passed"]

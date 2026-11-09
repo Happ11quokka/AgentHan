@@ -68,3 +68,9 @@ tests/data/*
 
 # 실제 리뷰로 학습한 모델: 학습 데이터 조각이 들어 있어 올리지 않는다 (카톡으로 공유)
 models/*.joblib
+# 리뷰 도구: HCX 응답 캐시(리뷰 원문 포함)와 데모·벤치마크 상태 파일
+models/*cache*.jsonl
+models/replies_mock.json
+models/report_settings.json
+models/sentiment_*.json
+reports/

@@ -1,6 +1,6 @@
 """리뷰 도구용 HCX 호출: 구간 감정 판단, 요약(인사이트), topic 해석 보조.
 
-분류기 HCX 백엔드와 같은 방식: 모델별 요청 옵션(request_options), 호출 간격, 응답 캐시, JSON 검증 +
+분류기 HCX 백엔드와 같은 방식: 네이티브 v3(clova.py), 모델별 옵션, 호출 간격, 응답 캐시, JSON 검증 +
 1회 재시도.
 CLOVA Studio에 접속할 수 있는 환경과 CLOVASTUDIO_API_KEY가 필요하다.
 """
@@ -16,10 +16,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from agenthan.core.llm import make_client, request_options
 from agenthan.tools.review_clf.backends.hcx import _extract_json
 from agenthan.tools.review_clf.schema import FEATURE_GUIDE
 
+from .clova import ClovaClient, model_options
 from .sentiment import RuleSentiment
 
 LABELS = ["positive", "negative", "neutral"]
@@ -156,7 +156,8 @@ REPLY_SYSTEM = (
     "(4) 손님을 탓하거나 비꼬지 않고 감정적 표현을 쓰지 않습니다. "
     "(5) 리뷰나 별점을 수정·삭제하거나 다시 평가해 달라고 요청하지 않습니다. 사장님이 지시하지 "
     "않은 보상·할인·서비스는 약속하지 않습니다 (지시한 약속은 그 내용 그대로만 씁니다). "
-    "서명('OO 드림')이나 인사말 머리('안녕하세요, 고객님')는 넣지 않습니다. "
+    "서명('OO 드림')이나 인사말 머리('안녕하세요, 손님')는 넣지 않습니다. "
+    "리뷰를 쓴 분은 '손님'이라고 부르고 '고객님'·'고객분'은 쓰지 않습니다. "
     "(6) 리뷰에 없는 사실을 지어내지 않습니다. "
     "(7) 문제의 원인을 추측하거나 단정하지 않습니다 ('~때문인 것 같습니다', '~가능성이 큽니다' "
     "금지). 확인하고 개선하겠다고만 씁니다.\n"
@@ -227,7 +228,8 @@ class HCXReviewLLM:
         min_interval: float | None = None,
     ):
         self.model = model or os.getenv("HCX_MODEL", "HCX-DASH-002")
-        self.client = client or make_client()
+        # 가짜 client는 chat(model, messages, **kw) → {"role": "assistant", "content": ...}
+        self.client = client or ClovaClient(min_interval=0)  # 호출 간격은 아래에서 맡는다
         self.min_interval = (
             float(os.getenv("HCX_MIN_INTERVAL", "1.0")) if min_interval is None else min_interval
         )
@@ -244,8 +246,8 @@ class HCXReviewLLM:
         key = hashlib.sha1(f"{self.model}\n{system}\n{user}".encode()).hexdigest()
         if key in self.cache:
             return model_cls.model_validate(self.cache[key])
-        # HCX-007이면 이 호출의 스키마로 Structured Outputs (스키마가 없으면 프롬프트만)
-        opts = request_options(self.model, max_tokens, schema or None)
+        # HCX-007만 이 호출의 스키마를 responseFormat으로 붙인다 (005·DASH는 프롬프트만)
+        opts = model_options(self.model, max_tokens, schema.get("schema") if schema else None)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         err = None
         for _ in range(2):  # JSON이 틀리면 1회 재시도
@@ -253,14 +255,7 @@ class HCXReviewLLM:
             if wait > 0:
                 time.sleep(wait)
             self._last = time.time()
-            raw = (
-                self.client.chat.completions.create(
-                    model=self.model, messages=messages, temperature=0, **opts
-                )
-                .choices[0]
-                .message.content
-                or ""
-            )
+            raw = self.client.chat(self.model, messages, temperature=0, **opts)["content"]
             try:
                 body = _extract_json(raw)
                 try:
