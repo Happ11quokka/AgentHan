@@ -114,7 +114,10 @@ class Call:
         turn_model: Any = None,
         turn_executor: Executor | None = None,
         owner: RecordingOwnerChannel | None = None,
+        knowledge: Any = None,
+        no_owner: bool = False,
     ) -> None:
+        """`knowledge`는 보충 지식 읽기 포트(4단계 티켓 13). `no_owner`면 사장님 쪽 없이 띄운다."""
         self.out = RecordingOutbound()
         self.sink = MemoryOrderSink()
         self.owner = owner or RecordingOwnerChannel()
@@ -131,7 +134,8 @@ class Call:
             clock=self.clock,
             outbound=self.out,
             order_sink=self.sink,
-            owner=self.owner,
+            owner=None if no_owner else self.owner,
+            knowledge=knowledge,
             log_dir=self.log_dir,
             call_id="test-call",
             settings=settings or SessionSettings(),

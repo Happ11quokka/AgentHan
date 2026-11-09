@@ -65,7 +65,7 @@ import logging
 import math
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -130,6 +130,7 @@ from agenthan.voice.call.turn_end import (
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
+from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.owner_question import (
     OwnerNote,
     OwnerQuestion,
@@ -308,6 +309,7 @@ class CallSession:
         outbound: Outbound,
         order_sink: OrderSink,
         owner: OwnerChannel | None = None,
+        knowledge: KnowledgeReader | None = None,
         log_dir: Path | None = Path("logs"),
         call_id: str | None = None,
         settings: SessionSettings | None = None,
@@ -327,6 +329,9 @@ class CallSession:
         self._owner: OwnerChannel = owner or NullOwnerChannel()  # 사장님 쪽 알림 (4단계 티켓 02)
         # 사장님 쪽이 붙은 통화만 근거 없는 메뉴 질문을 사장님께 묻는다 (4단계 티켓 05)
         self._asks_owner = owner is not None
+        # 사장님 보충 지식 읽기 포트 (티켓 13). 사장님 쪽이 붙은 통화만 엔진에 넣는다(보충 요청을
+        # 받을 곳이 있어야 "사장님께 전해 둘게요"라고 한다)
+        self._knowledge = knowledge if owner is not None else None
         self._settings = settings or SessionSettings()
         self._executor = executor  # None이면 루프 기본 풀
         # 턴 모델(티켓 03). 없으면(꺼짐·모델 파일 없음) 링 버퍼도 만들지 않고 규칙만 쓴다
@@ -641,7 +646,7 @@ class CallSession:
         # list_menu()가 동기라 엔진 생성도 스레드에서 (verify-web D5 조건 2)
         self._engine = await self._in_thread(
             DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id,
-            ask_owner=self._asks_owner,
+            ask_owner=self._asks_owner, knowledge=self._knowledge,
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -1156,6 +1161,8 @@ class CallSession:
             self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.owner_question is not None:
             self._open_owner_question(turn, result.owner_question)
+        if result.knowledge_requests:
+            self._pass_on(turn, result.knowledge_requests)
         if result.order is not None:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -1712,6 +1719,16 @@ class CallSession:
                                                "opened_at": self._clock.now().isoformat()}
         self._tell_owner(lambda owner: owner.open_question(self.call_id, question,
                                                            self._owner_replied))
+
+    def _pass_on(self, turn: int, requests: Sequence[KnowledgeRequest]) -> None:
+        """보충 요청을 사장님 쪽에 넘긴다(티켓 13). 턴 기록에는 무엇을 물었는지만 남긴다."""
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["knowledge_requests"] = [
+                {"menu_id": r.key.menu_id, "kind": r.key.kind, "subject": r.key.subject}
+                for r in requests]
+        for request in requests:
+            self._tell_owner(lambda owner, r=request: owner.knowledge_wanted(self.call_id, r))
 
     def _owner_replied(self, note: OwnerNote) -> None:
         """사장님 쪽 알림(답·열람)을 받는 곳. 바로 돌아온다. 어느 스레드에서 불려도 된다.

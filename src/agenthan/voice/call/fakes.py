@@ -28,6 +28,7 @@ from typing import Any
 from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
+from agenthan.voice.dialog.knowledge import KnowledgeRequest
 from agenthan.voice.dialog.owner_question import (
     OwnerAnswer,
     OwnerNote,
@@ -206,7 +207,7 @@ class RecordingOwnerChannel:
 
     알림 모양: `("started", id)` · `("cart", id, 줄 튜플)` · `("customer", id, 글)` ·
     `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)` ·
-    `("timeout", id, 질문 번호)`
+    `("timeout", id, 질문 번호)` · `("knowledge", id, KnowledgeRequest)`
 
     `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다
     (시간 초과·늦은 답 시험은 나중에 `answer`·`see`를 부른다).
@@ -254,6 +255,9 @@ class RecordingOwnerChannel:
     def question_timed_out(self, call_id: str, number: int) -> None:
         self.notes.append(("timeout", call_id, number))
 
+    def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
+        self.notes.append(("knowledge", call_id, request))
+
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         return list(self.texts)
 
@@ -276,6 +280,11 @@ class RecordingOwnerChannel:
     def questions(self) -> list[tuple[str, OwnerQuestion]]:
         """연 질문들 (통화 id, 질문)."""
         return [(note[1], note[2]) for note in self.notes if note[0] == "question"]
+
+    @property
+    def knowledge(self) -> list[tuple[str, KnowledgeRequest]]:
+        """넘긴 보충 요청들 (통화 id, 요청), 티켓 13."""
+        return [(note[1], note[2]) for note in self.notes if note[0] == "knowledge"]
 
     @property
     def timeouts(self) -> list[int]:

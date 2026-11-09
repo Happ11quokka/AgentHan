@@ -69,6 +69,7 @@ from typing import Any
 from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
 from agenthan.voice.call.defaults import OWNER_WAIT_S
 from agenthan.voice.call.ports import Clock
+from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeRequest, KnowledgeStore
 from agenthan.voice.dialog.owner_question import (
     OWNER_POSTS,
     OwnerNote,
@@ -129,8 +130,13 @@ class OwnerHub:
         question_wait_s: float = OWNER_WAIT_S,
         translator: Translator | None = None,
         owner_lang: str = "ru",
+        knowledge: KnowledgeStore | None = None,
     ) -> None:
         self._store = store
+        # 보충 지식 저장소(티켓 13). 허브가 쓰고, 통화 엔진이 읽는다(`phone_router(knowledge=...)`)
+        self.knowledge = knowledge if knowledge is not None else KnowledgeStore()
+        self._wanted: dict[str, dict[str, Any]] = {}  # 카드 id → "손님이 궁금해한 것" 카드
+        self._asked: dict[str, OwnerQuestion] = {}  # 질문 id → 연 질문 (종류·대상을 본다)
         self._clock = clock
         self._question_wait = timedelta(seconds=question_wait_s)
         self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
@@ -184,6 +190,9 @@ class OwnerHub:
 
     def question_timed_out(self, call_id: str, number: int) -> None:
         self._on_loop(self._time_out, f"{call_id}-q{number}")
+
+    def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
+        self._on_loop(self._want, call_id, request.key, request.menu_name, request.text)
 
     # --- 사장님 화면 ---------------------------------------------------------------------
 
@@ -249,6 +258,7 @@ class OwnerHub:
             self._text_customer(card["call_id"], "late_answer",
                                 sms.late_answer_text(card["menu_name"], answer),
                                 question_id=question_id)
+        self._learn(question_id, answer)  # 보충 지식 (티켓 13): 카드 이벤트는 문자 뒤에
         return card
 
     def see_question(self, question_id: str) -> dict[str, Any]:
@@ -266,6 +276,46 @@ class OwnerHub:
         if reply is not None and card["status"] == "open":
             self._tell_call(reply, OwnerSeen(card["number"]), question_id)
         return card
+
+    def knowledge_cards(self) -> list[dict[str, Any]]:
+        """"손님이 궁금해한 것" 카드 전체(만든 순서, 채운 카드 포함, 티켓 13)."""
+        return list(self._wanted.values())
+
+    async def preview_knowledge(self, card_id: str, text: str) -> dict[str, Any]:
+        """사장님 답(사장님 언어) → 한국어 번역 미리보기(티켓 13). 저장하지 않는다.
+
+        `{"text": 사장님 글, "text_ko": 번역, "translate_failed": bool}`. 번역기가 없거나 실패하면
+        `text_ko`가 비고 `translate_failed`가 참이다(사장님이 한국어를 직접 적을 수 있다).
+        없는 카드면 `UnknownCard`, 빈 글이면 `ValueError`.
+        """
+        if card_id not in self._wanted:
+            raise UnknownCard(card_id)
+        text = text.strip()
+        if not text:
+            raise ValueError("미리 볼 글이 없어요")
+        translated = ""
+        if self._translator is not None:
+            try:
+                [translated] = await self._translator.translate(
+                    [text], self._lexicon.lang, SOURCE_LANG)
+            except Exception as err:  # noqa: BLE001 — 번역이 안 되면 사장님이 한국어를 고친다
+                log.warning("보충 답 번역 실패(%s): %s", type(err).__name__, card_id)
+                translated = ""
+        translated = translated.strip()
+        return {"text": text, "text_ko": translated, "translate_failed": not translated}
+
+    def save_knowledge(self, card_id: str, text_ko: str, text: str = "") -> dict[str, Any]:
+        """사장님이 "저장"을 눌렀다(티켓 13, HITL). 한국어 글을 그대로 보충 지식에 넣고 카드를
+        채움으로 바꾼다. 다시 저장하면 덮어쓴다. 없는 카드면 `UnknownCard`, 빈 글이면 `ValueError`.
+        """
+        card = self._wanted.get(card_id)
+        if card is None:
+            raise UnknownCard(card_id)
+        text_ko = text_ko.strip()
+        self.knowledge.save_note(_key(card), text_ko)  # 빈 글이면 ValueError
+        return self._put_wanted({**card, "status": "filled", "answer_ko": text_ko,
+                                 "answer_text": text.strip(),
+                                 "saved_at": self._clock.now().isoformat()})
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         """그 통화의 손님에게 보낸 문자(보낸 순서). 없거나 모르는 통화면 빈 목록 (티켓 07)."""
@@ -446,6 +496,57 @@ class OwnerHub:
         question = self._questions.get(question_id)
         if question is not None and question["status"] == "open":
             self._put_question({**question, "status": "timeout"})
+            self._learn(question_id, "timeout")
+
+    # --- 보충 지식 (티켓 13): "손님이 궁금해한 것" 카드, 질문 카드 버튼 답 ------------------
+
+    def _learn(self, question_id: str, answer: str) -> None:
+        """질문 카드 답에서 배운다. 돼요/안 돼요는 "들어가요?"류 질문이면 사장님 확인으로 저장하고,
+        모르겠어요·시간 초과는 보충 요청 카드로 보낸다. 자유 입력(그 손님 문자)은 넣지 않는다.
+        """
+        asked = self._asked.get(question_id)
+        if asked is None:
+            return
+        if answer in ("yes", "no"):
+            if asked.yes_no:
+                self.knowledge.save_check(asked.key, answer == "yes")
+        elif answer in ("unsure", "timeout"):
+            self._want(self._questions[question_id]["call_id"], asked.key, asked.menu_name,
+                       asked.text)
+
+    def _want(self, call_id: str, key: KnowledgeKey, menu_name: str, text: str) -> None:
+        """보충 요청 하나. 같은 열쇠의 열린 카드가 있으면 횟수를 늘리고 문구를 마지막 질문으로."""
+        now = self._clock.now().isoformat()
+        found = next((c for c in self._wanted.values()
+                      if c["status"] == "open" and _key(c) == key), None)
+        asked = {"call_id": call_id, "text": text, "text_owner": self._texts.known(call_id, text),
+                 "last_asked_at": now}
+        if found is not None:
+            self._put_wanted({**found, **asked, "count": found["count"] + 1})
+        else:
+            card_id = f"k{len(self._wanted) + 1}"
+            self._put_wanted({
+                "id": card_id,
+                "menu_id": key.menu_id,
+                "menu_name": menu_name,  # 한국어
+                "menu_name_owner": self._owner_name(key.menu_id, menu_name),
+                "kind": key.kind,  # `menu_info.QuestionKind`
+                "subject": key.subject,  # 알레르기 성분·이름 붙은 재료·그 밖 질문 요약
+                **asked,  # 마지막 질문: 통화 id, 원문(한국어), 번역(아직·실패면 "")
+                "count": 1,
+                "asked_at": now,
+                "last_asked_at": now,
+                "status": "open",  # open · filled(사장님이 저장함)
+                "answer_text": "",  # 사장님 글 원문 (사장님 언어)
+                "answer_ko": "",  # 저장한 한국어 (엔진이 인용 틀로 그대로 말한다)
+                "saved_at": "",
+            })
+        self._translate_soon(call_id, [text])
+
+    def _put_wanted(self, card: dict[str, Any]) -> dict[str, Any]:
+        self._wanted[card["id"]] = card
+        self._publish("knowledge.update", card)
+        return card
 
     def _open_question(
         self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerNote], None]
@@ -470,6 +571,7 @@ class OwnerHub:
             "answer_text_ko": "",  # 그 글의 한국어 번역 (손님 문자에 들어감). 아직·실패면 ""
         }
         self._questions[question_id] = card
+        self._asked[question_id] = question
         self._replies[question_id] = reply
         self._publish("owner.question", card)
         self._translate_soon(call_id, [question.text])
@@ -540,6 +642,10 @@ class OwnerHub:
             if question["call_id"] == call_id and question["text_owner"] != text_owner:
                 self._questions[question_id] = {**question, "text_owner": text_owner}
                 self._publish("owner.question.update", self._questions[question_id])
+        for card in list(self._wanted.values()):  # "손님이 궁금해한 것" 카드 (티켓 13)
+            text_owner = self._texts.known(call_id, card["text"])
+            if card["call_id"] == call_id and card["text_owner"] != text_owner:
+                self._put_wanted({**card, "text_owner": text_owner})
 
     # --- 자유 입력 답 → 손님 문자 (티켓 07): 사장님 글(ru) → ko. 메뉴명 보호 없음, 다듬지 않음 ---
 
@@ -642,7 +748,8 @@ class OwnerHub:
         captions = [c.sent for call_id, c in self._captions.items()
                     if c.sent is not None and self._calls[call_id]["status"] == "live"]
         return {"orders": list(self._cards.values()), "calls": calls,
-                "questions": list(self._questions.values()), "captions": captions}
+                "questions": list(self._questions.values()), "captions": captions,
+                "knowledge": self.knowledge_cards()}
 
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         self._seq += 1
@@ -679,6 +786,10 @@ class _Captions:
     def add(self, who: str, text: str) -> None:
         self._count += 1
         self.lines.append((self._count, who, text))
+
+
+def _key(card: dict[str, Any]) -> KnowledgeKey:
+    return KnowledgeKey(card["menu_id"], card["kind"], card["subject"])
 
 
 def clock_label(iso: str) -> str:

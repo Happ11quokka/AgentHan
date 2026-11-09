@@ -90,7 +90,7 @@ def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
             snapshot = next(events)
             assert snapshot["event"] == "snapshot"
             assert snapshot["data"] == {
-                "orders": [], "calls": [], "questions": [], "captions": []}
+                "orders": [], "calls": [], "questions": [], "captions": [], "knowledge": []}
 
             _call_and_confirm(client)
 

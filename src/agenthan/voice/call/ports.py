@@ -22,6 +22,7 @@ from datetime import datetime, tzinfo
 from typing import Any, Protocol
 
 from agenthan.core.contracts import OrderLine, OrderSink
+from agenthan.voice.dialog.knowledge import KnowledgeRequest
 from agenthan.voice.dialog.owner_question import OwnerNote, OwnerQuestion
 from agenthan.voice.store_config import KST
 
@@ -228,6 +229,13 @@ class OwnerChannel(Protocol):
         닫지 않는다(늦은 답을 받는다).
         """
 
+    def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
+        """AI가 답하지 못하고 손님에게 "사장님께 전해 둘게요"라고 한 메뉴 질문(티켓 13, 보충 요청).
+
+        사장님 화면 "손님이 궁금해한 것" 카드가 된다. 사장님이 채운 답은 보충 지식 저장소로 가고
+        다음 통화부터 엔진이 읽는다(`dialog/knowledge.py`).
+        """
+
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         """그 통화에서 지금까지 손님에게 보낸 문자 미리보기(티켓 07, 보낸 순서, JSON으로 보낼 모양).
 
@@ -261,6 +269,9 @@ class NullOwnerChannel:
         pass
 
     def question_timed_out(self, call_id: str, number: int) -> None:
+        pass
+
+    def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         pass
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
