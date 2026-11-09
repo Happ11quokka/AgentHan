@@ -10,7 +10,10 @@
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 - `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}`: 질문 카드
-  버튼 답(티켓 05). 바뀐 카드를 돌려준다. 없는 질문은 404, 이미 답한 질문은 409, 모르는 답은 422
+  버튼 답(티켓 05). 바뀐 카드를 돌려준다. 없는 질문은 404, 이미 답한 질문은 409, 모르는 답은 422.
+  시간 초과·통화 끝 카드도 답을 받는다(티켓 06, 늦은 답). `timeout`은 세션만 넣는 답이라 422
+- `POST /api/owner/questions/{id}/seen?key=…`: 질문 카드 열람(티켓 06). 처음이면 열람 시각을 찍고
+  답 전이면 통화에 알린다(손님에게 "사장님이 보고 계세요" 한 번). 바뀐 카드를 돌려준다. 없으면 404
 
 - 모든 경로가 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를 못 붙여서
   쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -81,5 +84,12 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
             raise HTTPException(status_code=404, detail="그런 질문이 없어요") from err
         except AlreadyAnswered as err:
             raise HTTPException(status_code=409, detail="이미 답한 질문이에요") from err
+
+    @router.post("/questions/{question_id}/seen")
+    async def seen(question_id: str) -> dict[str, Any]:
+        try:
+            return hub.see_question(question_id)
+        except UnknownCard as err:
+            raise HTTPException(status_code=404, detail="그런 질문이 없어요") from err
 
     return router

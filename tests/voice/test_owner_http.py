@@ -118,6 +118,7 @@ def test_owner_paths_need_the_secret_key(tmp_path) -> None:
         assert client.post("/api/owner/calls/call-1/dismiss").status_code == 401
         answer = "/api/owner/questions/call-1-q1/answer"
         assert client.post(answer, json={"answer": "yes"}).status_code == 401
+        assert client.post("/api/owner/questions/call-1-q1/seen").status_code == 401
 
 
 def test_accepting_an_unknown_order_is_not_found(tmp_path) -> None:
@@ -217,3 +218,40 @@ def test_answering_an_unknown_question_or_with_an_unknown_answer_is_refused(tmp_
         url = f"/api/owner/questions/nope/answer?key={KEY}"
         assert client.post(url, json={"answer": "yes"}).status_code == 404
         assert client.post(url, json={"answer": "maybe"}).status_code == 422
+        # 시간 초과는 세션이 넣는 답이다. 화면은 보낼 수 없다 (티켓 06)
+        assert client.post(url, json={"answer": "timeout"}).status_code == 422
+        assert client.post(f"/api/owner/questions/nope/seen?key={KEY}").status_code == 404
+
+
+def test_the_owner_opening_a_question_card_is_heard_once(tmp_path) -> None:
+    # 티켓 06: 열람 POST → 세션 → "사장님이 보고 계세요" 한 번. 카드에 열람 시각
+    with _client(tmp_path, ASK_SCRIPT) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            events = _sse(stream.iter_lines())
+            next(events)  # snapshot
+            with client.websocket_connect(WS_PATH) as ws:
+                phone = Phone(ws)
+                phone.send(type="call.start", turn=0)
+                phone.until("call.ready", 0)
+                phone.played(0)
+                phone.say(1)
+                phone.played(1)
+                phone.say(2)  # 메도빅에 견과류 들어가요?
+                phone.played(2)
+
+                card = _until(events, "owner.question")["data"]
+                url = f"/api/owner/questions/{card['id']}/seen?key={KEY}"
+                seen = client.post(url)
+                assert seen.status_code == 200
+                assert seen.json()["seen_at"] != ""
+                assert client.post(url).json() == seen.json()  # 두 번째는 그대로
+                update = _until(events, "owner.question.update")["data"]
+                assert (update["id"], update["seen_at"]) == (card["id"], seen.json()["seen_at"])
+                phone.until("bot.done", 3)
+                phone.send(type="call.end", turn=3)
+
+            ended = _until(events, "owner.question.update")["data"]
+            assert (ended["id"], ended["status"]) == (card["id"], "call_ended")
+
+    heard = " ".join(e["text"] for e in phone.of("bot.say", 3))
+    assert heard == "사장님이 보고 계세요, 조금만요."

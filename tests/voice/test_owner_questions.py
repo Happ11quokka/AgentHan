@@ -3,19 +3,25 @@
 통화 세션이 `OwnerChannel.open_question`으로 질문을 열면 `owner.question` 카드가 가고, 사장님이
 버튼으로 답하면(`answer_question`) 카드가 답함으로 바뀌고(`owner.question.update`) 답이 세션의 받는
 곳으로 간다. 답은 한 번만 받는다(두 번째는 `AlreadyAnswered`, HTTP 409).
+
+티켓 06: 시간 초과(`question_timed_out`)·통화 끝(`call_ended`)은 카드 상태만 바꾸고 카드는 계속
+답을 받는다. 카드 열람(`see_question`)은 세션에 한 번 알린다. 답을 못 받은 질문이 있는 통화의 확정
+주문 카드에는 "사장님 확인 필요"(`owner_check`)가 붙는다.
 """
 
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
 from test_owner_calls import Screen
 
+from agenthan.core.contracts import Order
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
-from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply, OwnerSeen
 from agenthan.voice.owner.hub import AlreadyAnswered, OwnerHub, UnknownCard
 
 NOW = datetime.fromisoformat("2026-11-08T16:02:00+09:00")
@@ -33,6 +39,7 @@ CARD = {
     "deadline_at": "2026-11-08T16:02:20+09:00",
     "status": "open",
     "answer": "",
+    "seen_at": "",
 }
 
 
@@ -100,3 +107,108 @@ def test_the_snapshot_carries_question_cards() -> None:
         return snapshot
 
     assert asyncio.run(scenario()).data["questions"] == [CARD]
+
+
+# ---------------------------------------------------------------- 티켓 06
+
+
+def snapshot(hub: OwnerHub) -> dict:
+    """새 화면이 받는 snapshot. 허브가 이 루프에 묶이니 시험의 마지막에 부른다."""
+    async def take() -> dict:
+        screen = Screen(hub)
+        [snap] = await screen.take()
+        await screen.close()
+        return snap.data
+
+    return asyncio.run(take())
+
+
+def test_a_timed_out_question_stays_answerable() -> None:
+    hub = _hub()
+    replies: list[OwnerReply] = []
+    hub.open_question("call-1", NUTS, replies.append)
+    hub.question_timed_out("call-1", 1)
+    assert snapshot(hub)["questions"][0]["status"] == "timeout"
+    late = hub.answer_question("call-1-q1", "yes")
+    assert (late["status"], late["answer"]) == ("answered", "yes")
+    assert replies == [OwnerReply(question=1, answer="yes")]  # 세션이 번호로 버린다
+
+
+@pytest.mark.parametrize("reason", ["hangup", "confirmed", "error"])
+def test_when_the_call_ends_its_open_questions_say_call_ended(reason: str) -> None:
+    async def scenario():
+        hub = _hub()
+        hub.call_started("call-1")
+        hub.open_question("call-1", NUTS, lambda reply: None)
+        hub.open_question("call-2", replace(NUTS, number=1), lambda reply: None)
+        screen = Screen(hub)
+        await screen.take()  # snapshot
+        hub.call_ended("call-1", reason)
+        events = await screen.take(2)  # 통화 카드(미완료)·질문 카드
+        await screen.nothing_more()
+        await screen.close()
+        return hub, events
+
+    hub, events = asyncio.run(scenario())
+    updates = [e.data for e in events if e.name == "owner.question.update"]
+    assert [(u["id"], u["status"]) for u in updates] == [("call-1-q1", "call_ended")]
+    assert hub.answer_question("call-1-q1", "no")["status"] == "answered"
+    assert {q["id"]: q["status"] for q in snapshot(hub)["questions"]} == {
+        "call-1-q1": "answered", "call-2-q1": "open"}
+
+
+def test_a_timed_out_or_answered_question_keeps_its_status_when_the_call_ends() -> None:
+    hub = _hub()
+    hub.open_question("call-1", NUTS, lambda reply: None)
+    hub.open_question("call-1", replace(NUTS, number=2), lambda reply: None)
+    hub.question_timed_out("call-1", 1)
+    hub.answer_question("call-1-q2", "yes")
+    hub.call_ended("call-1", "hangup")
+    assert [q["status"] for q in snapshot(hub)["questions"]] == ["timeout", "answered"]
+
+
+def test_seeing_a_card_tells_the_call_once_and_stamps_the_card() -> None:
+    hub = _hub()
+    notes: list[object] = []
+    hub.open_question("call-1", NUTS, notes.append)
+    seen = hub.see_question("call-1-q1")
+    again = hub.see_question("call-1-q1")
+    assert seen["seen_at"] == "2026-11-08T16:02:00+09:00"
+    assert again == seen
+    assert notes == [OwnerSeen(question=1)]
+    with pytest.raises(UnknownCard):
+        hub.see_question("call-1-q9")
+
+
+def test_seeing_an_answered_card_does_not_tell_the_call() -> None:
+    hub = _hub()
+    notes: list[object] = []
+    hub.open_question("call-1", NUTS, notes.append)
+    hub.answer_question("call-1-q1", "yes")
+    hub.see_question("call-1-q1")
+    assert notes == [OwnerReply(question=1, answer="yes")]
+
+
+def _order(call_id: str) -> Order:
+    return Order(id=call_id, lines=[], pickup_time="2026-11-08T18:30:00+09:00",
+                 customer_phone="010-0000-0000", status="confirmed", transcript=[],
+                 created_at="2026-11-08T16:05:00+09:00")
+
+
+@pytest.mark.parametrize(("settle", "check"), [
+    (None, True),  # 마무리 때 열린 질문 (문자 약속)
+    ("timeout", True),  # 시간 초과 (문자 약속)
+    ("answered", False),
+])
+def test_a_confirmed_order_with_an_unanswered_question_needs_the_owner(settle, check) -> None:
+    hub = _hub()
+    hub.call_started("call-1")
+    hub.open_question("call-1", NUTS, lambda reply: None)
+    if settle == "timeout":
+        hub.question_timed_out("call-1", 1)
+    elif settle == "answered":
+        hub.answer_question("call-1-q1", "yes")
+    hub.submit(_order("call-1"))
+    hub.submit(_order("call-2"))
+    assert [(o["id"], o["owner_check"]) for o in snapshot(hub)["orders"]] == [
+        ("call-1", check), ("call-2", False)]

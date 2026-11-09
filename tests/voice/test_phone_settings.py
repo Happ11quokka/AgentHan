@@ -87,6 +87,16 @@ def test_no_input_waits_default_to_six_and_fifteen_seconds_and_can_be_changed() 
         VoiceSettings.from_env({"PHONE_NO_INPUT_S": "0"}, env_file=None)
 
 
+def test_the_owner_answer_wait_defaults_to_twenty_seconds_and_reaches_the_session() -> None:
+    # 4단계 티켓 06: 질문 카드를 보낸 때부터. 허브 카드 마감과 세션 시간 초과가 같은 값을 쓴다
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert default.owner_wait_s == 20.0
+    s = VoiceSettings.from_env({"PHONE_OWNER_WAIT_S": "15"}, env_file=None)
+    assert (s.owner_wait_s, s.session_settings().owner_wait_s) == (15.0, 15.0)
+    with pytest.raises(SettingsError):
+        VoiceSettings.from_env({"PHONE_OWNER_WAIT_S": "0"}, env_file=None)
+
+
 def test_voice_barge_in_is_off_by_default_and_takes_its_thresholds_from_the_env() -> None:
     # 3단계 티켓 06: 기본 꺼짐. shadow는 판정만 기록, on은 실제로 줄이고 멈춘다
     assert VoiceSettings.from_env({}, env_file=None).barge is None

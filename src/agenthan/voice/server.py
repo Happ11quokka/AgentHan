@@ -44,7 +44,8 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     translator = papago_from_env(settings.env, timeout=settings.translate_timeout_s)
     if translator is None:
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
-    hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator)
+    hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
+                   question_wait_s=settings.owner_wait_s)
     app = FastAPI(title="AgentHan 전화 주문 (개발용)")
     app.include_router(
         phone_router(

@@ -30,6 +30,7 @@
 | `PHONE_BARGE_STOP_MS` | 이만큼 이어지면 봇 말을 멈춘다(ms, 1000 이상) | `1000` |
 | `PHONE_OWNER_KEY` | 사장님 화면 비밀 토큰. `/owner?key=…`. 없으면 사장님 경로가 모두 401 | 없음 |
 | `PHONE_TRANSLATE_TIMEOUT_S` | Papago 요청 하나의 시간 제한(초). 넘으면 카드는 원문만 | `3.0` |
+| `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -52,6 +53,7 @@ from agenthan.voice.call.defaults import (
     MODEL_HIGH,
     MODEL_LOW,
     NO_INPUT_S,
+    OWNER_WAIT_S,
     WAIT_REQUEST_S,
 )
 from agenthan.voice.call.vad import VadSettings
@@ -102,6 +104,8 @@ class VoiceSettings:
     owner_key: str = field(default="", repr=False)
     # Papago 요청 시간 제한 (4단계 티켓 03). 키(`PAPAGO_CLIENT_ID`·`_SECRET`)는 `env`에서 꺼낸다
     translate_timeout_s: float = 3.0
+    # 사장님 질문 답 대기 (4단계 티켓 06). 허브 카드 마감과 세션 시간 초과가 같이 쓴다
+    owner_wait_s: float = OWNER_WAIT_S
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -192,13 +196,15 @@ class VoiceSettings:
             owner_key=get("PHONE_OWNER_KEY", ""),
             translate_timeout_s=_number("PHONE_TRANSLATE_TIMEOUT_S",
                                         get("PHONE_TRANSLATE_TIMEOUT_S", ""), 3.0),
+            owner_wait_s=_number("PHONE_OWNER_WAIT_S", get("PHONE_OWNER_WAIT_S", ""),
+                                 OWNER_WAIT_S),
             env=env,
         )
 
 
 # 서버 설정에서 통화 세션 설정으로 그대로 옮기는 값 (`SessionSettings`와 이름이 같다)
 _SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "no_input_s", "wait_request_s",
-                   "turn_model_low", "turn_model_high", "barge")
+                   "turn_model_low", "turn_model_high", "barge", "owner_wait_s")
 
 
 def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:
