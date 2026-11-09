@@ -2,6 +2,7 @@
 // `/owner?lang=ru`(기본 ru). ko는 개발·확인용 한국어 화면이다. 데모 언어는 ru 하나(spec "번역").
 // 시각(`18:30`)·금액(`25,000₩`)은 서버가 고정 표기로 넣고 여기서는 그대로 보인다(Intl을 쓰지 않는다).
 // 러시아어 문구는 러시아어 화자 확인 전 초안이다(티켓 11 사람 확인).
+import type { CustomerText } from '../customerText.ts'
 import type {
   CallEndReason,
   CaptionLine,
@@ -12,7 +13,6 @@ import type {
   OwnerAnswer,
   QuestionCard,
   RequestBadge,
-  SentText,
 } from './ownerState.ts'
 
 export type OwnerLang = 'ru' | 'ko'
@@ -65,7 +65,7 @@ export interface OwnerText {
   writtenSend: string
   /** 카드 안 "손님에게 보낸 문자" 한 줄 (티켓 07) */
   sms: string
-  smsKind: Record<SentText['kind'], string>
+  smsKind: Record<CustomerText['kind'], string>
   translateFailed: string
   /**
    * "손님이 궁금해한 것" (티켓 13): 접힌 목록 제목, 질문 종류, 횟수, 안내, 번역 보기·저장 버튼,
@@ -347,7 +347,7 @@ export interface SentTextView {
 }
 
 /** 카드 안 "손님에게 보낸 문자" 한 줄 (티켓 07). 문자 내용은 손님이 받은 한국어 그대로 둔다 */
-export function sentTextView(t: SentText, lang: OwnerLang): SentTextView {
+export function sentTextView(t: CustomerText, lang: OwnerLang): SentTextView {
   const text = OWNER_TEXT[lang]
   return {
     label: `${text.sms} · ${t.sent_label} · ${text.smsKind[t.kind]}`,

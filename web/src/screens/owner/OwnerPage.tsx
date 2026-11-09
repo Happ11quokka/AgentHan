@@ -16,6 +16,7 @@
 // 티켓 13: 주문 카드 아래 접힌 "손님이 궁금해한 것"(AI가 답 못 한 메뉴 질문, 메뉴별 카드·횟수).
 // 사장님 글 → "번역 보기"(한국어 미리보기, 고칠 수 있음) → "저장"을 눌러야 다음 손님부터 AI가 쓴다.
 import { useEffect, useReducer, useRef, useState } from 'react'
+import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
@@ -29,7 +30,6 @@ import {
   type QuestionCard,
   type QuestionClock,
   SeenReports,
-  type SentText,
   WRITTEN_ANSWER_MAX,
   canAccept,
   captionLines,
@@ -425,7 +425,7 @@ function FollowUpCard({
 }
 
 /** 카드 안 "손님에게 보낸 문자" (티켓 07). 한 통에 한 줄: 종류·시각 + 손님이 받은 한국어 문장 */
-function SentTexts({ texts, lang }: { texts: SentText[] | undefined; lang: OwnerLang }) {
+function SentTexts({ texts, lang }: { texts: CustomerText[] | undefined; lang: OwnerLang }) {
   if (!texts || texts.length === 0) return null
   return (
     <ul className="owner-sms">

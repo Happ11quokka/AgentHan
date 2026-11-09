@@ -1,5 +1,8 @@
 // 통화 화면 상태와 서버 이벤트 모양 (WS 계약은 티켓 01 Comments).
 // 화면에 보이는 것과 "지금 마이크 소리를 보내도 되나"를 순수 리듀서 하나로 정한다.
+import type { CustomerText } from '../customerText.ts'
+
+export type { CustomerText } from '../customerText.ts'
 
 export type Phase = 'listening' | 'thinking' | 'speaking' | 'ended'
 
@@ -20,24 +23,6 @@ export interface OrderJson {
   customer_name: string | null
   customer_phone: string | null
   transcript: string[]
-}
-
-/**
- * 손님에게 보낸 문자 미리보기 하나 (4단계 티켓 07, 서버 `voice/owner/hub.py`). 실제 문자는 보내지 않는다.
- * order: 주문 확정 안내. late_answer: 통화에서 못 전한 사장님 버튼 답. free_answer: 사장님이 글로 남긴 답(번역)
- */
-export interface CustomerText {
-  id: string
-  call_id: string
-  kind: 'order' | 'late_answer' | 'free_answer'
-  /** 손님이 받는 한국어 문장 */
-  text: string
-  sent_at: string
-  /** 서버 고정 표기 `16:05` */
-  sent_label: string
-  question_id: string
-  /** 사장님 글을 번역하지 못해 원문을 넣었다 */
-  translate_failed: boolean
 }
 
 export type ServerEvent =

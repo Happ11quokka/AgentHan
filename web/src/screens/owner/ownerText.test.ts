@@ -1,5 +1,6 @@
+import type { CustomerText } from '../customerText.ts'
 import { describe, expect, it } from 'vitest'
-import { type OrderCardLine, type SentText, WRITTEN_ANSWER_MAX, writtenAnswer } from './ownerState.ts'
+import { type OrderCardLine, WRITTEN_ANSWER_MAX, writtenAnswer } from './ownerState.ts'
 import { OWNER_TEXT, answerLabel, lineView, orderMeta, ownerLang, questionView, sentTextView } from './ownerText.ts'
 
 function line(over: Partial<OrderCardLine> = {}): OrderCardLine {
@@ -82,7 +83,7 @@ describe('owner screen language (ticket 03)', () => {
 })
 
 describe('texts sent to the customer on owner cards (ticket 07)', () => {
-  function sent(over: Partial<SentText> = {}): SentText {
+  function sent(over: Partial<CustomerText> = {}): CustomerText {
     return {
       id: 'call-1-s2',
       call_id: 'call-1',

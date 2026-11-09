@@ -1,6 +1,7 @@
 // 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·03·05·10·13, 서버 `voice/owner/hub.py`).
 // 화면 상태는 순수 리듀서 하나로 정한다: 이전 상태 + 이벤트 → 다음 상태.
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
+import type { CustomerText } from '../customerText.ts'
 
 /** 사장님 처리 상태 (Part A 어휘). 4단계 버튼은 접수 하나 */
 export type OrderStatus = 'new' | 'accepted'
@@ -23,24 +24,6 @@ export interface OrderCardLine {
   request_owner: string
   badges: RequestBadge[]
   subtotal: number
-}
-
-/**
- * 손님에게 보낸 문자 미리보기 (티켓 07, 서버 `voice/owner/sms.py`). 실제 문자는 보내지 않는다.
- * order: 확정 안내. late_answer: 시간 초과·통화 끝 뒤 버튼 답. free_answer: 자유 입력 답(번역)
- */
-export interface SentText {
-  id: string
-  call_id: string
-  kind: 'order' | 'late_answer' | 'free_answer'
-  /** 손님이 받은 한국어 문장 */
-  text: string
-  sent_at: string
-  /** 서버 고정 표기 `16:07` */
-  sent_label: string
-  question_id: string
-  /** 자유 입력 글을 번역하지 못해 원문이 갔다 */
-  translate_failed: boolean
 }
 
 /** 주문 카드. `id`는 통화 id(= 계약 `Order.id`) */
@@ -66,7 +49,7 @@ export interface OrderCard {
    */
   owner_check?: boolean
   /** 손님에게 보낸 문자(보낸 순서, 티켓 07). 07 전 서버는 안 보낸다 */
-  sms?: SentText[]
+  sms?: CustomerText[]
 }
 
 /**
@@ -106,7 +89,7 @@ export interface CallCard {
   /** `heard`의 줄마다 번역(아직·실패면 빈 글). 길이는 `heard`와 같다 (티켓 03) */
   heard_owner: string[]
   /** 손님에게 보낸 문자(티켓 07, 미완료 통화 뒤 늦은 답 등). 07 전 서버는 안 보낸다 */
-  sms?: SentText[]
+  sms?: CustomerText[]
 }
 
 /** 자막 한 줄 (티켓 10). 손님 말 또는 AI 말 */

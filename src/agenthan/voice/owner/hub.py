@@ -310,15 +310,8 @@ class OwnerHub:
         text = text.strip()
         if not text:
             raise ValueError("미리 볼 글이 없어요")
-        translated = ""
-        if self._translator is not None:
-            try:
-                [translated] = await self._translator.translate(
-                    [text], self._lexicon.lang, SOURCE_LANG)
-            except Exception as err:  # noqa: BLE001 — 번역이 안 되면 사장님이 한국어를 고친다
-                log.warning("보충 답 번역 실패(%s): %s", type(err).__name__, card_id)
-                translated = ""
-        translated = translated.strip()
+        # 번역이 안 되면 사장님이 한국어를 직접 적는다
+        translated = await self._to_korean(text, f"보충 답 {card_id}")
         return {"text": text, "text_ko": translated, "translate_failed": not translated}
 
     def save_knowledge(self, card_id: str, text_ko: str, text: str = "") -> dict[str, Any]:
@@ -737,20 +730,28 @@ class OwnerHub:
         task.add_done_callback(self._tasks.discard)
 
     async def _translate_written_answer(self, question_id: str) -> None:
-        assert self._translator is not None
         original = self._questions[question_id]["answer_text"]
-        try:
-            [translated] = await self._translator.translate(
-                [original], self._lexicon.lang, SOURCE_LANG)
-        except Exception as err:  # noqa: BLE001 — 번역이 안 되면 원문으로 보낸다
-            log.warning("자유 입력 답 번역 실패(%s): 원문을 문자로 (%s)",
-                        type(err).__name__, question_id)
-            translated = ""
-        translated = translated.strip()
+        # 번역이 안 되면 원문으로 문자를 보낸다
+        translated = await self._to_korean(original, f"자유 입력 답 {question_id}")
         if translated:
             card = self._questions[question_id]
             self._put_question({**card, "answer_text_ko": translated})
         self._text_written_answer(question_id, translated)
+
+    async def _to_korean(self, text: str, what: str) -> str:
+        """사장님 글(사장님 언어) → 한국어. 보충 답 미리보기·자유 입력 답 문자가 같이 쓴다
+        (리뷰 C10).
+
+        메뉴명 보호·다듬기 없이 그대로 옮긴다. 번역기가 없거나 실패하면 빈 글.
+        """
+        if self._translator is None:
+            return ""
+        try:
+            [translated] = await self._translator.translate([text], self._lexicon.lang, SOURCE_LANG)
+        except Exception as err:  # noqa: BLE001 — 번역이 안 되면 부른 쪽이 원문·직접 입력으로
+            log.warning("사장님 글 번역 실패(%s): %s", type(err).__name__, what)
+            return ""
+        return translated.strip()
 
     def _text_written_answer(self, question_id: str, translated: str) -> None:
         card = self._questions[question_id]
