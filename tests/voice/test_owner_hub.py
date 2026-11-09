@@ -63,10 +63,12 @@ def test_a_confirmed_order_becomes_a_new_order_card_for_the_owner() -> None:
     assert card["pickup_time"] == "2026-11-08T18:30:00+09:00"
     assert card["pickup_label"] == "18:30"
     assert card["lines"] == [
-        {"menu_id": "m01", "name_ko": "메도빅", "quantity": 2, "options": [],
-         "request": "초는 빼 주세요", "subtotal": 15_000},
-        {"menu_id": "m03", "name_ko": "아메리카노", "quantity": 1, "options": ["디카페인 변경"],
-         "request": "", "subtotal": 5_000},
+        {"menu_id": "m01", "name_ko": "메도빅", "name_owner": "Медовик", "quantity": 2,
+         "options": [], "options_owner": [], "request": "초는 빼 주세요", "request_owner": "",
+         "badges": ["remove"], "subtotal": 15_000},
+        {"menu_id": "m03", "name_ko": "아메리카노", "name_owner": "아메리카노", "quantity": 1,
+         "options": ["디카페인 변경"], "options_owner": ["Без кофеина"], "request": "",
+         "request_owner": "", "badges": [], "subtotal": 5_000},
     ]
     assert card["total"] == 20_000
     assert card["total_label"] == "20,000₩"

@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.owner.http import owner_router
 from agenthan.voice.owner.hub import OwnerHub
+from agenthan.voice.owner.papago import papago_from_env
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
 from agenthan.voice.ws import phone_router, store_clock
@@ -39,7 +40,11 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     )
     # 확정 주문과 통화 상황(통화 중·넘김·미완료)을 받아 사장님 화면으로 보낸다(주문은 로그 한 줄도
     # 남긴다). 손님 화면의 `order` 이벤트는 그대로
-    hub = OwnerHub(store=store, clock=store_clock(settings))
+    # 손님 요청·넘김 카드 손님 말은 Papago로 사장님 언어(ru)로 옮긴다. 키가 없으면 원문만 (티켓 03)
+    translator = papago_from_env(settings.env, timeout=settings.translate_timeout_s)
+    if translator is None:
+        log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
+    hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator)
     app = FastAPI(title="AgentHan 전화 주문 (개발용)")
     app.include_router(
         phone_router(

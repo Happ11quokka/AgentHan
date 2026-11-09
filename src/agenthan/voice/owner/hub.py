@@ -25,6 +25,17 @@
 `Order.created_at`, 계약 v1 제안 6·7)을 쓴다. 비어 있으면 메뉴명·단가는 `menu_id`로 가게 메뉴에서
 찾고, 받은 시각은 허브 시계로 찍는다. 시각·금액은 번역 없이 코드가 고정 표기(`18:30`, `25,000₩`)로
 넣는다.
+
+사장님 언어 (티켓 03, `OwnerHub(..., translator=..., owner_lang="ru")`).
+카드 줄(주문·통화 카드 같음):
+- `name_owner`: `menu_id`로 찾은 원어 이름(`MenuItem.name_native`, 번역기 안 씀). 비면 `name_ko`
+- `options_owner`: 옵션 이름을 정적 사전(`lexicon.py`)으로. 사전에 없으면 한국어 그대로
+- `request`(한국어 원문) + `request_owner`(번역, 아직·실패·버림이면 "") + `badges`(`remove`·
+  `allergy`, 한국어 원문 규칙 `badges.py`)
+- 통화 카드는 `heard`(넘김 카드 손님 말 원문) 옆에 `heard_owner`(줄마다 번역 또는 "")
+- 번역은 비동기다. 카드는 원문으로 먼저 보내고, 번역이 오면 같은 카드를 다시 보낸다(주문 카드와,
+  ordered·closed가 아닌 통화 카드). 같은 문장은 통화 동안 한 번만 번역한다(`translation.py`).
+  번역기가 없으면(키 없음) 원문만
 """
 
 from __future__ import annotations
@@ -41,6 +52,10 @@ from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
 from agenthan.voice.call.defaults import OWNER_WAIT_S
 from agenthan.voice.call.ports import Clock
 from agenthan.voice.dialog.owner_question import OWNER_ANSWERS, OwnerQuestion, OwnerReply
+from agenthan.voice.owner.badges import request_badges
+from agenthan.voice.owner.lexicon import lexicon_for
+from agenthan.voice.owner.translate import Translator
+from agenthan.voice.owner.translation import CardTexts
 
 log = logging.getLogger(__name__)
 
@@ -76,13 +91,22 @@ class OwnerHub:
     """`OrderSink`·`OwnerChannel` 구현 + 사장님 화면 구독. 이벤트 루프 하나에 묶여 쓴다."""
 
     def __init__(
-        self, *, store: StoreKnowledge, clock: Clock, question_wait_s: float = OWNER_WAIT_S
+        self,
+        *,
+        store: StoreKnowledge,
+        clock: Clock,
+        question_wait_s: float = OWNER_WAIT_S,
+        translator: Translator | None = None,
+        owner_lang: str = "ru",
     ) -> None:
         self._store = store
         self._clock = clock
         self._question_wait = timedelta(seconds=question_wait_s)
         self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
         self._replies: dict[str, Callable[[OwnerReply], None]] = {}  # 답을 아직 안 넘긴 질문
+        self._lexicon = lexicon_for(owner_lang)
+        self._texts = CardTexts(translator, store=store, lexicon=self._lexicon)
+        self._tasks: set[asyncio.Task[None]] = set()  # 진행 중인 번역 (GC 막기)
         self._cards: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
         self._heard: dict[str, deque[str]] = {}  # 통화 중인 id → 마지막 손님 말들
@@ -195,9 +219,10 @@ class OwnerHub:
             return
         if order.status != "confirmed":
             return
-        card = self._order_card(order)
+        card = self._dressed(self._order_card(order))
         self._cards[order.id] = card
         self._publish("order.update", card)
+        self._translate_later(card)
         call = self._calls.get(order.id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered"})  # 화면은 통화 카드를 빼고 주문 카드만
@@ -221,9 +246,9 @@ class OwnerHub:
         call = self._calls.get(call_id)
         if call is None or call["status"] != "live":
             return
-        fields = self._cart_fields(lines)
-        if fields["lines"] != call["lines"]:
-            self._put_call({**call, **fields})
+        changed = self._dressed({**call, **self._cart_fields(lines)})
+        if changed["lines"] != call["lines"]:
+            self._put_call(changed)
 
     def _hear(self, call_id: str, text: str) -> None:
         heard = self._heard.get(call_id)
@@ -267,9 +292,50 @@ class OwnerHub:
         self._publish("owner.question", card)
 
     def _put_call(self, card: dict[str, Any]) -> dict[str, Any]:
+        card = self._dressed(card)
         self._calls[card["id"]] = card
         self._publish("call.update", card)
+        self._translate_later(card)
         return card
+
+    # --- 번역 (티켓 03): 카드는 원문으로 먼저, 번역이 오면 같은 카드를 다시 ---------------
+
+    def _dressed(self, card: dict[str, Any]) -> dict[str, Any]:
+        """카드의 자유 문장(요청사항, 넘김 카드 손님 말)에 캐시에 있는 번역을 붙인다(없으면 "")."""
+        call_id = card["id"]
+        lines = [{**line, "request_owner": self._texts.known(call_id, line["request"])}
+                 for line in card["lines"]]
+        dressed = {**card, "lines": lines}
+        if "heard" in card:
+            dressed["heard_owner"] = [self._texts.known(call_id, t) for t in card["heard"]]
+        return dressed
+
+    def _translate_later(self, card: dict[str, Any]) -> None:
+        texts = [line["request"] for line in card["lines"]] + list(card.get("heard", ()))
+        todo = self._texts.claim(card["id"], texts)
+        if not todo:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 루프 밖(구독자 없이 부른 동기 코드): 번역 없이 원문만
+            self._texts.release(card["id"], todo)
+            return
+        task = loop.create_task(self._translate(card["id"], todo))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _translate(self, call_id: str, texts: list[str]) -> None:
+        if not await self._texts.fetch(call_id, texts):
+            return  # 실패·버림: 원문 카드 그대로, 다시 보내지 않는다
+        order = self._cards.get(call_id)
+        if order is not None and (dressed := self._dressed(order)) != order:
+            self._cards[call_id] = dressed
+            self._publish("order.update", dressed)
+        call = self._calls.get(call_id)
+        if (call is not None and call["status"] not in ("ordered", "closed")
+                and (dressed := self._dressed(call)) != call):
+            self._calls[call_id] = dressed
+            self._publish("call.update", dressed)
 
     def _cart_fields(self, lines: Sequence[OrderLine]) -> dict[str, Any]:
         card_lines = self._card_lines(lines)
@@ -298,12 +364,20 @@ class OwnerHub:
             lines.append({
                 "menu_id": line.menu_id,
                 "name_ko": name,
+                "name_owner": self._owner_name(line.menu_id, name),
                 "quantity": line.quantity,
                 "options": list(line.options),
+                "options_owner": [self._lexicon.option(o) for o in line.options],
                 "request": line.request,
+                "badges": request_badges(line.request),
                 "subtotal": unit * line.quantity,
             })
         return lines
+
+    def _owner_name(self, menu_id: str, name_ko: str) -> str:
+        """사장님이 쓰는 원어 이름(`MenuItem.name_native`, 번역기 안 씀). 비면 한국어 이름."""
+        item = self._store.get_menu(menu_id)
+        return (item.name_native if item else "") or name_ko
 
     def _name_and_unit_price(self, line: OrderLine) -> tuple[str, int]:
         """줄의 한국어 이름·한 개 가격. 주문에 담긴 값(손님이 들은 값)을 먼저 쓴다.
