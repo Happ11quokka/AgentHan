@@ -36,7 +36,10 @@
   돼요/안 돼요는 "들어가요?"류 질문(`OwnerQuestion.yes_no`)이면 저장소에 사장님 확인으로 넣는다.
   자유 입력·통화 끝 카드는 넣지 않는다. 저장소는 `self.knowledge`(통화 엔진이 읽는다)
 - 확정 주문 카드의 `owner_check`: 그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다. 손님은 문자
-  약속을 들었다 ("사장님 확인 필요", 티켓 06)
+  약속을 들었다 ("사장님 확인 필요", 티켓 06). 늦은 답이 오면 다시 재서 내린다(리뷰 C9)
+- 제시간 버튼 답이라도 통화가 말하지 못하고 끝나면(손님이 말하는 중이라 미룸, 세션이
+  `answer_said`를 안 보냄) 통화 끝에 늦은 답과 같은 문자로 보낸다(리뷰 C1). 통화가 끝나면 세션의
+  받는 곳을 놓는다(끝난 세션이 GC 되게, 리뷰 C5)
 - 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...],
   "captions": [...], "knowledge": [...]}`, 통화 카드는 ordered·closed 빼고, 자막은 통화 중 카드
   것만)을 받고, 그 뒤 `order.update`·`call.update`·`call.caption`·`owner.question*`·
@@ -77,8 +80,10 @@ from typing import Any
 from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
 from agenthan.voice.call.defaults import OWNER_WAIT_S
 from agenthan.voice.call.ports import Clock
+from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeRequest, KnowledgeStore
 from agenthan.voice.dialog.owner_question import (
+    OWNER_BUTTONS,
     OWNER_POSTS,
     OwnerNote,
     OwnerQuestion,
@@ -149,6 +154,8 @@ class OwnerHub:
         self._question_wait = timedelta(seconds=question_wait_s)
         self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
         self._replies: dict[str, Callable[[OwnerNote], None]] = {}  # 답을 아직 안 넘긴 질문
+        self._said: set[str] = set()  # 통화가 손님에게 답을 말한 질문 id (리뷰 C1)
+        self._passed_on: set[str] = set()  # 보충 카드로 보낸 질문 id (한 질문은 한 번, 리뷰 C6)
         self._lexicon = lexicon_for(owner_lang)
         self._translator = translator  # 사장님 자유 입력 글 → 한국어 (티켓 07)
         self._texts = CardTexts(translator, store=store, lexicon=self._lexicon)
@@ -198,6 +205,9 @@ class OwnerHub:
 
     def question_timed_out(self, call_id: str, number: int) -> None:
         self._on_loop(self._time_out, f"{call_id}-q{number}")
+
+    def answer_said(self, call_id: str, number: int) -> None:
+        self._on_loop(self._said.add, f"{call_id}-q{number}")
 
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         self._on_loop(self._want, call_id, request.key, request.menu_name, request.text)
@@ -263,11 +273,8 @@ class OwnerHub:
         if answer == "free":
             self._text_written_answer_soon(question_id)
         elif late:
-            asked = self._asked[question_id]
-            self._text_customer(card["call_id"], "late_answer",
-                                sms.late_answer_text(card["menu_name"], answer,
-                                                     subject=asked.subject if asked.yes_no else ""),
-                                question_id=question_id)
+            self._text_late_answer(question_id)
+        self._recheck_order(card["call_id"])  # "사장님 확인 필요"를 내린다 (리뷰 C9)
         self._learn(question_id, answer)  # 보충 지식 (티켓 13): 카드 이벤트는 문자 뒤에
         return card
 
@@ -381,15 +388,26 @@ class OwnerHub:
         self._add_text(order.id, "order", sms.order_text(
             [(line["name_ko"], line["quantity"]) for line in base["lines"]],
             base["total"], base["pickup_label"]))
-        card = {**self._dressed(base), "owner_check": any(
-            q["call_id"] == order.id and q["status"] in _UNANSWERED
-            for q in self._questions.values()), "sms": self.customer_texts(order.id)}
+        card = {**self._dressed(base), "owner_check": self._owner_check(order.id),
+                "sms": self.customer_texts(order.id)}
         self._cards[order.id] = card
         self._publish("order.update", card)
         self._translate_later(card)
         call = self._calls.get(order.id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered"})  # 화면은 통화 카드를 빼고 주문 카드만
+
+    def _owner_check(self, call_id: str) -> bool:
+        """그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다 → 주문 카드 "사장님 확인 필요"."""
+        return any(q["call_id"] == call_id and q["status"] in _UNANSWERED
+                   for q in self._questions.values())
+
+    def _recheck_order(self, call_id: str) -> None:
+        """질문 상태가 바뀌었다. 주문 카드의 `owner_check`가 달라졌으면 다시 보낸다 (리뷰 C9)."""
+        order = self._cards.get(call_id)
+        if order is not None and order["owner_check"] != (check := self._owner_check(call_id)):
+            self._cards[call_id] = {**order, "owner_check": check}
+            self._publish("order.update", self._cards[call_id])
 
     def _add_text(self, call_id: str, kind: str, text: str, *, question_id: str = "",
                   translate_failed: bool = False) -> dict[str, Any]:
@@ -418,7 +436,8 @@ class OwnerHub:
         texts = self.customer_texts(call_id)
         order = self._cards.get(call_id)
         if order is not None:
-            self._cards[call_id] = {**order, "sms": texts}
+            self._cards[call_id] = {**order, "sms": texts,
+                                    "owner_check": self._owner_check(call_id)}
             self._publish("order.update", self._cards[call_id])
         call = self._calls.get(call_id)
         if call is not None:
@@ -499,8 +518,30 @@ class OwnerHub:
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "missed", "reason": reason})
         for question in list(self._questions.values()):  # 열린 질문은 "통화 끝" (답은 계속 받는다)
-            if question["call_id"] == call_id and question["status"] == "open":
+            if question["call_id"] != call_id:
+                continue
+            question_id = question["id"]
+            self._replies.pop(question_id, None)  # 끝난 세션을 놓는다 (리뷰 C5)
+            if question["status"] == "open":
                 self._put_question({**question, "status": "call_ended"})
+            elif self._unsaid(question):  # 제시간 답을 통화가 말하지 못했다 (리뷰 C1)
+                self._text_late_answer(question_id)
+            self._said.discard(question_id)
+
+    def _unsaid(self, question: dict[str, Any]) -> bool:
+        """받은 버튼 답을 통화도 문자도 손님에게 전하지 않았다."""
+        return (question["status"] == "answered" and question["answer"] in OWNER_BUTTONS
+                and question["id"] not in self._said
+                and not any(t["question_id"] == question["id"]
+                            for t in self._texts_out.get(question["call_id"], ())))
+
+    def _text_late_answer(self, question_id: str) -> None:
+        """버튼 답을 손님 문자로(늦은 답·통화가 말하지 못한 답, 티켓 07). 통화 문장과 같은 틀."""
+        card = self._questions[question_id]
+        asked = self._asked[question_id]
+        text = sms.late_answer_text(card["menu_name"], card["answer"],
+                                    subject=asked.subject if asked.yes_no else "")
+        self._text_customer(card["call_id"], "late_answer", text, question_id=question_id)
 
     def _time_out(self, question_id: str) -> None:
         question = self._questions.get(question_id)
@@ -519,16 +560,34 @@ class OwnerHub:
             return
         if answer in ("yes", "no"):
             if asked.yes_no:
-                self.knowledge.save_check(asked.key, answer == "yes")
-        elif answer in ("unsure", "timeout"):
+                contains = answer == "yes"
+                self.knowledge.save_check(asked.key, contains)
+                self._fill_from_check(asked, contains)
+        elif answer in ("unsure", "timeout") and question_id not in self._passed_on:
+            # 한 질문은 보충 카드에 한 번만 센다(시간 초과 뒤 늦은 모르겠어요, 리뷰 C6)
+            self._passed_on.add(question_id)
             self._want(self._questions[question_id]["call_id"], asked.key, asked.menu_name,
                        asked.text)
+
+    def _fill_from_check(self, asked: OwnerQuestion, contains: bool) -> None:
+        """사장님 확인을 저장했다. 같은 열쇠의 열린 보충 카드를 채움으로 닫는다 (리뷰 P5).
+
+        `answer_ko`에는 다음 손님에게 AI가 할 고정 문장(`templates.owner_checked`)을 넣는다.
+        """
+        found = self._open_wanted(asked.key)
+        if found is not None:
+            said = templates.owner_checked(asked.menu_name, asked.subject, contains)
+            self._put_wanted({**found, "status": "filled", "answer_ko": said, "answer_text": "",
+                              "saved_at": self._clock.now().isoformat()})
+
+    def _open_wanted(self, key: KnowledgeKey) -> dict[str, Any] | None:
+        return next((c for c in self._wanted.values()
+                     if c["status"] == "open" and _key(c) == key), None)
 
     def _want(self, call_id: str, key: KnowledgeKey, menu_name: str, text: str) -> None:
         """보충 요청 하나. 같은 열쇠의 열린 카드가 있으면 횟수를 늘리고 문구를 마지막 질문으로."""
         now = self._clock.now().isoformat()
-        found = next((c for c in self._wanted.values()
-                      if c["status"] == "open" and _key(c) == key), None)
+        found = self._open_wanted(key)
         asked = {"call_id": call_id, "text": text, "text_owner": self._texts.known(call_id, text),
                  "last_asked_at": now}
         if found is not None:
@@ -549,7 +608,9 @@ class OwnerHub:
                 "last_asked_at": now,
                 "status": "open",  # open · filled(사장님이 저장함)
                 "answer_text": "",  # 사장님 글 원문 (사장님 언어)
-                "answer_ko": "",  # 저장한 한국어 (엔진이 인용 틀로 그대로 말한다)
+                # 저장한 한국어 (엔진이 인용 틀로 그대로 말한다). 질문 카드 사장님 확인으로 채웠으면
+                # 엔진이 할 고정 문장 (리뷰 P5)
+                "answer_ko": "",
                 "saved_at": "",
             })
         self._translate_soon(call_id, [text])

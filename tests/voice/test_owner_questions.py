@@ -225,3 +225,14 @@ def test_a_contains_question_card_says_so_for_the_contains_buttons() -> None:
         number=1, menu_id="m01", menu_name="메도빅", text="메도빅에 견과류 들어가요?",
         kind="allergen", subject="견과", yes_no=True), lambda reply: None)
     assert hub.see_question("call-1-q1")["yes_no"] is True
+
+
+def test_the_hub_lets_go_of_the_call_session_when_the_call_ends() -> None:
+    # 리뷰 C5: 답 못 받은 질문의 받는 곳(세션 메서드)을 계속 들고 있으면 끝난 통화가 GC 되지 않는다.
+    # 통화 끝 뒤 늦은 답은 세션에 넘기지 않는다(문자로 간다)
+    hub = _hub()
+    replies: list[OwnerReply] = []
+    hub.open_question("call-1", NUTS, replies.append)
+    hub.call_ended("call-1", "hangup")
+    hub.answer_question("call-1-q1", "yes")
+    assert replies == []

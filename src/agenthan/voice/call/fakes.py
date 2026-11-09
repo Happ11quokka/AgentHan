@@ -207,7 +207,7 @@ class RecordingOwnerChannel:
 
     알림 모양: `("started", id)` · `("cart", id, 줄 튜플)` · `("customer", id, 글)` ·
     `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)` ·
-    `("timeout", id, 질문 번호)` · `("knowledge", id, KnowledgeRequest)`
+    `("timeout", id, 질문 번호)` · `("said", id, 질문 번호)` · `("knowledge", id, KnowledgeRequest)`
 
     `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다
     (시간 초과·늦은 답 시험은 나중에 `answer`·`see`를 부른다).
@@ -255,6 +255,9 @@ class RecordingOwnerChannel:
     def question_timed_out(self, call_id: str, number: int) -> None:
         self.notes.append(("timeout", call_id, number))
 
+    def answer_said(self, call_id: str, number: int) -> None:
+        self.notes.append(("said", call_id, number))
+
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         self.notes.append(("knowledge", call_id, request))
 
@@ -290,6 +293,11 @@ class RecordingOwnerChannel:
     def timeouts(self) -> list[int]:
         """시간 초과를 알린 질문 번호들."""
         return self._of("timeout")
+
+    @property
+    def said(self) -> list[int]:
+        """손님에게 답을 말한 질문 번호들 (리뷰 C1)."""
+        return self._of("said")
 
     @property
     def ended(self) -> list[str]:

@@ -222,6 +222,13 @@ class OwnerChannel(Protocol):
         몫, 티켓 07).
         """
 
+    def answer_said(self, call_id: str, number: int) -> None:
+        """그 질문의 사장님 답(`OwnerReply`)을 손님에게 말하는 봇 턴을 열었다(리뷰 C1).
+
+        제시간에 받았어도 손님이 말하는 중이라 미뤘다가 통화가 끝나면 말하지 못한다. 허브는 이
+        알림이 없는 답을 통화 끝에 손님 문자로 돌린다.
+        """
+
     def question_timed_out(self, call_id: str, number: int) -> None:
         """질문 카드를 보낸 뒤 답 대기 시간(`owner_wait_s`)이 지났다(티켓 06). 세션 시계로 잰다.
 
@@ -266,6 +273,9 @@ class NullOwnerChannel:
     def open_question(
         self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerNote], None]
     ) -> None:
+        pass
+
+    def answer_said(self, call_id: str, number: int) -> None:
         pass
 
     def question_timed_out(self, call_id: str, number: int) -> None:

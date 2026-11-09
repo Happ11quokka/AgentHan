@@ -301,3 +301,27 @@ def test_unsure_is_not_reused_so_the_next_caller_opens_a_card_again() -> None:
     hub.answer_question("call-1-q1", "unsure")
     r = _next_call(hub, NUTS.text)
     assert r.owner_question is not None
+
+
+def test_a_late_unsure_after_a_timeout_does_not_count_the_question_twice() -> None:
+    # 리뷰 C6: 시간 초과가 이미 보충 카드를 만들었다. 같은 질문의 늦은 "모르겠어요"는 횟수를
+    # 안 늘린다
+    hub, _ = _hub()
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.question_timed_out("call-1", 1)
+    hub.answer_question("call-1-q1", "unsure")
+    assert [(c["id"], c["count"]) for c in hub.knowledge_cards()] == [("k1", 1)]
+
+
+def test_a_late_yes_or_no_closes_the_open_knowledge_card_of_that_question() -> None:
+    # 리뷰 P5: 시간 초과로 열린 보충 카드는 늦은 돼요/안 돼요(사장님 확인 저장) 뒤 채움이 된다
+    store = KnowledgeStore()
+    hub, clock = _hub(knowledge=store)
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.question_timed_out("call-1", 1)
+    clock.set(LATER)
+    hub.answer_question("call-1-q1", "no")
+    [card] = hub.knowledge_cards()
+    assert (card["status"], card["answer_ko"], card["saved_at"]) == (
+        "filled", "사장님 확인으로는 메도빅에 견과는 안 들어간대요.", LATER.isoformat())
+    assert store.lookup(NUTS_KEY) == Known(contains=False)

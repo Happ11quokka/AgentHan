@@ -16,6 +16,7 @@ from datetime import datetime
 
 import pytest
 from test_owner_calls import Screen
+from test_owner_questions import snapshot
 
 from agenthan.core.contracts import Order, OrderLine
 from agenthan.core.fakes import FakeStoreKnowledge
@@ -225,3 +226,64 @@ def test_a_late_answer_to_a_contains_question_texts_what_the_buttons_meant() -> 
     [late] = hub.customer_texts("call-1")
     assert late["text"] == (
         "메도빅 문의 답변이에요. 사장님께 여쭤보니 메도빅에 견과는 안 들어간대요.")
+
+
+# ---------------------------------------------------------------- 리뷰 C1·C9
+
+
+def test_an_answer_in_time_that_the_call_never_said_is_texted_when_the_call_ends() -> None:
+    # 리뷰 C1: 제시간 답이 손님 말 때문에 미뤄진 채 통화가 끝나면 통화는 말하지 못했다. 손님은
+    # "확인해서 문자로 알려 드릴게요"를 들었으니 문자로 보낸다
+    hub, _ = _hub()
+    hub.call_started("call-1")
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.answer_question("call-1-q1", "no")
+    hub.submit(_order())
+    hub.call_ended("call-1", "confirmed")
+    order_text, late = hub.customer_texts("call-1")
+    assert (late["kind"], late["text"], late["question_id"]) == (
+        "late_answer", "메도빅 문의 답변이에요. 사장님께 여쭤보니 안 된다고 하세요.", "call-1-q1")
+    [card] = snapshot(hub)["orders"]
+    assert card["sms"] == [order_text, late]
+
+
+def test_an_answer_the_call_said_is_not_texted() -> None:
+    hub, _ = _hub()
+    hub.call_started("call-1")
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.answer_question("call-1-q1", "yes")
+    hub.answer_said("call-1", 1)
+    hub.call_ended("call-1", "hangup")
+    assert hub.customer_texts("call-1") == []
+
+
+def test_a_late_answer_clears_the_owner_check_on_the_order_card() -> None:
+    # 리뷰 C9: "사장님 확인 필요"는 답을 받으면 내린다(확정 때 한 번만 재지 않는다)
+    async def scenario():
+        hub, _ = _hub()
+        hub.call_started("call-1")
+        hub.open_question("call-1", NUTS, lambda note: None)
+        hub.question_timed_out("call-1", 1)
+        hub.submit(_order())
+        screen = Screen(hub)
+        [snapshot] = await screen.take()
+        hub.answer_question("call-1-q1", "yes")
+        events = await screen.take(2)
+        await screen.nothing_more()
+        await screen.close()
+        return snapshot, events
+
+    snapshot, events = asyncio.run(scenario())
+    assert snapshot.data["orders"][0]["owner_check"] is True
+    assert [e.name for e in events] == ["owner.question.update", "order.update"]
+    assert events[1].data["owner_check"] is False
+
+
+def test_a_written_answer_clears_the_owner_check_too() -> None:
+    hub, _ = _hub()
+    hub.call_started("call-1")
+    hub.open_question("call-1", NUTS, lambda note: None)
+    hub.question_timed_out("call-1", 1)
+    hub.submit(_order())
+    hub.answer_question("call-1-q1", "free", "Без орехов")
+    assert [o["owner_check"] for o in snapshot(hub)["orders"]] == [False]

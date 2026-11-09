@@ -219,6 +219,44 @@ def test_an_answer_while_waiting_for_the_end_of_turn_text_waits_for_that_turn(tm
     assert said(c, 4).startswith(YES)
 
 
+def test_the_session_tells_the_owner_side_when_it_spoke_the_answer(tmp_path) -> None:
+    # 리뷰 C1: 허브는 통화가 말한 답만 "전함"으로 본다. 못 전한 제시간 답은 통화 끝에 문자로 간다
+    stt = FakeSttStream(replies=["메도빅 하나요", NUTS])
+    owner = RecordingOwnerChannel()
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, owner=owner, settings=waiting(owner_wait_s=5.0)) as c:
+            await asked(c)
+            owner.answer(1, "yes")
+            await bot_turn(c, 3)
+            return c
+
+    c = run(call())
+    assert said(c, 3).startswith(YES)
+    assert owner.said == [1]
+
+
+def test_an_answer_held_back_while_the_customer_talks_is_not_told_as_said(tmp_path) -> None:
+    # 리뷰 C1: 손님이 말하는 중이라 미룬 답은 통화가 끝나면 말하지 못한다. 허브가 문자로 돌린다
+    stt = FakeSttStream(replies=["메도빅 하나요", NUTS])
+    owner = RecordingOwnerChannel()
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, owner=owner, settings=waiting(owner_wait_s=5.0)) as c:
+            await asked(c)
+            await c.feed(tone(500))  # 손님이 말하는 중
+            owner.answer(1, "yes")
+            await asyncio.sleep(0.2)
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+            await asyncio.sleep(0.1)
+            return c
+
+    c = run(call())
+    assert c.out.of("bot.say", 3) == []
+    assert owner.said == []
+    assert owner.ended == ["hangup"]
+
+
 def test_hanging_up_while_waiting_ends_once_and_drops_the_late_answer(tmp_path) -> None:
     stt = FakeSttStream(replies=["메도빅 하나요", NUTS])
     owner = RecordingOwnerChannel()

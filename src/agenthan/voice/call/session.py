@@ -1689,7 +1689,8 @@ class CallSession:
         self._score_timer.cancel()
         self._owner_timer.cancel()
         self._owner_retry.cancel()
-        self._owner_open = None  # 통화 뒤 사장님 답은 버린다(늦은 답 문자는 허브 몫, 티켓 07)
+        # 통화 뒤 사장님 답은 버린다. 늦은 답·말하지 못한 답의 문자는 허브 몫 (티켓 07, 리뷰 C1)
+        self._owner_open = None
         self._owner_inbox.clear()
         self._drop_score()  # 줄 선 점수 작업을 공유 풀에서 뺀다 (다른 통화가 늦지 않게, 감사 11번)
         self._phase = "ended"
@@ -1820,6 +1821,8 @@ class CallSession:
         if isinstance(note, OwnerReply):
             self._owner_open = None
             self._owner_timer.cancel()
+            # 허브는 이 알림이 없는 제시간 답을 통화 끝에 문자로 돌린다 (리뷰 C1)
+            self._tell_owner(lambda owner: owner.answer_said(self.call_id, number))
             seen = self._owner_seen_at
             if record is not None:
                 record.fields["owner_answer"] = {
