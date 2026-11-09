@@ -127,7 +127,7 @@ HCX가 HTTP 400으로 거절한 요청(예: `40009 Unsupported function`)은 장
 - `tests/fixtures/replay/m0.json`: 키 없이 전체 경로를 돌리기 위한 **결정적 합성 응답**.
   고정 임베딩과 기대 도구·타입별 더미 인자를 쓰므로 모델 품질 측정에 쓰면 안 된다.
   `uv run --frozen --offline python -m agenthan.eval.seed_replay`로 다시 만든다.
-- `baselines/m0.json`: 위 실제 측정 명령으로 만든 기준선(커밋 ec43e96, repeat 3, pause 2).
+- `baselines/m0.json`: 위 실제 측정 명령으로 만든 기준선(커밋 90c40a3, DASH 분기, repeat 3, pause 2).
 - `tests/fixtures/replay/live.json`: 기준선 측정 때 녹화한 실제 HCX-005·embedding-v2 응답.
   공개 기존 케이스와 더미 시드만 사용했다. 재생은 마지막 반복의 응답이라 기준선 평균과 다를 수 있다.
 
