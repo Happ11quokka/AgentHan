@@ -12,8 +12,11 @@
 ```
 사장님 발화
  → OwnerAssistant (agent/owner_assistant.py)
-     ① 기능 후보: agent/place_matcher.py (키워드 30% + CLOVA 임베딩 70%, 18개 기능)
-     ② 기능 하나 고르기: 지금은 매칭 1위 (PRD는 HCX-DASH-002 select_feature — 아직 안 함)
+     ⓪ 상태 규칙: 메뉴 사진 초안, 승인 대기(네/취소), 용어 사전, 직전 리포트 후속 질문
+     ① 기능 후보: agent/place_matcher.py rank_features 상위 5개, 임계값 없음 (키워드 30% + 임베딩 70%)
+     ② 기능 하나 고르기: agent/feature_selector.py — HCX-DASH-002 select_feature 강제 호출
+        (후보 + none + clarify). 되묻는 중이면 그 기능과 직전 질문을 함께 준다.
+        DASH가 실패하면 예전 규칙(임계값 0.48 넘는 1위)으로 대신한다
      ③ 대표 기능 위임 또는 그 기능 도구만 붙여 HCX-005 실행
         ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
         ├ 메뉴판·음식 사진          → ask_photo(): 사진 분류 → 초안 → 사장님 승인 → 저장
@@ -29,7 +32,8 @@
 | `agent/owner_assistant.py` | 오케스트레이터 대화 루프 (CLI: `python -m agenthan.agent.owner_assistant`) |
 | `agent/food_photo.py` | 음식 사진 분류·AI 메뉴 추측·배경 제거 연결 |
 | `agent/menu_photo.py` | A-1 메뉴 사진 → 초안: HCX-005 사진 읽기 → 가게 지식(`StoreKnowledge`) 대조 → 한국어 이름·설명 |
-| `agent/place_matcher.py`, `place_features.json` | 플레이스 기능 카탈로그(=PRD의 `features.json`)와 요청→기능 매칭 |
+| `agent/place_matcher.py`, `place_features.json` | 플레이스 기능 카탈로그(=PRD의 `features.json`)와 후보 순위 |
+| `agent/feature_selector.py` | HCX-DASH-002 `select_feature`로 후보 중 기능 하나 고르기 |
 | `agent/review/` | 리뷰 서브에이전트: 분석·요약, 미답글, 답글 초안·등록(더미), 정기 보고 루틴(A-2·A-4) |
 | `agent/review_delegate.py` | 오케스트레이터 → 리뷰 서브에이전트 위임 |
 | `agent/report_explainer.py` | A-3 통계 해석 문장화·숫자 검증·실패 시 코드 템플릿 (`ReportAnswer`) |
@@ -49,7 +53,6 @@
 
 - HCX 호출이 openai SDK(OpenAI 호환 API)다. PRD는 sdk.md 네이티브 REST v3. `core/llm.py`만 바꾸면 되게 모아 뒀다.
 - 오케스트레이터가 LangGraph `StateGraph`가 아니라 직접 짠 루프다. 승인(HITL)도 `interrupt()`가 아니라 대화 턴 확인이다.
-- 기능 고르기(HCX-DASH-002 `select_feature`)가 없다. 매칭 1위를 그대로 쓴다.
 - 통계 리포트(A-3)는 R1 통계, R2 해석, R4 카드·용어·후속 질문과 R3 검색 노출을 연결했다. 먼저 제안은 아직 없다.
 - A-1 승인은 `interrupt()`가 아니라 다음 턴의 "네/취소/고칠 곳"이다. 웹 폼은 `menu_form()` 값으로 채운다.
 

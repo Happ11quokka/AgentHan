@@ -5,8 +5,8 @@
 
 평가는 실제 앱 흐름(`OwnerAssistant`)을 그대로 따라 두 축만 본다.
 
-- **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `match_features` 1위만이 아니라
-  `ask()`의 분기 전체(용어 사전, 통계·검색 정규식, 되묻는 중인 기능 유지, 임베딩 매칭)를
+- **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `ask()`의 분기 전체(상태 규칙 →
+  임베딩 후보 5개 → HCX-DASH-002 `select_feature`, 실패 시 임계값 규칙)를
   `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/place_request_cases.jsonl`(64건).
 - **전체 흐름(`flow`)**: 케이스마다 새 비서와 임시 더미 저장소로 `turns`를 차례로 실행해
   턴마다 분기 → 빠진 정보 질문 → 도구 호출·인자 → 저장소 변화를 채점한다.
@@ -40,6 +40,8 @@ uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/e
 ## 케이스
 
 `cases.py`는 기존 JSONL 두 파일을 수정하지 않고 읽는다. 기존 단일 문장은 턴 한 개로 바뀐다.
+dev/holdout은 `tests/data/splits.json`에 고정돼 있다(`cases.make_splits`, 기능·종류별 7:3,
+route 47/17·flow 43/18). 프롬프트·카탈로그는 dev만 보고 고치고 holdout은 마지막에 한 번만 잰다.
 턴의 `expect`에서 **적지 않은 항목은 채점하지 않는다.**
 
 ```json
@@ -81,7 +83,10 @@ uv run --frozen --offline python -m agenthan.eval.run --backend replay --extra-s
 | 지표 | 정의 |
 | --- | --- |
 | 기능 매칭 정확도 (`route.selection_accuracy`) | 기대 기능이 있는 정상 응답 중 분기 결과가 같은 비율 |
-| 오분기율 (`route.false_call_rate`) | 기대 기능이 없는 요청이 어떤 기능으로 간 비율 |
+| 오분기율 (`route.false_call_rate`) | 기대 기능이 없는 요청이 어떤 기능으로 간(또는 되물은) 비율 |
+| 후보 재현율@5 (`route.candidate_recall`) | 기대 기능이 있는 요청 중 정답이 후보 5개 안에 든 비율. 낮으면 임베딩·카탈로그 문제 |
+| 후보 안 선택 정확도 (`route.select_accuracy_when_recalled`) | 정답이 후보에 있고 DASH가 답했을 때 맞힌 비율. 낮으면 선택 프롬프트 문제 |
+| 분기 경로 (`route.via`) | `select`(DASH), `clarify`, `fallback`(DASH 실패), `report`·`glossary`(상태 규칙) 건수 |
 | 단계 정확도 (`flow.feature/ask/args/store_accuracy`) | 그 단계가 채점된 정상 턴 중 통과 비율 |
 | 도구 정확도 (`flow.selection_accuracy`) | 도구가 채점된 턴 중 첫 호출이 기대 도구인 비율. 기대가 `null`인 턴은 분모 밖 |
 | 인자 유효성 (`flow.args_valid_rate`) | 올바른 도구를 고른 턴 중 첫 결과가 `ok`(미리보기 포함)인 비율 |
