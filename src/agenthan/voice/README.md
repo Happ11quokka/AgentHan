@@ -182,3 +182,4 @@
 - 보호(`owner/protect.py`): 메뉴명·별칭과 Papago가 뜻을 틀리는 재료 낱말(고수·파·초·밤)을 `[1]`처럼 가리고 번역 뒤 원어 이름·사전 값으로 채운다. 자리표시자가 사라지거나 늘거나, 숫자가 원문과 다르면 번역을 버린다
 - 화면 `/owner?key=…&lang=ru`(기본 ru, `lang=ko`는 확인용 한국어). 고정 문구 `web/src/screens/owner/ownerText.ts`, 아래에 Papago 표기
 - 테스트: `test_owner_ru_card.py`(허브, 가짜 번역기), `test_owner_papago.py`(어댑터, 녹화본 `cassettes/test_owner_papago/`. 다시 녹화: `AGENTHAN_ENV_FILE=<.env 경로> uv run pytest tests/voice/test_owner_papago.py -k recorded --record-mode=rewrite`)
+- Papago 실측(CI 밖, 과금, 호출 약 240번, 티켓 04): `uv run python -m agenthan.voice.papago_measure --env <저장소 루트>/.env --out <저장소 루트>/private/papago-measure`. 지연(첫 호출·이어 쓰기·동시 3개), 메뉴명 자리표시자 보존, 부정·알레르기 세트(+ 역번역), 사장님 답 ru→ko 말투, 손님 말 흔한 모양을 03 어댑터·`protect`·`lexicon.RU` 그대로 잰다. 원기록 `<시각>.jsonl`과 요약 표 `<시각>.md`는 `private/`에만 둔다(받은 번역문 포함). 2026-11-10 결과는 연구 노트 `s4-papago-measure.md`. 순수 계산 테스트 `test_papago_measure.py`
