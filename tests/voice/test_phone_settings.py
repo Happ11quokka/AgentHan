@@ -160,6 +160,15 @@ def test_the_papago_request_time_limit_is_a_setting() -> None:
         VoiceSettings.from_env({"PHONE_TRANSLATE_TIMEOUT_S": "0"}, env_file=None)
 
 
+def test_the_papago_idle_connection_keepalive_is_a_setting() -> None:
+    """티켓 12: 쉬었다 불러도 다시 연결하지 않게 유휴 연결을 60초 둔다(httpx 기본은 5초)."""
+    assert VoiceSettings.from_env({}, env_file=None).translate_keepalive_s == 60.0
+    s = VoiceSettings.from_env({"PHONE_TRANSLATE_KEEPALIVE_S": "30"}, env_file=None)
+    assert s.translate_keepalive_s == 30.0
+    with pytest.raises(SettingsError, match="PHONE_TRANSLATE_KEEPALIVE_S"):
+        VoiceSettings.from_env({"PHONE_TRANSLATE_KEEPALIVE_S": "-1"}, env_file=None)
+
+
 def test_keys_do_not_show_in_repr(tmp_path) -> None:
     s = VoiceSettings.from_env({"CLOVA_SPEECH_SECRET_KEY": "s3cr3t"}, env_file=None)
     assert "s3cr3t" not in repr(s)

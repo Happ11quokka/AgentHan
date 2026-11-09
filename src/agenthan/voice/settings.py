@@ -30,6 +30,7 @@
 | `PHONE_BARGE_STOP_MS` | 이만큼 이어지면 봇 말을 멈춘다(ms, 1000 이상) | `1000` |
 | `PHONE_OWNER_KEY` | 사장님 화면 비밀 토큰. `/owner?key=…`. 없으면 사장님 경로가 모두 401 | 없음 |
 | `PHONE_TRANSLATE_TIMEOUT_S` | Papago 요청 하나의 시간 제한(초). 넘으면 카드는 원문만 | `3.0` |
+| `PHONE_TRANSLATE_KEEPALIVE_S` | Papago 유휴 연결을 두는 시간(초). 쉬었다 불러도 안 끊게 | `60.0` |
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
@@ -104,6 +105,9 @@ class VoiceSettings:
     owner_key: str = field(default="", repr=False)
     # Papago 요청 시간 제한 (4단계 티켓 03). 키(`PAPAGO_CLIENT_ID`·`_SECRET`)는 `env`에서 꺼낸다
     translate_timeout_s: float = 3.0
+    # Papago 유휴 연결 유지 (티켓 12). httpx 기본 5초면 턴 사이마다 다시 연결한다
+    # (실측 쉬었다 부르기 중앙값 0.82초 → 60초 유지 0.60초)
+    translate_keepalive_s: float = 60.0
     # 사장님 질문 답 대기 (4단계 티켓 06). 허브 카드 마감과 세션 시간 초과가 같이 쓴다
     owner_wait_s: float = OWNER_WAIT_S
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
@@ -196,6 +200,8 @@ class VoiceSettings:
             owner_key=get("PHONE_OWNER_KEY", ""),
             translate_timeout_s=_number("PHONE_TRANSLATE_TIMEOUT_S",
                                         get("PHONE_TRANSLATE_TIMEOUT_S", ""), 3.0),
+            translate_keepalive_s=_number("PHONE_TRANSLATE_KEEPALIVE_S",
+                                          get("PHONE_TRANSLATE_KEEPALIVE_S", ""), 60.0),
             owner_wait_s=_number("PHONE_OWNER_WAIT_S", get("PHONE_OWNER_WAIT_S", ""),
                                  OWNER_WAIT_S),
             env=env,

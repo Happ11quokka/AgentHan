@@ -149,6 +149,103 @@ def test_without_both_keys_there_is_no_translator() -> None:
     )
 
 
+# ---------------------------------------------------------------- 연결 유지·데우기 (티켓 12)
+
+
+class LocalPapago:
+    """연결 수를 세는 작은 HTTP/1.1 서버(127.0.0.1). 연결을 먼저 닫지 않고 요청마다 같은 답."""
+
+    def __init__(self) -> None:
+        self.connections = 0
+        self.requests = 0
+        self._server: asyncio.Server | None = None
+
+    @property
+    def url(self) -> str:
+        assert self._server is not None
+        host, port = self._server.sockets[0].getsockname()[:2]
+        return f"http://{host}:{port}/nmt/v1/translation"
+
+    async def __aenter__(self) -> LocalPapago:
+        self._server = await asyncio.start_server(self._serve, "127.0.0.1", 0)
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        assert self._server is not None
+        self._server.close()
+
+    async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        self.connections += 1
+        body = ok("да").content
+        try:
+            while True:
+                head = await reader.readuntil(b"\r\n\r\n")
+                length = re.search(rb"(?i)content-length:\s*(\d+)", head)
+                await reader.readexactly(int(length.group(1)) if length else 0)
+                self.requests += 1
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                             b"Content-Length: %d\r\n\r\n%s" % (len(body), body))
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+
+@pytest.mark.parametrize(("keepalive", "connections"), [
+    (5.0, 1),  # 쉬는 동안 연결을 남겨 두고 다시 쓴다
+    (0.05, 2),  # 유지 시간이 지나면 새로 연결한다
+])
+def test_an_idle_connection_is_reused_within_the_keepalive_time(
+    keepalive: float, connections: int
+) -> None:
+    async def run() -> int:
+        async with LocalPapago() as server:
+            translator = PapagoTranslator(ID, SECRET, url=server.url, keepalive=keepalive)
+            try:
+                assert await translator.translate(["네"], "ko", "ru") == ["да"]
+                await asyncio.sleep(0.3)
+                assert await translator.translate(["네"], "ko", "ru") == ["да"]
+            finally:
+                await translator.aclose()
+            return server.connections
+
+    assert asyncio.run(run()) == connections
+
+
+def test_warming_up_sends_one_short_sentence_and_then_reuses_the_connection() -> None:
+    async def run() -> tuple[bool, int, int]:
+        async with LocalPapago() as server:
+            translator = PapagoTranslator(ID, SECRET, url=server.url)
+            try:
+                warmed = await translator.warm()
+                await asyncio.sleep(0.1)
+                await translator.translate(["[1] 빼 주세요"], "ko", "ru")
+            finally:
+                await translator.aclose()
+            return warmed, server.connections, server.requests
+
+    assert asyncio.run(run()) == (True, 1, 2)
+
+
+def test_a_failed_warm_up_does_not_raise() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content)["text"])
+        return httpx.Response(500)
+
+    async def run() -> bool:
+        translator = papago(handler)
+        try:
+            return await translator.warm()
+        finally:
+            await translator.aclose()
+
+    assert asyncio.run(run()) is False
+    assert len(seen) == 1 and len(seen[0]) <= 2
+
+
 # ---------------------------------------------------------------- 녹화본
 
 
