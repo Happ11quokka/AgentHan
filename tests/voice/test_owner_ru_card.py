@@ -17,6 +17,7 @@ import pytest
 from agenthan.core.contracts import Order, OrderLine
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
+from agenthan.voice.dialog.owner_question import OwnerQuestion
 from agenthan.voice.owner.fakes import FakeTranslator
 from agenthan.voice.owner.hub import OwnerEvent, OwnerHub
 
@@ -337,3 +338,30 @@ def test_a_live_call_card_gets_the_translation_too() -> None:
     assert [(e.name, e.data["lines"][0]["request_owner"]) for e in events[1:]] == [
         ("call.update", ""), ("call.update", "кинза Уберите, пожалуйста."),
     ]
+
+
+def test_a_question_card_shows_the_owner_menu_name_and_then_the_translated_question() -> None:
+    """질문 카드(티켓 05)도 원어 메뉴 이름이 붙고, 손님 질문 번역이 오면 같은 카드를 다시 보낸다."""
+    papago = FakeTranslator({"[1]에 견과류 들어가요?": "В [1] идут орехи?"})
+    nuts = OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅",
+                         text="메도빅에 견과류 들어가요?")
+
+    async def scenario():
+        hub = _hub(translator=papago)
+        screen = Screen(hub)
+        await screen.one()
+        hub.call_started("call-1")
+        hub.open_question("call-1", nuts, lambda reply: None)
+        got = await screen.rest()
+        await screen.close()
+        return got
+
+    events = [e for e in asyncio.run(scenario()) if e.name.startswith("owner.question")]
+
+    assert [(e.name, e.data["menu_name"], e.data["menu_name_owner"], e.data["text"],
+             e.data["text_owner"]) for e in events] == [
+        ("owner.question", "메도빅", "Медовик", "메도빅에 견과류 들어가요?", ""),
+        ("owner.question.update", "메도빅", "Медовик", "메도빅에 견과류 들어가요?",
+         "В Медовик идут орехи?"),
+    ]
+    assert events[1].data["status"] == "open"

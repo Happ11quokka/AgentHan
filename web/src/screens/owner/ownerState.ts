@@ -91,10 +91,14 @@ export interface QuestionCard {
   /** 통화 안 질문 번호 (1부터) */
   number: number
   menu_id: string
-  /** 한국어 메뉴명 (원어 이름은 티켓 03) */
+  /** 한국어 메뉴명 */
   menu_name: string
+  /** 사장님 원어 메뉴명. 비면 서버가 한국어 이름을 넣는다 (티켓 03) */
+  menu_name_owner: string
   /** 손님 질문 원문 (한국어) */
   text: string
+  /** 손님 질문 번역(Papago). 아직·실패면 빈 글. 번역이 오면 `owner.question.update`로 다시 온다 (티켓 03) */
+  text_owner: string
   /** 서버가 카드를 보낸 시각(ISO 8601). 카운트다운은 마감 시각까지 센다 */
   sent_at: string
   deadline_at: string

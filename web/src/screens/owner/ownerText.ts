@@ -2,7 +2,7 @@
 // `/owner?lang=ru`(기본 ru). ko는 개발·확인용 한국어 화면이다. 데모 언어는 ru 하나(spec "번역").
 // 시각(`18:30`)·금액(`25,000₩`)은 서버가 고정 표기로 넣고 여기서는 그대로 보인다(Intl을 쓰지 않는다).
 // 러시아어 문구는 러시아어 화자 확인 전 초안이다(티켓 11 사람 확인).
-import type { CallEndReason, OrderCardLine, OwnerAnswer, RequestBadge } from './ownerState.ts'
+import type { CallEndReason, OrderCardLine, OwnerAnswer, QuestionCard, RequestBadge } from './ownerState.ts'
 
 export type OwnerLang = 'ru' | 'ko'
 
@@ -165,4 +165,21 @@ export function lineView(line: OrderCardLine, lang: OwnerLang): LineView {
     request: line.request_owner,
     requestKo: line.request,
   }
+}
+
+export interface QuestionView {
+  /** 질문한 메뉴: 사장님 원어 이름(비면 한국어) */
+  menu: string
+  /** 손님 질문 번역. 아직·실패면 빈 글(한국어 원문만 보인다) */
+  question: string
+  questionKo: string
+}
+
+/** 질문 카드를 화면 언어로. ko 화면은 한국어만 */
+export function questionView(
+  q: Pick<QuestionCard, 'menu_name' | 'menu_name_owner' | 'text' | 'text_owner'>,
+  lang: OwnerLang,
+): QuestionView {
+  if (lang === 'ko') return { menu: q.menu_name, question: '', questionKo: q.text }
+  return { menu: q.menu_name_owner || q.menu_name, question: q.text_owner, questionKo: q.text }
 }

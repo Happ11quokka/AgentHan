@@ -31,7 +31,15 @@ import {
   ownerKey,
   wakeDevice,
 } from './ownerStream.ts'
-import { OWNER_TEXT, type OwnerLang, type OwnerText, PAPAGO_URL, lineView, ownerLang } from './ownerText.ts'
+import {
+  OWNER_TEXT,
+  type OwnerLang,
+  type OwnerText,
+  PAPAGO_URL,
+  lineView,
+  ownerLang,
+  questionView,
+} from './ownerText.ts'
 import { pickupBand } from './pickupBand.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
 import './owner.css'
@@ -169,6 +177,7 @@ export default function OwnerPage() {
               key={q.id}
               question={q}
               left={secondsLeft(q, now)}
+              lang={lang}
               text={text}
               onAnswer={(value) => void answer(q.id, value)}
             />
@@ -325,26 +334,30 @@ function FollowUpCard({
 function QuestionCardView({
   question,
   left,
+  lang,
   text,
   onAnswer,
 }: {
   question: QuestionCard
   left: number
+  lang: OwnerLang
   text: OwnerText
   onAnswer: (answer: OwnerAnswer) => void
 }) {
+  const view = questionView(question, lang)
   return (
     <article className="owner-card owner-question">
       <header className="owner-card-head">
         <span className="owner-question-title">
-          {text.question} · {question.menu_name}
+          {text.question} · {view.menu}
         </span>
         <span className={`owner-question-left${left === 0 ? ' owner-question-late' : ''}`} role="timer">
           {left > 0 ? text.secondsLeft(left) : text.late}
         </span>
       </header>
-      <p className="owner-question-text" lang="ko">
-        “{question.text}”
+      {view.question && <p className="owner-question-text">“{view.question}”</p>}
+      <p className={view.question ? 'owner-question-ko' : 'owner-question-text'} lang="ko">
+        “{view.questionKo}”
       </p>
       <div className="owner-question-answers">
         {ANSWERS.map((answer) => (

@@ -26,7 +26,9 @@ CARD = {
     "number": 1,
     "menu_id": "m01",
     "menu_name": "메도빅",
+    "menu_name_owner": "Медовик",  # 티켓 03
     "text": "메도빅에 견과류 들어가요?",
+    "text_owner": "",  # 번역기 없음 → 원문만 (티켓 03)
     "sent_at": "2026-11-08T16:02:00+09:00",
     "deadline_at": "2026-11-08T16:02:20+09:00",
     "status": "open",

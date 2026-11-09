@@ -33,9 +33,10 @@
 - `request`(한국어 원문) + `request_owner`(번역, 아직·실패·버림이면 "") + `badges`(`remove`·
   `allergy`, 한국어 원문 규칙 `badges.py`)
 - 통화 카드는 `heard`(넘김 카드 손님 말 원문) 옆에 `heard_owner`(줄마다 번역 또는 "")
+- 질문 카드는 `menu_name_owner`(원어 이름, 비면 한국어)와 `text_owner`(손님 질문 번역 또는 "")
 - 번역은 비동기다. 카드는 원문으로 먼저 보내고, 번역이 오면 같은 카드를 다시 보낸다(주문 카드와,
-  ordered·closed가 아닌 통화 카드). 같은 문장은 통화 동안 한 번만 번역한다(`translation.py`).
-  번역기가 없으면(키 없음) 원문만
+  ordered·closed가 아닌 통화 카드, 질문 카드는 `owner.question.update`). 같은 문장은 통화 동안
+  한 번만 번역한다(`translation.py`). 번역기가 없으면(키 없음) 원문만
 """
 
 from __future__ import annotations
@@ -280,8 +281,10 @@ class OwnerHub:
             "call_id": call_id,
             "number": question.number,
             "menu_id": question.menu_id,
-            "menu_name": question.menu_name,  # 한국어. 원어 이름·질문 번역은 티켓 03 몫
+            "menu_name": question.menu_name,  # 한국어
+            "menu_name_owner": self._owner_name(question.menu_id, question.menu_name),  # 티켓 03
             "text": question.text,  # 손님 질문 원문 (한국어)
+            "text_owner": self._texts.known(call_id, question.text),  # 번역, 아직·실패면 ""
             "sent_at": now.isoformat(),
             "deadline_at": (now + self._question_wait).isoformat(),  # 화면 카운트다운과 같은 시계
             "status": "open",  # open → answered (시간 초과·통화 끝은 티켓 06·07)
@@ -290,6 +293,7 @@ class OwnerHub:
         self._questions[question_id] = card
         self._replies[question_id] = reply
         self._publish("owner.question", card)
+        self._translate_soon(call_id, [question.text])
 
     def _put_call(self, card: dict[str, Any]) -> dict[str, Any]:
         card = self._dressed(card)
@@ -312,15 +316,18 @@ class OwnerHub:
 
     def _translate_later(self, card: dict[str, Any]) -> None:
         texts = [line["request"] for line in card["lines"]] + list(card.get("heard", ()))
-        todo = self._texts.claim(card["id"], texts)
+        self._translate_soon(card["id"], texts)
+
+    def _translate_soon(self, call_id: str, texts: list[str]) -> None:
+        todo = self._texts.claim(call_id, texts)
         if not todo:
             return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # 루프 밖(구독자 없이 부른 동기 코드): 번역 없이 원문만
-            self._texts.release(card["id"], todo)
+            self._texts.release(call_id, todo)
             return
-        task = loop.create_task(self._translate(card["id"], todo))
+        task = loop.create_task(self._translate(call_id, todo))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -336,6 +343,11 @@ class OwnerHub:
                 and (dressed := self._dressed(call)) != call):
             self._calls[call_id] = dressed
             self._publish("call.update", dressed)
+        for question_id, question in list(self._questions.items()):
+            text_owner = self._texts.known(call_id, question["text"])
+            if question["call_id"] == call_id and question["text_owner"] != text_owner:
+                self._questions[question_id] = {**question, "text_owner": text_owner}
+                self._publish("owner.question.update", self._questions[question_id])
 
     def _cart_fields(self, lines: Sequence[OrderLine]) -> dict[str, Any]:
         card_lines = self._card_lines(lines)

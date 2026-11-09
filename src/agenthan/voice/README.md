@@ -177,7 +177,7 @@
 ## 4단계: 사장님 카드 번역 (`owner/`, 티켓 03)
 
 - 번역기 포트 `owner/translate.py` `Translator.translate(texts, source, target) -> list[str]`(실패 `TranslateError`). 구현은 Papago 하나(`owner/papago.py`, 키 `PAPAGO_CLIENT_ID`·`PAPAGO_CLIENT_SECRET`, 요청 시간 제한 `PHONE_TRANSLATE_TIMEOUT_S` 3초). 키가 없으면 개발 서버는 번역 없이 원문만 보인다. 가짜 `owner/fakes.py` `FakeTranslator`
-- 카드 줄: `name_owner`(원어 이름, 비면 한국어), `options_owner`(정적 사전 `owner/lexicon.py`), `request` + `request_owner`(번역) + `badges`(`remove`·`allergy`, 한국어 원문 규칙 `owner/badges.py`). 넘김 카드는 `heard` 옆에 `heard_owner`
+- 카드 줄: `name_owner`(원어 이름, 비면 한국어), `options_owner`(정적 사전 `owner/lexicon.py`), `request` + `request_owner`(번역) + `badges`(`remove`·`allergy`, 한국어 원문 규칙 `owner/badges.py`). 넘김 카드는 `heard` 옆에 `heard_owner`. 질문 카드는 `menu_name_owner`·`text_owner`(번역이 오면 `owner.question.update`)
 - 번역은 비동기: 카드는 원문으로 먼저, 번역이 오면 같은 카드를 다시 보낸다. 같은 문장은 통화 동안 한 번(`owner/translation.py`)
 - 보호(`owner/protect.py`): 메뉴명·별칭과 Papago가 뜻을 틀리는 재료 낱말(고수·파·초·밤)을 `[1]`처럼 가리고 번역 뒤 원어 이름·사전 값으로 채운다. 자리표시자가 사라지거나 늘거나, 숫자가 원문과 다르면 번역을 버린다
 - 화면 `/owner?key=…&lang=ru`(기본 ru, `lang=ko`는 확인용 한국어). 고정 문구 `web/src/screens/owner/ownerText.ts`, 아래에 Papago 표기

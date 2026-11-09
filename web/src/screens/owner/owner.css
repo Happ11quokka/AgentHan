@@ -347,6 +347,13 @@
   font-size: 18px;
 }
 
+/* 번역이 있을 때 그 아래 작은 한국어 원문 (티켓 03) */
+.owner-question-ko {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
 .owner-question-answers {
   display: flex;
   flex-wrap: wrap;

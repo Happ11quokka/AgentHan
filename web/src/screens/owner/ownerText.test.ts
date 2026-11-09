@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { OrderCardLine } from './ownerState.ts'
-import { OWNER_TEXT, lineView, ownerLang } from './ownerText.ts'
+import { OWNER_TEXT, lineView, ownerLang, questionView } from './ownerText.ts'
 
 function line(over: Partial<OrderCardLine> = {}): OrderCardLine {
   return {
@@ -52,6 +52,22 @@ describe('owner screen language (ticket 03)', () => {
   it('shows only the Korean request until a translation arrives', () => {
     const v = lineView(line({ request_owner: '' }), 'ru')
     expect([v.request, v.requestKo]).toEqual(['', '고수는 빼 주세요'])
+  })
+
+  it('shows a question card with the owner menu name and the translation over the Korean', () => {
+    const q = {
+      menu_name: '메도빅',
+      menu_name_owner: 'Медовик',
+      text: '메도빅에 견과류 들어가요?',
+      text_owner: 'В Медовик идут орехи?',
+    }
+    expect(questionView(q, 'ru')).toEqual({
+      menu: 'Медовик',
+      question: 'В Медовик идут орехи?',
+      questionKo: '메도빅에 견과류 들어가요?',
+    })
+    expect(questionView({ ...q, text_owner: '' }, 'ru').question).toBe('')
+    expect(questionView(q, 'ko')).toEqual({ menu: '메도빅', question: '', questionKo: '메도빅에 견과류 들어가요?' })
   })
 
   it('shows Korean names, options and the request alone on the Korean screen', () => {
