@@ -22,6 +22,24 @@ export interface OrderJson {
   transcript: string[]
 }
 
+/**
+ * 손님에게 보낸 문자 미리보기 하나 (4단계 티켓 07, 서버 `voice/owner/hub.py`). 실제 문자는 보내지 않는다.
+ * order: 주문 확정 안내. late_answer: 통화에서 못 전한 사장님 버튼 답. free_answer: 사장님이 글로 남긴 답(번역)
+ */
+export interface CustomerText {
+  id: string
+  call_id: string
+  kind: 'order' | 'late_answer' | 'free_answer'
+  /** 손님이 받는 한국어 문장 */
+  text: string
+  sent_at: string
+  /** 서버 고정 표기 `16:05` */
+  sent_label: string
+  question_id: string
+  /** 사장님 글을 번역하지 못해 원문을 넣었다 */
+  translate_failed: boolean
+}
+
 export type ServerEvent =
   | {
       type: 'call.ready'
@@ -54,7 +72,13 @@ export type ServerEvent =
   | { type: 'metrics'; turn: number; [key: string]: unknown }
   | { type: 'error'; turn: number; code: string; message: string; retry: boolean }
   /** 대화가 끝나 서버가 통화를 끝낸다(리뷰 S13). 마지막 인사 재생 뒤 소켓이 닫힌다. 위로 보내는 `call.end`는 손님이 끊은 것 */
-  | { type: 'call.ended'; turn: number; reason: string }
+  | {
+      type: 'call.ended'
+      turn: number
+      reason: string
+      /** 그때까지 손님에게 보낸 문자(티켓 07). 사장님 허브 없이 띄운 서버는 빈 목록 */
+      sms?: CustomerText[]
+    }
 
 export type Status = 'idle' | 'starting' | 'live' | 'ended' | 'failed'
 
@@ -91,6 +115,10 @@ export interface CallState {
   slowLink: boolean
   /** 서버가 통화를 끝낸 이유(`call.ended`): confirmed · handoff · cancelled · no_input. 손님이 끊었으면 null */
   endReason: string | null
+  /** 이 통화의 id(`call.ready`). 통화가 끝나면 이 id로 "받은 문자" 스트림을 연다 (티켓 07) */
+  callId: string | null
+  /** 받은 문자(보낸 순서). `call.ended`와 통화 뒤 문자 스트림으로 온다 (티켓 07) */
+  texts: CustomerText[]
 }
 
 /** 소켓에 이만큼(약 2초 분량) 쌓이면 "회선이 느려요" 안내 (리뷰 1번). 100ms 프레임은 3,200바이트 */
@@ -109,6 +137,8 @@ export type CallAction =
   | { type: 'link.slow'; slow: boolean }
   | { type: 'socket.closed' }
   | { type: 'hangup' }
+  /** 문자 스트림(`/api/phone/calls/{id}/sms`)으로 온 문자. 통화가 끝난 뒤에도 받는다 (티켓 07) */
+  | { type: 'texts'; texts: CustomerText[] }
 
 export const initialCallState: CallState = {
   status: 'idle',
@@ -127,6 +157,8 @@ export const initialCallState: CallState = {
   audioBlocked: false,
   slowLink: false,
   endReason: null,
+  callId: null,
+  texts: [],
 }
 
 const MIC_MESSAGES: Record<MicFailure, string> = {
@@ -173,14 +205,23 @@ export function callReducer(state: CallState, action: CallAction): CallState {
         return { ...state, status: 'ended', botTalking: false }
       }
       return state
+    case 'texts':
+      return withTexts(state, action.texts)
   }
+}
+
+/** 받은 문자에 더한다. 이미 받은 id는 버린다(스트림 snapshot은 `call.ended`와 겹친다) */
+function withTexts(state: CallState, texts: CustomerText[]): CallState {
+  const known = new Set(state.texts.map((t) => t.id))
+  const fresh = texts.filter((t) => !known.has(t.id))
+  return fresh.length === 0 ? state : { ...state, texts: [...state.texts, ...fresh] }
 }
 
 function onServer(state: CallState, event: ServerEvent): CallState {
   if (state.status === 'ended' || state.status === 'failed') return state
   switch (event.type) {
     case 'call.ready':
-      return { ...state, status: 'live', bargeIn: event.voice_barge_in ?? null }
+      return { ...state, status: 'live', bargeIn: event.voice_barge_in ?? null, callId: event.call }
     case 'bot.stop':
       // 서버가 음성 끼어들기로 멈췄다. 버튼과 같이 끊되, 복창 정정처럼 버튼이 막힌 턴에서도 끊는다
       if (event.turn !== state.turn || event.turn <= state.cutTurn) return state
@@ -207,7 +248,7 @@ function onServer(state: CallState, event: ServerEvent): CallState {
       return { ...state, order: { order: event.order, cart: event.cart, total: event.total } }
     case 'call.ended':
       // 끝난 이유만 남긴다. 마지막 인사가 아직 재생 중일 수 있어 끝내기는 소켓 닫힘이 한다
-      return { ...state, endReason: event.reason }
+      return withTexts({ ...state, endReason: event.reason }, event.sms ?? [])
     case 'error':
       return {
         ...state,

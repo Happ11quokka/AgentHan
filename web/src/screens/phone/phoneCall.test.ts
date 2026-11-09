@@ -478,3 +478,70 @@ describe('device test options (?mic_first=1 · ?agc=0, 실기기 시험 T4·T5)'
     expect(events(ws)[0]).toMatchObject({ ctx_order: 'context-first' })
   })
 })
+
+describe('received texts after the call (4단계 티켓 07)', () => {
+  class FakeEventSource {
+    static instances: FakeEventSource[] = []
+    readyState = 1
+    closed = false
+    onerror: (() => void) | null = null
+    readonly listeners = new Map<string, (e: { data: string }) => void>()
+    readonly url: string
+    constructor(url: string) {
+      this.url = url
+      FakeEventSource.instances.push(this)
+    }
+    addEventListener(name: string, fn: (e: { data: string }) => void) {
+      this.listeners.set(name, fn)
+    }
+    emit(name: string, data: unknown) {
+      this.listeners.get(name)?.({ data: JSON.stringify(data) })
+    }
+    close() {
+      this.closed = true
+    }
+  }
+  const text = (id: string) => ({
+    id,
+    call_id: 'c1',
+    kind: 'late_answer',
+    text: '메도빅 문의 답변이에요. 사장님께 여쭤보니 네, 된다고 하세요.',
+    sent_at: '2026-11-08T16:07:00+09:00',
+    sent_label: '16:07',
+    question_id: 'c1-q1',
+    translate_failed: false,
+  })
+
+  beforeEach(() => {
+    FakeEventSource.instances = []
+    vi.stubGlobal('EventSource', FakeEventSource)
+  })
+
+  it('opens the text stream for this call when the server ends the call', async () => {
+    const { call, ws } = await liveCall()
+    expect(FakeEventSource.instances).toHaveLength(0) // 통화 중에는 열지 않는다
+    ws.server({ type: 'call.ended', turn: 6, reason: 'confirmed', sms: [text('c1-s1')] })
+    ws.onclose?.()
+    const [source] = FakeEventSource.instances
+    expect(source.url).toBe('/api/phone/calls/c1/sms')
+    source.emit('sms.snapshot', { call_id: 'c1', sms: [text('c1-s1')] })
+    source.emit('sms', text('c1-s2'))
+    expect(call.getState().texts.map((t) => t.id)).toEqual(['c1-s1', 'c1-s2'])
+  })
+
+  it('opens it when the customer hangs up, and closes it on a redial', async () => {
+    const { call } = await liveCall()
+    call.hangup()
+    expect(FakeEventSource.instances).toHaveLength(1)
+    call.dial()
+    expect(FakeEventSource.instances[0].closed).toBe(true)
+    expect(call.getState().texts).toEqual([])
+  })
+
+  it('does not open a stream for a call that never connected', () => {
+    const call = new PhoneCall()
+    call.dial()
+    call.hangup()
+    expect(FakeEventSource.instances).toHaveLength(0)
+  })
+})

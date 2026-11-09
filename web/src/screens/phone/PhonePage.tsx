@@ -1,5 +1,6 @@
 // Part C 전화 주문 통화 화면. 이 폴더(src/screens/phone/)는 Part C 몫이다.
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
+// 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 2분 동안 스트림으로 받는다.
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
@@ -113,6 +114,22 @@ export default function PhonePage() {
               픽업 {pickupLabel(state.order.order.pickup_time)}
             </p>
           )}
+        </section>
+      )}
+
+      {state.texts.length > 0 && (
+        // 통화 끝 안내와 사장님의 늦은 답(티켓 07). 실제 문자는 보내지 않는다
+        <section className="phone-texts" aria-label="받은 문자" aria-live="polite">
+          <h2>받은 문자</h2>
+          <ul>
+            {state.texts.map((t) => (
+              <li key={t.id} className="phone-text">
+                <time dateTime={t.sent_at}>{t.sent_label}</time>
+                <p>{t.text}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="phone-texts-note">시연용 미리보기예요. 실제 문자는 보내지 않아요.</p>
         </section>
       )}
 
