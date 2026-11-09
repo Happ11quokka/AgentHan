@@ -413,3 +413,61 @@
 .owner-btn-unsure {
   background: var(--owner-muted);
 }
+
+/* 질문 카드 자유 입력 (티켓 07). 접혀 있다. 손님에게는 번역 문자로만 간다 */
+.owner-written summary {
+  cursor: pointer;
+  color: var(--owner-muted);
+}
+
+.owner-written-hint {
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--owner-muted);
+}
+
+.owner-written-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--owner-line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.owner-btn-written {
+  margin-top: 6px;
+}
+
+.owner-btn-written:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 카드 안 "손님에게 보낸 문자" 한 줄씩 (티켓 07) */
+.owner-sms {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  border-top: 1px dashed var(--owner-line);
+  font-size: 13px;
+}
+
+.owner-sms li + li {
+  margin-top: 4px;
+}
+
+.owner-sms-label {
+  color: var(--owner-muted);
+}
+
+.owner-sms-text {
+  overflow-wrap: anywhere;
+}
+
+.owner-sms-failed {
+  display: block;
+  color: var(--owner-danger);
+}

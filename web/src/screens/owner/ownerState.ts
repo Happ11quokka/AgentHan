@@ -25,6 +25,24 @@ export interface OrderCardLine {
   subtotal: number
 }
 
+/**
+ * 손님에게 보낸 문자 미리보기 (티켓 07, 서버 `voice/owner/sms.py`). 실제 문자는 보내지 않는다.
+ * order: 확정 안내. late_answer: 시간 초과·통화 끝 뒤 버튼 답. free_answer: 자유 입력 답(번역)
+ */
+export interface SentText {
+  id: string
+  call_id: string
+  kind: 'order' | 'late_answer' | 'free_answer'
+  /** 손님이 받은 한국어 문장 */
+  text: string
+  sent_at: string
+  /** 서버 고정 표기 `16:07` */
+  sent_label: string
+  question_id: string
+  /** 자유 입력 글을 번역하지 못해 원문이 갔다 */
+  translate_failed: boolean
+}
+
 /** 주문 카드. `id`는 통화 id(= 계약 `Order.id`) */
 export interface OrderCard {
   id: string
@@ -43,6 +61,8 @@ export interface OrderCard {
    * 들었다. 화면은 "사장님 확인 필요"를 붙인다. 06 전 서버는 안 보낸다
    */
   owner_check?: boolean
+  /** 손님에게 보낸 문자(보낸 순서, 티켓 07). 07 전 서버는 안 보낸다 */
+  sms?: SentText[]
 }
 
 /**
@@ -81,6 +101,8 @@ export interface CallCard {
   heard: string[]
   /** `heard`의 줄마다 번역(아직·실패면 빈 글). 길이는 `heard`와 같다 (티켓 03) */
   heard_owner: string[]
+  /** 손님에게 보낸 문자(티켓 07, 미완료 통화 뒤 늦은 답 등). 07 전 서버는 안 보낸다 */
+  sms?: SentText[]
 }
 
 /** 자막 한 줄 (티켓 10). 손님 말 또는 AI 말 */
@@ -131,9 +153,14 @@ export interface QuestionCard {
   sent_at: string
   deadline_at: string
   status: QuestionStatus
-  answer: OwnerAnswer | ''
+  /** free: 자유 입력으로 답함 (티켓 07) */
+  answer: OwnerAnswer | 'free' | ''
   /** 사장님이 카드를 처음 본 시각(ISO 8601), 아직이면 ''. 06 전 서버는 안 보낸다 */
   seen_at?: string
+  /** 자유 입력 답의 사장님 글 원문 (티켓 07) */
+  answer_text?: string
+  /** 그 글의 한국어 번역(손님 문자에 들어감). 아직·실패면 '' */
+  answer_text_ko?: string
 }
 
 /** SSE 이벤트 이름(`event:`)과 `data:` JSON */
@@ -291,6 +318,15 @@ export function questionClock(card: QuestionCard, nowMs: number): QuestionClock 
   if (card.status === 'call_ended') return 'ended'
   const left = card.status === 'open' ? secondsLeft(card, nowMs) : 0
   return left > 0 ? left : 'late'
+}
+
+/** 자유 입력 답 글 최대 길이. 서버(`FREE_TEXT_MAX`)와 같다 */
+export const WRITTEN_ANSWER_MAX = 500
+
+/** 자유 입력 답으로 보낼 글(앞뒤 공백 뺌). 비었거나 너무 길면 null (버튼을 막는다) */
+export function writtenAnswer(draft: string): string | null {
+  const text = draft.trim()
+  return text && text.length <= WRITTEN_ANSWER_MAX ? text : null
 }
 
 /** 마감까지 남은 초(올림). 지났으면 0. 서버가 보낸 시각부터 센 마감과 같은 시계다 */

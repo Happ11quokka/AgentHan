@@ -68,20 +68,22 @@ export async function seeQuestion(key: string, id: string): Promise<QuestionCard
 }
 
 /**
- * 질문 카드 버튼 답(티켓 05). 성공하면 답한 카드(SSE `owner.question.update`로도 온다).
- * 실패면 null(이미 답함 409 등)
+ * 질문 카드 답: 버튼(티켓 05) 또는 자유 입력(`'free'` + 사장님 글, 티켓 07). 자유 입력 글은 손님에게
+ * 말하지 않고 번역해 문자로만 간다. 성공하면 답한 카드(SSE `owner.question.update`로도 온다).
+ * 실패면 null(이미 답함 409, 빈 글 422 등)
  */
 export async function answerQuestion(
   key: string,
   id: string,
-  answer: OwnerAnswer,
+  answer: OwnerAnswer | 'free',
+  text = '',
 ): Promise<QuestionCard | null> {
   const res = await fetch(
     `${BASE}/questions/${encodeURIComponent(id)}/answer?key=${encodeURIComponent(key)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answer }),
+      body: JSON.stringify(answer === 'free' ? { answer, text } : { answer }),
     },
   )
   return res.ok ? ((await res.json()) as QuestionCard) : null

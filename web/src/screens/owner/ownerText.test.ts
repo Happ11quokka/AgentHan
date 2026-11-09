@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { OrderCardLine } from './ownerState.ts'
-import { OWNER_TEXT, lineView, ownerLang, questionView } from './ownerText.ts'
+import { type OrderCardLine, type SentText, WRITTEN_ANSWER_MAX, writtenAnswer } from './ownerState.ts'
+import { OWNER_TEXT, lineView, ownerLang, questionView, sentTextView } from './ownerText.ts'
 
 function line(over: Partial<OrderCardLine> = {}): OrderCardLine {
   return {
@@ -78,5 +78,53 @@ describe('owner screen language (ticket 03)', () => {
       request: '',
       requestKo: '고수는 빼 주세요',
     })
+  })
+})
+
+describe('texts sent to the customer on owner cards (ticket 07)', () => {
+  function sent(over: Partial<SentText> = {}): SentText {
+    return {
+      id: 'call-1-s2',
+      call_id: 'call-1',
+      kind: 'free_answer',
+      text: '메도빅 문의 답변이에요. 사장님 답변(번역): «네, 호두가 들어 있어요.»',
+      sent_at: '2026-11-08T16:07:00+09:00',
+      sent_label: '16:07',
+      question_id: 'call-1-q1',
+      translate_failed: false,
+      ...over,
+    }
+  }
+
+  it('says in one line what kind of text went out and when, with the Korean text the customer got', () => {
+    expect(sentTextView(sent(), 'ru')).toEqual({
+      label: 'SMS клиенту · 16:07 · Ваш ответ текстом',
+      text: '메도빅 문의 답변이에요. 사장님 답변(번역): «네, 호두가 들어 있어요.»',
+      failed: '',
+    })
+    expect(sentTextView(sent({ kind: 'order' }), 'ko').label).toBe('손님에게 보낸 문자 · 16:07 · 주문 확정 안내')
+    expect(sentTextView(sent({ kind: 'late_answer' }), 'ko').label).toBe(
+      '손님에게 보낸 문자 · 16:07 · 늦은 답(통화에서 못 전함)',
+    )
+  })
+
+  it('warns when the written answer went out untranslated', () => {
+    expect(sentTextView(sent({ translate_failed: true }), 'ru').failed).toBe(
+      'Перевод не удался: клиенту ушёл ваш текст без перевода',
+    )
+  })
+})
+
+describe('written answer on a question card (ticket 07)', () => {
+  it('sends only some text, not too long', () => {
+    expect(writtenAnswer('  Да, есть орехи ')).toBe('Да, есть орехи')
+    expect(writtenAnswer('   ')).toBeNull()
+    expect(writtenAnswer('я'.repeat(WRITTEN_ANSWER_MAX))).toHaveLength(WRITTEN_ANSWER_MAX)
+    expect(writtenAnswer('я'.repeat(WRITTEN_ANSWER_MAX + 1))).toBeNull()
+  })
+
+  it('tells the owner the written answer goes to the customer only by text', () => {
+    expect(OWNER_TEXT.ru.writtenHint).toBe('Клиенту уйдёт только SMS (на корейском, с переводом)')
+    expect(OWNER_TEXT.ko.writtenHint).toBe('손님에게는 문자로만 가요(한국어로 번역)')
   })
 })

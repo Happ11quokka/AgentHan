@@ -9,6 +9,7 @@ import type {
   OwnerAnswer,
   QuestionCard,
   RequestBadge,
+  SentText,
 } from './ownerState.ts'
 
 export type OwnerLang = 'ru' | 'ko'
@@ -49,6 +50,14 @@ export interface OwnerText {
   /** 답을 못 받은 손님 질문이 있던 확정 주문 (티켓 06) */
   ownerCheck: string
   answer: Record<OwnerAnswer, string>
+  /** 질문 카드 자유 입력 (티켓 07): 접힌 칸 제목, 안내, 보내기 버튼 */
+  written: string
+  writtenHint: string
+  writtenSend: string
+  /** 카드 안 "손님에게 보낸 문자" 한 줄 (티켓 07) */
+  sms: string
+  smsKind: Record<SentText['kind'], string>
+  translateFailed: string
   endReason: Record<CallEndReason, string>
   badge: Record<RequestBadge, string>
   papago: string
@@ -93,6 +102,16 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     callEnded: 'Звонок завершён',
     ownerCheck: 'Нужно ответить на вопрос клиента',
     answer: { yes: 'Можно', no: 'Нельзя', unsure: 'Не знаю' },
+    written: 'Ответить текстом',
+    writtenHint: 'Клиенту уйдёт только SMS (на корейском, с переводом)',
+    writtenSend: 'Отправить',
+    sms: 'SMS клиенту',
+    smsKind: {
+      order: 'Подтверждение заказа',
+      late_answer: 'Ваш ответ после звонка',
+      free_answer: 'Ваш ответ текстом',
+    },
+    translateFailed: 'Перевод не удался: клиенту ушёл ваш текст без перевода',
     endReason: {
       confirmed: 'Заказ подтверждён',
       handoff: 'Клиент попросил хозяина',
@@ -142,6 +161,16 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     callEnded: '통화 끝',
     ownerCheck: '사장님 확인 필요 · 손님 질문',
     answer: { yes: '돼요', no: '안 돼요', unsure: '모르겠어요' },
+    written: '글로 답하기',
+    writtenHint: '손님에게는 문자로만 가요(한국어로 번역)',
+    writtenSend: '보내기',
+    sms: '손님에게 보낸 문자',
+    smsKind: {
+      order: '주문 확정 안내',
+      late_answer: '늦은 답(통화에서 못 전함)',
+      free_answer: '글로 남긴 답',
+    },
+    translateFailed: '번역 실패: 사장님 글 원문이 갔어요',
     endReason: {
       confirmed: '주문 확정',
       handoff: '사장님 연결 요청',
@@ -222,4 +251,23 @@ export function captionView(line: CaptionLine, lang: OwnerLang): CaptionView {
   return translated
     ? { who: line.who, main: translated, mainKo: false, original: line.text }
     : { who: line.who, main: line.text, mainKo: true, original: '' }
+}
+
+export interface SentTextView {
+  /** 한 줄 머리: 문자 · 보낸 시각 · 종류 */
+  label: string
+  /** 손님이 받은 한국어 문장 그대로 */
+  text: string
+  /** 자유 입력 글이 번역 없이 갔으면 경고, 아니면 빈 글 */
+  failed: string
+}
+
+/** 카드 안 "손님에게 보낸 문자" 한 줄 (티켓 07). 문자 내용은 손님이 받은 한국어 그대로 둔다 */
+export function sentTextView(t: SentText, lang: OwnerLang): SentTextView {
+  const text = OWNER_TEXT[lang]
+  return {
+    label: `${text.sms} · ${t.sent_label} · ${text.smsKind[t.kind]}`,
+    text: t.text,
+    failed: t.translate_failed ? text.translateFailed : '',
+  }
 }

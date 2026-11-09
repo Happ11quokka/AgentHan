@@ -10,6 +10,7 @@
 // 답을 못 받은 질문이 있던 확정 주문 카드에는 "사장님 확인 필요".
 // 통화 자막(티켓 10): 통화 중 카드 아래 최근 4줄. 손님 말은 번역 + 작은 한국어 원문(번역 전·실패면
 // 원문만), AI 말은 한국어 원문 회색 한 줄.
+// 티켓 07: 질문 카드에 접힌 자유 입력(손님에게는 번역 문자로만 감). 카드 안에 "손님에게 보낸 문자" 한 줄씩.
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
@@ -21,6 +22,8 @@ import {
   type OwnerAnswer,
   type QuestionCard,
   type QuestionClock,
+  type SentText,
+  WRITTEN_ANSWER_MAX,
   canAccept,
   captionLines,
   followUpCalls,
@@ -31,6 +34,7 @@ import {
   ownerReducer,
   questionClock,
   questionsWaiting,
+  writtenAnswer,
 } from './ownerState.ts'
 import {
   acceptOrder,
@@ -50,6 +54,7 @@ import {
   lineView,
   ownerLang,
   questionView,
+  sentTextView,
 } from './ownerText.ts'
 import { pickupBand } from './pickupBand.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
@@ -157,8 +162,8 @@ export default function OwnerPage() {
     if (card) dispatch({ type: 'call.update', data: card })
   }
 
-  async function answer(id: string, value: OwnerAnswer) {
-    const card = await answerQuestion(key.current, id, value)
+  async function answer(id: string, value: OwnerAnswer | 'free', written = '') {
+    const card = await answerQuestion(key.current, id, value, written)
     if (card) dispatch({ type: 'owner.question.update', data: card })
   }
 
@@ -212,6 +217,7 @@ export default function OwnerPage() {
               lang={lang}
               text={text}
               onAnswer={(value) => void answer(q.id, value)}
+              onWrite={(written) => void answer(q.id, 'free', written)}
             />
           ))}
         </section>
@@ -253,6 +259,7 @@ export default function OwnerPage() {
             </header>
             <CardLines lines={card.lines} lang={lang} text={text} />
             {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
+            <SentTexts texts={card.sms} lang={lang} />
             {canAccept(card) ? (
               <button type="button" className="owner-btn owner-btn-accept" onClick={() => void accept(card.id)}>
                 {text.accept}
@@ -381,6 +388,7 @@ function FollowUpCard({
           })}
         </ol>
       )}
+      <SentTexts texts={call.sms} lang={lang} />
       <button type="button" className="owner-btn owner-btn-dismiss" onClick={onDismiss}>
         {text.dismiss}
       </button>
@@ -388,13 +396,38 @@ function FollowUpCard({
   )
 }
 
-/** 손님 질문 카드. 버튼 하나로 답한다. 시간이 지나거나 통화가 끝나도 카드는 남는다(늦은 답은 티켓 07) */
+/** 카드 안 "손님에게 보낸 문자" (티켓 07). 한 통에 한 줄: 종류·시각 + 손님이 받은 한국어 문장 */
+function SentTexts({ texts, lang }: { texts: SentText[] | undefined; lang: OwnerLang }) {
+  if (!texts || texts.length === 0) return null
+  return (
+    <ul className="owner-sms">
+      {texts.map((t) => {
+        const view = sentTextView(t, lang)
+        return (
+          <li key={t.id}>
+            <span className="owner-sms-label">{view.label}</span>{' '}
+            <span className="owner-sms-text" lang="ko">
+              {view.text}
+            </span>
+            {view.failed && <span className="owner-sms-failed">{view.failed}</span>}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/**
+ * 손님 질문 카드. 버튼 하나로 답하거나, 접힌 칸에서 글로 답한다(티켓 07, 손님에게는 번역 문자로만 감).
+ * 시간이 지나거나 통화가 끝나도 카드는 남는다(늦은 답은 손님 문자로 간다)
+ */
 function QuestionCardView({
   question,
   clock,
   lang,
   text,
   onAnswer,
+  onWrite,
 }: {
   question: QuestionCard
   /** 남은 초 · 시간 지남 · 통화 끝 (`questionClock`) */
@@ -402,9 +435,12 @@ function QuestionCardView({
   lang: OwnerLang
   text: OwnerText
   onAnswer: (answer: OwnerAnswer) => void
+  onWrite: (written: string) => void
 }) {
   const view = questionView(question, lang)
   const late = typeof clock !== 'number'
+  const [draft, setDraft] = useState('')
+  const written = writtenAnswer(draft)
   return (
     <article className="owner-card owner-question">
       <header className="owner-card-head">
@@ -431,6 +467,25 @@ function QuestionCardView({
           </button>
         ))}
       </div>
+      <details className="owner-written">
+        <summary>{text.written}</summary>
+        <p className="owner-written-hint">{text.writtenHint}</p>
+        <textarea
+          className="owner-written-input"
+          value={draft}
+          rows={2}
+          maxLength={WRITTEN_ANSWER_MAX}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button
+          type="button"
+          className="owner-btn owner-btn-written"
+          disabled={written === null}
+          onClick={() => written !== null && onWrite(written)}
+        >
+          {text.writtenSend}
+        </button>
+      </details>
     </article>
   )
 }
