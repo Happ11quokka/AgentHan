@@ -2,7 +2,14 @@
 // `/owner?lang=ru`(기본 ru). ko는 개발·확인용 한국어 화면이다. 데모 언어는 ru 하나(spec "번역").
 // 시각(`18:30`)·금액(`25,000₩`)은 서버가 고정 표기로 넣고 여기서는 그대로 보인다(Intl을 쓰지 않는다).
 // 러시아어 문구는 러시아어 화자 확인 전 초안이다(티켓 11 사람 확인).
-import type { CallEndReason, OrderCardLine, OwnerAnswer, QuestionCard, RequestBadge } from './ownerState.ts'
+import type {
+  CallEndReason,
+  CaptionLine,
+  OrderCardLine,
+  OwnerAnswer,
+  QuestionCard,
+  RequestBadge,
+} from './ownerState.ts'
 
 export type OwnerLang = 'ru' | 'ko'
 
@@ -20,6 +27,9 @@ export interface OwnerText {
   missed: string
   endedEmpty: string
   heard: string
+  /** 통화 카드 아래 자막 목록 이름과 말한 쪽 표시 (티켓 10) */
+  captions: string
+  speaker: Record<CaptionLine['who'], string>
   korean: string
   dismiss: string
   noOrders: string
@@ -65,6 +75,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     missed: 'Незавершённый звонок',
     endedEmpty: 'Ничего не выбрано',
     heard: 'Последние слова клиента',
+    captions: 'Субтитры звонка',
+    speaker: { customer: 'Клиент', bot: 'ИИ' },
     korean: 'Оригинал (кор.)',
     dismiss: 'Закрыть',
     noOrders: 'Заказов пока нет.',
@@ -112,6 +124,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     missed: '미완료 통화',
     endedEmpty: '담은 메뉴 없음',
     heard: '마지막 손님 말',
+    captions: '통화 자막',
+    speaker: { customer: '손님', bot: 'AI' },
     korean: '한국어 원문',
     dismiss: '닫기',
     noOrders: '아직 들어온 주문이 없어요.',
@@ -190,4 +204,22 @@ export function questionView(
 ): QuestionView {
   if (lang === 'ko') return { menu: q.menu_name, question: '', questionKo: q.text }
   return { menu: q.menu_name_owner || q.menu_name, question: q.text_owner, questionKo: q.text }
+}
+
+export interface CaptionView {
+  who: CaptionLine['who']
+  /** 크게 보일 글: 손님 말 번역, 번역이 없으면(아직·실패·AI 말·ko 화면) 한국어 원문 */
+  main: string
+  /** `main`이 한국어 원문이다(`lang="ko"`, AI 말은 회색 한 줄) */
+  mainKo: boolean
+  /** 번역 아래 작게 붙일 한국어 원문. `main`이 원문이면 빈 글(두 번 쓰지 않는다) */
+  original: string
+}
+
+/** 자막 한 줄을 화면 언어로 (spec "Papago 실측": 손님 말은 번역 + 원문, AI 말은 한국어 원문) */
+export function captionView(line: CaptionLine, lang: OwnerLang): CaptionView {
+  const translated = lang === 'ko' || line.who === 'bot' ? '' : line.text_owner
+  return translated
+    ? { who: line.who, main: translated, mainKo: false, original: line.text }
+    : { who: line.who, main: line.text, mainKo: true, original: '' }
 }

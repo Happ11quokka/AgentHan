@@ -320,6 +320,40 @@
   background: var(--owner-muted);
 }
 
+/* 통화 자막 (티켓 10): 통화 중 카드 아래 최근 4줄. 손님 말은 번역 + 작은 원문, AI 말은 회색 한 줄 */
+.owner-captions {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--owner-line);
+  display: grid;
+  gap: 4px;
+  font-size: 16px;
+}
+
+.owner-caption-who {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--owner-muted);
+}
+
+.owner-caption-customer .owner-caption-who {
+  color: var(--owner-accent);
+}
+
+.owner-caption-ko {
+  display: block;
+  font-size: 14px;
+  color: var(--owner-muted);
+}
+
+.owner-caption-bot {
+  color: var(--owner-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 질문 카드 (티켓 05): 답을 기다리는 손님 질문. 통화 중 줄 바로 아래, 가장 눈에 띄게 */
 .owner-questions {
   margin-top: 24px;

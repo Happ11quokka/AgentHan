@@ -21,6 +21,9 @@ export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => vo
   source.addEventListener('call.update', (e) => {
     dispatch({ type: 'call.update', data: JSON.parse((e as MessageEvent<string>).data) })
   })
+  source.addEventListener('call.caption', (e) => {
+    dispatch({ type: 'call.caption', data: JSON.parse((e as MessageEvent<string>).data) })
+  })
   source.addEventListener('owner.question', (e) => {
     dispatch({ type: 'owner.question', data: JSON.parse((e as MessageEvent<string>).data) })
   })

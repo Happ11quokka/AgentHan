@@ -1,4 +1,4 @@
-// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·03·05, 서버 `voice/owner/hub.py`).
+// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·03·05·10, 서버 `voice/owner/hub.py`).
 // 화면 상태는 순수 리듀서 하나로 정한다: 이전 상태 + 이벤트 → 다음 상태.
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
 
@@ -83,6 +83,26 @@ export interface CallCard {
   heard_owner: string[]
 }
 
+/** 자막 한 줄 (티켓 10). 손님 말 또는 AI 말 */
+export interface CaptionLine {
+  /** 통화 안 줄 번호(1부터). 번역이 오면 같은 번호 줄이 덮어써진다 */
+  n: number
+  who: 'customer' | 'bot'
+  /** 한국어 원문 */
+  text: string
+  /** 손님 말 번역(Papago). 아직·실패면 빈 글. AI 말은 늘 빈 글(번역하지 않는다) */
+  text_owner: string
+}
+
+/** 통화 하나의 자막 전체(`call.caption`). 서버가 최근 4줄만 보낸다 */
+export interface CallCaption {
+  call_id: string
+  lines: CaptionLine[]
+}
+
+/** 통화 카드 아래 자막 줄 수 (spec "Papago 실측": 최근 4줄) */
+export const CAPTION_LINES = 4
+
 /** 사장님 버튼 답 (티켓 05): 돼요 · 안 돼요 · 모르겠어요 */
 export type OwnerAnswer = 'yes' | 'no' | 'unsure'
 
@@ -120,11 +140,17 @@ export interface QuestionCard {
 export type OwnerServerEvent =
   | {
       type: 'snapshot'
-      /** `questions`는 티켓 05부터 온다. 없으면 빈 목록으로 본다 */
-      data: { orders: OrderCard[]; calls: CallCard[]; questions?: QuestionCard[] }
+      /** `questions`는 티켓 05, `captions`는 티켓 10부터 온다. 없으면 빈 목록으로 본다 */
+      data: {
+        orders: OrderCard[]
+        calls: CallCard[]
+        questions?: QuestionCard[]
+        captions?: CallCaption[]
+      }
     }
   | { type: 'order.update'; data: OrderCard }
   | { type: 'call.update'; data: CallCard }
+  | { type: 'call.caption'; data: CallCaption }
   | { type: 'owner.question'; data: QuestionCard }
   | { type: 'owner.question.update'; data: QuestionCard }
 
@@ -148,6 +174,8 @@ export interface OwnerState {
   calls: CallCard[]
   /** 질문 카드 전부(답한 것 포함). 먼저 온 질문이 앞 */
   questions: QuestionCard[]
+  /** 통화 id → 자막 줄(오래된 것부터). 통화 중 카드 것만 둔다 (티켓 10) */
+  captions: Record<string, CaptionLine[]>
 }
 
 export const initialOwnerState: OwnerState = {
@@ -155,6 +183,7 @@ export const initialOwnerState: OwnerState = {
   orders: [],
   calls: [],
   questions: [],
+  captions: {},
 }
 
 export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState {
@@ -171,6 +200,7 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
         orders: action.data.orders,
         calls: action.data.calls.filter(shown),
         questions: action.data.questions ?? [],
+        captions: Object.fromEntries((action.data.captions ?? []).map((c) => [c.call_id, c.lines])),
       }
     case 'order.update': {
       const card = action.data
@@ -180,11 +210,16 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
     }
     case 'call.update': {
       const card = action.data
+      // 자막은 통화 중 카드 아래에만 있다. 주문·넘김·미완료가 되면 버린다
+      const captions = card.status === 'live' ? state.captions : without(state.captions, card.id)
       const rest = state.calls.filter((c) => c.id !== card.id)
-      if (!shown(card)) return { ...state, calls: rest }
+      if (!shown(card)) return { ...state, calls: rest, captions }
       const at = state.calls.findIndex((c) => c.id === card.id)
-      return { ...state, calls: at < 0 ? [...state.calls, card] : state.calls.with(at, card) }
+      const calls = at < 0 ? [...state.calls, card] : state.calls.with(at, card)
+      return { ...state, calls, captions }
     }
+    case 'call.caption':
+      return { ...state, captions: { ...state.captions, [action.data.call_id]: action.data.lines } }
     case 'owner.question':
     case 'owner.question.update': {
       const card = action.data
@@ -195,6 +230,12 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
   }
 }
 
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in record)) return record
+  const { [key]: _, ...rest } = record
+  return rest
+}
+
 /** 주문 카드가 됐거나(ordered) 사장님이 닫은(closed) 통화 카드는 화면에 두지 않는다 */
 function shown(card: CallCard): boolean {
   return card.status !== 'ordered' && card.status !== 'closed'
@@ -203,6 +244,11 @@ function shown(card: CallCard): boolean {
 /** 맨 위 줄: 지금 통화 중인 카드 */
 export function liveCalls(state: OwnerState): CallCard[] {
   return state.calls.filter((c) => c.status === 'live')
+}
+
+/** 통화 카드 아래 자막: 최근 `CAPTION_LINES`줄, 오래된 것부터. 없으면 빈 목록 */
+export function captionLines(state: OwnerState, callId: string): CaptionLine[] {
+  return (state.captions[callId] ?? []).slice(-CAPTION_LINES)
 }
 
 /** 사장님이 확인하고 닫을 카드: "손님 연락 필요"(handoff)와 회색 미완료(missed) */

@@ -8,17 +8,21 @@
 // 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
 // 티켓 06: 시간 초과·통화 끝 카드도 남아 답을 받는다. 화면이 보이는 동안 뜬 카드는 열람으로 알린다.
 // 답을 못 받은 질문이 있던 확정 주문 카드에는 "사장님 확인 필요".
+// 통화 자막(티켓 10): 통화 중 카드 아래 최근 4줄. 손님 말은 번역 + 작은 한국어 원문(번역 전·실패면
+// 원문만), AI 말은 한국어 원문 회색 한 줄.
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
 import {
   type CallCard,
+  type CaptionLine,
   type OrderCardLine,
   type OwnerAnswer,
   type QuestionCard,
   type QuestionClock,
   canAccept,
+  captionLines,
   followUpCalls,
   initialOwnerState,
   liveCalls,
@@ -42,6 +46,7 @@ import {
   type OwnerLang,
   type OwnerText,
   PAPAGO_URL,
+  captionView,
   lineView,
   ownerLang,
   questionView,
@@ -191,6 +196,7 @@ export default function OwnerPage() {
                 <p className="owner-call-empty">{text.liveEmpty}</p>
               )}
               {call.lines.length > 0 && <strong className="owner-total">{call.total_label}</strong>}
+              <Captions lines={captionLines(state, call.id)} lang={lang} text={text} />
             </article>
           ))}
         </section>
@@ -302,6 +308,31 @@ function CardLines({ lines, lang, text }: { lines: OrderCardLine[]; lang: OwnerL
         )
       })}
     </ul>
+  )
+}
+
+/** 통화 중 카드 아래 자막 (티켓 10). 줄이 없으면 아무것도 그리지 않는다 */
+function Captions({ lines, lang, text }: { lines: CaptionLine[]; lang: OwnerLang; text: OwnerText }) {
+  if (lines.length === 0) return null
+  return (
+    <ol className="owner-captions" aria-label={text.captions} aria-live="polite">
+      {lines.map((line) => {
+        const view = captionView(line, lang)
+        return (
+          <li key={line.n} className={`owner-caption owner-caption-${view.who}`}>
+            <span className="owner-caption-who">{text.speaker[view.who]}</span>{' '}
+            <span className="owner-caption-main" lang={view.mainKo ? 'ko' : undefined}>
+              {view.main}
+            </span>
+            {view.original && (
+              <small className="owner-caption-ko" lang="ko">
+                {view.original}
+              </small>
+            )}
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
