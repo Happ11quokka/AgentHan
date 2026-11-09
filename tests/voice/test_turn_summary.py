@@ -56,6 +56,23 @@ def test_stt_wait_from_ep_flag_sent_to_text_is_summarized_for_hold_max() -> None
     assert s["stt_wait"] == {"n": 3, "p50_ms": 800, "p90_ms": 1_600, "p99_ms": 1_780}
 
 
+def test_the_prefetch_hit_rate_and_discarded_calls_are_summarized() -> None:
+    # 리뷰 P5: 미리 해석 적중률과 버린 호출 수 (spec 지표 확장)
+    lines = [
+        _turn("c1", 1, end_by="vad", nlu_prefetch={"prefetched": 1, "used": True,
+                                                   "discarded": 0, "miss": None, "wait_ms": 0}),
+        _turn("c1", 2, end_by="vad", nlu_prefetch={"prefetched": 2, "used": True,
+                                                   "discarded": 1, "miss": None, "wait_ms": 40}),
+        _turn("c1", 3, end_by="vad", nlu_prefetch={"prefetched": 1, "used": False, "discarded": 1,
+                                                   "miss": "text", "wait_ms": None}),
+        _turn("c1", 4, end_by="vad"),  # 미리 해석 없음
+    ]
+    s = summarize(lines)
+    assert s["prefetch"] == {"turns": 3, "used": 2, "hit_rate": 0.67, "calls": 4, "discarded": 2,
+                             "miss": {"text": 1}, "wait": {"n": 2, "p50_ms": 20, "p90_ms": 36}}
+    assert summarize(LINES)["prefetch"]["turns"] == 0
+
+
 def test_the_command_prints_numbers_without_any_transcript(tmp_path, capsys) -> None:
     path = tmp_path / "phone-20261108.jsonl"
     path.write_text("".join(json.dumps(line, ensure_ascii=False) + "\n" for line in LINES),

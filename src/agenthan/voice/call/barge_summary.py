@@ -38,10 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from agenthan.voice.call.turn_summary import percentile, read_lines
-
-
-def _spread(values: list[int]) -> dict[str, int | None]:
-    return {"n": len(values), "p50_ms": percentile(values, 0.5), "p90_ms": percentile(values, 0.9)}
+from agenthan.voice.call.turn_summary import spread as _spread
 
 
 def _duck_to_unduck(events: list[dict[str, Any]]) -> list[int]:

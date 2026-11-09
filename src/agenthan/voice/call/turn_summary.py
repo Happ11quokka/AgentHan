@@ -12,6 +12,8 @@
 - `empty_turns`: 말소리는 있었는데 글이 빈 응답 수
 - `stt_wait`: 무음 감지로 끝난 턴의 `ep_sent` → `stt_final`(epFlag 송신 → 글 있는 응답)
   P50·P90·P99. 세션 `hold_max_s`를 이 p99로 정한다(Pipecat `ttfs_p99`)
+- `prefetch`: 미리 해석(이어짐 대기 중 NLU 선호출, 티켓 02 `nlu_prefetch`). 미리 부른 턴 수,
+  적중 수·적중률, 부른 호출 수, 부르고 안 쓴 호출 수, 안 쓴 이유별 수, 엔진이 결과를 기다린 ms
 
 백분위는 선형 보간(numpy 기본과 같음)이다. 값이 적으면 p99는 사실상 최대값이다.
 """
@@ -38,11 +40,27 @@ def percentile(values: Sequence[float], q: float) -> int | None:
     return round(s[lo] + (s[hi] - s[lo]) * (k - lo))
 
 
-def _spread(values: list[int], qs: tuple[float, ...] = (0.5, 0.9)) -> dict[str, int | None]:
+def spread(values: list[int], qs: tuple[float, ...] = (0.5, 0.9)) -> dict[str, int | None]:
+    """개수와 백분위(ms). 끼어들기 요약(`barge_summary`)도 같이 쓴다."""
     out: dict[str, int | None] = {"n": len(values)}
     for q in qs:
         out[f"p{round(q * 100)}_ms"] = percentile(values, q)
     return out
+
+
+def _prefetch(guest: list[dict[str, Any]]) -> dict[str, Any]:
+    """미리 해석(티켓 02 `nlu_prefetch`): 미리 부른 턴의 적중률, 부른·버린 호출 수(리뷰 P5)."""
+    stats = [line["nlu_prefetch"] for line in guest if isinstance(line.get("nlu_prefetch"), dict)]
+    used = sum(1 for s in stats if s.get("used"))
+    return {
+        "turns": len(stats),
+        "used": used,
+        "hit_rate": round(used / len(stats), 2) if stats else None,
+        "calls": sum(s.get("prefetched", 0) for s in stats),
+        "discarded": sum(s.get("discarded", 0) for s in stats),
+        "miss": dict(sorted(Counter(s["miss"] for s in stats if s.get("miss")).items())),
+        "wait": spread([s["wait_ms"] for s in stats if isinstance(s.get("wait_ms"), int)]),
+    }
 
 
 def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -63,12 +81,12 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
     return {
         "calls": len(calls),
         "guest_turns": len(guest),
-        "voice": _spread([line["end_to_voice_ms"] for line in voiced]),
+        "voice": spread([line["end_to_voice_ms"] for line in voiced]),
         "slow_over_ms": SLOW_OVER_MS,
         "slow_turns_per_call": slow,
         "calls_with_slow_turn": sum(1 for n in slow.values() if n),
         "thinking_turns": sum(1 for line in lines if "thinking" in line.get("marks", {})),
-        "thinking": _spread(thinking),
+        "thinking": spread(thinking),
         "end_by": dict(sorted(Counter(line["end_by"] for line in guest).items())),
         "turn_end_path": dict(sorted(Counter(
             line["turn_end"]["path"] for line in guest
@@ -77,7 +95,8 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "empty_turns": sum(len(line.get("empty", [])) for line in lines),
         "queued_turns": sum(1 for line in guest if line.get("queued")),
         "bot_turns": sum(1 for line in lines if "bot_turn" in line),
-        "stt_wait": _spread(stt_wait, (0.5, 0.9, 0.99)),
+        "stt_wait": spread(stt_wait, (0.5, 0.9, 0.99)),
+        "prefetch": _prefetch(guest),
     }
 
 
