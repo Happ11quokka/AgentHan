@@ -69,6 +69,12 @@ APPROVAL_TEXT = {
     "saved": "저장했어요.",
     "cancel": "취소했어요. 저장한 것은 없어요.",
 }
+# Learning or support questions win over the topic they mention ("리뷰 답글 배우고 싶어요").
+LEARNING = re.compile(
+    r"교육|강의|배우|배울|비즈니스\s*스쿨|고객\s*센터|"
+    r"(?<![a-z])(?:learn|learning|tutorial|course|training|customer (?:center|service))(?![a-z])",
+    re.I,
+)
 REJECTED_TEXT = (
     "{name}: 이 요청은 지금 처리하지 못했어요. 저장한 것은 없어요. 다른 말로 다시 말씀해 주세요."
 )
@@ -79,7 +85,7 @@ class Route:
     """Which feature one utterance goes to, and why (via)."""
 
     feature_id: str | None
-    via: str  # photo | glossary | report | pending | match | none | approval
+    via: str  # photo | glossary | learning | report | pending | match | none | approval
     search_question: bool = False
     follow_question: bool = False
     details: bool = False
@@ -242,10 +248,16 @@ class OwnerAssistant:
             )
         )
         details = bool(re.fullmatch(r"자세히(?:\s*(?:보여\s*줘|알려\s*줘))?[.!?]?", text))
+        if LEARNING.search(text):
+            # "예약 받는 방법 교육" is about learning, not about reservations.
+            return Route("learning_support", "learning")
+        if search_question and not review_question:
+            # Search visibility diagnosis belongs to the 검색 노출·대표키워드 feature.
+            return Route("search_keywords", "report", search_question=True)
         if not review_question and (
-            search_question or follow_question or (details and self._detail_subject is not None)
+            follow_question or (details and self._detail_subject is not None)
         ):
-            return Route("statistics", "report", search_question, follow_question, details)
+            return Route("statistics", "report", False, follow_question, details)
         candidates = [m.feature_id for m in match_features(text, embed=self.embed)]
         if self.pending_feature and (not candidates or self.pending_feature in candidates):
             # While asking for missing input, answers such as "5000원" or a reply
@@ -303,10 +315,11 @@ class OwnerAssistant:
             return self._finish(HELP, [], [])
         if feature["id"] in review_delegate.REVIEW_FEATURES:
             return self._delegate_review(feature["id"], text)
+        if route.search_question:
+            self.pending_feature = None
+            return self._finish(self._search_visibility(), [], [])
         if feature["id"] == "statistics":
             self.pending_feature = None
-            if route.search_question:
-                return self._finish(self._search_visibility(), [], [])
             if route.follow_question and self.last_report is not None:
                 self._detail_subject = "report"
                 return self._finish(report_explainer.follow_up(text, self.last_report), [], [])
