@@ -88,22 +88,42 @@ class OrderLine:
     quantity: int
     options: tuple[str, ...] = ()
     request: str = ""  # 손님 요청 원문. 예: "고수 빼 주세요"
+    # 주문할 때의 값(스냅숏). 통화 뒤 메뉴 이름·가격이 바뀌어도 이미 받은 주문은 그대로다.
+    # 비어 있으면(""·0) 받는 쪽이 `menu_id`로 메뉴를 찾는다. 사장님 언어 이름은 넣지 않는다.
+    name: str = ""  # 한국어 메뉴 이름 (`MenuItem.name_ko` 복사)
+    unit_price: int = 0  # 한 개 가격(원) = 메뉴 가격 + 고른 옵션 `extra_price` 합
 
 
 @dataclass
 class Order:
-    """전화 주문 결과. 사장님 화면에서 사장님 언어로 보여 준다."""
+    """전화 주문 결과. 사장님 화면에서 사장님 언어로 보여 준다.
+
+    `id`는 통화 id와 같다(전화 주문). 통화 중 사장님 질문·자막도 같은 id로 묶는다.
+    """
 
     id: str
     lines: list[OrderLine]
     pickup_time: str = ""
     customer_name: str = ""
     customer_phone: str = ""  # 화면 표시 때 마스킹
+    # 통화가 어떻게 끝났나. confirmed = 손님이 복창을 듣고 확정, handoff = 사장님께 넘김
+    # (메모·미완성 주문). 사장님이 접수·거절·준비 완료로 바꾸는 처리 상태는 여기 없다. 계약 밖
+    # 사장님 화면이 따로 들고 Part A 어휘(new·accepted·rejected·ready·completed)를 쓴다.
+    # A 예약 상태의 `confirmed`와도 다른 뜻이다.
     status: Literal["draft", "confirmed", "handoff"] = "draft"
     transcript: list[str] = field(default_factory=list)
+    # 주문서를 만든 시각. pickup_time과 같은 ISO 8601, 시간대 포함. 예: "2026-11-10T14:03:12+09:00".
+    # 모르면 "".
+    created_at: str = ""
 
 
 class OrderSink(Protocol):
     """주문을 받는 쪽. 데모에서는 메모리 저장 + 사장님 화면 표시."""
 
-    def submit(self, order: Order) -> None: ...
+    def submit(self, order: Order) -> None:
+        """주문 확정(`confirmed`)·넘김(`handoff`) 때만, 통화 하나에 많아야 한 번 부른다.
+
+        손님이 끊음·취소·무응답 종료·오류로 끝난 통화는 부르지 않는다. 서버 이벤트 루프에서
+        불리므로 바로 돌아와야 한다. 네트워크·긴 디스크 쓰기는 구현 안에서 스레드나 큐로 넘긴다.
+        """
+        ...

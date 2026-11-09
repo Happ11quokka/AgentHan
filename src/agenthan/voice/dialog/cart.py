@@ -47,6 +47,8 @@ class CartLine:
             quantity=self.qty,
             options=tuple(o.name for o in self.options),
             request=self.request,
+            name=self.item.name_ko,  # 손님이 들은 이름·가격을 그대로 남긴다 (계약 제안 7)
+            unit_price=self.unit_price(),
         )
 
 

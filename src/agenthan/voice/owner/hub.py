@@ -13,8 +13,9 @@
   다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다
 - 구독자 큐는 크기 제한이 없다. SSE를 안 읽는 동안에도 통화 쪽이 막히지 않게 (V1 판정 6)
 
-카드의 한국어 메뉴명·단가는 `menu_id`로 가게 메뉴에서 찾는다. 계약 `Order`에 이름·단가가 아직
-없어서다(계약 제안 7, 4단계 티켓 09). 시각·금액은 번역 없이 코드가 고정 표기(`18:30`, `25,000₩`)로
+카드의 한국어 메뉴명·단가·받은 시각은 주문에 담긴 값(`OrderLine.name`·`unit_price`,
+`Order.created_at`, 계약 v1 제안 6·7)을 쓴다. 비어 있으면 메뉴명·단가는 `menu_id`로 가게 메뉴에서
+찾고, 받은 시각은 허브 시계로 찍는다. 시각·금액은 번역 없이 코드가 고정 표기(`18:30`, `25,000₩`)로
 넣는다.
 """
 
@@ -27,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from agenthan.core.contracts import Order, StoreKnowledge
+from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
 from agenthan.voice.call.ports import Clock
 
 log = logging.getLogger(__name__)
@@ -105,12 +106,7 @@ class OwnerHub:
     def _order_card(self, order: Order) -> dict[str, Any]:
         lines = []
         for line in order.lines:
-            item = self._store.get_menu(line.menu_id)
-            name = item.name_ko if item is not None else line.menu_id
-            extra = {o.name: o.extra_price for o in item.options} if item is not None else {}
-            unit = (item.price if item is not None else 0) + sum(
-                extra.get(o, 0) for o in line.options
-            )
+            name, unit = self._name_and_unit_price(line)
             lines.append({
                 "menu_id": line.menu_id,
                 "name_ko": name,
@@ -123,13 +119,27 @@ class OwnerHub:
         return {
             "id": order.id,
             "status": "new",
-            "received_at": self._clock.now().isoformat(),
+            "received_at": order.created_at or self._clock.now().isoformat(),
             "pickup_time": order.pickup_time,
             "pickup_label": clock_label(order.pickup_time),
             "lines": lines,
             "total": total,
             "total_label": won_label(total),
         }
+
+    def _name_and_unit_price(self, line: OrderLine) -> tuple[str, int]:
+        """줄의 한국어 이름·한 개 가격. 주문에 담긴 값(손님이 들은 값)을 먼저 쓴다.
+
+        이름이 비어 있으면(계약 v1 전 주문·다른 구현) 가게 메뉴에서 찾는다: 가격 + 고른 옵션
+        추가금. 메뉴도 없으면 이름 = menu_id, 단가 0.
+        """
+        if line.name:
+            return line.name, line.unit_price
+        item = self._store.get_menu(line.menu_id)
+        if item is None:
+            return line.menu_id, 0
+        extra = {o.name: o.extra_price for o in item.options}
+        return item.name_ko, item.price + sum(extra.get(o, 0) for o in line.options)
 
     def _snapshot(self) -> dict[str, Any]:
         return {"orders": list(self._cards.values())}

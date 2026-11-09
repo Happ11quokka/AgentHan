@@ -117,7 +117,7 @@ def test_correction_reads_back_changed_item_then_full_readback(engine: DialogEng
     assert r.state is State.CLOSING
     assert r.order is not None
     assert r.order.status == "confirmed"
-    assert r.order.lines == [OrderLine(menu_id="m01", quantity=2)]
+    assert r.order.lines == [OrderLine(menu_id="m01", quantity=2, name="메도빅", unit_price=7500)]
 
 
 def test_correction_names_menu_among_several(engine: DialogEngine) -> None:
@@ -320,7 +320,8 @@ def test_three_failures_on_same_question_hand_off(engine: DialogEngine) -> None:
     assert r.utterances == ["죄송해요, 제가 잘 못 알아듣고 있어요.", HANDOFF]
     assert r.order is not None
     assert r.order.status == "handoff"
-    assert r.order.lines == [OrderLine(menu_id="m01", quantity=1)]
+    assert r.order.lines == [OrderLine(menu_id="m01", quantity=1, name="메도빅", unit_price=7500)]
+    assert r.order.created_at == "2026-11-08T16:00:00+09:00"  # 넘김 주문도 만든 시각이 있다
     assert r.order.transcript[-3:] == [
         "손님: 글쎄",
         "AI: 죄송해요, 제가 잘 못 알아듣고 있어요.",

@@ -112,6 +112,34 @@ def test_a_screen_that_connects_later_starts_from_a_snapshot_of_every_card() -> 
     ]
 
 
+def test_the_card_shows_what_the_customer_heard_not_todays_menu() -> None:
+    """계약 v1 제안 6·7: 주문에 담긴 이름·한 개 가격·만든 시각을 쓴다. 통화 뒤 메뉴가 바뀌어도
+    (여기서는 메도빅이 7,500원 → 주문 때 7,000원) 카드는 손님이 들은 값이다."""
+    order = _order(
+        lines=[
+            OrderLine("m01", 2, name="메도빅 조각", unit_price=7_000),
+            OrderLine("m03", 1, options=("디카페인 변경",), name="아메리카노", unit_price=5_000),
+        ],
+        created_at="2026-11-08T15:58:30+09:00",
+    )
+
+    async def scenario():
+        hub = _hub()
+        hub.submit(order)
+        stream = hub.events()
+        first = await _next(stream)
+        await stream.aclose()
+        return first
+
+    (card,) = asyncio.run(scenario()).data["orders"]
+
+    assert [(x["name_ko"], x["subtotal"]) for x in card["lines"]] == [
+        ("메도빅 조각", 14_000), ("아메리카노", 5_000),
+    ]
+    assert card["total"] == 19_000
+    assert card["received_at"] == "2026-11-08T15:58:30+09:00"
+
+
 def test_accepting_an_unknown_order_fails() -> None:
     with pytest.raises(UnknownCard):
         _hub().accept("no-such-call")

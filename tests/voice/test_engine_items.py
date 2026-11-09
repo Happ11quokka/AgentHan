@@ -308,7 +308,8 @@ def test_request_goes_to_order_line(engine: DialogEngine) -> None:
     assert r.utterances == ["블린에 소스 따로 주세요라고 적어 둘게요.", MORE_Q]
     r = talk(engine, "그게 다예요", "6시요", "네")
     assert r.order is not None
-    assert r.order.lines == [OrderLine(menu_id="m04", quantity=1, request="소스 따로 주세요")]
+    assert r.order.lines == [OrderLine(menu_id="m04", quantity=1, request="소스 따로 주세요",
+                                       name="블린", unit_price=9000)]
 
 
 def test_request_without_menu_targets_last_item(engine: DialogEngine) -> None:
@@ -340,6 +341,7 @@ def test_full_order_with_options_and_edits(engine: DialogEngine) -> None:
     order = engine.handle("네", NOW).order
     assert order is not None
     assert order.lines == [
-        OrderLine(menu_id="m01", quantity=1),
-        OrderLine(menu_id="m03", quantity=2, options=("차갑게", "디카페인 변경")),
+        OrderLine(menu_id="m01", quantity=1, name="메도빅", unit_price=7500),
+        OrderLine(menu_id="m03", quantity=2, options=("차갑게", "디카페인 변경"),
+                  name="아메리카노", unit_price=5000),
     ]

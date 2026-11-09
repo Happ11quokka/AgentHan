@@ -58,8 +58,9 @@ def test_to_order_lines() -> None:
     decaf = _option(AMERICANO, "디카페인 변경")
     cart = Cart().add(MEDOVIK, 1).add(AMERICANO, 2, options=(decaf,))
     assert cart.to_order_lines() == [
-        OrderLine(menu_id="m01", quantity=1),
-        OrderLine(menu_id="m03", quantity=2, options=("디카페인 변경",)),
+        OrderLine(menu_id="m01", quantity=1, name="메도빅", unit_price=7500),
+        OrderLine(menu_id="m03", quantity=2, options=("디카페인 변경",), name="아메리카노",
+                  unit_price=5000),
     ]
 
 

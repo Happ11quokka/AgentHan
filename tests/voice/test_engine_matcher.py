@@ -71,7 +71,7 @@ def test_clarified_order_runs_to_confirmed_order() -> None:
     r = engine.handle("네", NOW)
     assert r.order is not None
     assert r.order.status == "confirmed"
-    assert r.order.lines == [OrderLine(menu_id="m01", quantity=2)]
+    assert r.order.lines == [OrderLine(menu_id="m01", quantity=2, name="메도빅", unit_price=7500)]
 
 
 def test_no_to_confirm_lists_menu_and_asks_again() -> None:
@@ -383,8 +383,9 @@ def test_deferred_done_and_pickup_wait_for_required_option() -> None:
     r = engine.handle("네", NOW)
     assert r.order is not None
     assert r.order.lines == [
-        OrderLine(menu_id="m01", quantity=1),
-        OrderLine(menu_id="m03", quantity=1, options=("차갑게",)),
+        OrderLine(menu_id="m01", quantity=1, name="메도빅", unit_price=7500),
+        OrderLine(menu_id="m03", quantity=1, options=("차갑게",), name="아메리카노",
+                  unit_price=4500),
     ]
 
 

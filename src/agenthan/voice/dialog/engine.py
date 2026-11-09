@@ -455,7 +455,7 @@ class DialogEngine:
     def _result(self, turn: _Turn) -> TurnResult:
         self._transcript.extend(f"AI: {text}" for text in turn.utterances)
         if turn.order_status is not None:
-            turn.order = self._build_order(turn.order_status)
+            turn.order = self._build_order(turn.order_status, turn.now)
         readback = self._state is State.CONFIRM and turn.question in self._readbacks()
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
                             readback=readback)
@@ -1315,7 +1315,8 @@ class DialogEngine:
 
     # ------------------------------------------------------------ Order
 
-    def _build_order(self, status: OrderStatus) -> Order:
+    def _build_order(self, status: OrderStatus, now: datetime) -> Order:
+        """`now`는 이 턴의 가게 시각. 주문서를 만든 시각(`created_at`)으로 초까지 남긴다."""
         return Order(
             id=self._order_id,
             lines=self._cart.to_order_lines(),
@@ -1323,6 +1324,7 @@ class DialogEngine:
             customer_phone=self._config.demo_phone,
             status=status,
             transcript=list(self._transcript),
+            created_at=now.isoformat(timespec="seconds"),
         )
 
 
