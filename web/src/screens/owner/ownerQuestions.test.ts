@@ -10,6 +10,7 @@ import {
   openQuestions,
   ownerReducer,
   secondsLeft,
+  storeNow,
 } from './ownerState.ts'
 
 function run(...actions: OwnerAction[]): OwnerState {
@@ -99,5 +100,24 @@ describe('owner screen question timing (ticket 06)', () => {
     expect(needsSeen({ ...question('a'), seen_at: '2026-11-08T16:02:03+09:00' })).toBe(false)
     expect(needsSeen(question('a', 'timeout'))).toBe(false)
     expect(needsSeen(question('a', 'answered'))).toBe(false)
+  })
+})
+
+describe('store clock on the owner screen (review C2)', () => {
+  it('counts down on the hub clock, not the device clock', () => {
+    // 시연(`PHONE_NOW`)·시계가 틀린 태블릿: snapshot의 허브 시각과 받은 때 기기 시각의 차이로 맞춘다
+    const device = Date.parse('2030-01-01T00:00:00Z')
+    const s = run({
+      type: 'snapshot',
+      data: { orders: [], calls: [], questions: [question('call-1-q1')], now: '2026-11-08T16:02:05+09:00' },
+      receivedAt: device,
+    })
+    expect(storeNow(s, device + 1_000)).toBe(Date.parse('2026-11-08T16:02:06+09:00'))
+    expect(questionClock(s.questions[0], storeNow(s, device + 1_000))).toBe(14)
+  })
+
+  it('uses the device clock when the server sends no time', () => {
+    const s = run(withQuestions(question('call-1-q1')))
+    expect(storeNow(s, 1234)).toBe(1234)
   })
 })

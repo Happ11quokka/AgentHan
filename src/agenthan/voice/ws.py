@@ -25,6 +25,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import Any
@@ -36,13 +38,13 @@ from starlette.websockets import WebSocketState
 from agenthan.core.contracts import OrderSink, StoreKnowledge
 from agenthan.voice import adapters
 from agenthan.voice.adapters import SttFactory, TtsFactory
-from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.call.ports import (
     CUSTOMER_RETRY,
     ClientGone,
     Clock,
     OwnerChannel,
     PortError,
+    RunningClock,
     SystemClock,
     Tts,
     TurnModel,
@@ -188,10 +190,13 @@ def phone_router(
     return router
 
 
-def store_clock(settings: VoiceSettings) -> Clock:
-    """가게 시계. `PHONE_NOW`가 있으면 그 시각에 멈춘 시계 (통화 세션·사장님 허브가 같이 쓴다)."""
+def store_clock(settings: VoiceSettings, *,
+                monotonic: Callable[[], float] = time.monotonic) -> Clock:
+    """가게 시계 (통화 세션·사장님 허브가 같이 쓴다). `PHONE_NOW`가 있으면 그 시각에서 시작해
+    실제 시간만큼 가는 시계다(멈추면 질문 카드 마감이 화면 카운트다운과 어긋난다, 리뷰 C2).
+    """
     if settings.now is not None:
-        return FakeClock(settings.now.astimezone(settings.tz))
+        return RunningClock(settings.now.astimezone(settings.tz), monotonic)
     return SystemClock(settings.tz)
 
 

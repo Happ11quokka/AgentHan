@@ -89,6 +89,7 @@ def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
             events = _sse(stream.iter_lines())
             snapshot = next(events)
             assert snapshot["event"] == "snapshot"
+            assert snapshot["data"].pop("now")  # 허브 시계 (리뷰 C2)
             assert snapshot["data"] == {
                 "orders": [], "calls": [], "questions": [], "captions": [], "knowledge": []}
 

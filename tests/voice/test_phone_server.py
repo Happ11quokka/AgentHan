@@ -77,3 +77,14 @@ def test_the_server_warms_papago_up_at_start_and_closes_it_at_stop(tmp_path, mon
 
     assert http.is_closed
     assert built == {"timeout": 3.0, "keepalive": 45.0}
+
+
+def test_a_fixed_store_time_starts_a_store_clock_that_keeps_running(tmp_path) -> None:
+    # 리뷰 C2: `PHONE_NOW` 시연에서 시계가 멈춰 있으면 질문 카드 마감이 화면 카운트다운과 어긋난다
+    # (카드가 뜨자마자 "시간 지남"). 그 시각에서 시작해 실제 시간만큼 간다
+    from agenthan.voice.ws import store_clock
+
+    ticks = iter([100.0, 100.0, 107.5])
+    clock = store_clock(_settings(tmp_path), monotonic=lambda: next(ticks))
+    assert clock.now() == NOW
+    assert clock.now().isoformat() == "2026-11-08T16:00:07.500000+09:00"

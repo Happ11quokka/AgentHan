@@ -21,7 +21,8 @@ export function ownerKey(search: string): string {
 export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => void): () => void {
   const source = new EventSource(`${BASE}/stream?key=${encodeURIComponent(key)}`)
   source.addEventListener('snapshot', (e) => {
-    dispatch({ type: 'snapshot', data: JSON.parse((e as MessageEvent<string>).data) })
+    const data = JSON.parse((e as MessageEvent<string>).data)
+    dispatch({ type: 'snapshot', data, receivedAt: Date.now() })
   })
   source.addEventListener('order.update', (e) => {
     dispatch({ type: 'order.update', data: JSON.parse((e as MessageEvent<string>).data) })

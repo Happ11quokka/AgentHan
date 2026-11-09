@@ -41,9 +41,9 @@
   `answer_said`를 안 보냄) 통화 끝에 늦은 답과 같은 문자로 보낸다(리뷰 C1). 통화가 끝나면 세션의
   받는 곳을 놓는다(끝난 세션이 GC 되게, 리뷰 C5)
 - 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...],
-  "captions": [...], "knowledge": [...]}`, 통화 카드는 ordered·closed 빼고, 자막은 통화 중 카드
-  것만)을 받고, 그 뒤 `order.update`·`call.update`·`call.caption`·`owner.question*`·
-  `knowledge.update`를 받는다.
+  "captions": [...], "knowledge": [...], "now": 허브 시계 ISO}`, 통화 카드는
+  ordered·closed 빼고, 자막은 통화 중 카드 것만)을 받고, 그 뒤 `order.update`·`call.update`·
+  `call.caption`·`owner.question*`·`knowledge.update`를 받는다.
   이벤트마다 늘어나는 번호(`id`)를 단다. 재연결 때 이어 받기 버퍼는 없다(늘 snapshot부터)
 - `submit`·통화 알림은 이벤트 루프에서 불리면 바로 처리한다(구독자 큐에 `put_nowait`만, 막히지
   않음). 다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다
@@ -821,9 +821,11 @@ class OwnerHub:
         calls = [c for c in self._calls.values() if c["status"] not in ("ordered", "closed")]
         captions = [c.sent for call_id, c in self._captions.items()
                     if c.sent is not None and self._calls[call_id]["status"] == "live"]
+        # `now`: 허브 시계 지금 시각. 화면이 기기 시계와의 차이를 재서 카운트다운·픽업 색에 쓴다
+        # (`PHONE_NOW` 시연·기기 시계가 틀린 태블릿, 리뷰 C2)
         return {"orders": list(self._cards.values()), "calls": calls,
                 "questions": list(self._questions.values()), "captions": captions,
-                "knowledge": self.knowledge_cards()}
+                "knowledge": self.knowledge_cards(), "now": self._clock.now().isoformat()}
 
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         self._seq += 1

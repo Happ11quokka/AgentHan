@@ -39,6 +39,7 @@ import {
   ownerReducer,
   questionClock,
   questionsWaiting,
+  storeNow,
   unansweredKnowledge,
   writtenAnswer,
 } from './ownerState.ts'
@@ -188,6 +189,8 @@ export default function OwnerPage() {
   const questions = openQuestions(state)
   const knowledge = knowledgeCards(state)
   const waitingKnowledge = unansweredKnowledge(state).length
+  // 카드의 시각(마감·픽업)은 허브 시계다. 기기 시계를 그만큼 보정해 센다 (리뷰 C2)
+  const hubNow = storeNow(state, now)
 
   return (
     <main className="owner" lang={lang}>
@@ -230,7 +233,7 @@ export default function OwnerPage() {
             <QuestionCardView
               key={q.id}
               question={q}
-              clock={questionClock(q, now)}
+              clock={questionClock(q, hubNow)}
               lang={lang}
               text={text}
               onAnswer={(value) => void answer(q.id, value)}
@@ -264,7 +267,7 @@ export default function OwnerPage() {
             className={[
               'owner-card',
               `owner-card-${card.status}`,
-              `owner-band-${pickupBand(card, now)}`,
+              `owner-band-${pickupBand(card, hubNow)}`,
               reminded.has(card.id) ? 'owner-card-remind' : '',
             ].join(' ')}
           >

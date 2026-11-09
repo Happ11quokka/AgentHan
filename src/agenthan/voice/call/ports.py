@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import datetime, timedelta, tzinfo
 from typing import Any, Protocol
 
 from agenthan.core.contracts import OrderLine, OrderSink
@@ -159,6 +159,26 @@ class SystemClock:
 
     def monotonic(self) -> float:
         return time.monotonic()
+
+
+class RunningClock:
+    """`start`에서 시작해 실제로 흐른 시간만큼 가는 가게 시계 (`PHONE_NOW` 시연, 리뷰 C2).
+
+    멈춘 시계면 사장님 질문 카드 마감·문자 시각이 그대로라 화면 카운트다운(실제 시간)과 어긋난다.
+    """
+
+    def __init__(self, start: datetime, monotonic: Callable[[], float] = time.monotonic) -> None:
+        if start.tzinfo is None:
+            raise ValueError("가게 시계 시작 시각에 시간대가 있어야 해요")
+        self._start = start
+        self._monotonic = monotonic
+        self._t0 = monotonic()
+
+    def now(self) -> datetime:
+        return self._start + timedelta(seconds=self._monotonic() - self._t0)
+
+    def monotonic(self) -> float:
+        return self._monotonic()
 
 
 class Outbound(Protocol):

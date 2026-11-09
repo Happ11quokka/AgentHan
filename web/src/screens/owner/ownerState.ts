@@ -225,7 +225,11 @@ export type OwnerServerEvent =
         captions?: CallCaption[]
         /** 티켓 13부터 온다 */
         knowledge?: KnowledgeCard[]
+        /** 허브 시계 지금 시각(ISO 8601). 화면이 기기 시계와의 차이를 잰다 (리뷰 C2) */
+        now?: string
       }
+      /** snapshot을 받은 때의 기기 시각(ms). `now`와의 차이가 허브 시계 보정값이다 */
+      receivedAt?: number
     }
   | { type: 'order.update'; data: OrderCard }
   | { type: 'call.update'; data: CallCard }
@@ -258,6 +262,11 @@ export interface OwnerState {
   captions: Record<string, CaptionLine[]>
   /** "손님이 궁금해한 것" 카드 전부(채운 것 포함). 먼저 생긴 카드가 앞 (티켓 13) */
   knowledge: KnowledgeCard[]
+  /**
+   * 허브 시계 − 기기 시계(ms). 질문 카드 마감·픽업 시각은 허브 시계라 이만큼 보정해 센다
+   * (`PHONE_NOW` 시연·시계가 틀린 태블릿, 리뷰 C2). 모르면 0
+   */
+  clockOffsetMs: number
 }
 
 export const initialOwnerState: OwnerState = {
@@ -267,6 +276,7 @@ export const initialOwnerState: OwnerState = {
   questions: [],
   captions: {},
   knowledge: [],
+  clockOffsetMs: 0,
 }
 
 export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState {
@@ -285,6 +295,7 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
         questions: action.data.questions ?? [],
         captions: Object.fromEntries((action.data.captions ?? []).map((c) => [c.call_id, c.lines])),
         knowledge: action.data.knowledge ?? [],
+        clockOffsetMs: clockOffset(action.data.now, action.receivedAt),
       }
     case 'order.update': {
       const card = action.data
@@ -318,6 +329,16 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
       return { ...state, knowledge }
     }
   }
+}
+
+function clockOffset(now: string | undefined, receivedAt: number | undefined): number {
+  const hub = now === undefined ? NaN : Date.parse(now)
+  return receivedAt === undefined || Number.isNaN(hub) ? 0 : hub - receivedAt
+}
+
+/** 허브 시계로 본 지금(ms). 카운트다운·픽업 색은 이 값으로 센다 (리뷰 C2) */
+export function storeNow(state: OwnerState, deviceNowMs: number): number {
+  return deviceNowMs + state.clockOffsetMs
 }
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
