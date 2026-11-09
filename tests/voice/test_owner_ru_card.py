@@ -392,7 +392,9 @@ def test_ingredient_words_papago_got_wrong_go_in_from_the_lexicon(
     assert _request_events(papago, request_ko)[-1] == (request_ko, shown)
 
 
-@pytest.mark.parametrize("request_ko", ["깨끗한 상자에 담아 주세요", "참깨 빵 말고요", "연어알 빼 주세요"])
+@pytest.mark.parametrize("request_ko", [
+    "깨끗한 상자에 담아 주세요", "참깨 빵 말고요", "연어알 빼 주세요",
+])
 def test_a_new_lexicon_word_inside_another_word_is_not_masked(request_ko: str) -> None:
     papago = FakeTranslator()
 
@@ -432,7 +434,8 @@ def test_placeholders_that_come_back_stuck_together_get_a_space(
 def test_two_masked_words_joined_by_rang_are_sent_joined_by_hago(
     request_ko: str, papago_table: dict[str, str], shown: str
 ) -> None:
-    """실측: "[1]이랑 [2]"는 Papago가 자리표시자 하나를 지웠다(2/2). "[1]하고 [2]"는 둘 다 남았다(3/3)."""
+    """실측: "[1]이랑 [2]"는 Papago가 자리표시자 하나를 지웠다(2/2).
+    "[1]하고 [2]"는 둘 다 남았다(3/3)."""
     assert _request_events(FakeTranslator(papago_table), request_ko)[-1] == (request_ko, shown)
 
 
@@ -447,3 +450,20 @@ def test_half_past_in_korean_counts_as_thirty_minutes(translated: str, kept: str
     papago = FakeTranslator({request: translated})
 
     assert _request_events(papago, request)[-1] == (request, kept)
+
+
+@pytest.mark.parametrize(("request_ko", "papago_table", "shown"), [
+    ("아메리카노는 샷 추가해 주세요", {
+        "[1] 샷 추가해 주세요": "[1] Добавьте, пожалуйста, снимок.",  # 실측: 한국어 + "사진"
+        "아메리카노는 [1] 추가해 주세요": "[1] Пожалуйста, добавьте американо",
+    }, "шот эспрессо Пожалуйста, добавьте американо"),
+    ("아메리카노 두 잔이랑 블린 하나요", {
+        "[1] 두 잔이랑 [2] 하나요": "[1] Два рюмки и один [2]",  # 실측: 한국어 + "술잔"
+        "아메리카노 두 잔이랑 [1] 하나요": "Два американо и один [1]",
+    }, "Два американо и один Блины"),
+])
+def test_a_menu_without_an_owner_name_is_left_for_papago_to_translate(
+    request_ko: str, papago_table: dict[str, str], shown: str
+) -> None:
+    """원어 이름이 빈 메뉴(아메리카노)를 가리면 한국어가 러시아어 문장에 박힌다. Papago에 맡긴다."""
+    assert _request_events(FakeTranslator(papago_table), request_ko)[-1] == (request_ko, shown)

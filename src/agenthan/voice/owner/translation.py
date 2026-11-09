@@ -7,8 +7,10 @@
 
 - 같은 문장은 통화 동안 한 번만 번역한다(캐시, 통화 id별). 번역이 버려진 문장(자리표시자·숫자
   불일치)도 ""로 캐시해 다시 보내지 않는다. 번역기 오류는 캐시하지 않는다(다음 카드 갱신 때 다시)
-- 번역 전에 메뉴명·헷갈리는 재료 낱말을 가린다(`protect.py`). 메뉴명 표는 부를 때마다 가게
-  메뉴(`list_menu`)에서 만든다: 이름·별칭 → 원어 이름(비면 한국어 이름)
+- 번역 전에 메뉴명·헷갈리는 재료 낱말을 가린다(`protect.py`). 메뉴명 표(`menu_names`)는 부를
+  때마다 가게 메뉴(`list_menu`)에서 만든다: 이름·별칭 → 원어 이름. 원어 이름이 빈 메뉴(아메리카노)는
+  가리지 않고 Papago에 맡긴다. 가리면 한국어가 러시아어 문장에 박혔다(티켓 04 실측: "아메리카노
+  Два рюмки…", 안 가리면 "Два американо…")
 - 번역기가 없으면(키 없음) 아무것도 하지 않는다. 카드는 원문만
 """
 
@@ -57,7 +59,7 @@ class CardTexts:
     async def fetch(self, call_id: str, texts: list[str]) -> bool:
         """`claim`한 문장을 번역해 캐시에 넣는다. 쓸 만한 번역이 하나라도 생기면 True."""
         assert self._translator is not None
-        names = self._menu_names()
+        names = menu_names(self._store)
         masked = [mask(t, names=names, terms=self._lexicon.terms) for t in texts]
         try:
             out = await self._translator.translate(
@@ -81,10 +83,13 @@ class CardTexts:
             changed = changed or bool(kept)
         return changed
 
-    def _menu_names(self) -> dict[str, str]:
-        names: dict[str, str] = {}
-        for item in self._store.list_menu():
-            owner = item.name_native or item.name_ko
-            for ko in (item.name_ko, *item.aliases):
-                names.setdefault(ko, owner)
-        return names
+
+def menu_names(store: StoreKnowledge) -> dict[str, str]:
+    """가릴 메뉴명 표: 이름·별칭 → 원어 이름. 원어 이름이 빈 메뉴는 넣지 않는다."""
+    names: dict[str, str] = {}
+    for item in store.list_menu():
+        if not item.name_native:
+            continue
+        for ko in (item.name_ko, *item.aliases):
+            names.setdefault(ko, item.name_native)
+    return names

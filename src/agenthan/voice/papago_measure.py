@@ -31,12 +31,12 @@ from typing import Any, Literal
 
 import httpx
 
-from agenthan.core.contracts import StoreKnowledge
 from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.lexicon import RU
 from agenthan.voice.owner.papago import KEY_ENVS, PAPAGO_URL, PapagoTranslator, papago_from_env
 from agenthan.voice.owner.protect import PLACEHOLDER, Masked, mask, restore
 from agenthan.voice.owner.translate import TranslateError
+from agenthan.voice.owner.translation import menu_names  # `CardTexts`와 같은 메뉴명 표
 from agenthan.voice.settings import read_env_file
 
 # ── 문장 세트 ──────────────────────────────────────────────────────────────
@@ -226,15 +226,6 @@ def md_table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> str:
 
 
 # ── 실행부 (네트워크) ───────────────────────────────────────────────────────
-
-
-def menu_names(store: StoreKnowledge) -> dict[str, str]:
-    """`CardTexts`와 같은 메뉴명 표: 이름·별칭 → 원어 이름(비면 한국어)."""
-    names: dict[str, str] = {}
-    for item in store.list_menu():
-        for ko in (item.name_ko, *item.aliases):
-            names.setdefault(ko, item.name_native or item.name_ko)
-    return names
 
 
 class Recorder:
