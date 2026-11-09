@@ -434,3 +434,16 @@ def test_two_masked_words_joined_by_rang_are_sent_joined_by_hago(
 ) -> None:
     """실측: "[1]이랑 [2]"는 Papago가 자리표시자 하나를 지웠다(2/2). "[1]하고 [2]"는 둘 다 남았다(3/3)."""
     assert _request_events(FakeTranslator(papago_table), request_ko)[-1] == (request_ko, shown)
+
+
+@pytest.mark.parametrize(("translated", "kept"), [
+    ("Я пойду искать в 6:30", "Я пойду искать в 6:30"),  # 실측: "반"을 30으로 옮겼다
+    ("Я пойду искать в 06:30", "Я пойду искать в 06:30"),
+    ("Я пойду искать в 6 часов", ""),  # 반이 사라짐 → 버림
+    ("Я пойду искать в 7:30", ""),  # 시가 바뀜 → 버림
+])
+def test_half_past_in_korean_counts_as_thirty_minutes(translated: str, kept: str) -> None:
+    request = "6시 반에 찾으러 갈게요"
+    papago = FakeTranslator({request: translated})
+
+    assert _request_events(papago, request)[-1] == (request, kept)

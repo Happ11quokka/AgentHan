@@ -16,7 +16,8 @@
   지웠고(티켓 04 실측 2/2), "[1]하고 [2]"는 둘 다 남았다(티켓 12 재확인 3/3). 원문(`source`)은 그대로
 - 확인(`restore`): 자리표시자가 하나라도 사라지거나 늘거나 번호가 틀리면 버린다(None).
   원문 숫자(아라비아 숫자)가 번역문에 숫자나 사전의 수사(`numerals`, "2" → "два·две…")로 없거나,
-  번역문에 원문에 없는 숫자가 있으면 버린다. 한글 수사("두 개")는 아직 안 본다
+  번역문에 원문에 없는 숫자가 있으면 버린다. 숫자는 값으로 견준다("06" = "6").
+  원문 "N시 반"은 N과 30으로 본다("6시 반" ↔ "6:30", 티켓 04 실측). 한글 수사("두 개")는 아직 안 본다
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from agenthan.voice.hangul import has_batchim
 
 PLACEHOLDER = re.compile(r"\[(\d+)\]")
 _NUMBER = re.compile(r"\d+")
+_HALF_HOUR = re.compile(r"\d+\s*시\s*반")
 # 받침 있는 낱말 / 없는 낱말 뒤 격조사 (뗄 것)
 _CASE_AFTER_BATCHIM = ("은", "이", "을")
 _CASE_AFTER_VOWEL = ("는", "가", "를")
@@ -127,9 +129,11 @@ def restore(
 
 
 def _numbers_kept(source: str, translated: str, numerals: Mapping[int, tuple[str, ...]]) -> bool:
-    wanted = set(_NUMBER.findall(source))
-    got = set(_NUMBER.findall(translated))
+    wanted = {int(n) for n in _NUMBER.findall(source)}
+    if _HALF_HOUR.search(source):
+        wanted.add(30)  # "6시 반" = 6:30 (Papago가 "в 6:30"으로 옮긴다)
+    got = {int(n) for n in _NUMBER.findall(translated)}
     if not got <= wanted:
         return False
     words = set(re.findall(r"\w+", translated.lower()))
-    return all(n in got or words & set(numerals.get(int(n), ())) for n in wanted)
+    return all(n in got or words & set(numerals.get(n, ())) for n in wanted)
