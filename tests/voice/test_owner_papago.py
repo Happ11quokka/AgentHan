@@ -1,7 +1,9 @@
 """Papago 번역 어댑터 (4단계 티켓 03). 키·네트워크 없이 돈다.
 
 - 요청 모양·오류는 `httpx.MockTransport`로 꾸민 응답으로 본다
-- 실제 응답 형식은 녹화본(cassette)을 재생한다. 녹화 다시 하기(실제 호출 3번, 키 필요):
+- 연결 유지·데우기(티켓 12)는 연결 수를 세는 로컬 HTTP 서버로 본다
+- 실제 응답 형식과 티켓 04 실측 실패 문장의 회귀(티켓 12)는 녹화본(cassette)을 재생한다.
+  녹화 다시 하기(실제 호출 3 + 8번, 키 필요):
 
     AGENTHAN_ENV_FILE=/path/to/AgentHan/.env \\
         uv run pytest tests/voice/test_owner_papago.py -k recorded --record-mode=rewrite
@@ -21,8 +23,11 @@ from typing import Any
 import httpx
 import pytest
 
+from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.owner.lexicon import RU
 from agenthan.voice.owner.papago import PAPAGO_URL, PapagoTranslator, papago_from_env
 from agenthan.voice.owner.translate import TranslateError
+from agenthan.voice.owner.translation import CardTexts
 from agenthan.voice.settings import read_env_file
 
 CASSETTES = Path(__file__).with_name("cassettes") / "test_owner_papago"
@@ -267,6 +272,42 @@ def test_recorded_papago_answers_in_russian_and_keeps_the_placeholder() -> None:
     assert len(out) == 3
     assert all(re.search("[а-яА-Я]", t) for t in out)
     assert "[1]" in out[0] and "[1]" in out[2]
+
+
+# 티켓 04 실측에서 틀렸거나 버려진 요청(`s4-papago-measure.md` 3·4·5·7)
+# → 카드에 보일 번역에 꼭 들어갈 말
+MEASURED_FAILURES = {
+    "깨는 빼 주세요": ("кунжут", "Убер"),  # 실측: "Разбудите"(깨워 주세요)
+    "사워크림 빼 주세요": ("сметана", "Убер"),  # 실측: "смету"(견적)
+    "러시아 팬케이크에 연어 빼 주세요": ("Блины лосось", "Убер"),  # 실측: "дайте мне лосося"
+    "아메리카노는 샷 추가해 주세요": ("шот эспрессо", "американо"),  # 실측: 한국어 + "снимок"
+    "아메리카노 두 잔이랑 블린 하나요": ("американо", "Блины"),  # 실측: 한국어 + "рюмки"
+    "메도빅이랑 나폴레옹 하나씩 따로 담아 주세요": ("Медовик Наполеон",),  # 실측: 버림
+    "블린은 고수랑 파 둘 다 빼 주세요": ("кинза", "зелёный лук", "Убер"),  # 실측: 버림
+    "6시 반에 찾으러 갈게요": ("6:30",),  # 실측: 숫자 확인이 버림
+}
+
+
+@pytest.mark.vcr
+def test_recorded_measure_failures_now_reach_the_card() -> None:
+    """가리기·확인·채우기를 거친 실제 Papago 응답(2026-11-10 녹화, 티켓 12).
+    녹화 다시 하기는 머리 주석."""
+    papago = _recording_translator()
+    texts = CardTexts(papago, store=FakeStoreKnowledge.from_fixture(), lexicon=RU)
+    requests = list(MEASURED_FAILURES)
+
+    async def run() -> dict[str, str]:
+        try:
+            await texts.fetch("call-1", requests)
+        finally:
+            await papago.aclose()
+        return {r: texts.known("call-1", r) for r in requests}
+
+    shown = asyncio.run(run())
+
+    for request, needed in MEASURED_FAILURES.items():
+        assert all(word in shown[request] for word in needed), (request, shown[request])
+        assert not re.search("[가-힣]", shown[request]), (request, shown[request])
 
 
 def test_cassettes_hold_no_key() -> None:
