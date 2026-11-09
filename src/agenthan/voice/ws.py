@@ -37,6 +37,7 @@ from agenthan.voice.adapters import SttFactory, TtsFactory
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.call.ports import (
     CUSTOMER_RETRY,
+    ClientGone,
     Clock,
     PortError,
     SystemClock,
@@ -57,16 +58,32 @@ log = logging.getLogger(__name__)
 
 
 class WsOutbound:
-    """`Outbound` 포트 → Starlette WebSocket. 세션의 송신 작업만 부른다."""
+    """`Outbound` 포트 → Starlette WebSocket. 세션의 송신 작업만 부른다.
+
+    손님 쪽이 끊겨 못 보내면(Starlette `WebSocketDisconnect`, 그 밑의 uvicorn `ClientDisconnected`
+    같은 `OSError`) `ClientGone`을 올린다. 세션이 traceback 없이 한 줄만 남긴다(감사 문제 B)
+    """
 
     def __init__(self, ws: WebSocket) -> None:
         self._ws = ws
 
     async def send_event(self, event: dict[str, Any]) -> None:
-        await self._ws.send_text(json.dumps(event, ensure_ascii=False))
+        text = json.dumps(event, ensure_ascii=False)
+        try:
+            await self._ws.send_text(text)
+        except (WebSocketDisconnect, OSError) as err:
+            raise ClientGone(_gone(err)) from err
 
     async def send_audio(self, frame: bytes) -> None:
-        await self._ws.send_bytes(frame)
+        try:
+            await self._ws.send_bytes(frame)
+        except (WebSocketDisconnect, OSError) as err:
+            raise ClientGone(_gone(err)) from err
+
+
+def _gone(err: BaseException) -> str:
+    code = getattr(err, "code", None)
+    return f"{type(err).__name__} {code}" if code is not None else type(err).__name__
 
 
 def phone_router(

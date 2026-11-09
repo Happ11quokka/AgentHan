@@ -103,6 +103,7 @@ from agenthan.voice.call.latency import LatencyLog
 from agenthan.voice.call.ports import (
     CUSTOMER_FATAL,
     CUSTOMER_RETRY,
+    ClientGone,
     Clock,
     Outbound,
     PortError,
@@ -573,6 +574,11 @@ class CallSession:
                     await self._outbound.send_event(payload)
                 else:
                     await self._outbound.send_audio(payload)
+            except ClientGone as err:  # 손님이 끊었다. 보통 일이라 한 줄만 (감사 문제 B)
+                log.info("손님 연결이 끊겨 송신을 멈추고 통화를 끝냄 (%s): %s", self.call_id, err)
+                self._broken = True
+                self._end()
+                return
             except Exception:
                 log.info("송신 실패, 통화를 끝냄 (%s)", self.call_id, exc_info=True)
                 self._broken = True

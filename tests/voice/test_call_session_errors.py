@@ -6,12 +6,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from call_harness import Call
 from test_call_session import GatedNlu, settle
 
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
-from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
+from agenthan.voice.call.ports import CUSTOMER_FATAL, ClientGone, PortError
 from agenthan.voice.call.session import SessionSettings
 
 
@@ -125,3 +126,33 @@ def test_outbound_failure_ends_the_call(tmp_path) -> None:
             return c
 
     assert run(call()).session.done
+
+
+def _send_failure_logs(tmp_path, caplog, err: Exception) -> list:
+    async def call() -> None:
+        async with Call(tmp_path) as c:
+
+            async def broken(event):
+                raise err
+
+            c.out.send_event = broken  # type: ignore[method-assign]
+            await c.session.feed_event({"type": "call.start", "turn": 0})
+            await asyncio.wait_for(c.session.wait_done(), 3)
+
+    with caplog.at_level(logging.INFO, logger="agenthan.voice.call.session"):
+        run(call())
+    return [r for r in caplog.records if "송신" in r.getMessage()]
+
+
+def test_a_client_that_hangs_up_is_logged_in_one_line_without_a_traceback(
+    tmp_path, caplog
+) -> None:
+    # 감사 문제 B: 손님 쪽이 갑자기 끊는 것은 보통 일이다. traceback 없이 한 줄만 남긴다
+    (record,) = _send_failure_logs(tmp_path, caplog, ClientGone("code 1006"))
+    assert record.exc_info is None
+    assert "끊" in record.getMessage() and "1006" in record.getMessage()
+
+
+def test_an_unexpected_send_failure_keeps_its_traceback(tmp_path, caplog) -> None:
+    (record,) = _send_failure_logs(tmp_path, caplog, RuntimeError("encoder broke"))
+    assert record.exc_info is not None

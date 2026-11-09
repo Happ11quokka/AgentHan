@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import struct
@@ -14,14 +15,15 @@ from datetime import datetime
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocketDisconnect
 from fastapi.testclient import TestClient
+from uvicorn.protocols.utils import ClientDisconnected
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
 from agenthan.voice import ws as ws_module
 from agenthan.voice.call.barge import BargeSettings
 from agenthan.voice.call.fakes import FakeSttStream, FakeTts
-from agenthan.voice.call.ports import CUSTOMER_FATAL, PortError
+from agenthan.voice.call.ports import CUSTOMER_FATAL, ClientGone, PortError
 from agenthan.voice.call.session import TURN_THREAD_PREFIX
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
@@ -392,3 +394,33 @@ def test_switched_off_the_model_file_is_never_opened(tmp_path, monkeypatch) -> N
 
     monkeypatch.setattr(ws_module, "load_turn_model", boom)
     _app(tmp_path, turn_model="off")
+
+
+class _GoneSocket:
+    """보내면 그 예외를 올리는 WebSocket 흉내."""
+
+    def __init__(self, err: BaseException) -> None:
+        self._err = err
+
+    async def send_text(self, text: str) -> None:
+        raise self._err
+
+    async def send_bytes(self, data: bytes) -> None:
+        raise self._err
+
+
+@pytest.mark.parametrize("err", [WebSocketDisconnect(code=1006), ClientDisconnected()],
+                         ids=["starlette", "uvicorn"])
+def test_a_client_disconnect_on_send_becomes_client_gone(err) -> None:
+    # 감사 문제 B: 세션은 FastAPI를 모른다. 어댑터가 보통 끊김을 포트 예외 하나로 바꾼다
+    out = ws_module.WsOutbound(_GoneSocket(err))  # type: ignore[arg-type]
+    with pytest.raises(ClientGone):
+        asyncio.run(out.send_event({"type": "state"}))
+    with pytest.raises(ClientGone):
+        asyncio.run(out.send_audio(b"\x00" * 8))
+
+
+def test_other_send_errors_are_not_hidden() -> None:
+    out = ws_module.WsOutbound(_GoneSocket(RuntimeError("boom")))  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError):
+        asyncio.run(out.send_event({"type": "state"}))

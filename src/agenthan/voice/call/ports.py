@@ -26,6 +26,7 @@ from agenthan.voice.store_config import KST
 __all__ = [
     "CUSTOMER_FATAL",
     "CUSTOMER_RETRY",
+    "ClientGone",
     "Clock",
     "END_EPD_TYPES",
     "OrderSink",
@@ -47,6 +48,14 @@ END_EPD_TYPES = frozenset({"gap", "endPoint", "unvoice"})
 # 변수 이름)는 개발자용이라 로그·JSONL에만 남긴다 (리뷰 15번)
 CUSTOMER_RETRY = "잠시 후 다시 걸어 주세요."
 CUSTOMER_FATAL = "지금은 전화 주문을 받을 수 없어요. 가게로 직접 연락해 주세요."
+
+
+class ClientGone(Exception):
+    """손님 쪽 연결이 끊겨 보낼 수 없다(`Outbound`). 보통 일이라 세션은 한 줄만 남긴다.
+
+    traceback은 남기지 않는다. 어댑터가 전송 계층의 끊김(Starlette `WebSocketDisconnect`,
+    uvicorn `ClientDisconnected`)을 이것으로 바꾼다. 세션은 FastAPI를 모른다 (3단계 감사 문제 B)
+    """
 
 
 class PortError(Exception):
