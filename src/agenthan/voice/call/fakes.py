@@ -28,7 +28,7 @@ from typing import Any
 from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
-from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import OwnerButton, OwnerQuestion, OwnerReply
 
 STT_LAG_MS = 600  # CLOVA 실측: epFlag 보낸 뒤 결과까지 0.5~0.6초
 
@@ -204,7 +204,7 @@ class RecordingOwnerChannel:
     `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다.
     """
 
-    def __init__(self, *, answer: OwnerAnswer | None = None) -> None:
+    def __init__(self, *, answer: OwnerButton | None = None) -> None:
         self.notes: list[tuple[Any, ...]] = []
         self._answer = answer
 

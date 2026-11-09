@@ -211,8 +211,10 @@ def ask_what_to_fix() -> str:
     return "어떤 걸 고쳐 드릴까요?"
 
 
-def closing(pickup: datetime) -> str:
-    return f"{spoken_time(pickup)}에 준비해 둘게요. 감사합니다."
+def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
+    """마무리. 사장님 답을 못 받은 질문이 있으면 문자 약속을 붙인다 (4단계 티켓 06)."""
+    later = " 여쭤보신 건 확인해서 문자로 알려 드릴게요." if owner_pending else ""
+    return f"{spoken_time(pickup)}에 준비해 둘게요.{later} 감사합니다."
 
 
 def not_understood() -> str:
@@ -427,9 +429,11 @@ _OWNER_ANSWER = {
     "yes": "사장님께 여쭤보니 네, 된다고 하세요.",
     "no": "사장님께 여쭤보니 안 된다고 하세요.",
     "unsure": "사장님께 여쭤봤는데 사장님도 정확히는 모르신대요.",
+    "timeout": "확인해서 문자로 알려 드릴게요.",  # 답 대기 시간 초과 (티켓 06)
 }
-# 대화 기록(`Order.transcript`)에 남기는 사장님 버튼 이름
-_OWNER_ANSWER_LABEL = {"yes": "돼요", "no": "안 돼요", "unsure": "모르겠어요"}
+# 대화 기록(`Order.transcript`)에 남기는 사장님 답 이름
+_OWNER_ANSWER_LABEL = {"yes": "돼요", "no": "안 돼요", "unsure": "모르겠어요",
+                       "timeout": "(답 없음, 시간 초과)"}
 
 
 def ask_owner_hold() -> str:
@@ -437,8 +441,13 @@ def ask_owner_hold() -> str:
     return "잠시만요, 사장님께 여쭤볼게요."
 
 
+def owner_seen() -> str:
+    """사장님이 질문 카드를 봤다 (티켓 06). 기다리는 동안 한 번만."""
+    return "사장님이 보고 계세요, 조금만요."
+
+
 def owner_answer(answer: str) -> str:
-    """사장님 버튼 답(yes·no·unsure) → 손님에게 할 말. 뒤에 하던 질문을 다시 한다."""
+    """사장님 답(yes·no·unsure·timeout) → 손님에게 할 말. 뒤에 하던 질문을 다시 한다."""
     return _OWNER_ANSWER[answer]
 
 

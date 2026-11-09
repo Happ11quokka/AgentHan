@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel
 
-from agenthan.voice.dialog.owner_question import OwnerAnswer
+from agenthan.voice.dialog.owner_question import OwnerButton
 from agenthan.voice.owner.hub import AlreadyAnswered, CardBusy, OwnerHub, UnknownCard
 
 OWNER_PREFIX = "/api/owner"
@@ -38,7 +38,7 @@ OWNER_PREFIX = "/api/owner"
 class AnswerBody(BaseModel):
     """질문 카드 버튼 답. 자유 입력(티켓 07)은 칸을 더한다."""
 
-    answer: OwnerAnswer
+    answer: OwnerButton  # 시간 초과는 세션이 넣는다. 화면은 못 보낸다
 
 
 def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:

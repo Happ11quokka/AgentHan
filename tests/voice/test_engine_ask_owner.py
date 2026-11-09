@@ -184,3 +184,109 @@ def test_the_owner_answer_is_kept_in_the_order_transcript() -> None:
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
     assert r.order is not None
     assert "사장님: 돼요" in r.order.transcript
+
+
+# ---------------------------------------------------------------- 막는 조건 (티켓 06)
+
+CINNAMON = "블린에 시나몬 들어가요?"
+LATER = "확인해서 문자로 알려 드릴게요."
+
+
+def _open(engine: DialogEngine, text: str = NUTS) -> OwnerQuestion:
+    asked = talk(engine, text).owner_question
+    assert asked is not None
+    return asked
+
+
+def _blocked(engine: DialogEngine, text: str = CINNAMON) -> TurnResult:
+    r = talk(engine, text)
+    assert r.owner_question is None
+    assert r.utterances[0] == DONT_KNOW
+    assert HOLD_ON not in r.utterances
+    return r
+
+
+def test_no_question_opens_in_the_final_readback() -> None:
+    engine = make_engine()
+    r = talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요")
+    assert r.state is State.CONFIRM
+    blocked = _blocked(engine, NUTS)
+    assert blocked.readback  # 복창 불변식: 복창으로 다시 끝난다
+
+
+def test_no_question_opens_after_the_readback_started_even_when_fixing() -> None:
+    engine = make_engine()
+    talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요", "아니요")
+    _blocked(engine, NUTS)
+
+
+def test_no_second_question_opens_while_one_is_open() -> None:
+    engine = make_engine()
+    first = _open(engine)
+    _blocked(engine)
+    r = engine.owner_answered(first.number, "yes", NOW)  # 앞 질문은 그대로 열려 있다
+    assert r.utterances[0] == "사장님께 여쭤보니 네, 된다고 하세요."
+
+
+def test_at_most_two_questions_per_call() -> None:
+    engine = make_engine()
+    for text in (NUTS, CINNAMON):
+        engine.owner_answered(_open(engine, text).number, "no", NOW)
+    _blocked(engine, "메도빅에 땅콩 들어가요?")
+
+
+def test_after_one_timeout_no_more_questions_in_this_call() -> None:
+    engine = make_engine()
+    engine.owner_answered(_open(engine).number, "timeout", NOW)
+    _blocked(engine)
+
+
+# ---------------------------------------------------------------- 시간 초과·열람·마무리 (티켓 06)
+
+
+def test_a_timeout_promises_a_text_message_and_goes_back_to_the_question() -> None:
+    engine = make_engine()
+    talk(engine, "메도빅 하나요")
+    r = engine.owner_answered(_open(engine).number, "timeout", NOW)
+    assert r.utterances == [LATER, MORE_Q]
+    assert r.state is State.ORDERING
+    assert engine.owner_answered(1, "yes", NOW).utterances == []  # 늦은 답은 통화 중에 말하지 않음
+
+
+def test_the_owner_seeing_the_card_is_said_once_while_the_question_is_open() -> None:
+    engine = make_engine()
+    asked = _open(engine)
+    assert engine.owner_seen(asked.number + 1, NOW).utterances == []  # 다른 질문
+    assert engine.owner_seen(asked.number, NOW).utterances == ["사장님이 보고 계세요, 조금만요."]
+    assert engine.owner_seen(asked.number, NOW).utterances == []  # 한 번만
+    engine.owner_answered(asked.number, "yes", NOW)
+    assert engine.owner_seen(asked.number, NOW).utterances == []  # 닫힌 질문
+
+
+def test_closing_with_an_open_question_promises_a_text_and_closes_it() -> None:
+    engine = make_engine()
+    talk(engine, "메도빅 하나요")
+    asked = _open(engine)
+    r = talk(engine, "그게 다예요", "6시 반이요", "네")
+    assert r.state is State.CLOSING
+    assert r.utterances == ["6시 반에 준비해 둘게요. 여쭤보신 건 확인해서 문자로 알려 드릴게요. "
+                            "감사합니다."]
+    assert r.order is not None
+    assert engine.owner_answered(asked.number, "yes", NOW).utterances == []
+
+
+def test_closing_without_an_open_question_is_unchanged() -> None:
+    engine = make_engine()
+    engine.owner_answered(_open(engine, "메도빅 하나요 그리고 메도빅에 견과류 들어가요?").number,
+                          "yes", NOW)
+    r = talk(engine, "그게 다예요", "6시 반이요", "네")
+    assert r.utterances == ["6시 반에 준비해 둘게요. 감사합니다."]
+
+
+@pytest.mark.parametrize("ending", [("취소할게요", "네"), ("사장님 바꿔 주세요",)])
+def test_a_turn_that_ends_the_call_closes_the_open_question(ending: tuple[str, ...]) -> None:
+    engine = make_engine()
+    asked = _open(engine)
+    r = talk(engine, *ending)
+    assert r.state in (State.DONE, State.FALLBACK)
+    assert engine.owner_answered(asked.number, "yes", NOW).utterances == []

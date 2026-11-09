@@ -51,6 +51,8 @@ MAX_FAILURES = 3  # 같은 슬롯에서 이만큼 연속으로 못 알아들으�
 # 무응답(3단계 티켓 04): 이만큼째 무응답이면 마지막 인사를 하고 끝낸다. 그 전에는 되묻는다
 # (두 번 되묻고 세 번째에 끝냄, CLOVA AiCall 시나리오 가이드와 같다)
 MAX_NO_INPUT = 3
+# 사장님 질문 (4단계 티켓 06): 통화당 이만큼까지 연다
+MAX_OWNER_QUESTIONS = 2
 MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hcx.py` `_qty`)와 같다
 
 # 손님과 대화 중인 상태. 전역 규칙(취소·사장님 연결·메뉴 질문)을 받는다.
@@ -181,6 +183,11 @@ class DialogEngine:
         self._ask_owner = ask_owner
         self._owner_open: OwnerQuestion | None = None
         self._owner_asked = 0  # 이 통화에서 연 질문 수 (질문 번호)
+        # 티켓 06 막는 조건: 복창이 한 번이라도 나갔다(고치러 ORDERING으로 돌아가도 그대로) ·
+        # 이 통화에서 시간 초과가 났다. 열린 질문을 사장님이 봤다고 이미 말했다
+        self._read_back = False
+        self._owner_timed_out = False
+        self._owner_seen_said = False
 
     # ------------------------------------------------------------ 진입점
 
@@ -291,9 +298,27 @@ class DialogEngine:
         if self._state is State.DONE or question is None or question.number != number:
             return self._result(turn)
         self._owner_open = None
+        if answer == "timeout":
+            self._owner_timed_out = True
         self._transcript.append(f"사장님: {templates.owner_answer_label(answer)}")
         self._say(turn, templates.owner_answer(answer))
         self._ask(turn, self._question_again())
+        return self._result(turn)
+
+    def owner_seen(self, number: int, now: datetime) -> TurnResult:
+        """사장님이 질문 카드를 봤다(티켓 06). 열린 질문마다 한 번 "사장님이 보고 계세요".
+
+        질문을 다시 하지 않는다(아직 기다리는 중). 열린 질문이 아니거나 이미 말했으면 말 없는 턴.
+        """
+        if self._state is State.GREETING:
+            raise RuntimeError("start()를 먼저 불러야 해요")
+        turn = _Turn(self._local(now), cart_before=self._cart)
+        question = self._owner_open
+        if (self._state is State.DONE or question is None or question.number != number
+                or self._owner_seen_said):
+            return self._result(turn)
+        self._owner_seen_said = True
+        self._say(turn, templates.owner_seen())
         return self._result(turn)
 
     def nlu_context(self) -> NluContext:
@@ -518,7 +543,10 @@ class DialogEngine:
         readback = self._state is State.CONFIRM and turn.question in self._readbacks()
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
                             readback=readback, owner_question=turn.owner_question)
+        if self._state is State.CONFIRM:
+            self._read_back = True
         if self._state in TERMINAL:
+            self._owner_open = None  # 취소·넘김·마무리: 열린 질문을 닫는다 (티켓 06)
             self._state = State.DONE
         return result
 
@@ -694,17 +722,26 @@ class DialogEngine:
         answer = menu_answer(item, act.free_text or act.menu_text)
         if answer.text is not None:
             self._say(turn, answer.text)
-        elif self._ask_owner and answer.for_owner:
+        elif self._ask_owner and answer.for_owner and self._may_ask_owner():
             self._open_owner_question(turn, item)
         else:
             self._say(turn, templates.dont_know())
 
+    def _may_ask_owner(self) -> bool:
+        """막는 조건(티켓 06): 복창이 나간 뒤 · 이미 열린 질문 · 통화당 `MAX_OWNER_QUESTIONS`번 ·
+        이 통화에서 시간 초과 한 번. 막히면 1단계처럼 "그건 제가 정확히 모르겠어요".
+        """
+        return not (self._read_back or self._state is State.CONFIRM
+                    or self._owner_open is not None
+                    or self._owner_asked >= MAX_OWNER_QUESTIONS or self._owner_timed_out)
+
     def _open_owner_question(self, turn: _Turn, item: MenuItem) -> None:
         """근거 없는 메뉴 질문을 사장님 질문으로 연다(4단계 티켓 05). 대사는 `_hold_for_owner`가.
 
-        상태와 직전 질문은 그대로 둔다. 막는 조건(복창 뒤·이미 열림·횟수·시간 초과)은 티켓 06.
+        상태와 직전 질문은 그대로 둔다. 막는 조건은 `_may_ask_owner`.
         """
         self._owner_asked += 1
+        self._owner_seen_said = False
         question = OwnerQuestion(number=self._owner_asked, menu_id=item.id,
                                  menu_name=item.name_ko, text=turn.heard)
         self._owner_open = turn.owner_question = question
@@ -1202,7 +1239,9 @@ class DialogEngine:
     def _on_confirm_yes(self, turn: _Turn, act: Act) -> None:
         assert self._pickup is not None
         self._state = State.CLOSING
-        self._say(turn, templates.closing(self._pickup))
+        # 답을 못 받은 사장님 질문이 있으면 문자 약속을 붙이고 닫는다 (티켓 06)
+        self._say(turn, templates.closing(self._pickup, owner_pending=self._owner_open is not None))
+        self._owner_open = None
         turn.order_status = "confirmed"
 
     @on("no", State.CONFIRM)

@@ -52,7 +52,7 @@ from typing import Any
 from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
 from agenthan.voice.call.defaults import OWNER_WAIT_S
 from agenthan.voice.call.ports import Clock
-from agenthan.voice.dialog.owner_question import OWNER_ANSWERS, OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import OWNER_BUTTONS, OwnerQuestion, OwnerReply
 from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.lexicon import lexicon_for
 from agenthan.voice.owner.translate import Translator
@@ -185,7 +185,7 @@ class OwnerHub:
         card = self._questions.get(question_id)
         if card is None:
             raise UnknownCard(question_id)
-        if answer not in OWNER_ANSWERS:
+        if answer not in OWNER_BUTTONS:
             raise ValueError(f"모르는 답: {answer!r}")
         if card["status"] == "answered":
             raise AlreadyAnswered(question_id)

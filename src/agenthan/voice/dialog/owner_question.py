@@ -10,10 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# 사장님 버튼 답: 돼요 · 안 돼요 · 모르겠어요 (grilling Q6). 시간 초과(06)·자유 입력(07)은 그 티켓이
-# 더한다. 엔진은 답 종류마다 고정 존댓말 문장을 말한다(`templates.owner_answer`)
-OwnerAnswer = Literal["yes", "no", "unsure"]
-OWNER_ANSWERS: tuple[OwnerAnswer, ...] = ("yes", "no", "unsure")
+# 사장님 버튼 답: 돼요 · 안 돼요 · 모르겠어요 (grilling Q6). 사장님 화면 POST가 받는 값이다
+OwnerButton = Literal["yes", "no", "unsure"]
+OWNER_BUTTONS: tuple[OwnerButton, ...] = ("yes", "no", "unsure")
+# 엔진이 받는 답 종류: 버튼 셋 + 시간 초과(티켓 06, 세션이 넣는다). 자유 입력은 티켓 07.
+# 엔진은 답 종류마다 고정 존댓말 문장을 말한다(`templates.owner_answer`)
+OwnerAnswer = Literal["yes", "no", "unsure", "timeout"]
 
 
 @dataclass(frozen=True)
@@ -32,3 +34,14 @@ class OwnerReply:
 
     question: int  # `OwnerQuestion.number`
     answer: OwnerAnswer
+
+
+@dataclass(frozen=True)
+class OwnerSeen:
+    """사장님 화면 → 통화 세션. 사장님이 질문 카드를 봤다(티켓 06). 손님에게 한 번 알린다."""
+
+    question: int  # `OwnerQuestion.number`
+
+
+# 질문을 연 세션의 받는 곳(`OwnerChannel.open_question`의 `reply`)으로 오는 것
+OwnerNote = OwnerReply | OwnerSeen
