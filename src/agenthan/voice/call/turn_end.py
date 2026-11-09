@@ -10,14 +10,12 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 from agenthan.voice.call.defaults import CONT_WAIT_S, MODEL_HIGH, MODEL_LOW
-from agenthan.voice.dialog.rules import WAIT_REQUEST, yes_or_no
+from agenthan.voice.dialog.rules import BACKCHANNELS, FILLERS, PUNCT, WAIT_REQUEST, yes_or_no
 from agenthan.voice.hangul import BLANK, decompose
 
 Label = Literal["end", "continue", "wait_request"]
 # 직전 질문 종류 (Raux & Eskenazi 2008): 확인(예/아니요) · 닫힌(고르기·시각) · 열린
 QuestionKind = Literal["confirm", "closed", "open"]
-
-_PUNCT = re.compile(r"[.,!?~…·]+")
 
 # 연결어미 단서의 단어 예외 (검증 노트 "규칙 단서 반례"). 끝 토큰이 이 말이면 이어짐 단서가 아니다
 _NOT_GO = frozenset({"뭐라고", "최고", "창고", "재고", "참고", "광고", "사고", "망고"})
@@ -33,10 +31,6 @@ _A_EO = frozenset("ㅏㅓㅐㅘㅝㅕㅙㅔ")
 _CONJUNCTIONS = frozenset({
     "그리고", "그다음", "그다음에", "또", "근데", "그런데", "그래서", "그럼", "그러면", "아니면",
 })
-# 필러. 띄어쓰기로 본다(STT가 "음맞는"처럼 붙여 쓰면 필러가 아니다)
-_FILLERS = frozenset({
-    "음", "으음", "음음", "어", "어어", "으", "그", "저", "저기", "뭐더라", "그러니까",
-})
 # 단위 없이 끝나면 이어지는 수 (관형형). "하나·둘·셋"은 수량 답이라 끝이다.
 # "네"는 대답일 수 있어 뺀다
 _BARE_NUMBERS = frozenset({
@@ -44,8 +38,6 @@ _BARE_NUMBERS = frozenset({
     "스무", "열한", "열두", "열세", "열네",
 })
 _DIGITS_AT_END = re.compile(r"\d+$")
-# 맞장구 목록 (spec: 하나로 둔다). 듣는 중이면 답, 봇이 말하는 중이면 맞장구로 본다
-BACKCHANNELS = frozenset({"네", "예", "응", "어", "아", "음", "그래요", "네네"})
 # 해요체 '요'가 연결어미·명사 뒤에 붙은 꼴과 -는데·-거든요. 나열 중간일 때가 많아 애매로 둔다
 _AMBIGUOUS = ("고요", "랑요", "서요", "면요", "는데", "은데", "거든요")
 _FINAL_ENDINGS = ("요", "다", "까", "죠")
@@ -79,7 +71,7 @@ def question_kind(last_question: str, state: str) -> QuestionKind:
 
 
 def _tokens(text: str) -> list[str]:
-    return _PUNCT.sub(" ", text).split()
+    return PUNCT.sub(" ", text).split()
 
 
 def _before_last(token: str) -> tuple[str, str, str] | None:
@@ -154,11 +146,11 @@ def _judge(
     last = tokens[-1]
     if WAIT_REQUEST.search(" ".join(tokens)):
         return TurnEndVerdict("wait_request", "wait_request", firm=True)
-    if all(t in _FILLERS for t in tokens):
+    if all(t in FILLERS for t in tokens):
         return TurnEndVerdict("continue", "filler_only", firm=True, filler_only=True)
     if question_kind == "confirm" and yes_or_no(text) is not None:
         return TurnEndVerdict("end", "yes_no_after_confirm", firm=True)
-    if last in _FILLERS:
+    if last in FILLERS:
         return TurnEndVerdict("continue", f"filler:{last}")
     if last in _CONJUNCTIONS:
         return TurnEndVerdict("continue", f"conjunction:{last}")

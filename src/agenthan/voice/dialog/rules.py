@@ -20,7 +20,9 @@ from agenthan.voice.nlu.base import Act
 _TRAILING = re.compile(r"[\s.,!?~]+$")
 _SEP = r"[\s,.!~]+"
 
-_YES_WORD = r"(?:네|예|응|맞아요|맞아|맞습니다|좋아요|그래요|그렇게\s*해\s*주세요)"
+# 짧은 예 말. 예/아니요 판정과 맞장구 목록(`BACKCHANNELS`)이 같이 쓴다 (리뷰 S10)
+YES_SHORT = ("네", "예", "응", "그래요")
+_YES_WORD = rf"(?:{'|'.join(YES_SHORT)}|맞아요|맞아|맞습니다|좋아요|그렇게\s*해\s*주세요)"
 _NO_WORD = r"(?:아니요|아뇨|아니|아니에요|아닌데요|틀려요|틀렸어요)"
 _YES = re.compile(rf"{_YES_WORD}(?:(?:{_SEP})?{_YES_WORD})*")
 _NO = re.compile(rf"{_NO_WORD}(?:(?:{_SEP})?{_NO_WORD})*")
@@ -51,24 +53,36 @@ _REPEAT = re.compile(
 WAIT_REQUEST = re.compile(
     r"(?:잠깐|잠시)\s*만?\s*(?:요|기다려\s*(?:주세요|줘요|주실래요|줘)?)?$"
 )
-_PUNCT = re.compile(r"[.,!?~…·]+")
-# 기다림 요청 앞에 붙어도 내용이 아닌 말("음 잠깐만요", "네 잠시만요")
-_WAIT_LEAD = frozenset({"음", "으음", "어", "어어", "아", "그", "저", "저기", "잠깐", "잠시"})
+# 글을 토큰으로 나눌 때 지우는 문장부호. 끝말 규칙(`call/turn_end.py`)도 이것을 쓴다 (리뷰 S8)
+PUNCT = re.compile(r"[.,!?~…·]+")
+# 필러. 끝말 규칙의 "필러만 있는 말"·"끝 필러"와 기다림 요청 앞 머리말이 같이 쓴다 (리뷰 S9).
+# 띄어쓰기로 본다(STT가 "음맞는"처럼 붙여 쓰면 필러가 아니다)
+FILLERS = frozenset({
+    "음", "으음", "음음", "어", "어어", "으", "아", "그", "저", "저기", "뭐더라", "그러니까",
+})
+# 맞장구 목록 (spec: 하나로 둔다). 짧은 예 말 + 짧은 필러. 듣는 중이면 답, 봇이 말하는 중이면
+# 맞장구로 본다
+BACKCHANNELS = frozenset({*YES_SHORT, "네네", "어", "아", "음"})
 
 
 def wait_request_rest(text: str) -> str | None:
     """기다림 요청으로 끝나는 말이면 그 앞의 내용(없으면 ""), 아니면 None (3단계 티켓 04).
 
-    앞부분이 예/아니요·필러뿐이면 내용이 없다고 본다. 복창 중 "네, 잠시만요"가 확정이 되지 않게.
+    앞부분이 예/아니요·필러·"잠깐"뿐이면 내용이 없다고 본다. 복창 중 "네, 잠시만요"가 확정이
+    되지 않게.
     """
-    t = " ".join(_PUNCT.sub(" ", text).split())
+    t = " ".join(PUNCT.sub(" ", text).split())
     found = WAIT_REQUEST.search(t)
     if found is None:
         return None
     rest = t[: found.start()].strip()
-    if yes_or_no(rest) is not None or all(w in _WAIT_LEAD for w in rest.split()):
+    if yes_or_no(rest) is not None or all(_no_content(w) for w in rest.split()):
         return ""
     return rest
+
+
+def _no_content(word: str) -> bool:
+    return word in FILLERS or word in ("잠깐", "잠시") or yes_or_no(word) is not None
 
 
 def yes_or_no(text: str) -> str | None:

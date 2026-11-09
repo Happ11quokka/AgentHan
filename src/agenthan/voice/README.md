@@ -71,6 +71,7 @@
   - 반례 표는 `tests/voice/test_turn_end.py`(아무거나·뭐라고·짜장면·여기서·김민서·"2"·나폴)
 - 규칙 + 턴 모델 합치기(`combine_turn_end`): 점수 ≥ 0.7이면 끝남, ≤ 0.3이면 이어짐, 그 사이와 점수 없음은 규칙. 확실한 판정은 모델보다 앞선다. 마침표·종결어미는 완결된 주문(닫힌·확인 질문의 답이거나 메뉴 이름이 통째로 든 말)일 때만 확실하다. 열린 질문 뒤 "그게 다예요"처럼 메뉴 없는 끝은 낮은 점수면 기다린다(리뷰 P2. EoT-Bench 합침 오끊김 2.4% → 1.6%, Smart Turn만과 같음. 평균 대기 1.02 → 1.13초). 점수는 Smart Turn(아래, 티켓 03)이 낸다
 - 필러만 있는 말("음…")이 상한까지 안 이어지면 엔진에 넘기지 않는다(실패로 세지 않음). 지금 턴 기록의 `fillers`에 남는다
+- 낱말 목록은 `dialog/rules.py` 한 곳에 둔다: 문장부호 `PUNCT`, 필러 `FILLERS`(끝말 규칙과 기다림 요청 앞 머리말이 같이 씀. "음음 잠깐만요"는 내용 없는 기다림 요청), 맞장구 `BACKCHANNELS`(짧은 예 말 `YES_SHORT` + "어·아·음·네네", 예 판정과 같은 말을 공유)
 - 미리 해석(`nlu/prefetch.py`): 이어짐 대기를 시작할 때 붙잡은 글과 `engine.nlu_context()`로 NLU를 미리 부른다(규칙 단계에 걸리는 글·필러는 안 부름). 엔진이 같은 `(글, NluContext)`로 `parse`하면 그 결과를 쓰고, 다르면 새로 부른다. 요청 본문은 같아서 HCX 녹화본을 다시 만들지 않는다. 미리 부른 호출 시간 제한 5초(`prefetch_timeout_s`). 엔진(장바구니 변경)은 턴을 넘긴 뒤에만 돈다(스냅숏 없음)
 - JSONL: `turn_end {label, reason, path(rule·model·cap·button), score, backchannel}`, 앞선 판정 `turn_end_steps`, 이어짐 대기 `cont_wait_ms`, `nlu_prefetch {prefetched, used, discarded, miss, wait_ms}`, 버린 결과 `dropped[].backchannel`
 - 테스트: `tests/voice/test_turn_end.py`(표), `test_call_turn_end.py`(세션), `test_engine_nlu_context.py`

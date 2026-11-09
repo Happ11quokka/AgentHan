@@ -11,6 +11,7 @@ from datetime import datetime
 import pytest
 
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.call.turn_end import classify_turn_end
 from agenthan.voice.dialog.engine import DialogEngine
 from agenthan.voice.dialog.rules import wait_request_rest
 from agenthan.voice.dialog.states import State
@@ -63,6 +64,30 @@ def test_the_call_ends_on_silence_without_an_order_even_with_items_in_the_cart()
 ])
 def test_wait_request_rest(text: str, rest: str | None) -> None:
     assert wait_request_rest(text) == rest
+
+
+# 필러(끝말 규칙의 "필러만 있는 말")와 기다림 요청 앞 머리말은 같은 목록이다 (리뷰 S9)
+_FILLER_WORDS = ["음", "으음", "음음", "어", "어어", "으", "아", "그", "저", "저기", "뭐더라",
+                 "그러니까"]
+
+
+@pytest.mark.parametrize("filler", _FILLER_WORDS)
+def test_a_filler_is_both_filler_only_and_no_content_before_a_wait_request(filler: str) -> None:
+    verdict = classify_turn_end(filler, state="ordering", question_kind="open", menu_names=())
+    assert (verdict.label, verdict.filler_only) == ("continue", True)
+    assert wait_request_rest(f"{filler} 잠깐만요") == ""
+    assert wait_request_rest(f"네 {filler} 잠시만요") == ""  # 예 말 + 필러도 내용이 아니다
+
+
+def test_um_um_wait_is_a_plain_wait_request_in_the_rule_and_the_engine() -> None:
+    # 리뷰 S9: 끝말 규칙은 "음음 잠깐만요"를 기다림 요청으로 보는데 엔진은 "음음"을 내용으로
+    # NLU에 넘겼다. 둘 다 내용 없는 기다림 요청으로 본다
+    verdict = classify_turn_end("음음 잠깐만요", state="ordering", question_kind="open",
+                                menu_names=())
+    assert verdict.label == "wait_request"
+    engine = engine_at_confirm()
+    result = engine.handle("음음 잠깐만요", NOW, wait_request=True)
+    assert result.utterances == ["네, 천천히 말씀하세요."]
 
 
 def test_the_engine_marks_only_turns_that_end_with_the_final_readback() -> None:

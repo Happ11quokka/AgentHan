@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from agenthan.voice.call.turn_end import classify_turn_end, combine_turn_end, question_kind
+from agenthan.voice.dialog.rules import yes_or_no
 
 MENU = ("메도빅", "나폴레옹", "아메리카노", "블린", "꿀케이크")
 
@@ -189,6 +190,13 @@ def test_wait_requests(text: str) -> None:
 def test_backchannel_looking_utterances_are_flagged(text: str, backchannel: bool) -> None:
     # 듣는 중이면 답으로 처리하지만 기록은 남긴다(끼어들기 판정을 맞출 근거, spec 이야기 14)
     assert judge(text).backchannel is backchannel
+
+
+@pytest.mark.parametrize("word", ["네", "예", "응", "그래요"])
+def test_short_yes_words_are_both_a_yes_and_a_backchannel(word: str) -> None:
+    # 리뷰 S10: 예 판정과 맞장구 목록이 같은 말을 따로 적지 않는다. 문맥이 가른다
+    assert yes_or_no(word) == "yes"
+    assert judge(word).backchannel is True
 
 
 @pytest.mark.parametrize(
