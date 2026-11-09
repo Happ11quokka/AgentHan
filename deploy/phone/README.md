@@ -72,6 +72,14 @@ docker run --rm --network agenthan-phone_default cloudflare/cloudflared:latest t
 
 출력의 `https://<임의>.trycloudflare.com/phone`을 연다. 주소는 실행마다 바뀌고 SSE는 안 된다(WS는 됨). 서버가 아예 없으면 노트북에서 `uv run python -m agenthan.voice.server` 뒤 `cloudflared tunnel --url http://localhost:8000`.
 
+## 6. Smart Turn (말 끝 판정 모델, 3단계)
+
+- 무엇: 손님 오디오로 "말이 끝났을 확률"을 내는 오픈 모델(Pipecat Smart Turn v3.2 CPU int8 ONNX, 8.7MB, BSD-2). 서버 안 `phone-turn-*` 스레드 2개에서 돌고 외부 API는 부르지 않는다. 끝말 규칙과 합쳐 말이 끝났는지 정한다. 자세한 것은 `src/agenthan/voice/README.md` "3단계: Smart Turn"
+- 빌드 때 받는다: `Dockerfile`이 Hugging Face 고정 리비전(`f766f81d…`)에서 `ADD --checksum=sha256:2bb02631…`으로 `/app/models/smart-turn-v3.2-cpu.onnx`에 받는다. SHA-256이 다르면 빌드가 실패한다. 그래서 첫 빌드와 캐시가 없는 빌드는 서버에서 huggingface.co로 나가는 HTTPS가 돼야 한다(ACG 아웃바운드 전체). 라이선스 고지 `NOTICE-smart-turn.txt`가 모델 옆에 같이 들어간다
+- 이미지 크기: 모델 8.7MB와 `onnxruntime`·`numpy` 때문에 약 150MB 커진다
+- 앱이 뜰 때 체크섬을 다시 확인한다. `deploy.sh logs app`에 `말 끝 판정: 끝말 규칙 + Smart Turn`이 나오면 켜진 것이다. 파일이 없거나 틀리면 경고를 남기고 `끝말 규칙만`으로 뜬다(통화는 막지 않는다)
+- 끄기: 문제가 있으면 `deploy/phone/.env`에 `PHONE_TURN_MODEL=off`를 적고 `docker compose -f deploy/phone/compose.yaml up -d app`(빌드 없이). 끝말 규칙만으로 돈다. 모델 경로 `PHONE_TURN_MODEL_PATH`는 이미지에 들어 있으니 적지 않는다
+
 ## 키 규칙
 
 - 키는 `deploy/phone/.env`(서버, `chmod 600`)에만. compose가 실행할 때 `app`에 환경 변수로 넣는다. Caddy에는 안 준다

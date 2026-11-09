@@ -41,7 +41,7 @@
 - 내리는 오디오: `call/frames.py` (8바이트 헤더 kind·flags·seq·turn + PCM16LE 16kHz, 약 200ms 조각). TTS PCM을 200ms로 자르는 것은 세션이 한다
 - 대사 → TTS 문장(150자 이하) 나누기, TTS 동시 2개·문장 순서 보내기도 세션이 한다(`call/sentences.py`)
 - 무음 감지(`call/vad.py`): RMS 임계값 1,500, 말 시작 200ms, 말 끝 무음 400ms (티켓 07에서 녹음 17개로 맞춤, 시작값은 500/200/500). 근거는 `VadSettings` 주석. 시작값 500에서는 배경 소리(RMS 400~1,900) 때문에 17개 중 12개가 녹음 안에서 말 끝을 못 잡았고, 지금 값은 17개 모두 잡는다. 3단계부터 `epFlag`는 무음 250ms(`ep_silence_ms`)에 먼저 보내고 턴 판정은 400ms에 한다(아래 3단계 지연 개선). 코드에서는 `SessionSettings(vad=VadSettings(...))`, 서버에서는 `PHONE_VAD_THRESHOLD`·`PHONE_VAD_START_MS`·`PHONE_VAD_END_SILENCE_MS`·`PHONE_VAD_EP_SILENCE_MS`로 바꾼다
-- 조각 합치기: 결과가 왔을 때 결과 끝 뒤에 **새로 시작한** 말 구간(200ms 이상)이 있으면 붙잡는다. epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 써 둔 epFlag의 응답을 기다리는 중이어도 붙잡고, 턴은 epFlag 응답으로 넘긴다(티켓 10: CLOVA는 90ms 쉼에서도 gap 조각을 낸다. 07 실측 "나폴|레옹도", "맥도비 두개랑|아이스…"). 배경 소리 때문에 "말하는 중"이 안 풀려도 3초(`hold_cap_s`) 안에 넘긴다. 버린 결과(반이중·확정 뒤·통화 끝)는 JSONL `dropped`에 남는다. 붙잡은 뒤 1.8초(`hold_max_s`, 3단계 임시 실측값) 안에 새 결과가 없으면 턴을 넘긴다(`end_by: hold_timeout`). 그때 이어진 말이 아직 열려 있거나 그 `epFlag` 응답을 기다리는 중이면 3초(`hold_cap_s`)까지 기다린다. 봇 첫 소리가 나가면 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다. 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이거나 첫 소리 전이면 다음 턴에 합쳐지고, 봇 소리가 나간 뒤에 한 말이면 버려진다). 3단계 끝남/이어짐 판정이 이어짐 글("-랑" 등)이면 합친다(아래 3단계)
+- 조각 합치기: 결과가 왔을 때 결과 끝 뒤에 **새로 시작한** 말 구간(200ms 이상)이 있으면 붙잡는다. epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 써 둔 epFlag의 응답을 기다리는 중이어도 붙잡고, 턴은 epFlag 응답으로 넘긴다(티켓 10: CLOVA는 90ms 쉼에서도 gap 조각을 낸다. 07 실측 "나폴|레옹도", "맥도비 두개랑|아이스…"). 배경 소리 때문에 "말하는 중"이 안 풀려도 마지막으로 글을 붙잡은 때부터 3초(`hold_cap_s`) 안에 넘긴다(리뷰 C4: 새 글이 오면 다시 센다). 버린 결과(반이중·확정 뒤·통화 끝)는 JSONL `dropped`에 남는다. 붙잡은 뒤 1.8초(`hold_max_s`, 3단계 임시 실측값) 안에 새 결과가 없으면 턴을 넘긴다(`end_by: hold_timeout`). 그때 이어진 말이 아직 열려 있거나 그 `epFlag` 응답을 기다리는 중이면 마지막 글부터 3초(`hold_cap_s`)까지 기다린다. 봇 첫 소리가 나가면 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다. 1.4초 쉼(D5)은 두 턴이 된다(뒤쪽 말은 엔진 중이거나 첫 소리 전이면 다음 턴에 합쳐지고, 봇 소리가 나간 뒤에 한 말이면 버려진다). 3단계 끝남/이어짐 판정이 이어짐 글("-랑" 등)이면 합친다(아래 3단계)
 - STT 오인식 대응(티켓 10): 메뉴 매처는 자모 혼동 비용 표(`hangul.confusable_distance`)로 잰다(맥도빅 0.94, 맥도비 0.89, 나폴내용 0.92). 거절 경계는 0.6 → 0.7(맥도날드·블루베리 거절). 옵션은 대상어 퍼지 창 + 빼는 말(`dialog/options.py`, "샤워크림은 빼 주세요" → 사워크림 빼기, "빼지 마세요"는 거름). CLOVA CONFIG에 가게 메뉴 이름·별칭·옵션 대상어를 `keywordBoosting` weight 3으로 넣는다(`stt/boost.py`). 4분 30초 재연결 때 앞 연결은 epFlag 응답을 받은 뒤 쓰기를 닫는다
 - 지연 기록(`call/latency.py`): `<log_dir>/phone-YYYYMMDD.jsonl`, 턴마다 한 줄. 기본 `logs/`
 - 가짜 STT·TTS·시계: `call/fakes.py` (테스트와 키 없는 개발 서버용)
@@ -62,7 +62,7 @@
 
 ## 3단계: 말 끝 판정 (`call/turn_end.py`, 티켓 02)
 
-- 흐름: 조각 붙잡기가 손님 말 하나를 만들면 세션이 끝말 규칙으로 판정한다. **끝남**·**기다림 요청**이면 바로 엔진으로, **이어짐**이면 판정 중 국면에서 마지막 말 끝(마지막 유성 프레임 도착) + 2.0초(`cont_wait_s`, `PHONE_CONT_WAIT_S`)까지 기다린다. 그 안에 다시 말하면 합쳐서 처음부터 다시 판정하고, 말하는 중이면 그 말 끝부터 다시 센다. 대기 전체 상한은 8초(`cont_max_s`). 국면 값은 화면에 `listening` 그대로 나간다
+- 흐름: 조각 붙잡기가 손님 말 하나를 만들면 세션이 끝말 규칙으로 판정한다. **끝남**·**기다림 요청**이면 바로 엔진으로, **이어짐**이면 판정 중 국면에서 마지막 말 끝(마지막 유성 프레임 도착) + 2.0초(`cont_wait_s`, `PHONE_CONT_WAIT_S`)까지 기다린다. 그 안에 다시 말하면 합쳐서 처음부터 다시 판정하고, 말하는 중이면 그 말 끝부터 다시 센다. 대기 전체 상한은 대기 중 마지막으로 글이 들어온 때부터 8초(`cont_max_s`, 리뷰 P3)다. 글이 계속 들어오는 긴 주문은 쪼개지 않고, 글 없는 배경 소리가 "말하는 중"을 붙잡을 때만 상한에서 넘긴다. 국면 값은 화면에 `listening` 그대로 나간다
 - 이어짐 마감은 조각 붙잡기(`hold_max_s`)와 다른 타이머라 붙잡기가 마감을 덮어쓰지 않는다. 대기 중 "말 끝" 버튼은 기다린 말로 바로 끝낸다
 - 끝말 규칙(`classify_turn_end`, 순수 함수): 글·대화 상태·직전 질문 종류(`question_kind`: 확인/닫힌/열린)·메뉴 이름 → 라벨·근거·`firm`(확실함)·`filler_only`·`backchannel`
   - 이어짐: 끝 토큰이 연결어미(-랑·-고·-아서/-어서·-면, 단어 예외 목록), 접속사(그리고·또·근데·그럼…), 필러(음·어·저기…, 띄어쓰기로 봄), 단위 없는 수(두·세·"2"), 메뉴 이름 앞부분("나폴")
@@ -82,7 +82,7 @@
 - onnxruntime 공식 빌드는 리눅스에서도 1DS로 Microsoft에 사용 기록을 보내는 것이 기본이다(휠의 `Privacy.md`). `smart_turn.py`가 런타임이 뜨기 전에 `ORT_DISABLE_TELEMETRY=1`을 두고 `disable_telemetry_events()`를 부른다. 이미지에도 같은 ENV가 있다
 - 라이선스: Smart Turn 코드·모델 BSD-2-Clause(Daily), 바탕 `openai/whisper-tiny` Apache-2.0, 평가 데이터 LiveKit EoT-Bench CC-BY-4.0(평가에만 쓰고 저장소에 넣지 않는다). 이미지에는 `deploy/phone/NOTICE-smart-turn.txt`가 모델 옆(`/app/models/`)에 같이 들어간다
 - 언제 도나: 무음 감지가 말 끝(무음 400ms)을 볼 때마다 한 번. 통화마다 최근 8초 링 버퍼(봇이 말하는 동안 들어온 프레임은 넣지 않음)의 사본을 전용 2스레드 풀(`phone-turn-*`, 프로세스에 하나)에서 점수 낸다. ONNX 세션 하나를 모든 통화가 같이 쓰고 intra_op 1. 새 말 구간이 시작되면 앞 점수는 버리고, 이어짐 대기 중에는 버퍼를 비우지 않아 다음 말 끝에서 턴 전체를 다시 본다. 턴을 넘기면 비운다
-- 판정: `combine_turn_end`에 점수를 넘긴다(0.7 이상 끝남, 0.3 이하 이어짐, 그 사이 규칙, 확실한 규칙이 먼저). 판정 때 점수가 아직 없으면(`late`)·실패면(`error`) 규칙만. 기다리지 않는다: 말 끝(400ms)부터 STT 확정 글(말 끝 + 0.9~1.1초)까지가 모델의 시간이다(맥 1스레드 약 50ms)
+- 판정: `combine_turn_end`에 점수를 넘긴다(0.7 이상 끝남, 0.3 이하 이어짐, 그 사이 규칙, 확실한 규칙이 먼저). 판정 때 점수가 아직 없으면(`late`)·실패면(`error`) 규칙만. 보통은 기다릴 일이 없다: 말 끝(400ms)부터 STT 확정 글(말 끝 + 0.9~1.1초)까지가 모델의 시간이다(맥 1스레드 약 50ms). 다만 조기 `epFlag` 응답이 말 끝(400ms) 전에 와서 말 끝에 넘기는 빠른 경로는 같은 순간에 낸 점수를 `turn_score_wait_s`(150ms)까지 기다린다(리뷰 C5. 안 그러면 늘 `late`). 새 말 구간·봇 턴·통화 끝에서는 줄 서 있는 점수 작업을 취소해 공유 풀을 비운다(리뷰 C7, 감사 11번)
 - 입력 규칙은 원본과 같다: 16kHz mono, 8초보다 길면 앞을 자르고 짧으면 앞에 0을 채움, 8초 전체로 정규화. 특징(Whisper 로그 멜)은 `transformers` 없이 numpy로 만든다. 런타임 의존성은 `onnxruntime`·`numpy`
 - 설정: `PHONE_TURN_MODEL`(기본 `smart_turn`, `off`로 끔), `PHONE_TURN_MODEL_PATH`(기본 `/app/models/smart-turn-v3.2-cpu.onnx`), `PHONE_TURN_LOW`/`PHONE_TURN_HIGH`(0.3/0.7). 라우터를 만들 때 모델을 한 번 열고 SHA-256을 고정값과 비교한다. 파일이 없거나 틀리거나 못 열면 경고 로그를 남기고 끝말 규칙만으로 뜬다(통화는 막지 않음). 로컬에서 쓰려면 저장소 루트에서 `uv run python -m agenthan.voice.fetch_turn_model`로 받는다(`fetch_turn_model.py`). 이미지와 같은 고정 리비전·SHA-256(`smart_turn.py`의 `MODEL_URL`·`MODEL_SHA256`)으로 gitignore된 `models/smart-turn-v3.2-cpu.onnx`에 두고, 체크섬이 틀리면 파일을 남기지 않는다. 서버는 `PHONE_TURN_MODEL_PATH="$PWD/models/smart-turn-v3.2-cpu.onnx"`로 띄우고 시작 로그 `말 끝 판정: 끝말 규칙 + Smart Turn`을 확인한다. 모델 파일은 커밋하지 않는다(`.gitignore`의 `models/`·`*.onnx`)
 - 배포: `deploy/phone/Dockerfile`이 Hugging Face 고정 리비전에서 `ADD --checksum`으로 받는다(틀리면 빌드 실패). 이미지가 약 150MB 커진다(의존성 + 모델 8.7MB)
@@ -107,23 +107,25 @@
 - 기본은 반이중 그대로다. 봇이 말하는 동안 브라우저는 0 프레임을 보낸다
 - 아래로: `state`에 `interruptible`(봇 소리가 나가는 중이고 막는 턴이 아니면 참). `bot.done`에 끊긴 턴이면 `interrupted: true`(그때 `sentences`는 보낸 문장 수)
 - 위로: `user.interrupt {turn}`(버튼), `playback.interrupted {turn, seq, played_ms}`(브라우저가 멈춘 자리. `played_ms`는 그 문장 첫 소리부터, 스피커 지연을 뺀 값)
-- 막는 턴: 최종 복창(CONFIRM으로 끝나는 턴), 마무리·사장님 연결 안내·취소(TERMINAL). 인사는 허용. 서버도 막는 턴의 끊기를 받지 않아서, 복창 중 버튼 + "네"로 총액을 못 듣고 확정되는 길이 없다
+- 막는 턴: 최종 복창 턴(엔진이 `TurnResult.readback`으로 알린다, 리뷰 C6. CONFIRM 상태여도 "네, 천천히 말씀하세요"·"잘 못 들었어요" 턴은 끊을 수 있다), 마무리·사장님 연결 안내·취소(TERMINAL). 인사는 허용. 서버도 막는 턴의 끊기를 받지 않아서, 복창 중 버튼 + "네"로 총액을 못 듣고 확정되는 길이 없다
 - 서버: 끊으면 문장 보내기 작업(`_speak`)을 취소해 남은 TTS 합성과 `bot.say`를 멈추고, 송신 큐에 남은 그 턴 오디오·자막을 버리고, 바로 듣기로 간다. 문장 보내기는 턴 작업과 따로 돌아서 끼어든 말의 엔진 호출이 남은 TTS를 기다리지 않는다. 엔진은 되돌리지 않는다(소리가 나간 턴은 들었다고 본다)
 - 브라우저(`phoneCall.interrupt`, `Player.interrupt`): 재생을 멈추고, 그 턴 이하 오디오를 헤더 `turn`으로 버리고, 마이크를 서버 답 없이 바로 연다. 끊은 턴의 `playback.done`은 보내지 않는다
 - JSONL: `interrupt {by, seq, played_ms, heard: [{seq, heard(heard·partial·unheard), ms, played_ms, chars}]}`, `marks.interrupted`. `ms`는 보낸 문장 소리 길이(보내기 전에 끊긴 문장은 `null`), `chars`는 일부 들은 문장의 들은 글자 수 어림(글자 비율)
+- 끊긴 턴 기록은 브라우저 `playback.interrupted`(들은 만큼)가 올 때까지 열어 둔다. 끊는 순간 대기 중이던 말이 다음 턴을 먼저 열어도 보고가 오면 바로 닫아 쓴다. 끝내 안 오면 그다음 턴을 열 때 닫는다(리뷰 C2)
+- 복창 앞 "네" 거르기(리뷰 P1): 최종 복창 첫 문장을 합성하는 동안(첫 소리 전) 한 "네"·맞장구는 대기했다가 재생이 끝난 뒤 버린다. 말한 시각(`start_ms`)으로 본다. 반이중은 첫 소리 전에 시작한 말, 음성 끼어들기는 금액 문장 끝 전에 시작한 말이다. 정정("아니 두 개요")은 받는다. 버린 말은 JSONL `dropped[] {reason: early_yes}`
 - 무응답 타이머는 티켓 04가 `_after_playback`(재생 끝·끊김 둘 다)에 건다
 - 테스트: `tests/voice/test_call_interrupt.py`, 웹 `callState.test.ts`·`phoneCall.test.ts`
 
 ## 3단계: 무응답·되묻기·"잠깐만요" (티켓 04)
 
 - 엔진이 할 말을 정하고(`dialog/engine.py`, `templates.py`) 세션은 타이머만 맡는다
-  - `engine.no_input(now)`: 1·2번째는 "여보세요?" + 직전 질문(`_question_again`, 복창 중이면 지금 장바구니 복창). 3번째(`MAX_NO_INPUT`)는 "연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요." 뒤 DONE(Order 없음). 횟수는 받아들인 말(unknown이 아닌 act가 하나라도 있는 `handle`)에 0. 못 알아들음 실패 횟수와 따로 센다
+  - `engine.no_input(now)`: 1·2번째는 "여보세요?" + 직전 질문(`_question_again(short=True)`, 복창 중이면 지금 장바구니 복창). 직전 질문 앞의 안내·사과 문장은 빼고 질문 문장만 한다(`templates.question_only`, 감사 문제 A). 영업 종료 뒤 거절은 "9시 전에 몇 시쯤 오세요?"처럼 짧은 질문을 따로 둔다(`_ask(again=…)`). 못 알아들음("죄송해요, 잘 못 알아들었어요.") 뒤도 같고, 손님이 "뭐라고요?"라고 하면 앞 문장까지 통째로 다시 한다. 3번째(`MAX_NO_INPUT`)는 "연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요." 뒤 DONE(Order 없음). 횟수는 받아들인 말(unknown이 아닌 act가 하나라도 있는 `handle`)에 0. 못 알아들음 실패 횟수와 따로 센다
   - `engine.handle(text, now, wait_request=True)`: 앞부분이 없거나 예/아니요·필러뿐이면 NLU 없이 "네, 천천히 말씀하세요."(실패로 안 셈, 무응답 횟수 0). 앞부분이 있으면 그것만 해석하고, 주문 중이면 다음 질문 문장 대신 "천천히 말씀하세요."(직전 질문은 남아 다음 되묻기가 한다). 복창 중에는 "네, 잠시만요"가 확정이 되지 않는다
   - `engine.not_heard(now)`: "죄송해요, 잘 못 들었어요. 다시 말씀해 주세요." 실패·무응답 횟수 둘 다 그대로
-- 세션 무음 타이머: `_after_playback`(`playback.done`·안전망·말 끊기)에서 `no_input_s` 6초(`PHONE_NO_INPUT_S`), 지난 손님 말이 기다림 요청이면 `wait_request_s` 15초(`PHONE_WAIT_REQUEST_S`). VAD 말 구간 중에는 멈추고 그 말 끝(무음 400ms)부터 다시 센다. 손님 말을 붙잡거나 판정하는 중이면 기다린다. 글 없는 소리가 계속 와도 처음 마감 + 6초(`no_input_slack_s`)에는 되묻는다. 되묻기는 `bot_turn("no_input", …)`로 새 턴 번호를 받는다
+- 세션 무음 타이머: `_after_playback`(`playback.done`·안전망·말 끊기)에서 `no_input_s` 6초(`PHONE_NO_INPUT_S`), 지난 손님 말이 기다림 요청이면 `wait_request_s` 15초(`PHONE_WAIT_REQUEST_S`). VAD 말 구간 중에는 멈추고 그 말 끝(무음 400ms)부터 다시 센다. 손님 말을 붙잡거나 판정하는 중이면 기다린다. 글 없는 소리가 계속 와도 처음 마감 + 6초(`no_input_slack_s`)에는 되묻는다. 다만 그때 손님이 말하는 중(VAD 말 구간)이면 끼어들지 않고 그 말이 끝나자마자 되묻는다(리뷰 P4). 쉼(무음 400ms) 없는 말 구간이 8초(`no_input_speech_max_s`)를 넘으면 말이 아니라 끊기지 않는 배경 소리로 보고 상한에서 되묻는다(감사 2번. 안 그러면 소음이 `max_call_s` 600초까지 되묻기를 막는다). 둘 다 `SessionSettings` 값이다. 되묻기는 `bot_turn("no_input", …)`로 새 턴 번호를 받는다
 - 말했는데 글 없음: 그 `epFlag`까지 말소리 프레임이 500ms(`not_heard_min_ms`) 이상인데 빈 `epFlag` 응답이 오면, 1초(`not_heard_wait_s`) 안에 글 있는 결과(늦은 gap 조각)가 없을 때 `bot_turn("not_heard", …)`. 어댑터 재연결 `eof`, 말 없이 누른 버튼, 말하는 중, 판정 중이면 하지 않는다. JSONL `empty[].voiced_ms`
 - 대화가 끝나 서버가 통화를 끝낼 때 `call.ended {turn, reason}`을 보낸다(reason: confirmed · handoff · cancelled · no_input). 그 턴 JSONL에 `end_reason`. 위로 오는 `call.end`는 손님이 끊은 것이다(리뷰 S13에서 이름을 나눔). 브라우저는 이유를 남겼다가 소켓이 닫히면 통화 종료 화면에 적는다("통화가 끝났어요 · 말씀이 없어 끊었어요"). 가짜 휴대폰은 `end_reason`에 남긴다
-- 테스트: 시나리오 `s22`~`s25`(`scenario_runner`에 `{"event": "no_input"|"not_heard"}`·`"wait_request": true` 턴), `test_engine_no_input.py`, `test_call_no_input.py`(세션)
+- 테스트: 시나리오 `s22`~`s26`(`scenario_runner`에 `{"event": "no_input"|"not_heard"}`·`"wait_request": true` 턴, 대사 전체를 보는 `expect_say_exact`), `test_engine_no_input.py`, `test_call_no_input.py`(세션)
 
 ## 3단계: 음성 끼어들기 (`call/barge.py`, 티켓 06)
 
@@ -136,7 +138,7 @@
 - 멈추면 버튼과 같은 자리에서 끊는다(남은 TTS·`bot.say` 취소, 듣기로, 무음 타이머 시작). 끼어든 말은 진행 중인 말이라 무음 타이머는 그 말 끝까지 기다린다. 들은 만큼은 서버가 오디오 시각으로 어림해 두고(`interrupt.est`), 브라우저 `playback.interrupted`가 오면 그 값으로 바꾼다
 - 아래로: `bot.duck {turn}`, `bot.unduck {turn}`, `bot.stop {turn}`. 브라우저는 봇 목소리를 GainNode로 약 -18 dB 페이드(약 150ms, 되돌리기 약 80ms)하고, 다음 턴 소리가 오면 원래 크기로 돌린다. `bot.stop`이면 재생을 멈추고 그 턴 이하 오디오를 버리고 `playback.interrupted`를 보낸다(복창처럼 버튼이 막힌 턴에서도)
 - JSONL: 봇 말 턴마다 `barge {kind(blocked·open·readback), stop_ms, rms{frames,p50,p95,max}, events[{act, by(sound·text), at_ms, shadow?}], results[{start_ms, end_ms, text, verdict}]}`. 버린 결과 `dropped[].barge`에 판정. 음성으로 끊은 턴은 `interrupt {by: voice, reason, seq, played_ms, heard, report_ms}`(`report_ms`는 `bot.stop` → 브라우저 보고). 손님 턴마다 `listen_rms {voiced, quiet}`(그 말을 듣는 동안 말소리 프레임·말 구간 밖 프레임의 RMS, 문턱을 정하는 근거)
-- 측정 요약: `uv run python -m agenthan.voice.call.barge_summary logs/phone-YYYYMMDD.jsonl`(숫자만. 통화별 마이크 설정·에코 바닥·줄이기/멈춤 수, 판정별 수, 멈춤 지연, 듣는 동안 RMS, Smart Turn 점수 대역). 실기기 시험 순서표는 `.scratch/phone-s3-turn-management/device-check.md`
+- 측정 요약: `uv run python -m agenthan.voice.call.barge_summary logs/phone-YYYYMMDD.jsonl`(서버를 다른 `PHONE_TURN_LOW/HIGH`로 띄웠으면 `--low`·`--high`로 같은 값. 숫자만. 통화별 마이크 설정·에코 바닥·줄이기/멈춤 수, 판정별 수, 멈춤 지연, 듣는 동안 RMS, Smart Turn 점수 대역). 실기기 시험 순서표는 `.scratch/phone-s3-turn-management/device-check.md`
 - 실기기 시험용 웹 선택: 주소 뒤 `?mic_first=1`(재생 컨텍스트를 마이크 허용 뒤에 만듦, T4), `?agc=0`(자동 음량 끔, T5). `call.start.ctx_order`에 남는다
 - 테스트: `tests/voice/test_call_barge_in.py`(세션), `test_barge_summary.py`, 웹 `bargeIn.test.ts`·`callState.test.ts`·`phoneCall.test.ts`
 
@@ -157,6 +159,7 @@
   - gRPC DNS: `PHONE_STT=clova`면 `adapters.py`가 `grpc`를 import하기 전에 `GRPC_DNS_RESOLVER`가 비어 있을 때 `native`로 둔다. 맥에서 gRPC 기본 DNS(c-ares)가 "Could not contact DNS servers"(`stt_disconnected`)로 실패해서다. 다른 값을 쓰려면 환경 변수나 `.env`에 `GRPC_DNS_RESOLVER=ares`처럼 적는다
 - 통합(`app/`, 11/17): `app.include_router(phone_router(store=..., config=StoreConfig(store_name=...), order_sink=..., settings=VoiceSettings.from_env()))`. 라우터에는 가짜 기본값이 없다(가게 지식·설정·`OrderSink`를 넣는다). `server.py`는 더미 가게로 띄우는 개발용이라 `app/`은 쓰지 않는다
 - 연결 하나 = `CallSession` 하나. 읽기 작업 하나가 받고, 보내기는 세션의 송신 작업 하나만 한다. 끊기거나 세션이 끝나면 STT를 닫고 JSONL을 쓴 뒤 소켓을 닫는다
+- 손님 쪽이 갑자기 끊겨 송신이 실패하면(Starlette `WebSocketDisconnect`, uvicorn `ClientDisconnected`) `WsOutbound`가 포트 예외 `ClientGone`으로 바꾸고, 세션은 traceback 없이 한 줄만 남기고 통화를 끝낸다. 그 밖의 송신 실패는 traceback을 남긴다(감사 문제 B)
 - 테스트: `tests/voice/test_phone_ws.py`(TestClient WebSocket), `test_phone_settings.py`, `test_phone_server.py`
 
 ## 2단계: 끝-끝 측정 (`fake_phone/`, 티켓 07)
