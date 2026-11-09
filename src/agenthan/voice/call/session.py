@@ -378,6 +378,7 @@ class CallSession:
         self._voiced_ms = 0  # 이번 말 구간의 말소리 프레임 길이
         self._ep_voiced_ms = 0  # 마지막 epFlag 프레임까지의 말소리 길이 (빈 응답 되묻기 기준)
         self._end_reason: str | None = None  # 대화가 끝난 이유 (`call.ended`)
+        self._ended_by: str | None = None  # 통화가 끝난 이유 (`_end`, 끝내는 길 전부)
         self._not_heard_timer = OneShot(self._on_not_heard_timer)
         # 음성 끼어들기 (티켓 06). 설정이 켜져 있고 브라우저가 할 수 있다고 알린 통화만 만든다
         self._barge: BargeTracker | None = None
@@ -527,10 +528,10 @@ class CallSession:
             if record is not None:
                 record.client.update({k: v for k, v in event.items() if k not in ("type", "turn")})
         elif kind == "call.end":  # 손님이 끊었다
-            self._end()
+            self._end("hangup")
 
     async def close(self) -> None:
-        self._end()
+        self._end("hangup")  # 아직 안 끝났으면 손님 쪽이 먼저 사라진 것이다(소켓 끊김·서버 종료)
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
@@ -577,12 +578,12 @@ class CallSession:
             except ClientGone as err:  # 손님이 끊었다. 보통 일이라 한 줄만 (감사 문제 B)
                 log.info("손님 연결이 끊겨 송신을 멈추고 통화를 끝냄 (%s): %s", self.call_id, err)
                 self._broken = True
-                self._end()
+                self._end("hangup")
                 return
             except Exception:
                 log.info("송신 실패, 통화를 끝냄 (%s)", self.call_id, exc_info=True)
                 self._broken = True
-                self._end()
+                self._end("error")
                 return
             if on_sent is not None:
                 on_sent()
@@ -1343,7 +1344,7 @@ class CallSession:
             self._close_window(turn)
         if self._terminal:
             self._say_call_end(turn)
-            self._end()
+            self._end(self._end_reason or "done")
             return
         self._phase = "listening"
         self._emit_state()
@@ -1611,9 +1612,17 @@ class CallSession:
                 record.fields["error_detail"] = detail
         self._emit({"type": "error", "turn": self._turn, "code": code, "message": message,
                     "retry": retry})
-        self._end()
+        self._end("error")
 
-    def _end(self) -> None:
+    def _end(self, reason: str) -> None:
+        """통화를 끝내는 길은 모두 여기를 지난다. 처음 부른 이유가 이 통화가 끝난 이유다.
+
+        이유: confirmed · handoff · cancelled · no_input(대화가 끝남, `call.ended`와 같음) ·
+        hangup(손님이 끊음·소켓 끊김) · error(어댑터·엔진 오류, 엔진 시간 초과, 통화 길이 초과).
+        여러 번 불러도 된다(`close()`가 한 번 더 부른다). 정리는 매번 하고 이유는 처음 것만 둔다
+        """
+        if self._ended_by is None:
+            self._ended_by = reason
         self._quiet_timer.cancel()
         self._not_heard_timer.cancel()
         self._hold_timer.cancel()
