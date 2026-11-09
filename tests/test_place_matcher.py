@@ -359,6 +359,23 @@ def test_client_retry_policy(monkeypatch, code, api_status):
     assert sleeps == ([0.25, 0.5] if retryable else [])
 
 
+@pytest.mark.parametrize("error", [http.client.IncompleteRead(b""), ConnectionResetError()])
+def test_truncated_read_is_retried_until_success(monkeypatch, error):
+    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-test-key")
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(request)
+        if len(calls) < 5:
+            raise error
+        return response()
+
+    monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
+    assert clova.embed_text("hello") == vector()
+    assert len(calls) == 5
+
+
 def test_client_retry_can_succeed(monkeypatch):
     monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-test-key")
     calls = []
@@ -400,9 +417,11 @@ def test_client_errors_never_expose_key(monkeypatch, capsys, failure):
         return response(code=secret)
 
     monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
     with pytest.raises(clova.ClovaEmbeddingError) as error:
         clova.embed_text("hello")
-    assert len(calls) == 1
+    # Truncated reads are retried; other failures are not.
+    assert len(calls) == (clova.TRANSPORT_RETRIES + 1 if failure == "http_protocol" else 1)
     assert secret not in str(error.value)
     assert secret not in "".join(traceback.format_exception(error.value))
     assert secret not in repr(capsys.readouterr())
