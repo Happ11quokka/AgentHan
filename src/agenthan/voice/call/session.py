@@ -1140,7 +1140,7 @@ class CallSession:
             said = " ".join(result.utterances)
             self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.owner_question is not None:
-            self._ask_owner(result.owner_question)
+            self._open_owner_question(result.owner_question)
         if result.order is not None:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -1669,7 +1669,7 @@ class CallSession:
     # (`_owner_replied`)으로 들어와 큐에 쌓이고, 듣는 중이 되면 봇이 먼저 말하는 턴으로 엔진
     # `owner_answered`에 넣는다. 시간 초과·미루는 조건(VAD·말 끝 대기)·무응답 타이머 멈춤은 티켓 06
 
-    def _ask_owner(self, question: OwnerQuestion) -> None:
+    def _open_owner_question(self, question: OwnerQuestion) -> None:
         self._owner_open = question.number
         self._tell_owner(lambda owner: owner.open_question(self.call_id, question,
                                                            self._owner_replied))
