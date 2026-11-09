@@ -420,3 +420,81 @@ def test_customer_speech_after_a_voice_stop_holds_the_no_input_timer(tmp_path) -
     c = run(call())
     # 되묻기 봇 턴이 끼었다면 턴 2는 봇 턴이고 손님 말은 턴 3이 됐을 것이다
     assert c.out.of("stt.final", 2)[0]["text"] == "블린도 두 개 주세요"
+
+
+# ---------------------------------------------------------------- 감사 4번: 티켓 06 빈칸
+
+
+def test_no_new_duck_within_one_second_after_a_barge_in_is_settled(tmp_path) -> None:
+    # 맞장구로 되돌린 뒤 `backoff_ms`(1초) 안에 시작한 소리는 줄이지 않는다. 그 뒤 소리는 줄인다
+    async def call() -> Call:
+        async with barge_call(tmp_path, ["메도빅 하나요", "네", "네", "네"]) as c:
+            await start(c)
+            await to_speaking(c)
+            # "네" 0.5초. 가짜 STT 글은 epFlag 뒤 오디오 0.6초에 와서 되돌림은 소리 끝 + 약 0.9초다
+            await c.feed(tone(500) + silence(1_000))
+            await c.out.wait_for("bot.unduck", turn=1)
+            await c.feed(tone(400))  # 되돌린 직후: 줄이기 문턱(0.25초)을 넘어도 그대로
+            assert kinds(c) == [("bot.duck", 1), ("bot.unduck", 1)]
+            await c.feed(silence(1_200))
+            await c.feed(tone(300))  # 1초가 지났다
+            return c
+
+    c = run(call())
+    assert kinds(c) == [("bot.duck", 1), ("bot.unduck", 1), ("bot.duck", 1)]
+    record = next(line for line in lines(c) if line["turn"] == 1)
+    events = record["barge"]["events"]
+    assert [e["act"] for e in events] == ["duck", "unduck", "duck"]
+    assert events[2]["at_ms"] - events[1]["at_ms"] >= 1_000
+
+
+async def to_closing(c: Call) -> None:
+    """복창에 "네" → 마무리("…준비해 둘게요. 감사합니다.")를 말하는 중."""
+    await to_readback(c)
+    await c.feed(silence(LONG_MS + 200))
+    await c.say(speech_ms=500)
+    await c.out.wait_for("bot.done", turn=4)
+
+
+def test_the_closing_words_cannot_be_barged_in_by_voice(tmp_path) -> None:
+    async def call() -> Call:
+        async with barge_call(tmp_path, [*READBACK, "네", "아니 잠깐만요 하나 더요"]) as c:
+            await to_closing(c)
+            assert c.out.of("order")[0]["order"]["status"] == "confirmed"
+            await c.feed(tone(1_500) + silence(1_200))  # 멈춤 문턱(1초)을 넘는 말
+            await asyncio.sleep(0.05)
+            assert c.out.of("call.ended") == []  # 아직 마무리를 말하는 중
+            await c.played(4)
+            await asyncio.wait_for(c.session.wait_done(), 3.0)
+            return c
+
+    c = run(call())
+    assert [k for k in kinds(c) if k[1] == 4] == []
+    assert c.out.of("stt.final", 5) == []
+    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 4, "reason": "confirmed"}]
+    record = next(line for line in lines(c) if line["turn"] == 4)
+    assert record["barge"]["kind"] == "blocked"
+    assert "interrupt" not in record
+
+
+def test_the_handoff_notice_cannot_be_barged_in_by_voice(tmp_path) -> None:
+    replies = ["블린 두 개요", "사장님 바꿔 주세요", "아니 그냥 주문할게요"]
+
+    async def call() -> Call:
+        async with barge_call(tmp_path, replies) as c:
+            await start(c)
+            await c.turn(1)
+            await to_speaking(c, 2)  # "사장님께 메모 남겨 드릴게요."
+            await c.feed(tone(1_500) + silence(1_200))
+            await asyncio.sleep(0.05)
+            await c.played(2)
+            await asyncio.wait_for(c.session.wait_done(), 3.0)
+            return c
+
+    c = run(call())
+    assert [k for k in kinds(c) if k[1] == 2] == []
+    assert c.out.of("stt.final", 3) == []
+    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 2, "reason": "handoff"}]
+    record = next(line for line in lines(c) if line["turn"] == 2)
+    assert record["barge"]["kind"] == "blocked"
+    assert "interrupt" not in record
