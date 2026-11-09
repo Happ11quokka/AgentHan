@@ -5,6 +5,10 @@
   --owner-muted: #6b7280;
   --owner-line: rgba(127, 127, 127, 0.3);
   --owner-new-bg: rgba(31, 122, 77, 0.1);
+  /* 카드 색 3단계 (티켓 08): 픽업까지 여유 · 곧 · 지남. 경계값은 alertSettings.ts */
+  --owner-band-relaxed: #2563eb;
+  --owner-band-soon: #d97706;
+  --owner-band-late: #dc2626;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -113,4 +117,77 @@
   margin: 0;
   color: var(--owner-muted);
   font-weight: 700;
+}
+
+/* 알림 소리 상태 (티켓 08). 가게 열기 전에는 브라우저가 소리를 막는다 */
+.owner-sound {
+  margin: 0;
+  font-size: 14px;
+  color: var(--owner-muted);
+}
+
+.owner-sound-locked,
+.owner-sound-unavailable {
+  color: var(--owner-danger);
+}
+
+/* 카드 색 3단계 (티켓 08). 왼쪽 굵은 띠와 픽업 시각 글자색. 픽업 시각이 없으면(none) 기본색 */
+.owner-band-relaxed,
+.owner-band-soon,
+.owner-band-late {
+  border-left-width: 10px;
+}
+
+.owner-band-relaxed {
+  border-left-color: var(--owner-band-relaxed);
+}
+
+.owner-band-soon {
+  border-left-color: var(--owner-band-soon);
+}
+
+.owner-band-late {
+  border-left-color: var(--owner-band-late);
+}
+
+.owner-band-soon .owner-pickup {
+  color: var(--owner-band-soon);
+}
+
+.owner-band-late .owner-pickup {
+  color: var(--owner-band-late);
+}
+
+/* 새 주문 깜빡임 (티켓 08): 카드가 뜰 때 몇 번, 리마인드 때 한 번 더(애니메이션 이름이 바뀌면 다시 돈다) */
+@keyframes owner-blink {
+  from {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  to {
+    box-shadow: 0 0 0 6px var(--owner-accent);
+  }
+}
+
+@keyframes owner-blink-again {
+  from {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  to {
+    box-shadow: 0 0 0 6px var(--owner-accent);
+  }
+}
+
+.owner-card-new {
+  animation: owner-blink 0.45s ease-in-out 6 alternate;
+}
+
+.owner-card-new.owner-card-remind {
+  animation-name: owner-blink-again;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owner-card-new {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--owner-accent);
+  }
 }

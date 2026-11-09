@@ -35,21 +35,15 @@ export async function acceptOrder(key: string, id: string): Promise<OrderCard | 
 }
 
 /**
- * "가게 열기" 버튼에서(사용자 동작 안에서) 부른다: 알림 소리용 `AudioContext`를 풀고 화면 꺼짐을 막는다.
- * 지원하지 않거나 거절되면 조용히 넘어간다. 소리 재생·탭 복귀 때 다시 잡기는 티켓 08.
+ * "가게 열기" 버튼에서(사용자 동작 안에서) 부른다: 알림 소리용 `AudioContext`를 푼다.
+ * 지원하지 않거나 거절되면 null(화면에 "소리를 켤 수 없어요"). 화면 꺼짐 방지는 `screenWakeLock.ts`(티켓 08).
  */
 export async function wakeDevice(): Promise<AudioContext | null> {
-  let audio: AudioContext | null = null
   try {
-    audio = new AudioContext()
+    const audio = new AudioContext()
     await audio.resume()
+    return audio
   } catch {
-    audio = null
+    return null
   }
-  try {
-    await navigator.wakeLock?.request('screen')
-  } catch {
-    // 절전 모드·HTTP 등에서 거절될 수 있다
-  }
-  return audio
 }
