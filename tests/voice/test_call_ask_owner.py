@@ -54,7 +54,7 @@ def test_an_owner_who_answers_at_once_is_heard_after_the_hold_line(tmp_path) -> 
 
     c = run(call())
     assert said(c, 2) == HOLD_ON
-    assert said(c, 3) == "사장님께 여쭤보니 네, 된다고 하세요. 더 필요하신 거 있으세요?"
+    assert said(c, 3) == "사장님께 여쭤보니 메도빅에 견과가 들어간대요. 더 필요하신 거 있으세요?"
     assert owner.questions == [
         ("test-call", OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅", text=NUTS,
                                    kind="allergen", subject="견과", yes_no=True)),
@@ -95,7 +95,7 @@ QUIET = 0.3  # 시험용 무응답 대기. 사장님 대기보다 짧아서 꺼�
 OWNER_WAIT = 0.9  # 시험용 사장님 답 대기 (기본 20초)
 LATER = "확인해서 문자로 알려 드릴게요."
 SEEN = "사장님이 보고 계세요, 조금만요."
-YES = "사장님께 여쭤보니 네, 된다고 하세요."
+YES = "사장님께 여쭤보니 메도빅에 견과가 들어간대요."  # 들어가요? 질문 (리뷰 P2)
 
 
 def waiting(**kw) -> SessionSettings:
@@ -271,5 +271,5 @@ def test_a_stale_answer_for_another_question_is_dropped(tmp_path) -> None:
             return c
 
     c = run(call())
-    assert said(c, 3).startswith("사장님께 여쭤보니 안 된다고 하세요.")
+    assert said(c, 3).startswith("사장님께 여쭤보니 메도빅에 견과는 안 들어간대요.")
     assert c.out.of("bot.say", 4) == []

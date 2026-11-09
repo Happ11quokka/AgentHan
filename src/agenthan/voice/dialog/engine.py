@@ -320,8 +320,11 @@ class DialogEngine:
         self._owner_open = None
         if answer == "timeout":
             self._owner_timed_out = True
-        self._transcript.append(f"사장님: {templates.owner_answer_label(answer)}")
-        self._say(turn, templates.owner_answer(answer))
+        # 들어가요?류 질문은 버튼 뜻이 들어가요/안 들어가요다 (리뷰 P2)
+        subject = question.subject if question.yes_no else ""
+        label = templates.owner_answer_label(answer, contains=question.yes_no)
+        self._transcript.append(f"사장님: {label}")
+        self._say(turn, templates.owner_answer(answer, name=question.menu_name, subject=subject))
         self._ask(turn, self._question_again())
         return self._result(turn)
 

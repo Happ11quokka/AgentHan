@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type OrderCardLine, type SentText, WRITTEN_ANSWER_MAX, writtenAnswer } from './ownerState.ts'
-import { OWNER_TEXT, lineView, ownerLang, questionView, sentTextView } from './ownerText.ts'
+import { OWNER_TEXT, answerLabel, lineView, ownerLang, questionView, sentTextView } from './ownerText.ts'
 
 function line(over: Partial<OrderCardLine> = {}): OrderCardLine {
   return {
@@ -126,5 +126,19 @@ describe('written answer on a question card (ticket 07)', () => {
   it('tells the owner the written answer goes to the customer only by text', () => {
     expect(OWNER_TEXT.ru.writtenHint).toBe('Клиенту уйдёт только SMS (на корейском, с переводом)')
     expect(OWNER_TEXT.ko.writtenHint).toBe('손님에게는 문자로만 가요(한국어로 번역)')
+  })
+})
+
+describe('answer buttons on a contains question (review P2)', () => {
+  it('labels the buttons "contains / does not contain" when the customer asked whether it goes in', () => {
+    // "견과류 들어가요?"에 "Нельзя(안 돼요)"를 누르면 안 들어간다는 뜻으로 저장된다. 버튼 뜻을 맞춘다
+    expect([answerLabel(true, 'yes', 'ru'), answerLabel(true, 'no', 'ru')]).toEqual(['Есть', 'Нет'])
+    expect([answerLabel(true, 'yes', 'ko'), answerLabel(true, 'no', 'ko')]).toEqual(['들어가요', '안 들어가요'])
+    expect(answerLabel(true, 'unsure', 'ru')).toBe(OWNER_TEXT.ru.answer.unsure)
+  })
+
+  it('keeps can / cannot for other questions', () => {
+    expect([answerLabel(false, 'yes', 'ru'), answerLabel(false, 'no', 'ru')]).toEqual(['Можно', 'Нельзя'])
+    expect(answerLabel(undefined, 'yes', 'ko')).toBe('돼요')
   })
 })

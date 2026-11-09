@@ -263,8 +263,10 @@ class OwnerHub:
         if answer == "free":
             self._text_written_answer_soon(question_id)
         elif late:
+            asked = self._asked[question_id]
             self._text_customer(card["call_id"], "late_answer",
-                                sms.late_answer_text(card["menu_name"], answer),
+                                sms.late_answer_text(card["menu_name"], answer,
+                                                     subject=asked.subject if asked.yes_no else ""),
                                 question_id=question_id)
         self._learn(question_id, answer)  # 보충 지식 (티켓 13): 카드 이벤트는 문자 뒤에
         return card
@@ -571,6 +573,8 @@ class OwnerHub:
             "menu_name_owner": self._owner_name(question.menu_id, question.menu_name),  # 티켓 03
             "text": question.text,  # 손님 질문 원문 (한국어)
             "text_owner": self._texts.known(call_id, question.text),  # 번역, 아직·실패면 ""
+            # 들어가는지만 묻는 질문: 화면 버튼 yes·no가 들어가요/안 들어가요 뜻이다 (리뷰 P2)
+            "yes_no": question.yes_no,
             "sent_at": now.isoformat(),
             "deadline_at": (now + self._question_wait).isoformat(),  # 화면 카운트다운과 같은 시계
             "status": "open",  # open · answered · timeout · call_ended (티켓 06)

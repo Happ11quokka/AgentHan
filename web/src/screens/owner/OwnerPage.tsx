@@ -58,6 +58,7 @@ import {
   type OwnerLang,
   type OwnerText,
   PAPAGO_URL,
+  answerLabel,
   captionView,
   knowledgeView,
   lineView,
@@ -498,7 +499,7 @@ function QuestionCardView({
             className={`owner-btn owner-btn-answer owner-btn-${answer}`}
             onClick={() => onAnswer(answer)}
           >
-            {text.answer[answer]}
+            {answerLabel(question.yes_no, answer, lang)}
           </button>
         ))}
       </div>

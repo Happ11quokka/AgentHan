@@ -448,12 +448,23 @@ def owner_seen() -> str:
     return "사장님이 보고 계세요, 조금만요."
 
 
-def owner_answer(answer: str) -> str:
-    """사장님 답(yes·no·unsure·timeout) → 손님에게 할 말. 뒤에 하던 질문을 다시 한다."""
+def owner_answer(answer: str, *, name: str = "", subject: str = "") -> str:
+    """사장님 답(yes·no·unsure·timeout·free) → 손님에게 할 말. 뒤에 하던 질문을 다시 한다.
+
+    "견과류 들어가요?"처럼 들어가는지만 묻는 질문이면(`subject`에 그 대상) 버튼 뜻이 들어가요/
+    안 들어가요다(리뷰 P2). 그때 yes·no는 "메도빅에 견과가 들어간대요"로 말한다.
+    """
+    if subject and answer in ("yes", "no"):
+        if answer == "yes":
+            return f"사장님께 여쭤보니 {name}에 {i_ga(subject)} 들어간대요."
+        return f"사장님께 여쭤보니 {name}에 {eun_neun(subject)} 안 들어간대요."
     return _OWNER_ANSWER[answer]
 
 
-def owner_answer_label(answer: str) -> str:
+def owner_answer_label(answer: str, *, contains: bool = False) -> str:
+    """대화 기록의 사장님 답 이름. `contains`면 들어가요?류 질문의 버튼 뜻(들어가요/안 들어가요)."""
+    if contains and answer in ("yes", "no"):
+        return "들어가요" if answer == "yes" else "안 들어가요"
     return _OWNER_ANSWER_LABEL[answer]
 
 

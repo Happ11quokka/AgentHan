@@ -52,6 +52,8 @@ export interface OwnerText {
   /** 답을 못 받은 손님 질문이 있던 확정 주문 (티켓 06) */
   ownerCheck: string
   answer: Record<OwnerAnswer, string>
+  /** "견과류 들어가요?"처럼 들어가는지만 묻는 질문의 버튼: 들어가요 · 안 들어가요 (리뷰 P2) */
+  answerContains: Record<'yes' | 'no', string>
   /** 질문 카드 자유 입력 (티켓 07): 접힌 칸 제목, 안내, 보내기 버튼 */
   written: string
   writtenHint: string
@@ -117,6 +119,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     callEnded: 'Звонок завершён',
     ownerCheck: 'Нужно ответить на вопрос клиента',
     answer: { yes: 'Можно', no: 'Нельзя', unsure: 'Не знаю' },
+    answerContains: { yes: 'Есть', no: 'Нет' },
     written: 'Ответить текстом',
     writtenHint: 'Клиенту уйдёт только SMS (на корейском, с переводом)',
     writtenSend: 'Отправить',
@@ -193,6 +196,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     callEnded: '통화 끝',
     ownerCheck: '사장님 확인 필요 · 손님 질문',
     answer: { yes: '돼요', no: '안 돼요', unsure: '모르겠어요' },
+    answerContains: { yes: '들어가요', no: '안 들어가요' },
     written: '글로 답하기',
     writtenHint: '손님에게는 문자로만 가요(한국어로 번역)',
     writtenSend: '보내기',
@@ -282,6 +286,15 @@ export function questionView(
 ): QuestionView {
   if (lang === 'ko') return { menu: q.menu_name, question: '', questionKo: q.text }
   return { menu: q.menu_name_owner || q.menu_name, question: q.text_owner, questionKo: q.text }
+}
+
+/**
+ * 질문 카드 버튼 문구. 들어가는지만 묻는 질문(`QuestionCard.yes_no`)이면 yes·no가 들어가요/안
+ * 들어가요다. 서버는 그 뜻으로 저장하고 손님에게 말한다 (리뷰 P2)
+ */
+export function answerLabel(yesNo: boolean | undefined, answer: OwnerAnswer, lang: OwnerLang): string {
+  const text = OWNER_TEXT[lang]
+  return yesNo && answer !== 'unsure' ? text.answerContains[answer] : text.answer[answer]
 }
 
 export interface CaptionView {

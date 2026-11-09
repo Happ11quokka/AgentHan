@@ -29,9 +29,13 @@ def order_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) 
     return " ".join(parts)
 
 
-def late_answer_text(menu_name: str, answer: str) -> str:
-    """늦은 버튼 답(시간 초과 뒤·통화 끝 뒤). 통화에서 말했을 문장과 같은 고정 존댓말."""
-    return f"{_about(menu_name)} {templates.owner_answer(answer)}"
+def late_answer_text(menu_name: str, answer: str, *, subject: str = "") -> str:
+    """늦은 버튼 답(시간 초과 뒤·통화 끝 뒤). 통화에서 말했을 문장과 같은 고정 존댓말.
+
+    `subject`는 들어가는지만 묻는 질문의 대상이다(버튼 뜻이 들어가요/안 들어가요, 리뷰 P2).
+    """
+    said = templates.owner_answer(answer, name=menu_name, subject=subject)
+    return f"{_about(menu_name)} {said}"
 
 
 def free_answer_text(menu_name: str, translated: str) -> str:

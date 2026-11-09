@@ -125,15 +125,19 @@ def test_a_question_after_an_item_in_one_breath_keeps_the_item_and_holds() -> No
 # ---------------------------------------------------------------- 사장님 답 → 대사와 돌아감
 
 
-@pytest.mark.parametrize(("answer", "say"), [
-    ("yes", "사장님께 여쭤보니 네, 된다고 하세요."),
-    ("no", "사장님께 여쭤보니 안 된다고 하세요."),
-    ("unsure", "사장님께 여쭤봤는데 사장님도 정확히는 모르신대요."),
+@pytest.mark.parametrize(("question", "answer", "say"), [
+    ("메도빅 비건이에요?", "yes", "사장님께 여쭤보니 네, 된다고 하세요."),
+    ("메도빅 비건이에요?", "no", "사장님께 여쭤보니 안 된다고 하세요."),
+    # 리뷰 P2: "들어가요?" 질문의 버튼은 들어가요/안 들어가요다. 손님 문장도 그 뜻으로
+    (NUTS, "yes", "사장님께 여쭤보니 메도빅에 견과가 들어간대요."),
+    (NUTS, "no", "사장님께 여쭤보니 메도빅에 견과는 안 들어간대요."),
+    (NUTS, "unsure", "사장님께 여쭤봤는데 사장님도 정확히는 모르신대요."),
 ])
-def test_each_owner_answer_has_a_fixed_line_then_the_question_comes_back(answer, say) -> None:
+def test_each_owner_answer_has_a_fixed_line_then_the_question_comes_back(
+        question, answer, say) -> None:
     engine = make_engine()
     talk(engine, "메도빅 하나요")
-    asked = talk(engine, NUTS).owner_question
+    asked = talk(engine, question).owner_question
     assert asked is not None
     r = engine.owner_answered(asked.number, answer, NOW)
     assert r.utterances == [say, MORE_Q]
@@ -187,7 +191,7 @@ def test_the_owner_answer_is_kept_in_the_order_transcript() -> None:
     engine.owner_answered(asked.number, "yes", NOW)
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
     assert r.order is not None
-    assert "사장님: 돼요" in r.order.transcript
+    assert "사장님: 들어가요" in r.order.transcript  # 들어가요? 질문의 돼요 버튼
 
 
 # ---------------------------------------------------------------- 막는 조건 (티켓 06)
@@ -244,7 +248,7 @@ def test_no_second_question_opens_while_one_is_open() -> None:
     first = _open(engine)
     _blocked(engine)
     r = engine.owner_answered(first.number, "yes", NOW)  # 앞 질문은 그대로 열려 있다
-    assert r.utterances[0] == "사장님께 여쭤보니 네, 된다고 하세요."
+    assert r.utterances[0] == "사장님께 여쭤보니 메도빅에 견과가 들어간대요."
 
 
 def test_at_most_two_questions_per_call() -> None:

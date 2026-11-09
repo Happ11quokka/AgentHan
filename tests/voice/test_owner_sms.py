@@ -211,3 +211,17 @@ def test_a_customer_text_stream_for_an_unknown_call_is_refused() -> None:
     hub, _ = _hub()
     with pytest.raises(UnknownCard):
         hub.watch_texts("no-such-call")
+
+
+def test_a_late_answer_to_a_contains_question_texts_what_the_buttons_meant() -> None:
+    # 리뷰 P2: 들어가요?류 질문의 늦은 답 문자도 들어간다/안 들어간다로 쓴다(통화 문장과 같다)
+    hub, _ = _hub()
+    hub.call_started("call-1")
+    hub.open_question("call-1", OwnerQuestion(
+        number=1, menu_id="m01", menu_name="메도빅", text="메도빅에 견과류 들어가요?",
+        kind="allergen", subject="견과", yes_no=True), lambda note: None)
+    hub.question_timed_out("call-1", 1)
+    hub.answer_question("call-1-q1", "no")
+    [late] = hub.customer_texts("call-1")
+    assert late["text"] == (
+        "메도빅 문의 답변이에요. 사장님께 여쭤보니 메도빅에 견과는 안 들어간대요.")

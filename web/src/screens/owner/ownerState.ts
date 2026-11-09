@@ -149,6 +149,11 @@ export interface QuestionCard {
   text: string
   /** 손님 질문 번역(Papago). 아직·실패면 빈 글. 번역이 오면 `owner.question.update`로 다시 온다 (티켓 03) */
   text_owner: string
+  /**
+   * 손님이 들어가는지만 물었다("견과류 들어가요?"). 버튼 yes·no가 들어가요/안 들어가요 뜻이다
+   * (리뷰 P2). 없으면 거짓으로 본다
+   */
+  yes_no?: boolean
   /** 서버가 카드를 보낸 시각(ISO 8601). 카운트다운은 마감 시각까지 센다 */
   sent_at: string
   deadline_at: string
@@ -180,6 +185,8 @@ export interface KnowledgeCard {
   kind: KnowledgeKind
   /** 알레르기 성분·이름 붙은 재료(한국어). 그 밖 질문은 질문 요약, 나머지는 빈 글 */
   subject: string
+  /** 들어가는지만 묻는 질문이다(같은 대상의 "빼 줄 수 있어요?"와 카드가 갈린다, 리뷰 C4) */
+  yes_no?: boolean
   /** 마지막으로 물은 통화 */
   call_id: string
   /** 마지막 손님 질문 원문 (한국어) */

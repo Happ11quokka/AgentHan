@@ -219,7 +219,7 @@ def test_the_owner_answers_a_question_card_and_the_customer_hears_it(tmp_path) -
     held = " ".join(e["text"] for e in phone.of("bot.say", 2))
     heard = " ".join(e["text"] for e in phone.of("bot.say", 3))
     assert held == "잠시만요, 사장님께 여쭤볼게요."
-    assert heard == "사장님께 여쭤보니 네, 된다고 하세요. 더 필요하신 거 있으세요?"
+    assert heard == "사장님께 여쭤보니 메도빅에 견과가 들어간대요. 더 필요하신 거 있으세요?"
 
 
 def test_answering_an_unknown_question_or_with_an_unknown_answer_is_refused(tmp_path) -> None:
@@ -318,7 +318,7 @@ def test_a_late_owner_answer_reaches_the_customer_text_stream(tmp_path) -> None:
     timed_out = " ".join(e["text"] for e in phone.of("bot.say", 3))
     assert timed_out == "확인해서 문자로 알려 드릴게요. 더 필요하신 거 있으세요?"
     assert (late["kind"], late["text"]) == (
-        "late_answer", "메도빅 문의 답변이에요. 사장님께 여쭤보니 네, 된다고 하세요.")
+        "late_answer", "메도빅 문의 답변이에요. 사장님께 여쭤보니 메도빅에 견과가 들어간대요.")
 
 
 def test_a_written_answer_is_posted_with_its_text(tmp_path) -> None:

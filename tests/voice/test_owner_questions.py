@@ -35,6 +35,8 @@ CARD = {
     "menu_name_owner": "Медовик",  # 티켓 03
     "text": "메도빅에 견과류 들어가요?",
     "text_owner": "",  # 번역기 없음 → 원문만 (티켓 03)
+    # 들어가는지만 묻는 질문이면 참: 화면 버튼이 들어가요/안 들어가요 뜻이 된다 (리뷰 P2)
+    "yes_no": False,
     "sent_at": "2026-11-08T16:02:00+09:00",
     "deadline_at": "2026-11-08T16:02:20+09:00",
     "status": "open",
@@ -214,3 +216,12 @@ def test_a_confirmed_order_with_an_unanswered_question_needs_the_owner(settle, c
     hub.submit(_order("call-2"))
     assert [(o["id"], o["owner_check"]) for o in snapshot(hub)["orders"]] == [
         ("call-1", check), ("call-2", False)]
+
+
+def test_a_contains_question_card_says_so_for_the_contains_buttons() -> None:
+    # 리뷰 P2: "견과류 들어가요?" 카드는 버튼이 들어가요/안 들어가요(ru Есть/Нет) 뜻이다
+    hub = _hub()
+    hub.open_question("call-1", OwnerQuestion(
+        number=1, menu_id="m01", menu_name="메도빅", text="메도빅에 견과류 들어가요?",
+        kind="allergen", subject="견과", yes_no=True), lambda reply: None)
+    assert hub.see_question("call-1-q1")["yes_no"] is True
