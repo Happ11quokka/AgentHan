@@ -16,12 +16,13 @@
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
 from typing import Any, Protocol
 
 from agenthan.core.contracts import OrderLine, OrderSink
+from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
 from agenthan.voice.store_config import KST
 
 __all__ = [
@@ -209,6 +210,16 @@ class OwnerChannel(Protocol):
         confirmed · handoff · cancelled · no_input · hangup · error.
         """
 
+    def open_question(
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+    ) -> None:
+        """근거 없는 메뉴 질문을 사장님께 연다(티켓 05). 기다리지 않고 바로 돌아온다.
+
+        사장님 답은 나중에 `reply(OwnerReply)`로 넘긴다(이벤트 루프에서, 질문당 한 번). `reply`는
+        세션의 받는 곳이라 바로 돌아오고, 이 호출 안에서 바로 불러도 된다. 통화가 끝난 뒤의 답은
+        세션이 버린다(늦은 답 문자는 허브 몫, 티켓 07).
+        """
+
 
 class NullOwnerChannel:
     """아무에게도 알리지 않는다. 사장님 허브 없이 통화만 돌릴 때(1~3단계 테스트·CLI)."""
@@ -226,4 +237,9 @@ class NullOwnerChannel:
         pass
 
     def call_ended(self, call_id: str, reason: str) -> None:
+        pass
+
+    def open_question(
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+    ) -> None:
         pass

@@ -128,6 +128,7 @@ from agenthan.voice.call.turn_end import (
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
+from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
 from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.nlu.base import Nlu
@@ -314,6 +315,8 @@ class CallSession:
         self._outbound = outbound
         self._sink = order_sink
         self._owner: OwnerChannel = owner or NullOwnerChannel()  # 사장님 쪽 알림 (4단계 티켓 02)
+        # 사장님 쪽이 붙은 통화만 근거 없는 메뉴 질문을 사장님께 묻는다 (4단계 티켓 05)
+        self._asks_owner = owner is not None
         self._settings = settings or SessionSettings()
         self._executor = executor  # None이면 루프 기본 풀
         # 턴 모델(티켓 03). 없으면(꺼짐·모델 파일 없음) 링 버퍼도 만들지 않고 규칙만 쓴다
@@ -392,10 +395,16 @@ class CallSession:
         self._listen_rms: dict[str, list[float]] = {"voiced": [], "quiet": []}
         self._broken = False
         self._report_due: int | None = None  # 끊겨서 들은 만큼 보고를 기다리는 턴 (리뷰 C2)
+        # 사장님께 묻기 (4단계 티켓 05). 엔진 턴 결과로 안 열린 질문 번호와, 받았지만 아직 말하지
+        # 못한 사장님 답들(듣는 중이 되면 봇 턴으로 넣는다)
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._owner_open: int | None = None
+        self._owner_inbox: list[OwnerReply] = []
 
     # ------------------------------------------------------------ 바깥 진입점
 
     async def open(self) -> None:
+        self._loop = asyncio.get_running_loop()
         if self._writer is None:
             self._writer = asyncio.create_task(self._write_loop(), name=f"{self.call_id}-writer")
             self._spawn(self._watch(), "watch")
@@ -616,7 +625,8 @@ class CallSession:
                                      clock=self._clock.monotonic)
         # list_menu()가 동기라 엔진 생성도 스레드에서 (verify-web D5 조건 2)
         self._engine = await self._in_thread(
-            DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id
+            DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id,
+            ask_owner=self._asks_owner,
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -1129,6 +1139,8 @@ class CallSession:
         if result.utterances:
             said = " ".join(result.utterances)
             self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
+        if result.owner_question is not None:
+            self._ask_owner(result.owner_question)
         if result.order is not None:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -1365,6 +1377,8 @@ class CallSession:
         pending = [u for u in pending if not self._drop_early_yes(u)]
         if pending:
             self._decide(replace(_Utterance.merge(pending), queued=True))
+        # 받아 둔 사장님 답. 손님 말이 먼저다(그 말을 판정하는 중이면 `bot_turn`이 받지 않는다)
+        self._say_owner_reply()
 
     def _drop_early_yes(self, u: _Utterance) -> bool:
         """최종 복창의 금액 문장이 끝나기 전에 한 "네"·맞장구면 버린다 (grilling Q10, 리뷰 P1).
@@ -1649,6 +1663,53 @@ class CallSession:
         self._done.set()
         if first:
             self._tell_owner(lambda owner: owner.call_ended(self.call_id, reason))
+
+    # 사장님께 묻기 (4단계 티켓 05, spec "ASK_OWNER: 세션"). 기다림은 세션이 맡는다(엔진 스레드에서
+    # 기다리지 않는다). 질문은 `OwnerChannel.open_question`으로 열고 바로 돌아온다. 답은 받는 곳
+    # (`_owner_replied`)으로 들어와 큐에 쌓이고, 듣는 중이 되면 봇이 먼저 말하는 턴으로 엔진
+    # `owner_answered`에 넣는다. 시간 초과·미루는 조건(VAD·말 끝 대기)·무응답 타이머 멈춤은 티켓 06
+
+    def _ask_owner(self, question: OwnerQuestion) -> None:
+        self._owner_open = question.number
+        self._tell_owner(lambda owner: owner.open_question(self.call_id, question,
+                                                           self._owner_replied))
+
+    def _owner_replied(self, reply: OwnerReply) -> None:
+        """사장님 답을 받는 곳. 바로 돌아온다.
+
+        처리는 루프의 다음 차례에 한다(부른 쪽 안에서 턴을 열지 않게).
+        """
+        loop = self._loop
+        if loop is None or self.done:
+            return
+        self._owner_inbox.append(reply)
+        loop.call_soon_threadsafe(self._say_owner_reply)
+
+    def _say_owner_reply(self) -> None:
+        """받은 사장님 답을 말한다. 듣는 중이 아니면(`bot_turn`이 거절) 두었다가 재생 끝에 본다.
+
+        열린 질문과 번호가 다른 답(낡은 답·이미 말한 답)은 버린다.
+        """
+        if self.done:
+            self._owner_inbox.clear()
+            return
+        kept = [r for r in self._owner_inbox if r.question == self._owner_open]
+        if len(kept) != len(self._owner_inbox):
+            log.info("낡은 사장님 답을 버림 (%s)", self.call_id)
+        self._owner_inbox = kept
+        if not kept:
+            return
+        reply = kept[0]
+        opened = self.bot_turn(
+            "owner_answer", lambda engine, now: engine.owner_answered(reply.question, reply.answer,
+                                                                      now))
+        if opened is None:
+            return
+        self._owner_open = None
+        self._owner_inbox.clear()
+        record = self._log.get(opened)
+        if record is not None:
+            record.fields["owner_answer"] = {"question": reply.question, "answer": reply.answer}
 
     def _tell_owner(self, note: Callable[[OwnerChannel], None]) -> None:
         """사장님 쪽에 알린다. 실패해도 통화는 잇는다(사장님 화면 탓에 손님 통화가 끊기지 않게)."""

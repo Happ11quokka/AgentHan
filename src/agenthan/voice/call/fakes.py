@@ -11,7 +11,8 @@
 - `FakeTts`: 고정 PCM을 돌려준다. 문장별 지연·실패를 줄 수 있고 동시 호출 수를 센다
 - `FakeClock`: 고정 가게 시각 + (기본) 실제 단조 시각
 - `FakeTurnModel`: 턴 모델(Smart Turn) 가짜. 정해 둔 점수를 차례로 내고, 본 오디오 길이를 남긴다
-- `RecordingOwnerChannel`: 사장님 쪽(`OwnerChannel`) 가짜. 받은 알림을 차례로 모은다
+- `RecordingOwnerChannel`: 사장님 쪽(`OwnerChannel`) 가짜. 받은 알림을 차례로 모은다.
+  `answer`를 주면 질문을 받자마자 그 답을 한다(바로 답하는 가짜 사장님, 티켓 05)
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from typing import Any
 from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
+from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion, OwnerReply
 
 STT_LAG_MS = 600  # CLOVA 실측: epFlag 보낸 뒤 결과까지 0.5~0.6초
 
@@ -197,11 +199,14 @@ class RecordingOwnerChannel:
     """`OwnerChannel` 가짜. 받은 알림을 `notes`에 차례로 쌓는다.
 
     알림 모양: `("started", id)` · `("cart", id, 줄 튜플)` · `("customer", id, 글)` ·
-    `("bot", id, 글)` · `("ended", id, 이유)`
+    `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)`
+
+    `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, answer: OwnerAnswer | None = None) -> None:
         self.notes: list[tuple[Any, ...]] = []
+        self._answer = answer
 
     def call_started(self, call_id: str) -> None:
         self.notes.append(("started", call_id))
@@ -218,6 +223,13 @@ class RecordingOwnerChannel:
     def call_ended(self, call_id: str, reason: str) -> None:
         self.notes.append(("ended", call_id, reason))
 
+    def open_question(
+        self, call_id: str, question: OwnerQuestion, reply: Callable[[OwnerReply], None]
+    ) -> None:
+        self.notes.append(("question", call_id, question))
+        if self._answer is not None:
+            reply(OwnerReply(question.number, self._answer))
+
     def _of(self, kind: str) -> list[Any]:
         return [note[-1] for note in self.notes if note[0] == kind]
 
@@ -232,6 +244,11 @@ class RecordingOwnerChannel:
     @property
     def bot_lines(self) -> list[str]:
         return self._of("bot")
+
+    @property
+    def questions(self) -> list[tuple[str, OwnerQuestion]]:
+        """연 질문들 (통화 id, 질문)."""
+        return [(note[1], note[2]) for note in self.notes if note[0] == "question"]
 
     @property
     def ended(self) -> list[str]:
