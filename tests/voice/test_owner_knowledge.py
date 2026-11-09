@@ -30,7 +30,7 @@ LATER = datetime.fromisoformat("2026-11-10T17:30:00+09:00")
 TASTE_KEY = KnowledgeKey("m03", "taste")
 TASTE = KnowledgeRequest(TASTE_KEY, menu_name="아메리카노", text="아메리카노 어떤 맛이에요?")
 SWEET = KnowledgeRequest(TASTE_KEY, menu_name="아메리카노", text="아메리카노 달아요?")
-NUTS_KEY = KnowledgeKey("m01", "allergen", "견과")
+NUTS_KEY = KnowledgeKey("m01", "allergen", "견과", yes_no=True)
 NUTS = OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅", text="메도빅에 견과류 들어가요?",
                      kind="allergen", subject="견과", yes_no=True)
 VEGAN = OwnerQuestion(number=1, menu_id="m01", menu_name="메도빅", text="메도빅 비건이에요?",
@@ -69,6 +69,7 @@ def test_a_passed_on_question_becomes_a_knowledge_card() -> None:
         "menu_name_owner": "아메리카노",  # 원어 이름이 빈 메뉴는 한국어
         "kind": "taste",
         "subject": "",
+        "yes_no": False,
         "call_id": "call-1",
         "text": "아메리카노 어떤 맛이에요?",
         "text_owner": "",

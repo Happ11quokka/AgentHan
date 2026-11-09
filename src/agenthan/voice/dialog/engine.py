@@ -731,7 +731,7 @@ class DialogEngine:
                 return
             item = line.item
         answer = menu_answer(item, act.free_text or act.menu_text)
-        key = KnowledgeKey(item.id, answer.kind, answer.subject)
+        key = KnowledgeKey(item.id, answer.kind, answer.subject, answer.yes_no)
         if answer.text is not None:
             self._say(turn, answer.text)
         elif (known := self._known(key, item, answer)) is not None:

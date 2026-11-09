@@ -540,6 +540,7 @@ class OwnerHub:
                 "menu_name_owner": self._owner_name(key.menu_id, menu_name),
                 "kind": key.kind,  # `menu_info.QuestionKind`
                 "subject": key.subject,  # 알레르기 성분·이름 붙은 재료·그 밖 질문 요약
+                "yes_no": key.yes_no,  # 들어가는지만 묻는 질문 (열쇠의 한 칸, 리뷰 C4)
                 **asked,  # 마지막 질문: 통화 id, 원문(한국어), 번역(아직·실패면 "")
                 "count": 1,
                 "asked_at": now,
@@ -797,7 +798,7 @@ class _Captions:
 
 
 def _key(card: dict[str, Any]) -> KnowledgeKey:
-    return KnowledgeKey(card["menu_id"], card["kind"], card["subject"])
+    return KnowledgeKey(card["menu_id"], card["kind"], card["subject"], card["yes_no"])
 
 
 def clock_label(iso: str) -> str:

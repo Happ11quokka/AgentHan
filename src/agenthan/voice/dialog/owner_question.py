@@ -40,7 +40,7 @@ class OwnerQuestion:
 
     @property
     def key(self) -> KnowledgeKey:
-        return KnowledgeKey(self.menu_id, self.kind, self.subject)
+        return KnowledgeKey(self.menu_id, self.kind, self.subject, self.yes_no)
 
 
 @dataclass(frozen=True)

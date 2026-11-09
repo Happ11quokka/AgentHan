@@ -6,9 +6,11 @@ AI가 메뉴 필드로 답하지 못한 질문을 사장님이 채우면, 다음
     engine = DialogEngine(..., knowledge=store)  # 읽기: 메뉴 답에 필드 근거가 없을 때 먼저
     hub = OwnerHub(..., knowledge=store)         # 쓰기: 사장님 "저장"·질문 카드 버튼 답
 
-- 열쇠(`KnowledgeKey`): 메뉴 id + 질문 종류(`menu_info.QuestionKind`) + 대상. 대상은 알레르기
-  성분 하나("견과")·이름 붙은 재료("시나몬")·그 밖 질문의 원문 요약이고, 나머지 종류(맛·설명,
-  재료 전체, 알레르기 전체)는 비어 있다. 같은 메뉴의 같은 종류 질문은 같은 답을 쓴다(Q18)
+- 열쇠(`KnowledgeKey`): 메뉴 id + 질문 종류(`menu_info.QuestionKind`) + 대상 + 예/아니오 질문인지.
+  대상은 알레르기 성분 하나("견과")·이름 붙은 재료("시나몬")·그 밖 질문의 원문 요약이고, 나머지
+  종류(맛·설명, 재료 전체, 알레르기 전체)는 비어 있다. 같은 메뉴의 같은 종류 질문은 같은 답을
+  쓴다(Q18). 다만 "땅콩 들어가요?"(예/아니오)와 "땅콩 빼 줄 수 있어요?"는 답이 다르니 열쇠를
+  가른다(리뷰 C4, 알레르기 안전)
 - 값(`Known`): 사장님 설명(`note`, 한국어, 사장님이 "저장"한 글 그대로)과 사장님 확인(`contains`,
   질문 카드 "돼요/안 돼요" → 그 성분이 들어간다/안 들어간다, Q20). 엔진은 설명을 인용 틀로만
   말하고(`templates.owner_said`) 다듬지 않는다. 확인은 고정 문장(`templates.owner_checked`)
@@ -30,6 +32,8 @@ class KnowledgeKey:
     menu_id: str
     kind: str  # `menu_info.QuestionKind`
     subject: str = ""  # 알레르기 성분 · 이름 붙은 재료 · 그 밖 질문 요약. 나머지 종류는 ""
+    # 그 대상이 들어가는지만 묻는 질문(`menu_info.MenuAnswer.yes_no`). 사장님 확인은 이 열쇠에만
+    yes_no: bool = False
 
 
 @dataclass(frozen=True)

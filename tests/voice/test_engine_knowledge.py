@@ -96,7 +96,8 @@ def test_a_blocked_owner_question_is_passed_on_instead() -> None:
     assert r.owner_question is None
     assert r.utterances == [PASS_ON, ORDER_Q]
     assert r.knowledge_requests == (
-        KnowledgeRequest(KnowledgeKey("m04", "ingredient", "시나몬"), menu_name="블린",
+        KnowledgeRequest(KnowledgeKey("m04", "ingredient", "시나몬", yes_no=True),
+                         menu_name="블린",
                          text=CINNAMON),
     )
 
@@ -127,7 +128,7 @@ def test_a_note_for_one_menu_does_not_answer_another() -> None:
 ])
 def test_an_owner_check_answers_the_next_caller_without_asking(contains: bool, say: str) -> None:
     store = KnowledgeStore()
-    store.save_check(KnowledgeKey("m01", "allergen", "견과"), contains)
+    store.save_check(KnowledgeKey("m01", "allergen", "견과", yes_no=True), contains)
     r = talk(make_engine(store), NUTS)
     assert r.owner_question is None
     assert r.utterances == [say, ORDER_Q]
@@ -135,13 +136,23 @@ def test_an_owner_check_answers_the_next_caller_without_asking(contains: bool, s
 
 def test_an_owner_check_on_a_named_ingredient_is_reused() -> None:
     store = KnowledgeStore()
-    store.save_check(KnowledgeKey("m04", "ingredient", "시나몬"), False)
+    store.save_check(KnowledgeKey("m04", "ingredient", "시나몬", yes_no=True), False)
     r = talk(make_engine(store), "블린에 시나몬이 들어있어요?")
     assert r.utterances == ["사장님 확인으로는 블린에 시나몬은 안 들어간대요.", ORDER_Q]
 
 
 def test_a_check_is_not_used_for_a_question_that_is_not_yes_no() -> None:
     store = KnowledgeStore()
-    store.save_check(KnowledgeKey("m01", "allergen", "땅콩"), False)
+    store.save_check(KnowledgeKey("m01", "allergen", "땅콩", yes_no=True), False)
     r = talk(make_engine(store), "메도빅 땅콩 알레르기 있는데 먹어도 돼요?")
     assert r.owner_question is not None  # 확인 대신 사장님께 다시 묻는다
+
+
+def test_a_note_for_a_remove_question_does_not_answer_a_contains_question() -> None:
+    # 리뷰 C4: "땅콩 빼 주실 수 있어요?"에 저장한 설명이 "땅콩 있어요?"의 답으로 나가면 안 된다
+    # (알레르기 안전). 열쇠가 예/아니오 질문인지까지 가른다
+    store = KnowledgeStore()
+    store.save_note(KnowledgeKey("m01", "allergen", "땅콩"), "빼 드릴 수 있어요")
+    r = talk(make_engine(store), "메도빅 땅콩 있어요?")
+    assert r.owner_question is not None
+    assert r.utterances == [HOLD_ON]
