@@ -264,6 +264,23 @@ def test_a_stale_turn_model_job_is_cancelled_when_new_speech_starts(tmp_path) ->
     assert pool.futures[0].cancelled()
 
 
+def test_a_pending_turn_model_job_is_cancelled_when_the_call_ends(tmp_path) -> None:
+    # 감사 11번: 손님이 끊은 통화의 점수 작업이 공유 풀에 남아 다른 통화를 늦추지 않는다
+    stt = FakeSttStream(replies=["메도빅 하나요"])
+    pool = QueuedExecutor()
+
+    async def call() -> None:
+        async with Call(tmp_path, stt=stt, turn_model=SlowTurnModel(0.5, 0.0),
+                        turn_executor=pool) as c:
+            await c.start()
+            await c.feed(tone(800) + silence(400))  # 말 끝 → 점수 작업 (글은 아직)
+            assert len(pool.futures) == 1 and not pool.futures[0].cancelled()
+            await c.session.feed_event({"type": "call.end", "turn": 0})
+
+    run(call())
+    assert pool.futures[0].cancelled()
+
+
 # ---------------------------------------------------------------- P4 / C3
 
 

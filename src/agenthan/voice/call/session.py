@@ -1614,6 +1614,8 @@ class CallSession:
         self._thinking_timer.cancel()
         self._cont_timer.cancel()
         self._play_timer.cancel()
+        self._score_timer.cancel()
+        self._drop_score()  # 줄 선 점수 작업을 공유 풀에서 뺀다 (다른 통화가 늦지 않게, 감사 11번)
         self._phase = "ended"
         self._ready = False
         self._done.set()
