@@ -11,9 +11,14 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from test_phone_ws import MAX_MESSAGES, ORDER_SCRIPT, Phone
 
+from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.call.fakes import FakeClock
+from agenthan.voice.owner.http import customer_texts_router
+from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.server import create_app
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.ws import WS_PATH
@@ -259,3 +264,108 @@ def test_the_owner_opening_a_question_card_is_heard_once(tmp_path) -> None:
 
     heard = " ".join(e["text"] for e in phone.of("bot.say", 3))
     assert heard == "사장님이 보고 계세요, 조금만요."
+
+
+# ---------------------------------------------------------------- 손님 문자 (티켓 07)
+
+
+def _texts_url(call_id: str) -> str:
+    return f"/api/phone/calls/{call_id}/sms"
+
+
+def test_a_late_owner_answer_reaches_the_customer_text_stream(tmp_path) -> None:
+    # 끝에서 끝: 질문 → 20초(시험 0.3초) 시간 초과 → "문자로 알려 드릴게요" → 확정 → `call.ended`에
+    # 확정 문자 → 손님 화면이 문자 스트림을 연다 → 사장님 늦은 답 → 손님 문자 스트림에 도착
+    settings = VoiceSettings(
+        log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
+        fake_replies=ASK_SCRIPT, turn_model="off", owner_key=KEY, owner_wait_s=0.3,
+    )
+    with TestClient(create_app(settings)) as client:
+        with client.websocket_connect(WS_PATH) as ws:
+            phone = Phone(ws)
+            phone.send(type="call.start", turn=0)
+            call_id = phone.until("call.ready", 0)["call"]
+            phone.played(0)
+            phone.say(1)
+            phone.played(1)
+            phone.say(2)  # 메도빅에 견과류 들어가요?
+            phone.played(2)
+            phone.played(3)  # 시간 초과: 봇이 먼저 말하는 턴
+            for turn in (4, 5, 6):
+                phone.say(turn)
+                if turn < 6:
+                    phone.played(turn)
+            phone.until("order", 6)
+            phone.played(6)
+            assert phone.closed_by_server()
+
+        [ended] = phone.of("call.ended")
+        [order_text] = ended["sms"]
+        assert (order_text["kind"], order_text["text"]) == (
+            "order", "주문이 확정됐어요. 메도빅 1개, 합계 7,500원. 18:30에 준비해 둘게요.")
+        with client.stream("GET", _texts_url(call_id)) as stream:
+            assert stream.status_code == 200
+            assert stream.headers["content-type"].startswith("text/event-stream")
+            events = _sse(stream.iter_lines())
+            snapshot = next(events)
+            assert (snapshot["event"], snapshot["data"]) == (
+                "sms.snapshot", {"call_id": call_id, "sms": [order_text]})
+            url = f"/api/owner/questions/{call_id}-q1/answer?key={KEY}"
+            assert client.post(url, json={"answer": "yes"}).status_code == 200
+            assert client.post(url, json={"answer": "no"}).status_code == 409
+            late = _until(events, "sms")["data"]
+
+    timed_out = " ".join(e["text"] for e in phone.of("bot.say", 3))
+    assert timed_out == "확인해서 문자로 알려 드릴게요. 더 필요하신 거 있으세요?"
+    assert (late["kind"], late["text"]) == (
+        "late_answer", "메도빅 문의 답변이에요. 사장님께 여쭤보니 네, 된다고 하세요.")
+
+
+def test_a_written_answer_is_posted_with_its_text(tmp_path) -> None:
+    with _client(tmp_path, ASK_SCRIPT) as client:
+        with client.websocket_connect(WS_PATH) as ws:
+            phone = Phone(ws)
+            phone.send(type="call.start", turn=0)
+            phone.until("call.ready", 0)
+            phone.played(0)
+            phone.say(1)
+            phone.played(1)
+            phone.say(2)  # 메도빅에 견과류 들어가요?
+            phone.played(2)
+            call_id = phone.of("call.ready")[0]["call"]
+            url = f"/api/owner/questions/{call_id}-q1/answer?key={KEY}"
+            assert client.post(url, json={"answer": "free"}).status_code == 422  # 글 없음
+            assert client.post(url, json={"answer": "free", "text": " "}).status_code == 422
+            answered = client.post(url, json={"answer": "free", "text": "Да, есть орехи"})
+            assert answered.status_code == 200
+            assert (answered.json()["answer"], answered.json()["answer_text"]) == (
+                "free", "Да, есть орехи")
+            assert client.post(url, json={"answer": "yes"}).status_code == 409
+            phone.played(3)
+            phone.send(type="call.end", turn=3)
+
+        with client.stream("GET", _texts_url(call_id)) as stream:
+            snapshot = next(_sse(stream.iter_lines()))
+
+    heard = " ".join(e["text"] for e in phone.of("bot.say", 3))
+    assert heard == "사장님이 답을 남기셨어요. 문자로 보내 드릴게요. 더 필요하신 거 있으세요?"
+    # 이 개발 서버는 번역 키가 없다: 원문 + 번역 실패 표시
+    [text] = snapshot["data"]["sms"]
+    assert (text["kind"], text["translate_failed"]) == ("free_answer", True)
+    assert text["text"] == "메도빅 문의 답변이에요. 사장님 답변(원문, 번역 실패): «Да, есть орехи»"
+
+
+def test_a_customer_text_stream_for_an_unknown_call_is_not_found(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        assert client.get(_texts_url("no-such-call")).status_code == 404
+
+
+def test_the_customer_text_stream_says_it_ended_after_its_window() -> None:
+    hub = OwnerHub(store=FakeStoreKnowledge.from_fixture(), clock=FakeClock(NOW))
+    app = FastAPI()
+    app.include_router(customer_texts_router(hub, window_s=0.2))
+    with TestClient(app) as client:
+        hub.call_started("call-1")
+        with client.stream("GET", _texts_url("call-1")) as stream:
+            events = list(_sse(stream.iter_lines()))  # 시간이 지나면 서버가 닫는다
+    assert [e["event"] for e in events] == ["sms.snapshot", "sms.end"]

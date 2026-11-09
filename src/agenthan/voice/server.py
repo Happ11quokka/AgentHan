@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from agenthan.core.fakes import FakeStoreKnowledge
-from agenthan.voice.owner.http import owner_router
+from agenthan.voice.owner.http import customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
 from agenthan.voice.settings import VoiceSettings
@@ -73,6 +73,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))
+    app.include_router(customer_texts_router(hub))  # 손님 "받은 문자" 스트림 (티켓 07)
     if not settings.owner_key:
         log.warning("PHONE_OWNER_KEY가 없어 사장님 화면(/api/owner/*)이 잠겨 있음 (모두 401)")
     if (settings.web_dist / "index.html").is_file():

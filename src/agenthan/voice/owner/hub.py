@@ -13,8 +13,9 @@
   없이 끝나면 missed(회색 미완료, 담긴 메뉴 + 끝난 이유). handoff·missed는 사장님이 닫는다(closed)
 - 질문 카드(`owner.question` 새 카드 · `owner.question.update` 바뀐 카드, 티켓 05·06): 근거 없는
   메뉴 질문. 상태: 열림(open) · 답함(answered) · 시간 초과(timeout, 세션이 알림) · 통화 끝
-  (call_ended, 열린 채 통화가 끝남). 시간 초과·통화 끝 카드도 답을 받는다(늦은 답, 문자 미리보기는
-  티켓 07). 답은 한 번만 받고 통화 세션의 받는 곳(`open_question`의 `reply`)으로 넘긴다. 카드 열람
+  (call_ended, 열린 채 통화가 끝남). 시간 초과·통화 끝 카드도 답을 받는다(늦은 답 → 손님 문자,
+  티켓 07). 자유 입력 답(free)은 사장님 글을 `answer_text`, 번역을 `answer_text_ko`에 둔다. 답은
+  한 번만 받고 통화 세션의 받는 곳(`open_question`의 `reply`)으로 넘긴다. 카드 열람
   (`seen_at`)도 답 전이면 세션에 한 번 알린다. 마감 = 보낸 시각 + `question_wait_s`
 - 통화 자막(`call.caption`, 티켓 10): 통화 중(live) 카드의 손님 말(`customer_said`)·AI 말
   (`bot_said`) 최근 4줄. data는 `{"call_id", "lines": [{"n", "who": customer|bot, "text",
@@ -22,6 +23,11 @@
   줄을 덮어써 다시 보낸다(실패하면 원문만). AI 말은 번역하지 않는다(`text_owner` = "").
   CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다, spec "Papago 실측").
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
+- 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
+  주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
+  (order), 늦은 버튼 답(late_answer, 시간 초과·통화 끝 카드에 온 답), 자유 입력 답(free_answer,
+  제시간이든 늦든. 사장님 글을 한국어로 번역해 넣고, 안 되면 원문 + `translate_failed`).
+  손님 통화 화면은 `call.ended`(세션이 `customer_texts`로 담음)와 `watch_texts` 스트림으로 받는다
 - 확정 주문 카드의 `owner_check`: 그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다. 손님은 문자
   약속을 들었다 ("사장님 확인 필요", 티켓 06)
 - 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...],
