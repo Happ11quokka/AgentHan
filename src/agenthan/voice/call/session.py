@@ -105,7 +105,9 @@ from agenthan.voice.call.ports import (
     CUSTOMER_RETRY,
     ClientGone,
     Clock,
+    NullOwnerChannel,
     Outbound,
+    OwnerChannel,
     PortError,
     SttResult,
     SttStream,
@@ -294,6 +296,7 @@ class CallSession:
         clock: Clock,
         outbound: Outbound,
         order_sink: OrderSink,
+        owner: OwnerChannel | None = None,
         log_dir: Path | None = Path("logs"),
         call_id: str | None = None,
         settings: SessionSettings | None = None,
@@ -310,6 +313,7 @@ class CallSession:
         self._clock = clock
         self._outbound = outbound
         self._sink = order_sink
+        self._owner: OwnerChannel = owner or NullOwnerChannel()  # 사장님 쪽 알림 (4단계 티켓 02)
         self._settings = settings or SessionSettings()
         self._executor = executor  # None이면 루프 기본 풀
         # 턴 모델(티켓 03). 없으면(꺼짐·모델 파일 없음) 링 버퍼도 만들지 않고 규칙만 쓴다
@@ -623,6 +627,7 @@ class CallSession:
         if self._barge is not None:  # 꺼져 있으면 2단계와 같은 모양 (필드 없음)
             ready["voice_barge_in"] = self._barge.mode
         self._emit(ready)
+        self._tell_owner(lambda owner: owner.call_started(self.call_id))
 
     async def _write_stt(self) -> None:
         """STT 쓰기 주체는 이 작업 하나다. `close()`가 이 작업을 취소한 뒤 STT를 닫는다."""
@@ -1068,6 +1073,8 @@ class CallSession:
                 self._log.mark(turn, name, at=at)
         self._emit({"type": "stt.final", "turn": turn, "text": u.text, "epd_type": u.epd_type,
                     "fragments": u.fragments, "end_by": u.end_by})
+        text = u.text
+        self._tell_owner(lambda owner: owner.customer_said(self.call_id, text))
         self._emit_state()
         # 모아 둔 말은 말 끝이 봇 재생 전이라, 재생이 끝나 넘긴 지금부터 센다
         ref = None if u.queued else (u.speech_end or u.button)
@@ -1117,6 +1124,11 @@ class CallSession:
         if result.state in TERMINAL:
             self._terminal = True
             self._end_reason = _end_reason(result, u)
+        lines = result.cart.to_order_lines()
+        self._tell_owner(lambda owner: owner.cart_changed(self.call_id, lines))
+        if result.utterances:
+            said = " ".join(result.utterances)
+            self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.order is not None:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -1621,7 +1633,8 @@ class CallSession:
         hangup(손님이 끊음·소켓 끊김) · error(어댑터·엔진 오류, 엔진 시간 초과, 통화 길이 초과).
         여러 번 불러도 된다(`close()`가 한 번 더 부른다). 정리는 매번 하고 이유는 처음 것만 둔다
         """
-        if self._ended_by is None:
+        first = self._ended_by is None
+        if first:
             self._ended_by = reason
         self._quiet_timer.cancel()
         self._not_heard_timer.cancel()
@@ -1634,6 +1647,15 @@ class CallSession:
         self._phase = "ended"
         self._ready = False
         self._done.set()
+        if first:
+            self._tell_owner(lambda owner: owner.call_ended(self.call_id, reason))
+
+    def _tell_owner(self, note: Callable[[OwnerChannel], None]) -> None:
+        """사장님 쪽에 알린다. 실패해도 통화는 잇는다(사장님 화면 탓에 손님 통화가 끊기지 않게)."""
+        try:
+            note(self._owner)
+        except Exception:
+            log.exception("사장님 쪽 알림 실패 (%s)", self.call_id)
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:

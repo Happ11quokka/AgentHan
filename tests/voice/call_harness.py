@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
-from agenthan.voice.call.fakes import FakeClock, FakeSttStream, FakeTts
+from agenthan.voice.call.fakes import FakeClock, FakeSttStream, FakeTts, RecordingOwnerChannel
 from agenthan.voice.call.frames import AudioFrame, unpack_audio_frame
 from agenthan.voice.call.session import CallSession, SessionSettings
 from agenthan.voice.store_config import StoreConfig
@@ -113,9 +113,11 @@ class Call:
         executor: Executor | None = None,
         turn_model: Any = None,
         turn_executor: Executor | None = None,
+        owner: RecordingOwnerChannel | None = None,
     ) -> None:
         self.out = RecordingOutbound()
         self.sink = MemoryOrderSink()
+        self.owner = owner or RecordingOwnerChannel()
         self.stt = stt or FakeSttStream()
         self.tts = tts or FakeTts()
         self.clock = clock or FakeClock(NOW)
@@ -129,6 +131,7 @@ class Call:
             clock=self.clock,
             outbound=self.out,
             order_sink=self.sink,
+            owner=self.owner,
             log_dir=self.log_dir,
             call_id="test-call",
             settings=settings or SessionSettings(),

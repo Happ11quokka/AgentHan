@@ -11,6 +11,7 @@
 - `FakeTts`: 고정 PCM을 돌려준다. 문장별 지연·실패를 줄 수 있고 동시 호출 수를 센다
 - `FakeClock`: 고정 가게 시각 + (기본) 실제 단조 시각
 - `FakeTurnModel`: 턴 모델(Smart Turn) 가짜. 정해 둔 점수를 차례로 내고, 본 오디오 길이를 남긴다
+- `RecordingOwnerChannel`: 사장님 쪽(`OwnerChannel`) 가짜. 받은 알림을 차례로 모은다
 """
 
 from __future__ import annotations
@@ -18,10 +19,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
+from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
 
@@ -188,3 +191,49 @@ class FakeTurnModel:
         if isinstance(score, Exception):
             raise score
         return score
+
+
+class RecordingOwnerChannel:
+    """`OwnerChannel` 가짜. 받은 알림을 `notes`에 차례로 쌓는다.
+
+    알림 모양: `("started", id)` · `("cart", id, 줄 튜플)` · `("customer", id, 글)` ·
+    `("bot", id, 글)` · `("ended", id, 이유)`
+    """
+
+    def __init__(self) -> None:
+        self.notes: list[tuple[Any, ...]] = []
+
+    def call_started(self, call_id: str) -> None:
+        self.notes.append(("started", call_id))
+
+    def cart_changed(self, call_id: str, lines: Sequence[OrderLine]) -> None:
+        self.notes.append(("cart", call_id, tuple(lines)))
+
+    def customer_said(self, call_id: str, text: str) -> None:
+        self.notes.append(("customer", call_id, text))
+
+    def bot_said(self, call_id: str, text: str) -> None:
+        self.notes.append(("bot", call_id, text))
+
+    def call_ended(self, call_id: str, reason: str) -> None:
+        self.notes.append(("ended", call_id, reason))
+
+    def _of(self, kind: str) -> list[Any]:
+        return [note[-1] for note in self.notes if note[0] == kind]
+
+    @property
+    def carts(self) -> list[tuple[OrderLine, ...]]:
+        return self._of("cart")
+
+    @property
+    def customer_lines(self) -> list[str]:
+        return self._of("customer")
+
+    @property
+    def bot_lines(self) -> list[str]:
+        return self._of("bot")
+
+    @property
+    def ended(self) -> list[str]:
+        """받은 "통화 끝" 이유들 (통화당 하나여야 한다)."""
+        return self._of("ended")

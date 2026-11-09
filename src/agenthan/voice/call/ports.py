@@ -7,6 +7,7 @@
 - `Outbound`: WS 라우터(티켓 04)가 구현한다. JSON 이벤트와 오디오 프레임을 내보낸다
 - `TurnModel`: 오디오 턴 모델(3단계 티켓 03, `voice/smart_turn.py`). 최근 오디오 → 끝남 확률
 - `OrderSink`: `agenthan.core.contracts.OrderSink` 그대로 (계약)
+- `OwnerChannel`: 사장님 쪽(4단계 사장님 허브 `voice/owner/hub.py`)에 통화 상황을 알린다
 
 어댑터는 실패를 `PortError`(또는 하위 클래스)로 올린다.
 세션이 `code`·`retry`를 `error` 이벤트로 옮긴다.
@@ -15,12 +16,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
 from typing import Any, Protocol
 
-from agenthan.core.contracts import OrderSink
+from agenthan.core.contracts import OrderLine, OrderSink
 from agenthan.voice.store_config import KST
 
 __all__ = [
@@ -29,8 +30,10 @@ __all__ = [
     "ClientGone",
     "Clock",
     "END_EPD_TYPES",
+    "NullOwnerChannel",
     "OrderSink",
     "Outbound",
+    "OwnerChannel",
     "PortError",
     "SttResult",
     "SttStream",
@@ -179,3 +182,48 @@ class TurnModel(Protocol):
         (세션은 그 판정을 규칙만으로 한다).
         """
         ...
+
+
+class OwnerChannel(Protocol):
+    """통화 세션 → 사장님 쪽 (4단계 spec "ASK_OWNER: 세션", 티켓 02). 사장님 허브가 구현한다.
+
+    모두 이벤트 루프에서 불리고 바로 돌아와야 한다(막히면 통화가 늦는다). `call_id`는 통화 id
+    (= 계약 `Order.id`). 확정·넘김 주문 자체는 `OrderSink.submit`으로 따로 간다. 세션은 이 포트가
+    올린 예외를 로그만 남기고 통화를 잇는다.
+    """
+
+    def call_started(self, call_id: str) -> None:
+        """통화가 연결됐다(`call.ready`를 보낸 때)."""
+
+    def cart_changed(self, call_id: str, lines: Sequence[OrderLine]) -> None:
+        """턴마다 지금 장바구니(바뀌지 않았어도 보낸다). 빈 장바구니는 빈 목록."""
+
+    def customer_said(self, call_id: str, text: str) -> None:
+        """손님 말 하나가 턴이 됐다(`stt.final`과 같은 글, 한국어)."""
+
+    def bot_said(self, call_id: str, text: str) -> None:
+        """한 턴에 AI가 한 말 전체(한국어, 문장을 이은 것)."""
+
+    def call_ended(self, call_id: str, reason: str) -> None:
+        """통화가 끝났다. 끝내는 길이 어디든 통화당 한 번. 이유는 `CallSession._end` 설명:
+        confirmed · handoff · cancelled · no_input · hangup · error.
+        """
+
+
+class NullOwnerChannel:
+    """아무에게도 알리지 않는다. 사장님 허브 없이 통화만 돌릴 때(1~3단계 테스트·CLI)."""
+
+    def call_started(self, call_id: str) -> None:
+        pass
+
+    def cart_changed(self, call_id: str, lines: Sequence[OrderLine]) -> None:
+        pass
+
+    def customer_said(self, call_id: str, text: str) -> None:
+        pass
+
+    def bot_said(self, call_id: str, text: str) -> None:
+        pass
+
+    def call_ended(self, call_id: str, reason: str) -> None:
+        pass
