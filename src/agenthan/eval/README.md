@@ -11,8 +11,8 @@ uv run --frozen --offline python -m agenthan.eval.run --backend replay
 uv run --frozen --offline python -m agenthan.eval.run --backend live --repeat 3 --pause 1.05 --label m0 --save-baseline m0
 
 # 회귀 게이트: 실제 실행 결과의 summary.json 경로를 지정한다
-# baselines/m0.json은 위 --save-baseline m0 명령으로 만드는 파일이다(아직 커밋된 전체 세트 기준선은 없다).
-# 지금 커밋된 기준선은 12건 표본인 baselines/m0-live-sample.json뿐이다.
+# baselines/m0.json은 위 명령으로 만든 전체 세트 실제 API 기준선이다(커밋 933c5d4, repeat 3).
+# 12건 표본 기준선은 baselines/m0-live-sample.json이다.
 uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/eval/baselines/m0.json --current eval_results/<실행>/summary.json
 ```
 

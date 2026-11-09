@@ -1,0 +1,850 @@
+{
+  "version": 1,
+  "conditions": {
+    "git_commit": "933c5d4459c93a640e818a004039e00659521d8f",
+    "git_dirty": false,
+    "date": "2026-11-09T04:34:11.785907+00:00",
+    "model_id": "HCX-005",
+    "embedding_model_id": "embedding-v2",
+    "system_prompt_sha256": "b57d938970813a9d19a486717eaae95e46d2ba995daf2aafbb3bc4bdb2c10080",
+    "case_set_sha256": "cba1b8ee090e419c7050549c4dfdc99afa5a73821fdd97f5d3eeb233a2e77eb4",
+    "case_sets": {
+      "all_tools": {
+        "path": "tests/data/tool_selection_cases.jsonl",
+        "file_sha256": "81dd82a69489963e681e7fd372089157f3f93f40ad511dcf3062fc09ccc2c19b",
+        "selected_ids": [
+          "upsert_menu-1",
+          "upsert_menu-2",
+          "upsert_menu-3",
+          "update_business_info-1",
+          "update_business_info-2",
+          "update_business_info-3",
+          "update_business_hours-1",
+          "update_business_hours-2",
+          "update_business_hours-3",
+          "save_talktalk_reply-1",
+          "save_talktalk_reply-2",
+          "save_talktalk_reply-3",
+          "update_order_status-1",
+          "update_order_status-2",
+          "update_order_status-3",
+          "update_reservation_status-1",
+          "update_reservation_status-2",
+          "update_reservation_status-3",
+          "list_call_history-1",
+          "list_call_history-2",
+          "list_call_history-3",
+          "set_representative_keywords-1",
+          "set_representative_keywords-2",
+          "set_representative_keywords-3",
+          "create_coupon-1",
+          "create_coupon-2",
+          "create_coupon-3",
+          "register_new_opening-1",
+          "register_new_opening-2",
+          "register_new_opening-3",
+          "get_naverpay_signup_guide-1",
+          "get_naverpay_signup_guide-2",
+          "get_naverpay_signup_guide-3",
+          "set_onsite_payment-1",
+          "set_onsite_payment-2",
+          "set_onsite_payment-3",
+          "get_settlement_summary-1",
+          "get_settlement_summary-2",
+          "get_settlement_summary-3",
+          "check_pos_compatibility-1",
+          "check_pos_compatibility-2",
+          "check_pos_compatibility-3",
+          "get_statistics-1",
+          "get_statistics-2",
+          "get_statistics-3",
+          "search_help_articles-1",
+          "search_help_articles-2",
+          "search_help_articles-3",
+          "missing-menu",
+          "missing-hours",
+          "missing-coupon",
+          "missing-keywords",
+          "missing-info",
+          "missing-talktalk",
+          "missing-opening",
+          "unrelated-1",
+          "unrelated-2",
+          "unrelated-3",
+          "unrelated-4",
+          "unrelated-5",
+          "unrelated-6"
+        ]
+      },
+      "match": {
+        "path": "tests/data/place_request_cases.jsonl",
+        "file_sha256": "8000b706fcb6b3ed9f07cf34764866c02d115bfe3a61e4596bfdf0ae06a2f3fe",
+        "selected_ids": [
+          "place_request_cases-001",
+          "place_request_cases-002",
+          "place_request_cases-003",
+          "place_request_cases-004",
+          "place_request_cases-005",
+          "place_request_cases-006",
+          "place_request_cases-007",
+          "place_request_cases-008",
+          "place_request_cases-009",
+          "place_request_cases-010",
+          "place_request_cases-011",
+          "place_request_cases-012",
+          "place_request_cases-013",
+          "place_request_cases-014",
+          "place_request_cases-015",
+          "place_request_cases-016",
+          "place_request_cases-017",
+          "place_request_cases-018",
+          "place_request_cases-019",
+          "place_request_cases-020",
+          "place_request_cases-021",
+          "place_request_cases-022",
+          "place_request_cases-023",
+          "place_request_cases-024",
+          "place_request_cases-025",
+          "place_request_cases-026",
+          "place_request_cases-027",
+          "place_request_cases-028",
+          "place_request_cases-029",
+          "place_request_cases-030",
+          "place_request_cases-031",
+          "place_request_cases-032",
+          "place_request_cases-033",
+          "place_request_cases-034",
+          "place_request_cases-035",
+          "place_request_cases-036",
+          "place_request_cases-037",
+          "place_request_cases-038",
+          "place_request_cases-039",
+          "place_request_cases-040",
+          "place_request_cases-041",
+          "place_request_cases-042",
+          "place_request_cases-043",
+          "place_request_cases-044",
+          "place_request_cases-045",
+          "place_request_cases-046",
+          "place_request_cases-047",
+          "place_request_cases-048",
+          "place_request_cases-049",
+          "place_request_cases-050",
+          "place_request_cases-051",
+          "place_request_cases-052",
+          "place_request_cases-053",
+          "place_request_cases-054",
+          "place_request_cases-055",
+          "place_request_cases-056",
+          "place_request_cases-057",
+          "place_request_cases-058",
+          "place_request_cases-059",
+          "place_request_cases-060",
+          "place_request_cases-061",
+          "place_request_cases-062",
+          "place_request_cases-063",
+          "place_request_cases-064"
+        ]
+      }
+    },
+    "tool_schemas_sha256": "ecd30c69562c158ec7737fbf9510c091fa5b65f2347e12ddc7e81b484f28fca6",
+    "catalog_sha256": "21464b7c6b391f149038a1b9ce23da84748f246e29c79126b76398542ac005e1",
+    "embedding_index_sha256": "ad61f6fa97c420cd8ff6c60468abf3c004f7c4108368cc4a2e643c21633a7ec1",
+    "repeat": 3,
+    "backend": "live",
+    "split": null,
+    "pause_sec": 1.05
+  },
+  "results": {
+    "all_tools": {
+      "planned": 183,
+      "cases": 183,
+      "answered": 183,
+      "api_errors": 0,
+      "unexecuted": 0,
+      "selection_accuracy": 0.9652777777777778,
+      "selection_scored": 144,
+      "args_accuracy": null,
+      "args_scored": 0,
+      "args_valid_rate": 1.0,
+      "false_call_rate": 0.0,
+      "safety_violations": 0,
+      "latency_p50_sec": 2.4402681669998856,
+      "latency_p95_sec": 4.272859083000185,
+      "tokens_per_call": 1636.1748633879781,
+      "usage_calls": 183,
+      "per_kind": {
+        "full": {
+          "total": 144,
+          "correct": 139,
+          "accuracy": 0.9652777777777778
+        },
+        "missing": {
+          "total": 21,
+          "correct": 21,
+          "accuracy": 1.0
+        },
+        "unrelated": {
+          "total": 18,
+          "correct": 18,
+          "accuracy": 1.0
+        }
+      },
+      "per_lang": {
+        "en": {
+          "total": 60,
+          "correct": 58,
+          "accuracy": 0.9666666666666667
+        },
+        "ko": {
+          "total": 63,
+          "correct": 63,
+          "accuracy": 1.0
+        },
+        "ko_simple": {
+          "total": 60,
+          "correct": 57,
+          "accuracy": 0.95
+        }
+      },
+      "per_tool": {
+        "None": {
+          "total": 39,
+          "correct": 39,
+          "accuracy": 1.0
+        },
+        "check_pos_compatibility": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "create_coupon": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "get_naverpay_signup_guide": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "get_settlement_summary": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "get_statistics": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "list_call_history": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "register_new_opening": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "save_talktalk_reply": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "search_help_articles": {
+          "total": 9,
+          "correct": 7,
+          "accuracy": 0.7777777777777778
+        },
+        "set_onsite_payment": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "set_representative_keywords": {
+          "total": 9,
+          "correct": 6,
+          "accuracy": 0.6666666666666666
+        },
+        "update_business_hours": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "update_business_info": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "update_order_status": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "update_reservation_status": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "upsert_menu": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        }
+      },
+      "confusions": [
+        {
+          "expected": "set_representative_keywords",
+          "got": "search_help_articles",
+          "count": 3
+        },
+        {
+          "expected": "search_help_articles",
+          "got": null,
+          "count": 2
+        }
+      ]
+    },
+    "match": {
+      "planned": 192,
+      "cases": 192,
+      "answered": 192,
+      "api_errors": 0,
+      "unexecuted": 0,
+      "selection_accuracy": 1.0,
+      "selection_scored": 174,
+      "args_accuracy": null,
+      "args_scored": 0,
+      "args_valid_rate": null,
+      "false_call_rate": 0.0,
+      "safety_violations": 0,
+      "latency_p50_sec": 0.16172762499991222,
+      "latency_p95_sec": 0.2822649170002478,
+      "tokens_per_call": null,
+      "usage_calls": 0,
+      "per_kind": {
+        "full": {
+          "total": 174,
+          "correct": 174,
+          "accuracy": 1.0
+        },
+        "unrelated": {
+          "total": 18,
+          "correct": 18,
+          "accuracy": 1.0
+        }
+      },
+      "per_lang": {
+        "en": {
+          "total": 66,
+          "correct": 66,
+          "accuracy": 1.0
+        },
+        "ko": {
+          "total": 81,
+          "correct": 81,
+          "accuracy": 1.0
+        },
+        "ko_simple": {
+          "total": 45,
+          "correct": 45,
+          "accuracy": 1.0
+        }
+      },
+      "per_tool": {
+        "None": {
+          "total": 18,
+          "correct": 18,
+          "accuracy": 1.0
+        },
+        "ai_review": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "business_hours": {
+          "total": 12,
+          "correct": 12,
+          "accuracy": 1.0
+        },
+        "business_info": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "coupon": {
+          "total": 6,
+          "correct": 6,
+          "accuracy": 1.0
+        },
+        "learning_support": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "menu": {
+          "total": 21,
+          "correct": 21,
+          "accuracy": 1.0
+        },
+        "naverpay_signup": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "new_opening": {
+          "total": 6,
+          "correct": 6,
+          "accuracy": 1.0
+        },
+        "onsite_payment": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "order": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "place_plus": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "reservation": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "review_reply": {
+          "total": 21,
+          "correct": 21,
+          "accuracy": 1.0
+        },
+        "search_keywords": {
+          "total": 6,
+          "correct": 6,
+          "accuracy": 1.0
+        },
+        "settlement": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        },
+        "smartcall": {
+          "total": 6,
+          "correct": 6,
+          "accuracy": 1.0
+        },
+        "statistics": {
+          "total": 6,
+          "correct": 6,
+          "accuracy": 1.0
+        },
+        "talktalk": {
+          "total": 9,
+          "correct": 9,
+          "accuracy": 1.0
+        }
+      },
+      "confusions": []
+    }
+  },
+  "by_split": {
+    "null": {
+      "all_tools": {
+        "planned": 183,
+        "cases": 183,
+        "answered": 183,
+        "api_errors": 0,
+        "unexecuted": 0,
+        "selection_accuracy": 0.9652777777777778,
+        "selection_scored": 144,
+        "args_accuracy": null,
+        "args_scored": 0,
+        "args_valid_rate": 1.0,
+        "false_call_rate": 0.0,
+        "safety_violations": 0,
+        "latency_p50_sec": 2.4402681669998856,
+        "latency_p95_sec": 4.272859083000185,
+        "tokens_per_call": 1636.1748633879781,
+        "usage_calls": 183,
+        "per_kind": {
+          "full": {
+            "total": 144,
+            "correct": 139,
+            "accuracy": 0.9652777777777778
+          },
+          "missing": {
+            "total": 21,
+            "correct": 21,
+            "accuracy": 1.0
+          },
+          "unrelated": {
+            "total": 18,
+            "correct": 18,
+            "accuracy": 1.0
+          }
+        },
+        "per_lang": {
+          "en": {
+            "total": 60,
+            "correct": 58,
+            "accuracy": 0.9666666666666667
+          },
+          "ko": {
+            "total": 63,
+            "correct": 63,
+            "accuracy": 1.0
+          },
+          "ko_simple": {
+            "total": 60,
+            "correct": 57,
+            "accuracy": 0.95
+          }
+        },
+        "per_tool": {
+          "None": {
+            "total": 39,
+            "correct": 39,
+            "accuracy": 1.0
+          },
+          "check_pos_compatibility": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "create_coupon": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "get_naverpay_signup_guide": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "get_settlement_summary": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "get_statistics": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "list_call_history": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "register_new_opening": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "save_talktalk_reply": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "search_help_articles": {
+            "total": 9,
+            "correct": 7,
+            "accuracy": 0.7777777777777778
+          },
+          "set_onsite_payment": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "set_representative_keywords": {
+            "total": 9,
+            "correct": 6,
+            "accuracy": 0.6666666666666666
+          },
+          "update_business_hours": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "update_business_info": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "update_order_status": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "update_reservation_status": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "upsert_menu": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          }
+        },
+        "confusions": [
+          {
+            "expected": "set_representative_keywords",
+            "got": "search_help_articles",
+            "count": 3
+          },
+          {
+            "expected": "search_help_articles",
+            "got": null,
+            "count": 2
+          }
+        ]
+      },
+      "match": {
+        "planned": 192,
+        "cases": 192,
+        "answered": 192,
+        "api_errors": 0,
+        "unexecuted": 0,
+        "selection_accuracy": 1.0,
+        "selection_scored": 174,
+        "args_accuracy": null,
+        "args_scored": 0,
+        "args_valid_rate": null,
+        "false_call_rate": 0.0,
+        "safety_violations": 0,
+        "latency_p50_sec": 0.16172762499991222,
+        "latency_p95_sec": 0.2822649170002478,
+        "tokens_per_call": null,
+        "usage_calls": 0,
+        "per_kind": {
+          "full": {
+            "total": 174,
+            "correct": 174,
+            "accuracy": 1.0
+          },
+          "unrelated": {
+            "total": 18,
+            "correct": 18,
+            "accuracy": 1.0
+          }
+        },
+        "per_lang": {
+          "en": {
+            "total": 66,
+            "correct": 66,
+            "accuracy": 1.0
+          },
+          "ko": {
+            "total": 81,
+            "correct": 81,
+            "accuracy": 1.0
+          },
+          "ko_simple": {
+            "total": 45,
+            "correct": 45,
+            "accuracy": 1.0
+          }
+        },
+        "per_tool": {
+          "None": {
+            "total": 18,
+            "correct": 18,
+            "accuracy": 1.0
+          },
+          "ai_review": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "business_hours": {
+            "total": 12,
+            "correct": 12,
+            "accuracy": 1.0
+          },
+          "business_info": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "coupon": {
+            "total": 6,
+            "correct": 6,
+            "accuracy": 1.0
+          },
+          "learning_support": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "menu": {
+            "total": 21,
+            "correct": 21,
+            "accuracy": 1.0
+          },
+          "naverpay_signup": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "new_opening": {
+            "total": 6,
+            "correct": 6,
+            "accuracy": 1.0
+          },
+          "onsite_payment": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "order": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "place_plus": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "reservation": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "review_reply": {
+            "total": 21,
+            "correct": 21,
+            "accuracy": 1.0
+          },
+          "search_keywords": {
+            "total": 6,
+            "correct": 6,
+            "accuracy": 1.0
+          },
+          "settlement": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          },
+          "smartcall": {
+            "total": 6,
+            "correct": 6,
+            "accuracy": 1.0
+          },
+          "statistics": {
+            "total": 6,
+            "correct": 6,
+            "accuracy": 1.0
+          },
+          "talktalk": {
+            "total": 9,
+            "correct": 9,
+            "accuracy": 1.0
+          }
+        },
+        "confusions": []
+      }
+    },
+    "dev": {
+      "all_tools": {
+        "planned": 0,
+        "cases": 0,
+        "answered": 0,
+        "api_errors": 0,
+        "unexecuted": 0,
+        "selection_accuracy": null,
+        "selection_scored": 0,
+        "args_accuracy": null,
+        "args_scored": 0,
+        "args_valid_rate": null,
+        "false_call_rate": null,
+        "safety_violations": 0,
+        "latency_p50_sec": null,
+        "latency_p95_sec": null,
+        "tokens_per_call": null,
+        "usage_calls": 0,
+        "per_kind": {},
+        "per_lang": {},
+        "per_tool": {},
+        "confusions": []
+      },
+      "match": {
+        "planned": 0,
+        "cases": 0,
+        "answered": 0,
+        "api_errors": 0,
+        "unexecuted": 0,
+        "selection_accuracy": null,
+        "selection_scored": 0,
+        "args_accuracy": null,
+        "args_scored": 0,
+        "args_valid_rate": null,
+        "false_call_rate": null,
+        "safety_violations": 0,
+        "latency_p50_sec": null,
+        "latency_p95_sec": null,
+        "tokens_per_call": null,
+        "usage_calls": 0,
+        "per_kind": {},
+        "per_lang": {},
+        "per_tool": {},
+        "confusions": []
+      }
+    },
+    "holdout": {
+      "all_tools": {
+        "planned": 0,
+        "cases": 0,
+        "answered": 0,
+        "api_errors": 0,
+        "unexecuted": 0,
+        "selection_accuracy": null,
+        "selection_scored": 0,
+        "args_accuracy": null,
+        "args_scored": 0,
+        "args_valid_rate": null,
+        "false_call_rate": null,
+        "safety_violations": 0,
+        "latency_p50_sec": null,
+        "latency_p95_sec": null,
+        "tokens_per_call": null,
+        "usage_calls": 0,
+        "per_kind": {},
+        "per_lang": {},
+        "per_tool": {},
+        "confusions": []
+      },
+      "match": {
+        "planned": 0,
+        "cases": 0,
+        "answered": 0,
+        "api_errors": 0,
+        "unexecuted": 0,
+        "selection_accuracy": null,
+        "selection_scored": 0,
+        "args_accuracy": null,
+        "args_scored": 0,
+        "args_valid_rate": null,
+        "false_call_rate": null,
+        "safety_violations": 0,
+        "latency_p50_sec": null,
+        "latency_p95_sec": null,
+        "tokens_per_call": null,
+        "usage_calls": 0,
+        "per_kind": {},
+        "per_lang": {},
+        "per_tool": {},
+        "confusions": []
+      }
+    }
+  },
+  "extra_summaries": [],
+  "status": "COMPLETE"
+}
