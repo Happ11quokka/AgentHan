@@ -1332,9 +1332,10 @@ class CallSession:
             return
         cut.pop("est", None)  # 서버 어림보다 브라우저가 잰 자리가 정확하다
         cut.update(seq=seq, played_ms=round(played_ms), heard=spoken.heard(seq, played_ms))
-        if self._report_due == turn and self._turn > turn:
-            self._report_due = None
-            self._flush_log(before=self._turn)  # 다음 턴이 이미 열렸다. 끊긴 턴 기록을 닫는다
+        if self._report_due == turn:
+            self._report_due = None  # 보고가 왔다. 더 기다릴 것이 없다
+            if self._turn > turn:
+                self._flush_log(before=self._turn)  # 다음 턴이 이미 열렸다. 끊긴 턴 기록을 닫는다
 
     def _after_playback(self, turn: int, *, mark: str = "play_done") -> None:
         """재생이 끝났거나(`playback.done`·안전망) 끊겼다. 듣기로 가고 무음 타이머를 건다."""
@@ -1582,10 +1583,16 @@ class CallSession:
         """새 턴 `turn`을 열기 전에 앞 턴 기록을 쓴다.
 
         바로 앞 턴이 끊겼고 브라우저의 `playback.interrupted`(들은 만큼)를 아직 못 받았으면 그
-        턴은 한 턴 더 열어 둔다(리뷰 C2). 끊는 순간 대기 중이던 말이 다음 턴을 열기 때문이다
+        턴은 보고가 올 때까지 열어 둔다(리뷰 C2). 끊는 순간 대기 중이던 말이 다음 턴을 열기
+        때문이다. 보고가 오면 `_on_playback_interrupted`가 닫는다. 끝내 안 오면 그다음 턴을 열 때
+        닫는다
         """
-        due, self._report_due = self._report_due, None
-        self._flush_log(before=turn - 1 if due == turn - 1 else turn)
+        due = self._report_due
+        if due is not None and due == turn - 1:
+            self._flush_log(before=due)
+            return
+        self._report_due = None
+        self._flush_log(before=turn)
 
     def _flush_log(self, before: int | None = None) -> None:
         for line in self._log.flush(before):

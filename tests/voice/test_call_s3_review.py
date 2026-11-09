@@ -343,6 +343,56 @@ def test_how_much_was_heard_stays_on_a_cut_turn_even_when_a_queued_word_opens_th
     assert record["interrupt"]["heard"][0]["heard"] == "partial"
 
 
+def test_a_cut_turn_record_closes_as_soon_as_the_heard_report_arrives(tmp_path) -> None:
+    # 감사 3번: 다음 턴이 이미 열렸어도 들은 만큼 보고가 오면 끊긴 턴 기록(metrics)을 바로 낸다.
+    # 다음다음 턴이나 통화 끝까지 기다리지 않는다
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요"])
+    tts = FakeTts(delays={"메도빅 하나요.": 0.4, "더 필요하신 거 있으세요?": 5.0})
+
+    async def call() -> tuple[Call, list[int]]:
+        async with Call(tmp_path, stt=stt, tts=tts) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=1)
+            await c.say()  # 첫 문장 합성 중
+            await c.out.wait_for("bot.say", turn=1)
+            await c.session.feed_event({"type": "user.interrupt", "turn": 1})
+            await c.out.wait_for("stt.final", turn=2)
+            assert [m["turn"] for m in c.out.of("metrics")] == [0], "보고 전에는 열어 둔다"
+            await c.session.feed_event({"type": "playback.interrupted", "turn": 1, "seq": 0,
+                                        "played_ms": 200})
+            metrics = await c.out.wait_for("metrics", turn=1)
+            assert metrics["interrupt"]["played_ms"] == 200
+            seen = [m["turn"] for m in c.out.of("metrics")]
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+            return c, seen
+
+    c, seen = run(call())
+    assert seen == [0, 1]
+    assert [line["turn"] for line in lines(c)] == [0, 1, 2]
+
+
+def test_a_heard_report_before_the_next_turn_does_not_hold_the_record_open(tmp_path) -> None:
+    # 보고가 다음 턴보다 먼저 왔으면 기다릴 것이 없다. 다음 턴을 열 때 끊긴 턴 기록을 닫는다
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요"])
+
+    async def call() -> list[int]:
+        async with Call(tmp_path, stt=stt) as c:
+            await c.start()
+            await c.say()
+            await c.out.wait_for("bot.say", turn=1)
+            await c.session.feed_event({"type": "user.interrupt", "turn": 1})
+            await c.session.feed_event({"type": "playback.interrupted", "turn": 1, "seq": 0,
+                                        "played_ms": 200})
+            await c.say()
+            await c.out.wait_for("stt.final", turn=2)
+            seen = [m["turn"] for m in c.out.of("metrics")]
+            await c.session.feed_event({"type": "call.end", "turn": 2})
+            return seen
+
+    assert run(call()) == [0, 1]
+
+
 # ---------------------------------------------------------------- C6
 
 
