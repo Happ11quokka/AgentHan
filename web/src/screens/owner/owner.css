@@ -471,3 +471,44 @@
   display: block;
   color: var(--owner-danger);
 }
+
+/* "손님이 궁금해한 것" (티켓 13): 주문 카드 아래 접힌 목록 */
+.owner-knowledge {
+  margin-top: 16px;
+}
+
+.owner-knowledge > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 0;
+}
+
+.owner-knowledge-waiting {
+  color: var(--owner-band-late);
+}
+
+.owner-knowledge-card + .owner-knowledge-card {
+  margin-top: 8px;
+}
+
+.owner-knowledge-filled {
+  opacity: 0.75;
+}
+
+.owner-knowledge-count {
+  font-size: 13px;
+  color: var(--owner-muted);
+}
+
+.owner-knowledge-answer {
+  margin-top: 8px;
+}
+
+.owner-knowledge-saved {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.owner-knowledge-saved-label {
+  font-weight: 700;
+}

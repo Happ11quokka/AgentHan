@@ -1,4 +1,4 @@
-// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·03·05·10, 서버 `voice/owner/hub.py`).
+// 사장님 화면 상태와 서버 이벤트 모양 (4단계 티켓 01·02·03·05·10·13, 서버 `voice/owner/hub.py`).
 // 화면 상태는 순수 리듀서 하나로 정한다: 이전 상태 + 이벤트 → 다음 상태.
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
 
@@ -163,6 +163,49 @@ export interface QuestionCard {
   answer_text_ko?: string
 }
 
+/** 메뉴 질문 종류 (서버 `menu_info.QuestionKind`) */
+export type KnowledgeKind = 'allergen' | 'allergy' | 'price' | 'option' | 'ingredient' | 'taste' | 'other'
+
+/**
+ * "손님이 궁금해한 것" 카드 (티켓 13): AI가 답하지 못한 메뉴 질문. 같은 메뉴·종류·대상 질문은
+ * 열린 카드 하나에 횟수로 쌓인다. 사장님이 답을 저장하면 filled, 다음 통화부터 AI가 그 답을 쓴다
+ */
+export interface KnowledgeCard {
+  /** `k1`, `k2`… */
+  id: string
+  menu_id: string
+  menu_name: string
+  /** 사장님 원어 메뉴명. 비면 서버가 한국어 이름을 넣는다 */
+  menu_name_owner: string
+  kind: KnowledgeKind
+  /** 알레르기 성분·이름 붙은 재료(한국어). 그 밖 질문은 질문 요약, 나머지는 빈 글 */
+  subject: string
+  /** 마지막으로 물은 통화 */
+  call_id: string
+  /** 마지막 손님 질문 원문 (한국어) */
+  text: string
+  /** 그 질문 번역. 아직·실패면 빈 글 */
+  text_owner: string
+  /** 같은 질문을 받은 횟수 */
+  count: number
+  asked_at: string
+  last_asked_at: string
+  status: 'open' | 'filled'
+  /** 사장님 글 원문 (사장님 언어) */
+  answer_text: string
+  /** 저장한 한국어. AI가 "사장님 말씀으로는 …"으로 그대로 말한다 */
+  answer_ko: string
+  saved_at: string
+}
+
+/** 사장님 답 미리보기 (`POST /api/owner/knowledge/{id}/preview`). 저장 전이다 */
+export interface KnowledgePreview {
+  text: string
+  /** 한국어 번역. 번역이 안 되면 빈 글(사장님이 한국어를 직접 적는다) */
+  text_ko: string
+  translate_failed: boolean
+}
+
 /** SSE 이벤트 이름(`event:`)과 `data:` JSON */
 export type OwnerServerEvent =
   | {
@@ -173,6 +216,8 @@ export type OwnerServerEvent =
         calls: CallCard[]
         questions?: QuestionCard[]
         captions?: CallCaption[]
+        /** 티켓 13부터 온다 */
+        knowledge?: KnowledgeCard[]
       }
     }
   | { type: 'order.update'; data: OrderCard }
@@ -180,6 +225,7 @@ export type OwnerServerEvent =
   | { type: 'call.caption'; data: CallCaption }
   | { type: 'owner.question'; data: QuestionCard }
   | { type: 'owner.question.update'; data: QuestionCard }
+  | { type: 'knowledge.update'; data: KnowledgeCard }
 
 export type OwnerAction =
   | OwnerServerEvent
@@ -203,6 +249,8 @@ export interface OwnerState {
   questions: QuestionCard[]
   /** 통화 id → 자막 줄(오래된 것부터). 통화 중 카드 것만 둔다 (티켓 10) */
   captions: Record<string, CaptionLine[]>
+  /** "손님이 궁금해한 것" 카드 전부(채운 것 포함). 먼저 생긴 카드가 앞 (티켓 13) */
+  knowledge: KnowledgeCard[]
 }
 
 export const initialOwnerState: OwnerState = {
@@ -211,6 +259,7 @@ export const initialOwnerState: OwnerState = {
   calls: [],
   questions: [],
   captions: {},
+  knowledge: [],
 }
 
 export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState {
@@ -228,6 +277,7 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
         calls: action.data.calls.filter(shown),
         questions: action.data.questions ?? [],
         captions: Object.fromEntries((action.data.captions ?? []).map((c) => [c.call_id, c.lines])),
+        knowledge: action.data.knowledge ?? [],
       }
     case 'order.update': {
       const card = action.data
@@ -253,6 +303,12 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
       const at = state.questions.findIndex((q) => q.id === card.id)
       const questions = at < 0 ? [...state.questions, card] : state.questions.with(at, card)
       return { ...state, questions }
+    }
+    case 'knowledge.update': {
+      const card = action.data
+      const at = state.knowledge.findIndex((k) => k.id === card.id)
+      const knowledge = at < 0 ? [...state.knowledge, card] : state.knowledge.with(at, card)
+      return { ...state, knowledge }
     }
   }
 }
@@ -318,6 +374,16 @@ export function questionClock(card: QuestionCard, nowMs: number): QuestionClock 
   if (card.status === 'call_ended') return 'ended'
   const left = card.status === 'open' ? secondsLeft(card, nowMs) : 0
   return left > 0 ? left : 'late'
+}
+
+/** 주문 카드 아래 접힌 "손님이 궁금해한 것" 목록 (티켓 13): 먼저 생긴 카드가 앞, 채운 카드도 남는다 */
+export function knowledgeCards(state: OwnerState): KnowledgeCard[] {
+  return state.knowledge
+}
+
+/** 사장님 답을 기다리는 카드 (접힌 목록 제목의 숫자) */
+export function unansweredKnowledge(state: OwnerState): KnowledgeCard[] {
+  return state.knowledge.filter((k) => k.status === 'open')
 }
 
 /** 자유 입력 답 글 최대 길이. 서버(`FREE_TEXT_MAX`)와 같다 */

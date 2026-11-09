@@ -5,6 +5,8 @@
 import type {
   CallEndReason,
   CaptionLine,
+  KnowledgeCard,
+  KnowledgeKind,
   OrderCardLine,
   OwnerAnswer,
   QuestionCard,
@@ -58,6 +60,19 @@ export interface OwnerText {
   sms: string
   smsKind: Record<SentText['kind'], string>
   translateFailed: string
+  /**
+   * "손님이 궁금해한 것" (티켓 13): 접힌 목록 제목, 질문 종류, 횟수, 안내, 번역 보기·저장 버튼,
+   * 미리보기 이름, 번역 실패, 채운 카드 표시
+   */
+  knowledge: string
+  knowledgeKind: Record<KnowledgeKind, string>
+  knowledgeCount: (count: number) => string
+  knowledgeHint: string
+  knowledgeTranslate: string
+  knowledgePreview: string
+  knowledgeNoTranslation: string
+  knowledgeSave: string
+  knowledgeSaved: string
   endReason: Record<CallEndReason, string>
   badge: Record<RequestBadge, string>
   papago: string
@@ -112,6 +127,23 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
       free_answer: 'Ваш ответ текстом',
     },
     translateFailed: 'Перевод не удался: клиенту ушёл ваш текст без перевода',
+    knowledge: 'Что спрашивали клиенты',
+    knowledgeKind: {
+      allergen: 'Аллерген',
+      allergy: 'Аллергены',
+      price: 'Цена',
+      option: 'Опции',
+      ingredient: 'Состав',
+      taste: 'Вкус и описание',
+      other: 'Другое',
+    },
+    knowledgeCount: (n) => `Спросили ${n} ${ruTimes(n)}`,
+    knowledgeHint: 'Ответьте на своём языке. ИИ будет отвечать так следующим клиентам — после «Сохранить»',
+    knowledgeTranslate: 'Показать перевод',
+    knowledgePreview: 'ИИ скажет клиенту (по-корейски, можно исправить)',
+    knowledgeNoTranslation: 'Перевод не удался. Напишите ответ по-корейски',
+    knowledgeSave: 'Сохранить',
+    knowledgeSaved: 'Сохранено',
     endReason: {
       confirmed: 'Заказ подтверждён',
       handoff: 'Клиент попросил хозяина',
@@ -171,6 +203,23 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
       free_answer: '글로 남긴 답',
     },
     translateFailed: '번역 실패: 사장님 글 원문이 갔어요',
+    knowledge: '손님이 궁금해한 것',
+    knowledgeKind: {
+      allergen: '알레르기 성분',
+      allergy: '알레르기',
+      price: '가격',
+      option: '옵션',
+      ingredient: '재료',
+      taste: '맛·설명',
+      other: '그 밖',
+    },
+    knowledgeCount: (n) => `${n}번 물어봄`,
+    knowledgeHint: '답을 적고 저장하면 다음 손님부터 AI가 이 답을 전해요',
+    knowledgeTranslate: '번역 보기',
+    knowledgePreview: 'AI가 손님에게 할 말(한국어, 고칠 수 있어요)',
+    knowledgeNoTranslation: '번역이 안 됐어요. 한국어로 적어 주세요',
+    knowledgeSave: '저장',
+    knowledgeSaved: '채움',
     endReason: {
       confirmed: '주문 확정',
       handoff: '사장님 연결 요청',
@@ -269,5 +318,30 @@ export function sentTextView(t: SentText, lang: OwnerLang): SentTextView {
     label: `${text.sms} · ${t.sent_label} · ${text.smsKind[t.kind]}`,
     text: t.text,
     failed: t.translate_failed ? text.translateFailed : '',
+  }
+}
+
+/** 러시아어 "раз" 꼴: 1·21… раз, 2~4·22~24… раза, 나머지(11~14 포함) раз */
+function ruTimes(n: number): string {
+  const tens = n % 100
+  const ones = n % 10
+  return ones >= 2 && ones <= 4 && (tens < 12 || tens > 14) ? 'раза' : 'раз'
+}
+
+export interface KnowledgeView extends QuestionView {
+  /** 질문 종류. 알레르기 성분 하나·이름 붙은 재료면 뒤에 그 낱말(한국어) */
+  kind: string
+  /** 같은 질문을 받은 횟수 */
+  count: string
+}
+
+/** "손님이 궁금해한 것" 카드를 화면 언어로 (티켓 13). 질문은 질문 카드와 같이 번역 + 한국어 원문 */
+export function knowledgeView(card: KnowledgeCard, lang: OwnerLang): KnowledgeView {
+  const text = OWNER_TEXT[lang]
+  const named = card.subject && (card.kind === 'allergen' || card.kind === 'ingredient')
+  return {
+    ...questionView(card, lang),
+    kind: named ? `${text.knowledgeKind[card.kind]}: ${card.subject}` : text.knowledgeKind[card.kind],
+    count: text.knowledgeCount(card.count),
   }
 }

@@ -1,6 +1,14 @@
 // 사장님 화면 ↔ 서버 (서버 `voice/owner/http.py`). SSE 하나로 받고 POST로 보낸다.
 // 모든 경로에 쿼리 `key`(사장님 화면 비밀 토큰)를 붙인다. `EventSource`는 헤더를 못 붙인다.
-import type { CallCard, OrderCard, OwnerAction, OwnerAnswer, QuestionCard } from './ownerState.ts'
+import type {
+  CallCard,
+  KnowledgeCard,
+  KnowledgePreview,
+  OrderCard,
+  OwnerAction,
+  OwnerAnswer,
+  QuestionCard,
+} from './ownerState.ts'
 
 const BASE = '/api/owner'
 
@@ -29,6 +37,9 @@ export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => vo
   })
   source.addEventListener('owner.question.update', (e) => {
     dispatch({ type: 'owner.question.update', data: JSON.parse((e as MessageEvent<string>).data) })
+  })
+  source.addEventListener('knowledge.update', (e) => {
+    dispatch({ type: 'knowledge.update', data: JSON.parse((e as MessageEvent<string>).data) })
   })
   source.onerror = () => {
     // 200이 아니면(토큰 틀림 401) 브라우저가 다시 붙지 않고 CLOSED가 된다. 그 밖은 스스로 다시 붙는다
@@ -87,6 +98,43 @@ export async function answerQuestion(
     },
   )
   return res.ok ? ((await res.json()) as QuestionCard) : null
+}
+
+/**
+ * "손님이 궁금해한 것" 카드 답 미리보기(티켓 13): 사장님 글 → 한국어 번역. 저장하지 않는다.
+ * 실패면 null(없는 카드 404, 빈 글 422 등)
+ */
+export async function previewKnowledge(
+  key: string,
+  id: string,
+  text: string,
+): Promise<KnowledgePreview | null> {
+  const res = await fetch(
+    `${BASE}/knowledge/${encodeURIComponent(id)}/preview?key=${encodeURIComponent(key)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) },
+  )
+  return res.ok ? ((await res.json()) as KnowledgePreview) : null
+}
+
+/**
+ * "저장"(티켓 13): 한국어(번역문 또는 사장님이 고친 글)를 그대로 보충 지식으로. 다음 통화부터 AI가
+ * "사장님 말씀으로는 …"으로 말한다. 성공하면 채운 카드(SSE `knowledge.update`로도 온다), 실패면 null
+ */
+export async function saveKnowledge(
+  key: string,
+  id: string,
+  textKo: string,
+  text: string,
+): Promise<KnowledgeCard | null> {
+  const res = await fetch(
+    `${BASE}/knowledge/${encodeURIComponent(id)}/save?key=${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text_ko: textKo, text }),
+    },
+  )
+  return res.ok ? ((await res.json()) as KnowledgeCard) : null
 }
 
 /**

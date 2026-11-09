@@ -11,6 +11,8 @@
 // 통화 자막(티켓 10): 통화 중 카드 아래 최근 4줄. 손님 말은 번역 + 작은 한국어 원문(번역 전·실패면
 // 원문만), AI 말은 한국어 원문 회색 한 줄.
 // 티켓 07: 질문 카드에 접힌 자유 입력(손님에게는 번역 문자로만 감). 카드 안에 "손님에게 보낸 문자" 한 줄씩.
+// 티켓 13: 주문 카드 아래 접힌 "손님이 궁금해한 것"(AI가 답 못 한 메뉴 질문, 메뉴별 카드·횟수).
+// 사장님 글 → "번역 보기"(한국어 미리보기, 고칠 수 있음) → "저장"을 눌러야 다음 손님부터 AI가 쓴다.
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
@@ -18,6 +20,8 @@ import { OrderChime } from './orderChime.ts'
 import {
   type CallCard,
   type CaptionLine,
+  type KnowledgeCard,
+  type KnowledgePreview,
   type OrderCardLine,
   type OwnerAnswer,
   type QuestionCard,
@@ -28,12 +32,14 @@ import {
   captionLines,
   followUpCalls,
   initialOwnerState,
+  knowledgeCards,
   liveCalls,
   needsSeen,
   openQuestions,
   ownerReducer,
   questionClock,
   questionsWaiting,
+  unansweredKnowledge,
   writtenAnswer,
 } from './ownerState.ts'
 import {
@@ -42,6 +48,8 @@ import {
   connectOwnerStream,
   dismissCall,
   ownerKey,
+  previewKnowledge,
+  saveKnowledge,
   seeQuestion,
   wakeDevice,
 } from './ownerStream.ts'
@@ -51,6 +59,7 @@ import {
   type OwnerText,
   PAPAGO_URL,
   captionView,
+  knowledgeView,
   lineView,
   ownerLang,
   questionView,
@@ -167,10 +176,17 @@ export default function OwnerPage() {
     if (card) dispatch({ type: 'owner.question.update', data: card })
   }
 
+  async function save(id: string, textKo: string, written: string) {
+    const card = await saveKnowledge(key.current, id, textKo, written)
+    if (card) dispatch({ type: 'knowledge.update', data: card })
+  }
+
   const showOpen = state.connection === 'closed' || state.connection === 'failed'
   const live = liveCalls(state)
   const followUps = followUpCalls(state)
   const questions = openQuestions(state)
+  const knowledge = knowledgeCards(state)
+  const waitingKnowledge = unansweredKnowledge(state).length
 
   return (
     <main className="owner" lang={lang}>
@@ -270,6 +286,25 @@ export default function OwnerPage() {
           </article>
         ))}
       </section>
+
+      {knowledge.length > 0 && (
+        <details className="owner-knowledge">
+          <summary>
+            {text.knowledge}
+            {waitingKnowledge > 0 && <span className="owner-knowledge-waiting"> {waitingKnowledge}</span>}
+          </summary>
+          {knowledge.map((card) => (
+            <KnowledgeCardView
+              key={card.id}
+              card={card}
+              lang={lang}
+              text={text}
+              onPreview={(written) => previewKnowledge(key.current, card.id, written)}
+              onSave={(textKo, written) => void save(card.id, textKo, written)}
+            />
+          ))}
+        </details>
+      )}
 
       <footer className="owner-foot">
         <a href={PAPAGO_URL} target="_blank" rel="noreferrer">
@@ -486,6 +521,105 @@ function QuestionCardView({
           {text.writtenSend}
         </button>
       </details>
+    </article>
+  )
+}
+
+/**
+ * "손님이 궁금해한 것" 카드 (티켓 13). 사장님 글 → "번역 보기"(한국어 미리보기, 고칠 수 있음) →
+ * "저장". 저장 전에는 AI가 쓰지 않는다(HITL). 채운 카드는 저장한 한국어를 보여 준다
+ */
+function KnowledgeCardView({
+  card,
+  lang,
+  text,
+  onPreview,
+  onSave,
+}: {
+  card: KnowledgeCard
+  lang: OwnerLang
+  text: OwnerText
+  onPreview: (written: string) => Promise<KnowledgePreview | null>
+  onSave: (textKo: string, written: string) => void
+}) {
+  const view = knowledgeView(card, lang)
+  const [draft, setDraft] = useState('')
+  const [preview, setPreview] = useState<KnowledgePreview | null>(null)
+  const [korean, setKorean] = useState('')
+  const written = writtenAnswer(draft)
+  const toSave = writtenAnswer(korean)
+
+  async function translate() {
+    if (written === null) return
+    const got = await onPreview(written)
+    if (!got) return
+    setPreview(got)
+    setKorean(got.text_ko)
+  }
+
+  return (
+    <article className={`owner-card owner-knowledge-card owner-knowledge-${card.status}`}>
+      <header className="owner-card-head">
+        <span className="owner-question-title">
+          {view.menu} · {view.kind}
+        </span>
+        <span className="owner-knowledge-count">{view.count}</span>
+      </header>
+      {view.question && <p className="owner-question-text">“{view.question}”</p>}
+      <p className={view.question ? 'owner-question-ko' : 'owner-question-text'} lang="ko">
+        “{view.questionKo}”
+      </p>
+      {card.status === 'filled' ? (
+        <p className="owner-knowledge-saved">
+          <span className="owner-knowledge-saved-label">{text.knowledgeSaved}</span>{' '}
+          <span lang="ko">{card.answer_ko}</span>
+        </p>
+      ) : (
+        <div className="owner-knowledge-answer">
+          <p className="owner-written-hint">{text.knowledgeHint}</p>
+          <textarea
+            className="owner-written-input"
+            value={draft}
+            rows={2}
+            maxLength={WRITTEN_ANSWER_MAX}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setPreview(null)
+            }}
+          />
+          <button
+            type="button"
+            className="owner-btn owner-btn-written"
+            disabled={written === null}
+            onClick={() => void translate()}
+          >
+            {text.knowledgeTranslate}
+          </button>
+          {preview && (
+            <>
+              <p className="owner-written-hint">
+                {preview.translate_failed ? text.knowledgeNoTranslation : text.knowledgePreview}
+              </p>
+              <textarea
+                className="owner-written-input"
+                lang="ko"
+                value={korean}
+                rows={2}
+                maxLength={WRITTEN_ANSWER_MAX}
+                onChange={(e) => setKorean(e.target.value)}
+              />
+              <button
+                type="button"
+                className="owner-btn owner-btn-written"
+                disabled={toSave === null}
+                onClick={() => toSave !== null && onSave(toSave, preview.text)}
+              >
+                {text.knowledgeSave}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </article>
   )
 }
