@@ -369,3 +369,33 @@ def test_a_question_card_shows_the_owner_menu_name_and_then_the_translated_quest
          "В Медовик идут орехи?"),
     ]
     assert events[1].data["status"] == "open"
+
+
+# ---------------------------------------------------------------- 티켓 12: Papago 실측(04) 반영
+# 가짜 번역기 표의 값은 2026-11-10 실제 Papago ko→ru 응답이다(`s4-papago-measure.md`, 티켓 12 확인).
+# 가리지 않은 원문 키는 실측에서 틀렸던 응답을 그대로 둔다: 가리지 않으면 이 오역이 카드에 간다
+
+
+@pytest.mark.parametrize(("request_ko", "wrong", "shown"), [
+    # 깨 → 깨우다: 빼기가 사라졌다
+    ("깨는 빼 주세요", "Разбудите, пожалуйста.", "кунжут Уберите, пожалуйста."),
+    # 사워크림 → "견적"(смета)
+    ("사워크림 빼 주세요", "Пожалуйста, снимите смету сметаны.", "сметана Уберите, пожалуйста."),
+    # 연어 빼 → 연어 잡이
+    ("연어 빼 주세요", "Пожалуйста, пожалуйста, вылов лосося.", "лосось Уберите, пожалуйста."),
+])
+def test_ingredient_words_papago_got_wrong_go_in_from_the_lexicon(
+    request_ko: str, wrong: str, shown: str
+) -> None:
+    papago = FakeTranslator({request_ko: wrong, "[1] 빼 주세요": "[1] Уберите, пожалуйста."})
+
+    assert _request_events(papago, request_ko)[-1] == (request_ko, shown)
+
+
+@pytest.mark.parametrize("request_ko", ["깨끗한 상자에 담아 주세요", "참깨 빵 말고요", "연어알 빼 주세요"])
+def test_a_new_lexicon_word_inside_another_word_is_not_masked(request_ko: str) -> None:
+    papago = FakeTranslator()
+
+    _request_events(papago, request_ko)
+
+    assert papago.calls == [((request_ko,), "ko", "ru")]
