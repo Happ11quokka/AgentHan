@@ -16,10 +16,17 @@
   (call_ended, 열린 채 통화가 끝남). 시간 초과·통화 끝 카드도 답을 받는다(늦은 답, 문자 미리보기는
   티켓 07). 답은 한 번만 받고 통화 세션의 받는 곳(`open_question`의 `reply`)으로 넘긴다. 카드 열람
   (`seen_at`)도 답 전이면 세션에 한 번 알린다. 마감 = 보낸 시각 + `question_wait_s`
+- 통화 자막(`call.caption`, 티켓 10): 통화 중(live) 카드의 손님 말(`customer_said`)·AI 말
+  (`bot_said`) 최근 4줄. data는 `{"call_id", "lines": [{"n", "who": customer|bot, "text",
+  "text_owner"}]}`로 그 통화 자막 전체다. 손님 말은 원문으로 먼저 보내고 번역이 오면 같은 번호의
+  줄을 덮어써 다시 보낸다(실패하면 원문만). AI 말은 번역하지 않는다(`text_owner` = "").
+  CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다, spec "Papago 실측").
+  통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
 - 확정 주문 카드의 `owner_check`: 그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다. 손님은 문자
   약속을 들었다 ("사장님 확인 필요", 티켓 06)
-- 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...]}`, 통화
-  카드는 ordered·closed 빼고)을 받고, 그 뒤 `order.update`·`call.update`·`owner.question*`을 받는다.
+- 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...],
+  "captions": [...]}`, 통화 카드는 ordered·closed 빼고, 자막은 통화 중 카드 것만)을 받고, 그 뒤
+  `order.update`·`call.update`·`call.caption`·`owner.question*`을 받는다.
   이벤트마다 늘어나는 번호(`id`)를 단다. 재연결 때 이어 받기 버퍼는 없다(늘 snapshot부터)
 - `submit`·통화 알림은 이벤트 루프에서 불리면 바로 처리한다(구독자 큐에 `put_nowait`만, 막히지
   않음). 다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다
@@ -75,7 +82,7 @@ log = logging.getLogger(__name__)
 class OwnerEvent:
     """사장님 화면으로 가는 이벤트 하나. HTTP 쪽이 SSE `event`·`data`·`id`로 옮긴다."""
 
-    name: str  # snapshot · order.update · call.update · owner.question · owner.question.update
+    name: str  # snapshot · order.update · call.update · call.caption · owner.question(.update)
     data: dict[str, Any]
     id: int
 
@@ -94,6 +101,8 @@ class AlreadyAnswered(Exception):
 
 # 넘김 카드에 붙이는 마지막 손님 말 줄 수 (spec 이야기 49)
 HEARD_LINES = 3
+# 통화 자막 줄 수 (spec "Papago 실측": 최근 4줄, 티켓 10)
+CAPTION_LINES = 4
 # 사장님이 닫을 수 있는 통화 카드 상태
 _CLOSABLE = frozenset({"handoff", "missed"})
 # 사장님 답을 아직 못 받은 질문 카드 상태 (확정 주문에 "사장님 확인 필요")
@@ -123,6 +132,7 @@ class OwnerHub:
         self._cards: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
         self._heard: dict[str, deque[str]] = {}  # 통화 중인 id → 마지막 손님 말들
+        self._captions: dict[str, _Captions] = {}  # 통화 중인 id → 자막 (티켓 10)
         self._subscribers: set[asyncio.Queue[OwnerEvent]] = set()
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -147,7 +157,8 @@ class OwnerHub:
         self._on_loop(self._hear, call_id, text)
 
     def bot_said(self, call_id: str, text: str) -> None:
-        """AI 말은 지금 카드에 쓰지 않는다(통화 자막은 티켓 10)."""
+        """AI 말은 카드에 쓰지 않고 자막에만 둔다(번역 안 함, 티켓 10)."""
+        self._on_loop(self._caption, call_id, "bot", text)
 
     def call_ended(self, call_id: str, reason: str) -> None:
         self._on_loop(self._end_call, call_id, reason)
@@ -284,6 +295,33 @@ class OwnerHub:
         heard = self._heard.get(call_id)
         if heard is not None:
             heard.append(text)
+        self._caption(call_id, "customer", text)
+
+    # --- 통화 자막 (티켓 10) --------------------------------------------------------------
+
+    def _caption(self, call_id: str, who: str, text: str) -> None:
+        """자막 한 줄을 더하고 그 통화 자막 전체(`call.caption`)를 보낸다. 통화 중 카드만."""
+        call = self._calls.get(call_id)
+        if not text or call is None or call["status"] != "live":
+            return
+        captions = self._captions.setdefault(call_id, _Captions())
+        captions.add(who, text)
+        self._publish_captions(call_id)
+        if who == "customer":  # 손님 말만 번역한다. 캐시라 넘김 카드 손님 말에도 그대로 쓰인다
+            self._translate_soon(call_id, [text])
+
+    def _publish_captions(self, call_id: str) -> None:
+        """그 통화 자막 전체를 보낸다. 지난번 보낸 것과 같으면(번역이 안 바뀜) 보내지 않는다."""
+        captions = self._captions.get(call_id)
+        if captions is None:
+            return
+        event = {"call_id": call_id, "lines": [
+            {"n": n, "who": who, "text": text,
+             "text_owner": self._texts.known(call_id, text) if who == "customer" else ""}
+            for n, who, text in captions.lines]}
+        if event != captions.sent:
+            captions.sent = event
+            self._publish("call.caption", event)
 
     def _hand_off(self, order: Order) -> None:
         """넘김 주문 → "손님 연락 필요" 카드. 통화 카드가 없었으면(알림 없이 온 주문) 새로 만든다"""
@@ -296,6 +334,7 @@ class OwnerHub:
 
     def _end_call(self, call_id: str, reason: str) -> None:
         self._heard.pop(call_id, None)
+        self._captions.pop(call_id, None)  # 자막은 통화 중에만 (화면도 통화 중 카드 아래에만 둔다)
         call = self._calls.get(call_id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "missed", "reason": reason})
@@ -393,6 +432,7 @@ class OwnerHub:
                 and (dressed := self._dressed(call)) != call):
             self._calls[call_id] = dressed
             self._publish("call.update", dressed)
+        self._publish_captions(call_id)  # 자막 손님 줄도 같은 자리에서 번역으로 덮어쓴다
         for question_id, question in list(self._questions.items()):
             text_owner = self._texts.known(call_id, question["text"])
             if question["call_id"] == call_id and question["text_owner"] != text_owner:
@@ -457,8 +497,10 @@ class OwnerHub:
 
     def _snapshot(self) -> dict[str, Any]:
         calls = [c for c in self._calls.values() if c["status"] not in ("ordered", "closed")]
+        captions = [c.sent for call_id, c in self._captions.items()
+                    if c.sent is not None and self._calls[call_id]["status"] == "live"]
         return {"orders": list(self._cards.values()), "calls": calls,
-                "questions": list(self._questions.values())}
+                "questions": list(self._questions.values()), "captions": captions}
 
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         self._seq += 1
@@ -482,6 +524,19 @@ class OwnerHub:
             fn(*args)  # 루프에 아직 안 묶였으면(구독자 없음) 그냥 부른다
         else:
             self._loop.call_soon_threadsafe(fn, *args)
+
+
+class _Captions:
+    """통화 하나의 자막: 최근 `CAPTION_LINES`줄 (번호, 누가, 한국어 원문). 번호는 통화 안 1부터."""
+
+    def __init__(self) -> None:
+        self.lines: deque[tuple[int, str, str]] = deque(maxlen=CAPTION_LINES)
+        self.sent: dict[str, Any] | None = None  # 마지막으로 보낸 `call.caption` data
+        self._count = 0
+
+    def add(self, who: str, text: str) -> None:
+        self._count += 1
+        self.lines.append((self._count, who, text))
 
 
 def clock_label(iso: str) -> str:

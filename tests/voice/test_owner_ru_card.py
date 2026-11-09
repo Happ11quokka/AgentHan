@@ -273,14 +273,18 @@ def test_the_handoff_card_translates_the_last_three_customer_lines() -> None:
 
     events = asyncio.run(scenario())
 
-    handoff = [e.data for e in events if e.data["status"] == "handoff"]
-    assert [c["heard"] for c in handoff] == [
-        ["메도빅 하나요", "아니 그게 아니라", "사장님이랑 통화할래요"]] * 2
+    handoff = [e.data for e in events
+               if e.name == "call.update" and e.data["status"] == "handoff"]
+    assert {tuple(c["heard"]) for c in handoff} == {
+        ("메도빅 하나요", "아니 그게 아니라", "사장님이랑 통화할래요")}
     assert handoff[0]["heard_owner"] == ["", "", ""]  # 원문 카드가 먼저
-    assert handoff[1]["heard_owner"] == [
+    assert handoff[-1]["heard_owner"] == [
         "Медовик одну.", "Нет, не то.", "Я хочу поговорить с хозяином.",
     ]
-    assert len(papago.calls) == 1  # 세 줄을 한 번에 보낸다
+    # 손님 말은 들을 때(자막, 티켓 10) 한 줄씩 번역을 맡긴다. 넘김 카드는 같은 캐시를 쓴다
+    sent = [texts for texts, _, _ in papago.calls]
+    assert sorted(sent) == sorted(
+        [("여보세요",), ("[1] 하나요",), ("아니 그게 아니라",), ("사장님이랑 통화할래요",)])
 
 
 def test_the_same_sentence_is_translated_once_per_call() -> None:

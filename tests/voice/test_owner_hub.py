@@ -54,7 +54,7 @@ def test_a_confirmed_order_becomes_a_new_order_card_for_the_owner() -> None:
     first, second = asyncio.run(scenario())
 
     assert first.name == "snapshot"
-    assert first.data == {"orders": [], "calls": [], "questions": []}
+    assert first.data == {"orders": [], "calls": [], "questions": [], "captions": []}
     assert second.name == "order.update"
     card = second.data
     assert card["id"] == "call-1"

@@ -34,20 +34,28 @@ def _order(status: str, call_id: str = "call-1", lines=(TWO_MEDOVIK,)) -> Order:
 
 
 class Screen:
-    """사장님 화면 하나: 구독해서 받은 이벤트를 모은다."""
+    """사장님 화면 하나: 구독해서 받은 이벤트를 모은다. 통화 자막(`call.caption`, 티켓 10)은
+    `test_owner_captions.py` 몫이라 여기서는 건너뛴다."""
 
     def __init__(self, hub: OwnerHub) -> None:
         self._stream = hub.events()
         self.got: list[OwnerEvent] = []
 
+    async def _next(self, timeout: float) -> OwnerEvent:
+        async def card() -> OwnerEvent:
+            while (event := await anext(self._stream)).name == "call.caption":
+                pass
+            return event
+        return await asyncio.wait_for(card(), timeout)
+
     async def take(self, count: int = 1) -> list[OwnerEvent]:
-        new = [await asyncio.wait_for(anext(self._stream), WAIT) for _ in range(count)]
+        new = [await self._next(WAIT) for _ in range(count)]
         self.got += new
         return new
 
     async def nothing_more(self) -> None:
         with pytest.raises(TimeoutError):
-            await asyncio.wait_for(anext(self._stream), 0.05)
+            await self._next(0.05)
 
     async def close(self) -> None:
         await self._stream.aclose()

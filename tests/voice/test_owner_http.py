@@ -84,12 +84,16 @@ def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
             events = _sse(stream.iter_lines())
             snapshot = next(events)
             assert snapshot["event"] == "snapshot"
-            assert snapshot["data"] == {"orders": [], "calls": [], "questions": []}
+            assert snapshot["data"] == {
+                "orders": [], "calls": [], "questions": [], "captions": []}
 
             _call_and_confirm(client)
 
             live = _until(events, "call.update")["data"]
             assert (live["status"], live["lines"]) == ("live", [])
+            caption = _until(events, "call.caption")["data"]  # 통화 자막 (티켓 10)
+            assert caption["call_id"] == live["id"]
+            assert caption["lines"][0]["n"] == 1
             card = _until(events, "order.update")["data"]
             assert card["id"] == live["id"]  # 같은 통화 id로 통화 카드가 주문 카드가 된다
             ordered = _until(events, "call.update")["data"]
