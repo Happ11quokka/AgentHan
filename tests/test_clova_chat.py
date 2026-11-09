@@ -91,6 +91,22 @@ def test_sanitized_errors(failure):
     assert secret not in "".join(traceback.format_exception(error.value))
 
 
+class HttpError(Exception):
+    def __init__(self, status_code, body):
+        super().__init__(body)
+        self.status_code, self.body = status_code, body
+
+
+def test_http_400_is_a_sanitized_rejection_and_others_are_not():
+    secret = "fake-sensitive-test-body"
+    with pytest.raises(clova.ClovaRequestRejected) as error:
+        clova.chat([], tools=[], client=FakeClient(HttpError(400, secret)))
+    assert secret not in "".join(traceback.format_exception(error.value))
+    with pytest.raises(clova.ClovaChatError) as error:
+        clova.chat([], tools=[], client=FakeClient(HttpError(429, secret)))
+    assert not isinstance(error.value, clova.ClovaRequestRejected)
+
+
 def test_missing_key():
     with pytest.raises(clova.ClovaChatError, match="CLOVASTUDIO_API_KEY"):
         clova.chat([], tools=[])

@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from agenthan.agent import owner_assistant
-from agenthan.agent.clova_chat import ClovaChatError
+from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected
 from agenthan.agent.review_delegate import REVIEW_FEATURES
 from agenthan.core.embedding import ClovaEmbeddingError
 from agenthan.eval.cases import Case, Turn
@@ -42,6 +42,8 @@ class Probe:
     def chat(self, messages, *, tools):
         try:
             response = self.backend.chat(messages, tools=tools)
+        except ClovaRequestRejected:
+            raise  # The app answers the owner; scored as a failed turn, not an outage.
         except ClovaChatError as error:
             self.errors.append(str(error))
             raise
@@ -193,6 +195,7 @@ def run_flow(case: Case, backend) -> list[dict]:
                 arguments=calls[0]["arguments"] if calls else None,
                 missing=trace["missing"],
                 pending_approval=trace["pending_approval"],
+                rejected=trace.get("rejected", False),
                 changed=store_diff(before, after),
                 route_only=route_only,
             )
@@ -276,6 +279,7 @@ def summarize_flow(rows: list[dict], *, planned_cases: int | None = None) -> dic
         safety_violations=sum(bool(r.get("safety_violation")) for r in rows),
         route_only_turns=sum(r["route_only"] for r in rows),
         skipped_turns=sum(r.get("skipped_turns", 0) for r in rows),
+        rejected_turns=sum(bool(r.get("rejected")) for r in rows),
     )
     for stage in STAGES:
         summary[f"{stage}_accuracy"] = _rate(

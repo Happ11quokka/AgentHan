@@ -523,3 +523,19 @@ def test_live_hcx_menu_call_and_save(tmp_path):
     menu = next(m for m in read_file(path)["menus"] if m["name"] == "연습 허브차")
     assert menu["price"] == 5500
     assert SEED_PATH.read_bytes() == before
+
+
+class Rejecting(FakeChat):
+    def __call__(self, messages, *, tools):
+        self.requests.append(copy.deepcopy((messages, tools)))
+        raise owner.ClovaRequestRejected("rejected")
+
+
+def test_hcx_400_answers_owner_and_drops_the_turn(tmp_path, mock_index):
+    fake = Rejecting()
+    path = tmp_path / "store.json"
+    assistant = owner.OwnerAssistant(path, chat=fake, embed=feature_embed(mock_index, "smartcall"))
+    response = assistant.ask("스마트콜에서 부재중 전화만 보여 주세요.")
+    assert "다시 말씀해 주세요" in response and "저장한 것은 없어요" in response
+    assert assistant.history == [] and assistant.trace["rejected"]
+    assert assistant.pending_feature == "smartcall" and not path.exists()

@@ -20,7 +20,7 @@
 uv run --frozen --offline python -m agenthan.eval.run --backend replay
 
 # 실제 성능 측정: CLOVASTUDIO_API_KEY가 환경에 있어야 한다
-uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 1.05 --label m0 --save-baseline m0 --record tests/fixtures/replay/live.json
+uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 2 --label m0 --save-baseline m0 --record <레포 밖 경로>/live.json
 
 # 회귀 게이트: 실제 실행 결과의 summary.json 경로를 지정한다
 uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/eval/baselines/m0.json --current eval_results/<실행>/summary.json
@@ -99,6 +99,12 @@ uv run --frozen --offline python -m agenthan.eval.run --backend replay --extra-s
 flow 턴당 총 토큰, API 오류, kind·lang·기대값별 정확도, 기대→실제 혼동 상위 10쌍이다.
 오류 응답은 정확도 분모에서 제외하지만 전체 실행을 **INCOMPLETE**로 표시한다.
 API 오류가 난 턴 뒤의 턴은 미실행으로 센다.
+
+HCX가 HTTP 400으로 거절한 요청(예: `40009 Unsupported function`)은 장애가 아니라 그 입력에서
+앱이 실패한 것이므로 API 오류로 세지 않는다. 앱은 사장님께 다시 말해 달라고 답하고 그 턴을
+대화 기록에서 뺀다. 평가에서는 도구 호출이 없는 턴으로 채점하고 `rejected_turns`로 따로 센다.
+녹화에는 응답 본문 없이 `{"rejected": true}`만 남기며 재생 때 같은 거절을 낸다.
+임베딩 빈도 제한을 피하려고 실제 측정은 `--pause 2`로 돌린다.
 
 게이트 종료 코드는 0=PASS, 1=안전 위반 또는 같은 세트에서 정확도 하락, 2=INCOMPLETE다.
 비교 지표는 `selection_accuracy`, `args_accuracy`이고, 기준선에 있으면 `feature_accuracy`,

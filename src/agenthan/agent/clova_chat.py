@@ -18,6 +18,20 @@ class ClovaChatError(Exception):
     """An error safe to display without a server body or credentials."""
 
 
+class ClovaRequestRejected(ClovaChatError):
+    """HCX answered HTTP 400 for this input: retrying the same request will not help.
+
+    Seen with e.g. 40009 "Unsupported function" for some utterances. Not an outage."""
+
+
+REJECTED_MESSAGE = "CLOVA가 이 요청을 처리하지 못했습니다."
+
+
+def is_rejected(error: Exception) -> bool:
+    """True for an SDK HTTP 400; reads only the status code, never the body."""
+    return getattr(error, "status_code", None) == 400
+
+
 def make_client():
     """hcx.make_client() with a sanitized error when the key is missing."""
     if not os.environ.get("CLOVASTUDIO_API_KEY"):
@@ -73,7 +87,7 @@ def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = C
     kwargs.update(hcx.tool_call_options(model))
     if tools:
         kwargs["tools"] = tools
-    failure = None
+    failure, rejected = None, False
     try:
         choice = client.chat.completions.create(**kwargs).choices[0]
         if getattr(choice, "finish_reason", None) == "length":
@@ -82,7 +96,8 @@ def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = C
             return parse_message(choice.message)
     except ClovaChatError as error:
         failure = str(error)
-    except Exception:  # noqa: BLE001 - SDK/transport errors may carry a body or key
-        failure = "CLOVA 대화 요청에 실패했습니다."
+    except Exception as error:  # noqa: BLE001 - SDK/transport errors may carry a body or key
+        rejected = is_rejected(error)
+        failure = REJECTED_MESSAGE if rejected else "CLOVA 대화 요청에 실패했습니다."
     # Outside except: even the exception context must not expose a body/key.
-    raise ClovaChatError(failure)
+    raise (ClovaRequestRejected if rejected else ClovaChatError)(failure)

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agenthan.agent import food_photo, menu_photo, report_explainer, review_delegate
-from agenthan.agent.clova_chat import ClovaChatError, chat, parse_message
+from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, chat, parse_message
 from agenthan.agent.place_matcher import get_feature, match_features
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
@@ -69,6 +69,9 @@ APPROVAL_TEXT = {
     "saved": "저장했어요.",
     "cancel": "취소했어요. 저장한 것은 없어요.",
 }
+REJECTED_TEXT = (
+    "{name}: 이 요청은 지금 처리하지 못했어요. 저장한 것은 없어요. 다른 말로 다시 말씀해 주세요."
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,7 @@ def new_trace(feature_id: str | None, via: str) -> dict:
         "results": [],
         "missing": [],
         "pending_approval": False,
+        "rejected": False,
     }
 
 
@@ -337,14 +341,21 @@ class OwnerAssistant:
         saved: list[dict] = []
         missing: list[str] = []
         count = 0
+        turn_start = len(self.history) - 1  # Index of this turn's user message.
         while True:
             tools = [] if saved or count >= self.max_tool_calls else [tool]
-            message = parse_message(
-                self.chat(
-                    copy.deepcopy([system, *self.history]),
-                    tools=copy.deepcopy(tools),
+            try:
+                message = parse_message(
+                    self.chat(
+                        copy.deepcopy([system, *self.history]),
+                        tools=copy.deepcopy(tools),
+                    )
                 )
-            )
+            except ClovaRequestRejected:
+                # The same history would be rejected again, so drop this whole turn.
+                del self.history[turn_start:]
+                self.trace["rejected"] = True
+                return REJECTED_TEXT.format(name=feature["name_ko"])
             calls = message.get("tool_calls", [])
             if not calls:
                 return self._finish(message["content"], saved, missing)

@@ -9,6 +9,8 @@ from agenthan.agent.clova_chat import (
     CHAT_MODEL,
     TEMPERATURE,
     ClovaChatError,
+    ClovaRequestRejected,
+    is_rejected,
     make_client,
     parse_message,
 )
@@ -16,6 +18,8 @@ from agenthan.core.embedding import ClovaEmbeddingError, embed_text, validate_em
 from agenthan.core.llm import tool_call_options
 
 EMBED_MODEL = "embedding-v2"
+# Recorded in place of a response when HCX answered HTTP 400 (no body is stored).
+REJECTED = {"rejected": True}
 
 
 def canonical(value: object) -> str:
@@ -50,7 +54,7 @@ class Live:
         self.client = None
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        failure = "CLOVA evaluation chat failed"
+        failure, rejected = "CLOVA evaluation chat failed", False
         try:
             if self.client is None:
                 self.client = make_client()
@@ -72,8 +76,10 @@ class Live:
                     if isinstance(usage, dict) and isinstance(usage.get(key), int)
                 }
             return message
-        except Exception:  # SDK errors may include headers, keys, and server bodies.
-            pass
+        except Exception as error:  # SDK errors may include headers, keys, and server bodies.
+            rejected = is_rejected(error)
+        if rejected:
+            raise ClovaRequestRejected("CLOVA evaluation chat rejected (HTTP 400)")
         raise ClovaChatError(failure)
 
     def embed(self, text: str) -> list[float]:
@@ -94,7 +100,12 @@ class Recorder:
         return response
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        response = self.backend.chat(messages, tools=tools)
+        key = request_hash("chat", chat_request(messages, tools, self.model))
+        try:
+            response = self.backend.chat(messages, tools=tools)
+        except ClovaRequestRejected:
+            self._save(key, REJECTED)
+            raise
         safe = parse_message(response)
         if isinstance(response.get("usage"), dict):
             safe["usage"] = {
@@ -102,7 +113,7 @@ class Recorder:
                 for key in ("prompt_tokens", "completion_tokens", "total_tokens")
                 if isinstance(response["usage"].get(key), int)
             }
-        return self._save(request_hash("chat", chat_request(messages, tools, self.model)), safe)
+        return self._save(key, safe)
 
     def embed(self, text: str) -> list[float]:
         response = validate_embedding(self.backend.embed(text))
@@ -123,7 +134,10 @@ class Replay:
         return copy.deepcopy(self.data["entries"][key])
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        return self._read("chat", chat_request(messages, tools, self.model))
+        response = self._read("chat", chat_request(messages, tools, self.model))
+        if response == REJECTED:
+            raise ClovaRequestRejected("Recorded CLOVA rejection (HTTP 400)")
+        return response
 
     def embed(self, text: str) -> list[float]:
         return validate_embedding(self._read("embed", {"model": EMBED_MODEL, "text": text}))

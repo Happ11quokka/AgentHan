@@ -409,3 +409,23 @@ def test_saved_summaries_have_no_local_absolute_paths():
         assert "/Users/" not in text and "/home/" not in text, path.name
     assert run.display_path(run.FLOW_CASES) == "tests/data/tool_selection_cases.jsonl"
     assert run.display_path(Path("/tmp/elsewhere/summary.json")) == "summary.json"
+
+
+def test_rejection_is_recorded_replayed_and_scored_as_failed_turn(tmp_path, basis_index):
+    from agenthan.agent.clova_chat import ClovaRequestRejected
+
+    class Rejects(Scripted):
+        def chat(self, messages, *, tools):
+            self.requests.append(tools)
+            raise ClovaRequestRejected("rejected")
+
+    path = tmp_path / "record.json"
+    recorder = Recorder(path, Rejects(basis_index["smartcall"]))
+    case = Case(id="r", text="부재중 전화", expected_tool="list_call_history")
+    rows, results, _ = run.evaluate({"flow": [case]}, recorder)
+    assert "api_error" not in rows[0] and rows[0]["rejected"]
+    assert rows[0]["stages"] == {"feature": True, "tool": False}
+    assert results["flow"]["rejected_turns"] == 1 and results["flow"]["api_errors"] == 0
+    assert "rejected" in path.read_text(encoding="utf-8")
+    replayed, _, _ = run.evaluate({"flow": [case]}, Replay(path))
+    assert replayed[0]["rejected"] and "api_error" not in replayed[0]
