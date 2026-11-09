@@ -70,6 +70,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
             order_sink=hub,
             settings=settings,
             owner=hub,
+            knowledge=hub.knowledge,  # 사장님 보충 지식: 허브가 쓰고 통화 엔진이 읽는다 (티켓 13)
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))

@@ -369,3 +369,73 @@ def test_the_customer_text_stream_says_it_ended_after_its_window() -> None:
         with client.stream("GET", _texts_url("call-1")) as stream:
             events = list(_sse(stream.iter_lines()))  # 시간이 지나면 서버가 닫는다
     assert [e["event"] for e in events] == ["sms.snapshot", "sms.end"]
+
+
+# ---------------------------------------------------------------- 보충 지식 (티켓 13)
+
+TASTE = "아메리카노 어떤 맛이에요?"
+PASS_ON = "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께 전해 둘게요."
+
+
+def _ask_once(client: TestClient) -> str:
+    """손님 한 통화: 아메리카노 맛을 묻고 끊는다. 그 턴의 AI 말을 돌려준다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.until("call.ready", 0)
+        phone.played(0)
+        phone.say(1)
+        phone.played(1)
+        phone.send(type="call.end", turn=1)
+    return " ".join(e["text"] for e in phone.of("bot.say", 1))
+
+
+def test_an_unknown_question_is_answered_in_the_next_call_after_the_owner_saves(
+    tmp_path,
+) -> None:
+    with _client(tmp_path, (TASTE,)) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            events = _sse(stream.iter_lines())
+            next(events)  # snapshot
+            first = _ask_once(client)  # 통화 1: 모르는 질문 → 사장님께 전해 둔다
+
+            card = _until(events, "knowledge.update")["data"]
+            assert (card["menu_name"], card["text"], card["count"], card["status"]) == (
+                "아메리카노", TASTE, 1, "open")
+            base = f"/api/owner/knowledge/{card['id']}"
+            preview = client.post(f"{base}/preview?key={KEY}", json={"text": "Не кислый"})
+            assert preview.status_code == 200
+            # 키 없는 개발 서버: 번역이 없으니 사장님이 한국어를 직접 고친다
+            assert preview.json() == {"text": "Не кислый", "text_ko": "",
+                                      "translate_failed": True}
+            saved = client.post(f"{base}/save?key={KEY}",
+                                json={"text_ko": "산미가 적고 고소해요", "text": "Не кислый"})
+            assert saved.status_code == 200
+            assert (saved.json()["status"], saved.json()["answer_ko"]) == (
+                "filled", "산미가 적고 고소해요")
+            update = _until(events, "knowledge.update")["data"]
+            assert (update["id"], update["status"]) == (card["id"], "filled")
+
+            second = _ask_once(client)  # 통화 2: 같은 질문 → 보충 지식으로 답
+
+    assert first == f"{PASS_ON} 어떤 걸로 드릴까요?"
+    assert second == "사장님 말씀으로는 산미가 적고 고소해요. 어떤 걸로 드릴까요?"
+
+
+def test_knowledge_posts_refuse_unknown_cards_empty_text_and_no_key(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        preview = f"/api/owner/knowledge/k9/preview?key={KEY}"
+        save = f"/api/owner/knowledge/k9/save?key={KEY}"
+        assert client.post(preview, json={"text": "Не кислый"}).status_code == 404
+        assert client.post(save, json={"text_ko": "고소해요"}).status_code == 404
+        assert client.post(preview, json={"text": "x" * 501}).status_code == 422
+        assert client.post(save, json={"text_ko": "x" * 501}).status_code == 422
+        assert client.post(save, json={}).status_code == 422
+        no_key = "/api/owner/knowledge/k9"
+        assert client.post(f"{no_key}/save", json={"text_ko": "a"}).status_code == 401
+        assert client.post(f"{no_key}/preview", json={"text": "a"}).status_code == 401
+    with _client(tmp_path, (TASTE,)) as client:
+        _ask_once(client)
+        base = "/api/owner/knowledge/k1"
+        assert client.post(f"{base}/preview?key={KEY}", json={"text": "  "}).status_code == 422
+        assert client.post(f"{base}/save?key={KEY}", json={"text_ko": " "}).status_code == 422

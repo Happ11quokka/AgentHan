@@ -48,6 +48,7 @@ from agenthan.voice.call.ports import (
     TurnModel,
 )
 from agenthan.voice.call.session import CallSession, turn_pool
+from agenthan.voice.dialog.knowledge import KnowledgeReader
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smart_turn import load_turn_model
 from agenthan.voice.store_config import StoreConfig
@@ -99,11 +100,14 @@ def phone_router(
     tts_factory: TtsFactory | None = None,
     turn_model: TurnModel | None = None,
     owner: OwnerChannel | None = None,
+    knowledge: KnowledgeReader | None = None,
 ) -> APIRouter:
     """`settings.stt`·`tts`가 `clova`인데 어댑터가 없으면 여기서 `AdapterMissing`.
 
     `stt_factory`·`tts_factory`를 주면 설정 대신 그것으로 통화마다 포트를 만든다.
     `turn_model`을 주면 설정(`PHONE_TURN_MODEL`) 대신 그 턴 모델을 쓴다.
+    `knowledge`는 사장님 보충 지식 읽기 포트(4단계 티켓 13, 보통 `OwnerHub.knowledge`). `owner`가
+    있는 통화만 쓴다.
     """
     if stt_factory is None:
         # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
@@ -158,6 +162,7 @@ def phone_router(
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             owner=owner,
+            knowledge=knowledge,
             log_dir=settings.log_dir,
             settings=session_settings,
             executor=engine_pool,

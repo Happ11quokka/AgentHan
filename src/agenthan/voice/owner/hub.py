@@ -28,11 +28,19 @@
   (order), 늦은 버튼 답(late_answer, 시간 초과·통화 끝 카드에 온 답), 자유 입력 답(free_answer,
   제시간이든 늦든. 사장님 글을 한국어로 번역해 넣고, 안 되면 원문 + `translate_failed`).
   손님 통화 화면은 `call.ended`(세션이 `customer_texts`로 담음)와 `watch_texts` 스트림으로 받는다
+- "손님이 궁금해한 것" 카드(`knowledge.update`, 티켓 13): AI가 답하지 못한 메뉴 질문. 보충 요청
+  (`knowledge_wanted`, 손님은 "사장님께 전해 둘게요"를 들음)·질문 카드 모르겠어요·시간 초과가
+  만든다. 같은 메뉴·종류·대상(`KnowledgeKey`)의 열린 카드 하나로 묶고 `count`를 늘린다(문구는
+  마지막 질문). 사장님 글(ru) → `preview_knowledge`(ko 번역 미리보기, 저장 안 함) →
+  `save_knowledge`(한국어 그대로 보충 지식 저장소에, 카드 open → filled). 질문 카드의
+  돼요/안 돼요는 "들어가요?"류 질문(`OwnerQuestion.yes_no`)이면 저장소에 사장님 확인으로 넣는다.
+  자유 입력·통화 끝 카드는 넣지 않는다. 저장소는 `self.knowledge`(통화 엔진이 읽는다)
 - 확정 주문 카드의 `owner_check`: 그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다. 손님은 문자
   약속을 들었다 ("사장님 확인 필요", 티켓 06)
 - 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...],
-  "captions": [...]}`, 통화 카드는 ordered·closed 빼고, 자막은 통화 중 카드 것만)을 받고, 그 뒤
-  `order.update`·`call.update`·`call.caption`·`owner.question*`을 받는다.
+  "captions": [...], "knowledge": [...]}`, 통화 카드는 ordered·closed 빼고, 자막은 통화 중 카드
+  것만)을 받고, 그 뒤 `order.update`·`call.update`·`call.caption`·`owner.question*`·
+  `knowledge.update`를 받는다.
   이벤트마다 늘어나는 번호(`id`)를 단다. 재연결 때 이어 받기 버퍼는 없다(늘 snapshot부터)
 - `submit`·통화 알림은 이벤트 루프에서 불리면 바로 처리한다(구독자 큐에 `put_nowait`만, 막히지
   않음). 다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다

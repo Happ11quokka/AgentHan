@@ -3,8 +3,8 @@
     app.include_router(owner_router(hub, key=settings.owner_key))
 
 - `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [...], "calls": [...],
-  "questions": [...]}`), 그 뒤 `order.update`·`call.update`·`owner.question`·`owner.question.update`
-  (카드 전체)
+  "questions": [...], "captions": [...], "knowledge": [...]}`), 그 뒤 `order.update`·`call.update`·
+  `call.caption`·`owner.question`·`owner.question.update`·`knowledge.update`(카드 전체)
 - `POST /api/owner/orders/{id}/accept?key=…`: 접수(new → accepted). 바뀐 카드를 돌려준다.
   없는 주문은 404
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
@@ -16,6 +16,12 @@
   손님 문자). `timeout`은 세션만 넣는 답이라 422
 - `POST /api/owner/questions/{id}/seen?key=…`: 질문 카드 열람(티켓 06). 처음이면 열람 시각을 찍고
   답 전이면 통화에 알린다(손님에게 "사장님이 보고 계세요" 한 번). 바뀐 카드를 돌려준다. 없으면 404
+- `POST /api/owner/knowledge/{id}/preview?key=…` 본문 `{"text": "사장님 글"}`: "손님이 궁금해한 것"
+  카드(티켓 13) 답의 한국어 번역 미리보기 `{"text", "text_ko", "translate_failed"}`. 저장하지
+  않는다. 없는 카드 404, 빈 글·500자 넘는 글 422
+- `POST /api/owner/knowledge/{id}/save?key=…` 본문 `{"text_ko": "한국어", "text": "사장님 글"}`:
+  한국어를 그대로 보충 지식으로 저장하고 채운 카드를 돌려준다(다시 저장하면 덮어씀). 없는 카드 404,
+  빈 한국어·500자 넘는 글 422. 다음 통화부터 엔진이 "사장님 말씀으로는 …"으로 답한다
 
 손님 쪽 (`customer_texts_router`, 티켓 07):
 - `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE(최대 2분).
@@ -54,6 +60,19 @@ CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
 TEXTS_WINDOW_S = 120.0
 # 사장님 자유 입력 글 최대 길이 (문자 한 통 분량)
 FREE_TEXT_MAX = 500
+
+
+class KnowledgeDraft(BaseModel):
+    """"손님이 궁금해한 것" 카드 답 미리보기: 사장님 글(사장님 언어, 티켓 13)."""
+
+    text: str = Field(max_length=FREE_TEXT_MAX)
+
+
+class KnowledgeSave(BaseModel):
+    """"저장": 보충 지식이 될 한국어(번역문이나 사장님이 고친 글)와 사장님 글 원문."""
+
+    text_ko: str = Field(max_length=FREE_TEXT_MAX)
+    text: str = Field("", max_length=FREE_TEXT_MAX)
 
 
 class AnswerBody(BaseModel):
@@ -105,6 +124,24 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
             raise HTTPException(status_code=409, detail="이미 답한 질문이에요") from err
         except ValueError as err:  # 자유 입력인데 글이 비었다
             raise HTTPException(status_code=422, detail="답할 글을 적어 주세요") from err
+
+    @router.post("/knowledge/{card_id}/preview")
+    async def preview_knowledge(card_id: str, body: KnowledgeDraft) -> dict[str, Any]:
+        try:
+            return await hub.preview_knowledge(card_id, body.text)
+        except UnknownCard as err:
+            raise HTTPException(status_code=404, detail="그런 카드가 없어요") from err
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail="답할 글을 적어 주세요") from err
+
+    @router.post("/knowledge/{card_id}/save")
+    async def save_knowledge(card_id: str, body: KnowledgeSave) -> dict[str, Any]:
+        try:
+            return hub.save_knowledge(card_id, body.text_ko, body.text)
+        except UnknownCard as err:
+            raise HTTPException(status_code=404, detail="그런 카드가 없어요") from err
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail="저장할 한국어를 적어 주세요") from err
 
     @router.post("/questions/{question_id}/seen")
     async def seen(question_id: str) -> dict[str, Any]:
