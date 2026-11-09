@@ -105,7 +105,11 @@ def test_default_replay_outputs_conditions_table_rows_and_splits(offline, tmp_pa
     assert summary["results"]["flow"]["cases"] == summary["results"]["flow"]["flow_cases"] == 61
     assert summary["status"] == "COMPLETE"
     assert set(summary["by_split"]) == {"null", "dev", "holdout"}
-    assert summary["by_split"]["null"]["route"]["cases"] == 64
+    # Fixed stratified split (tests/data/splits.json); no case is left without one.
+    assert summary["by_split"]["null"]["route"]["cases"] == 0
+    assert summary["by_split"]["dev"]["route"]["cases"] == 47
+    assert summary["by_split"]["holdout"]["route"]["cases"] == 17
+    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 18
     conditions = summary["conditions"]
     assert conditions["model_id"] == CHAT_MODEL
     assert conditions["backend"] == "replay" and conditions["repeat"] == 1
@@ -441,3 +445,16 @@ def test_rejection_is_recorded_replayed_and_scored_as_failed_turn(tmp_path, basi
     assert "rejected" in path.read_text(encoding="utf-8")
     replayed, _, _ = run.evaluate({"flow": [case]}, Replay(path))
     assert replayed[0]["rejected"] and "api_error" not in replayed[0]
+
+
+def test_splits_are_fixed_stratified_and_cover_every_case():
+    from agenthan.eval.cases import make_splits
+
+    splits = run.load_splits()
+    for path in (run.ROUTE_CASES, run.FLOW_CASES):
+        cases = load_cases(path)
+        assert make_splits(cases) == {c.id: splits[c.id] for c in cases}
+        holdout = {
+            c.expected_feature or c.expected_tool for c in cases if splits[c.id] == "holdout"
+        }
+        assert len(holdout) >= 14

@@ -61,6 +61,8 @@ eval_results/
 tests/data/*
 !tests/data/place_request_cases.jsonl
 !tests/data/tool_selection_cases.jsonl
+# 위 두 세트의 고정 dev/holdout 배정 (ID만)
+!tests/data/splits.json
 # 저작권을 확인한 공개 음식 사진 테스트 fixture
 !tests/data/food/
 

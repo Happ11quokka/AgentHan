@@ -9,7 +9,7 @@ from pathlib import Path
 from agenthan.agent.clova_chat import CHAT_MODEL
 from agenthan.eval.cases import load_cases
 from agenthan.eval.replay import Recorder, canonical
-from agenthan.eval.run import FLOW_CASES, REPLAY_PATH, ROUTE_CASES, evaluate
+from agenthan.eval.run import FLOW_CASES, REPLAY_PATH, ROUTE_CASES, evaluate, load_splits
 from agenthan.tools.feature_tools import all_tool_schemas
 
 
@@ -56,7 +56,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=REPLAY_PATH)
     args = parser.parse_args(argv)
-    cases = {"route": load_cases(ROUTE_CASES), "flow": load_cases(FLOW_CASES)}
+    splits = load_splits()
+    cases = {
+        "route": load_cases(ROUTE_CASES, splits=splits),
+        "flow": load_cases(FLOW_CASES, splits=splits),
+    }
     recorder = Recorder(args.out, Synthetic(cases["flow"]), provenance="synthetic")
     evaluate(cases, recorder)
     args.out.write_text(canonical(recorder.data) + "\n", encoding="utf-8")

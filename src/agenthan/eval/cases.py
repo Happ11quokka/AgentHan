@@ -1,6 +1,8 @@
 """Common first-turn and review-goldset case adapters (source files stay untouched)."""
 
+import hashlib
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
@@ -69,8 +71,12 @@ class Case(BaseModel):
         return self
 
 
-def load_cases(path: Path, *, split: str | None = None) -> list[Case]:
-    """Adapt legacy tool/feature JSONL, new cases, and turns-based review goldsets."""
+def load_cases(
+    path: Path, *, split: str | None = None, splits: dict[str, str] | None = None
+) -> list[Case]:
+    """Adapt legacy tool/feature JSONL, new cases, and turns-based review goldsets.
+
+    splits (id → dev/holdout) fills split only where the case itself has none."""
     if split not in (None, "dev", "holdout"):
         raise ValueError("split must be dev or holdout")
     cases, ids = [], set()
@@ -86,6 +92,8 @@ def load_cases(path: Path, *, split: str | None = None) -> list[Case]:
             data.setdefault("expected_tool", FEATURE_TO_TOOL.get(feature, feature))
             data.setdefault("kind", "unrelated" if feature is None else "full")
         data.setdefault("expects_clarify", data.get("kind") in {"missing", "ambiguous"})
+        if splits and data.get("split") is None and data["id"] in splits:
+            data["split"] = splits[data["id"]]
         case = Case.model_validate(data)
         if case.id in ids:
             raise ValueError(f"Duplicate case id: {case.id}")
@@ -93,3 +101,22 @@ def load_cases(path: Path, *, split: str | None = None) -> list[Case]:
         if split is None or case.split == split:
             cases.append(case)
     return cases
+
+
+def split_group(case: Case) -> str:
+    """Stratify by what the case expects so every feature appears in both splits."""
+    target = case.expected_feature or case.expected_tool or case.near_tool or "none"
+    return f"{case.kind}:{target}"
+
+
+def make_splits(cases: list[Case], holdout_ratio: float = 0.3) -> dict[str, str]:
+    """Fixed dev/holdout by sha256(id) order within each group (groups of 3+ give holdout)."""
+    groups: dict[str, list[str]] = defaultdict(list)
+    for case in cases:
+        groups[split_group(case)].append(case.id)
+    result = {}
+    for ids in groups.values():
+        ordered = sorted(ids, key=lambda i: hashlib.sha256(i.encode()).hexdigest())
+        count = max(1, round(len(ordered) * holdout_ratio)) if len(ordered) >= 3 else 0
+        result.update({i: "holdout" if n < count else "dev" for n, i in enumerate(ordered)})
+    return dict(sorted(result.items()))

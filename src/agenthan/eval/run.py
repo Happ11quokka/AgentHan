@@ -23,7 +23,13 @@ ROOT = Path(__file__).resolve().parents[3]
 FLOW_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
 ROUTE_CASES = ROOT / "tests/data/place_request_cases.jsonl"
 REPLAY_PATH = ROOT / "tests/fixtures/replay/m0.json"
+SPLITS_PATH = ROOT / "tests/data/splits.json"
 MODES = ("route", "flow")
+
+
+def load_splits(path: Path = SPLITS_PATH) -> dict[str, str]:
+    """Fixed id → dev/holdout assignment (see cases.make_splits)."""
+    return json.loads(path.read_text(encoding="utf-8"))["splits"] if path.is_file() else {}
 
 
 def display_path(path: Path) -> str:
@@ -154,7 +160,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.record and args.backend != "live":
         parser.error("--record requires --backend live")
     paths = {"route": args.cases or args.route_cases, "flow": args.cases or args.flow_cases}
-    case_sets = {mode: load_cases(path, split=args.split) for mode, path in paths.items()}
+    splits = load_splits()
+    case_sets = {
+        mode: load_cases(path, split=args.split, splits=splits) for mode, path in paths.items()
+    }
     if args.only:
         wanted = set(args.only.split(","))
         available = {case.id for cases in case_sets.values() for case in cases}
