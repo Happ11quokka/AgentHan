@@ -62,6 +62,31 @@ def test_an_owner_who_answers_at_once_is_heard_after_the_hold_line(tmp_path) -> 
     assert owner.ended == ["confirmed"]
 
 
+def test_a_written_answer_is_promised_by_text_and_the_end_of_call_carries_the_texts(
+        tmp_path) -> None:
+    """티켓 07: 자유 입력 답은 읽지 않고 문자 약속. `call.ended`에 그때까지의 손님 문자."""
+    stt = FakeSttStream(replies=["메도빅 하나요", NUTS, "그게 다예요", "6시 반이요", "네"])
+    texts = [{"id": "test-call-s1", "kind": "free_answer", "text": "메도빅 문의 답변이에요."}]
+    owner = RecordingOwnerChannel(answer="free", texts=texts)
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, owner=owner) as c:
+            await c.start()
+            await c.turn(1)
+            await c.turn(2)
+            await bot_turn(c, 3)
+            for turn in (4, 5, 6):
+                await c.turn(turn)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert said(c, 3) == "사장님이 답을 남기셨어요. 문자로 보내 드릴게요. 더 필요하신 거 있으세요?"
+    assert said(c, 6) == "6시 반에 준비해 둘게요. 감사합니다."
+    assert c.out.of("call.ended") == [
+        {"type": "call.ended", "turn": 6, "reason": "confirmed", "sms": texts}]
+
+
 # ---------------------------------------------------------------- 시간·끼어들기 (티켓 06)
 # 가짜 사장님은 답하지 않고, 시험이 나중에 `owner.answer`·`owner.see`로 늦은 답·열람을 흉내 낸다.
 

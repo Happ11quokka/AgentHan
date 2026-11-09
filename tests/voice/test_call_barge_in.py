@@ -471,7 +471,8 @@ def test_the_closing_words_cannot_be_barged_in_by_voice(tmp_path) -> None:
     c = run(call())
     assert [k for k in kinds(c) if k[1] == 4] == []
     assert c.out.of("stt.final", 5) == []
-    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 4, "reason": "confirmed"}]
+    assert c.out.of("call.ended") == [
+        {"type": "call.ended", "turn": 4, "reason": "confirmed", "sms": []}]
     record = next(line for line in lines(c) if line["turn"] == 4)
     assert record["barge"]["kind"] == "blocked"
     assert "interrupt" not in record
@@ -494,7 +495,8 @@ def test_the_handoff_notice_cannot_be_barged_in_by_voice(tmp_path) -> None:
     c = run(call())
     assert [k for k in kinds(c) if k[1] == 2] == []
     assert c.out.of("stt.final", 3) == []
-    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 2, "reason": "handoff"}]
+    assert c.out.of("call.ended") == [
+        {"type": "call.ended", "turn": 2, "reason": "handoff", "sms": []}]
     record = next(line for line in lines(c) if line["turn"] == 2)
     assert record["barge"]["kind"] == "blocked"
     assert "interrupt" not in record

@@ -48,8 +48,9 @@ epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중
 `no_input_s`(기다림 요청 뒤에는 `wait_request_s`) 동안 말이 없으면 봇이 먼저 말하는 턴
 (`bot_turn`)으로 엔진 `no_input`을 부른다. 엔진이 횟수를 세고 되묻거나 마지막 인사를 정한다.
 말소리는 있었는데 글 없는 epFlag 응답만 오면 엔진 `not_heard`로 다시 말해 달라고 한다.
-대화가 끝나 서버가 통화를 끝낼 때는 `call.ended {turn, reason}`을 보낸다
-(reason: confirmed · handoff · cancelled · no_input). 위로 오는 `call.end`는 손님이 끊은 것이다
+대화가 끝나 서버가 통화를 끝낼 때는 `call.ended {turn, reason, sms}`를 보낸다
+(reason: confirmed · handoff · cancelled · no_input. sms: 그때까지 손님에게 보낸 문자 미리보기,
+사장님 허브가 만든다, 4단계 티켓 07). 위로 오는 `call.end`는 손님이 끊은 것이다
 (리뷰 S13: 같은 이름이 두 뜻이던 것을 나눴다).
 
 엔진 시간 제한(`turn_timeout_s`)을 넘으면 `error`를 내고 통화를 끝낸다. 다음 턴은 시작하지 않는다
@@ -1424,7 +1425,10 @@ class CallSession:
         record = self._log.get(turn)
         if record is not None:
             record.fields["end_reason"] = reason
-        self._emit({"type": "call.ended", "turn": turn, "reason": reason})
+        # 그때까지 손님에게 보낸 문자(확정 안내 등, 티켓 07). 손님 화면이 "받은 문자"로 바로 보인다
+        texts: list[dict[str, Any]] = []
+        self._tell_owner(lambda owner: texts.extend(owner.customer_texts(self.call_id)))
+        self._emit({"type": "call.ended", "turn": turn, "reason": reason, "sms": texts})
 
     # 무응답 타이머 (티켓 04, grilling Q6). 봇 재생이 끝나거나 끊긴 때(`_after_playback`)부터
     # `no_input_s`(지난 손님 말이 "잠깐만요"면 `wait_request_s`)를 센다. 손님 말 턴이나 봇 턴이

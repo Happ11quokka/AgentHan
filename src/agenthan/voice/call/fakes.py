@@ -29,7 +29,7 @@ from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
 from agenthan.voice.dialog.owner_question import (
-    OwnerButton,
+    OwnerAnswer,
     OwnerNote,
     OwnerQuestion,
     OwnerReply,
@@ -212,13 +212,16 @@ class RecordingOwnerChannel:
     (시간 초과·늦은 답 시험은 나중에 `answer`·`see`를 부른다).
     """
 
-    def __init__(self, *, answer: OwnerButton | None = None) -> None:
+    def __init__(
+        self, *, answer: OwnerAnswer | None = None, texts: list[dict[str, Any]] | None = None
+    ) -> None:
         self.notes: list[tuple[Any, ...]] = []
         self._answer = answer
+        self.texts = list(texts or [])  # `customer_texts`가 돌려줄 손님 문자 (티켓 07)
         self._replies: dict[int, Callable[[OwnerNote], None]] = {}  # 질문 번호 → 세션의 받는 곳
 
-    def answer(self, number: int, answer: OwnerButton) -> None:
-        """사장님이 그 질문에 버튼으로 답했다(늦은 답·낡은 답 흉내도 그대로 넘긴다)."""
+    def answer(self, number: int, answer: OwnerAnswer) -> None:
+        """사장님이 그 질문에 답했다(버튼·자유 입력 free, 늦은 답·낡은 답 흉내도 그대로 넘긴다)."""
         self._replies[number](OwnerReply(number, answer))
 
     def see(self, number: int) -> None:
@@ -250,6 +253,9 @@ class RecordingOwnerChannel:
 
     def question_timed_out(self, call_id: str, number: int) -> None:
         self.notes.append(("timeout", call_id, number))
+
+    def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
+        return list(self.texts)
 
     def _of(self, kind: str) -> list[Any]:
         return [note[-1] for note in self.notes if note[0] == kind]

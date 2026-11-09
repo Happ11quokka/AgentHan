@@ -228,6 +228,14 @@ class OwnerChannel(Protocol):
         닫지 않는다(늦은 답을 받는다).
         """
 
+    def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
+        """그 통화에서 지금까지 손님에게 보낸 문자 미리보기(티켓 07, 보낸 순서, JSON으로 보낼 모양).
+
+        세션이 `call.ended`에 담아 손님 통화 화면에 보낸다. 통화 뒤 문자는 손님 화면이 문자
+        스트림으로 따로 받는다. 없으면 빈 목록.
+        """
+        ...
+
 
 class NullOwnerChannel:
     """아무에게도 알리지 않는다. 사장님 허브 없이 통화만 돌릴 때(1~3단계 테스트·CLI)."""
@@ -254,3 +262,6 @@ class NullOwnerChannel:
 
     def question_timed_out(self, call_id: str, number: int) -> None:
         pass
+
+    def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
+        return []

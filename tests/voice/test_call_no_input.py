@@ -69,7 +69,8 @@ def test_silence_reprompts_twice_then_says_goodbye_and_ends_the_call(tmp_path) -
     assert said(c, 1) == f"{HELLO} 어떤 걸로 드릴까요?"
     assert said(c, 2) == f"{HELLO} 어떤 걸로 드릴까요?"
     assert said(c, 3) == GOODBYE
-    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 3, "reason": "no_input"}]
+    assert c.out.of("call.ended") == [
+        {"type": "call.ended", "turn": 3, "reason": "no_input", "sms": []}]
     lines = records(c)
     assert [line.get("bot_turn") for line in lines] == [None, "no_input", "no_input", "no_input"]
     assert lines[3]["end_reason"] == "no_input"
@@ -202,5 +203,6 @@ def test_a_confirmed_order_ends_the_call_with_the_confirmed_reason(tmp_path) -> 
             return c
 
     c = run(call())
-    assert c.out.of("call.ended") == [{"type": "call.ended", "turn": 4, "reason": "confirmed"}]
+    assert c.out.of("call.ended") == [
+        {"type": "call.ended", "turn": 4, "reason": "confirmed", "sms": []}]
     assert records(c)[4]["end_reason"] == "confirmed"
