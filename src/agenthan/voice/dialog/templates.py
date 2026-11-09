@@ -417,3 +417,30 @@ def question_only(text: str) -> str:
             break
         kept.insert(0, sentence)
     return " ".join(kept) if kept else text
+
+
+# ---------------------------------------------------------------- 사장님께 묻기 (4단계 티켓 05)
+
+# 사장님 버튼 답 → 손님에게 할 고정 존댓말 문장. 사장님 글을 그대로 읽지 않는다
+# (spec "ASK_OWNER: 엔진"). 시간 초과·자유 입력 문장은 티켓 06·07이 더한다
+_OWNER_ANSWER = {
+    "yes": "사장님께 여쭤보니 네, 된다고 하세요.",
+    "no": "사장님께 여쭤보니 안 된다고 하세요.",
+    "unsure": "사장님께 여쭤봤는데 사장님도 정확히는 모르신대요.",
+}
+# 대화 기록(`Order.transcript`)에 남기는 사장님 버튼 이름
+_OWNER_ANSWER_LABEL = {"yes": "돼요", "no": "안 돼요", "unsure": "모르겠어요"}
+
+
+def ask_owner_hold() -> str:
+    """근거 없는 메뉴 질문을 사장님께 보낼 때. 이 턴의 마지막 말이다."""
+    return "잠시만요, 사장님께 여쭤볼게요."
+
+
+def owner_answer(answer: str) -> str:
+    """사장님 버튼 답(yes·no·unsure) → 손님에게 할 말. 뒤에 하던 질문을 다시 한다."""
+    return _OWNER_ANSWER[answer]
+
+
+def owner_answer_label(answer: str) -> str:
+    return _OWNER_ANSWER_LABEL[answer]

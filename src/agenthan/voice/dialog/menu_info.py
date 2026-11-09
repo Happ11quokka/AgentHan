@@ -42,14 +42,22 @@ _DESCRIBE = re.compile(
 
 
 def answer_menu_question(item: MenuItem, question: str) -> str:
-    """메뉴 질문 하나에 한두 문장으로 답한다."""
+    """메뉴 질문 하나에 한두 문장으로 답한다. 근거가 없으면 "그건 제가 정확히 모르겠어요"."""
+    return grounded_answer(item, question) or templates.dont_know()
+
+
+def grounded_answer(item: MenuItem, question: str) -> str | None:
+    """메뉴 필드에 근거가 있는 답. 근거가 없으면 None(엔진이 사장님께 물을 수 있다, 4단계 티켓 05).
+
+    근거 없음: 목록에 없는 알레르기 성분, 빈 알레르기 목록, 빈 설명, 그 밖의 질문.
+    """
     if (asked := _asked_allergen(question)) is not None:
         if asked in item.allergens:
             return templates.allergen_present(item.name_ko, asked)
-        return templates.dont_know()
+        return None
     if _ALLERGY.search(question):
         if not item.allergens:
-            return templates.dont_know()
+            return None
         return templates.allergen_list(item.name_ko, item.allergens)
     if _PRICE.search(question):
         return templates.menu_price(item.name_ko, item.price)
@@ -63,9 +71,9 @@ def answer_menu_question(item: MenuItem, question: str) -> str:
         return templates.menu_options(item.name_ko, names)
     if _DESCRIBE.search(question):
         if not item.description:
-            return templates.dont_know()
+            return None
         return templates.menu_description(item.name_ko, item.description)
-    return templates.dont_know()
+    return None
 
 
 def _asked_allergen(question: str) -> str | None:

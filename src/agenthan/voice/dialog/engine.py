@@ -34,8 +34,9 @@ from typing import Literal
 from agenthan.core.contracts import MenuItem, MenuOption, Order, StoreKnowledge
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.cart import Cart, CartLine
-from agenthan.voice.dialog.menu_info import answer_menu_question
+from agenthan.voice.dialog.menu_info import grounded_answer
 from agenthan.voice.dialog.options import find_options
+from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion
 from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
 from agenthan.voice.dialog.rules import apply_rules, wait_request_rest
 from agenthan.voice.dialog.states import TERMINAL, State
@@ -69,6 +70,9 @@ class TurnResult:
     # 말씀하세요"·"잘 못 들었어요"처럼 복창이 없는 턴은 거짓이다. 세션이 말 끊기 버튼을 막고
     # 금액 문장 전의 "네"를 무시하는 기준이다
     readback: bool = False
+    # 이번 턴에 연 사장님 질문(4단계 티켓 05). 세션이 사장님 화면에 보낸다. 세션은 열린 질문을
+    # 엔진 속성으로 읽지 않고 이 칸으로만 안다(엔진이 다른 스레드에서 돌 수 있다, V1 놓친 것 3)
+    owner_question: OwnerQuestion | None = None
 
 
 @dataclass
@@ -98,6 +102,9 @@ class _Turn:
     menu_listed: bool = False
     # 리뷰 C10. 픽업 시각을 묻는 중에 항목을 고쳤다. `_finish`가 되받고 시각을 다시 묻는다
     pickup_items: bool = False
+    # 4단계 티켓 05. 이번 손님 말 원문(사장님 질문 카드에 그대로 간다)과 이번 턴에 연 사장님 질문
+    heard: str = ""
+    owner_question: OwnerQuestion | None = None
 
     @property
     def question(self) -> str:
@@ -137,8 +144,12 @@ def on(act_type: ActType, *states: State) -> Callable[[Handler], Handler]:
 
 class DialogEngine:
     def __init__(
-        self, store: StoreKnowledge, nlu: Nlu, config: StoreConfig, *, order_id: str
+        self, store: StoreKnowledge, nlu: Nlu, config: StoreConfig, *, order_id: str,
+        ask_owner: bool = False,
     ) -> None:
+        """`ask_owner`면 근거 없는 메뉴 질문을 사장님께 묻는다(4단계 티켓 05). 아니면 1단계처럼
+        "그건 제가 정확히 모르겠어요". 사장님 쪽이 붙은 통화 세션만 켠다.
+        """
         self._nlu = nlu
         self._config = config
         self._order_id = order_id
@@ -165,6 +176,11 @@ class DialogEngine:
         self._fail_key = ""  # 연속으로 실패한 슬롯과 횟수
         self._fail_count = 0
         self._no_input = 0  # 연속 무응답 횟수 (3단계 티켓 04). 받아들인 말이 오면 0
+        # 4단계 티켓 05. 상태는 그대로 두고 열린 사장님 질문 하나만 든다(`_cancel_resume`과 같은
+        # 모양). 하던 질문은 `_last_question`에 그대로 있고 답이 오면 `_question_again`으로 돌아간다
+        self._ask_owner = ask_owner
+        self._owner_open: OwnerQuestion | None = None
+        self._owner_asked = 0  # 이 통화에서 연 질문 수 (질문 번호)
 
     # ------------------------------------------------------------ 진입점
 
@@ -187,6 +203,7 @@ class DialogEngine:
         if self._state is State.DONE:
             return self._result(turn)
         self._transcript.append(f"손님: {text}")
+        turn.heard = text
         rest = wait_request_rest(text) if wait_request else None
         if rest == "":
             self._no_input = 0
@@ -258,6 +275,25 @@ class DialogEngine:
             return self._result(turn)
         self._say(turn, templates.hello_again())
         self._ask(turn, self._question_again(short=True))
+        return self._result(turn)
+
+    def owner_answered(self, number: int, answer: OwnerAnswer, now: datetime) -> TurnResult:
+        """사장님 답(4단계 티켓 05). 세션이 봇이 먼저 말하는 턴으로 넣는다. 장바구니는 안 바꾼다.
+
+        답 종류별 고정 존댓말 문장 + 하던 질문(`_question_again`, 복창 중이면 지금 장바구니 복창).
+        사장님 글을 손님에게 그대로 읽지 않는다. 열린 질문이 없거나 번호가 다르면(낡은 답) 말 없는
+        턴이다. 세션은 그런 답을 넣지 않는다(빈 봇 턴은 무음 대기를 다시 센다, V1 놓친 것 2).
+        """
+        if self._state is State.GREETING:
+            raise RuntimeError("start()를 먼저 불러야 해요")
+        turn = _Turn(self._local(now), cart_before=self._cart)
+        question = self._owner_open
+        if self._state is State.DONE or question is None or question.number != number:
+            return self._result(turn)
+        self._owner_open = None
+        self._transcript.append(f"사장님: {templates.owner_answer_label(answer)}")
+        self._say(turn, templates.owner_answer(answer))
+        self._ask(turn, self._question_again())
         return self._result(turn)
 
     def nlu_context(self) -> NluContext:
@@ -366,11 +402,34 @@ class DialogEngine:
         if turn.unhandled and not turn.asked and self._state not in TERMINAL:
             self._say(turn, templates.not_understood())
             self._ask(turn, self._question_again(short=True))
-        if turn.answered and not turn.asked and self._state not in TERMINAL:
+        if (turn.answered and not turn.asked and turn.owner_question is None
+                and self._state not in TERMINAL):
             self._ask(turn, self._question_again())
         if self._state is State.CONFIRM and self._cancel_resume is None:
             if turn.question not in self._readbacks():  # 복창 불변식 (모듈 설명)
                 self._ask_readback(turn)
+        if turn.owner_question is not None:
+            self._hold_for_owner(turn)
+
+    def _hold_for_owner(self, turn: _Turn) -> None:
+        """사장님 질문을 연 턴의 끝(4단계 티켓 05). 대사는 "잠시만요, 사장님께 여쭤볼게요."로 끝.
+
+        같은 턴에 다른 질문이 붙었으면("메도빅 하나요. 더 필요하신 거 있으세요?") 질문 문장만 뺀다.
+        그 질문은 `_last_question`에 남아 사장님 답 뒤에 다시 한다. 같은 턴에 대화가 끝났으면
+        (사장님 연결 등) 질문을 열지 않는다.
+        """
+        if self._state in TERMINAL:
+            self._owner_open = turn.owner_question = None
+            return
+        at = turn.question_at
+        if at is not None:
+            kept = [s for s in _SENTENCE_END.split(turn.utterances[at]) if not s.endswith("?")]
+            if kept:
+                turn.utterances[at] = " ".join(kept)
+            else:
+                del turn.utterances[at]
+            turn.question_at = None
+        self._say(turn, templates.ask_owner_hold())
 
     def _finish_pickup_items(self, turn: _Turn) -> None:
         """픽업 시각을 묻는 중에 고친 항목을 되받는다 (C10). 질문이 이미 있으면 그 앞에 넣는다.
@@ -458,7 +517,7 @@ class DialogEngine:
             turn.order = self._build_order(turn.order_status, turn.now)
         readback = self._state is State.CONFIRM and turn.question in self._readbacks()
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
-                            readback=readback)
+                            readback=readback, owner_question=turn.owner_question)
         if self._state in TERMINAL:
             self._state = State.DONE
         return result
@@ -632,7 +691,23 @@ class DialogEngine:
                 self._say(turn, templates.dont_know())
                 return
             item = line.item
-        self._say(turn, answer_menu_question(item, act.free_text or act.menu_text))
+        answer = grounded_answer(item, act.free_text or act.menu_text)
+        if answer is not None:
+            self._say(turn, answer)
+        elif self._ask_owner:
+            self._open_owner_question(turn, item)
+        else:
+            self._say(turn, templates.dont_know())
+
+    def _open_owner_question(self, turn: _Turn, item: MenuItem) -> None:
+        """근거 없는 메뉴 질문을 사장님 질문으로 연다(4단계 티켓 05). 대사는 `_hold_for_owner`가.
+
+        상태와 직전 질문은 그대로 둔다. 막는 조건(복창 뒤·이미 열림·횟수·시간 초과)은 티켓 06.
+        """
+        self._owner_asked += 1
+        question = OwnerQuestion(number=self._owner_asked, menu_id=item.id,
+                                 menu_name=item.name_ko, text=turn.heard)
+        self._owner_open = turn.owner_question = question
 
     @on("ask_other", *_ACTIVE)
     def _on_ask_other(self, turn: _Turn, act: Act) -> None:
