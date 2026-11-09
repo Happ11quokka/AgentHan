@@ -183,6 +183,13 @@
   font-weight: 700;
 }
 
+/* 답을 못 받은 손님 질문이 있던 주문 (티켓 06) */
+.owner-check {
+  margin: 0;
+  color: var(--owner-band-late);
+  font-weight: 700;
+}
+
 /* 알림 소리 상태 (티켓 08). 가게 열기 전에는 브라우저가 소리를 막는다 */
 .owner-sound {
   margin: 0;

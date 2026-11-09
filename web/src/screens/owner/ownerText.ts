@@ -34,6 +34,10 @@ export interface OwnerText {
   question: string
   secondsLeft: (seconds: number) => string
   late: string
+  /** 답 전에 통화가 끝난 질문 카드 (티켓 06) */
+  callEnded: string
+  /** 답을 못 받은 손님 질문이 있던 확정 주문 (티켓 06) */
+  ownerCheck: string
   answer: Record<OwnerAnswer, string>
   endReason: Record<CallEndReason, string>
   badge: Record<RequestBadge, string>
@@ -74,6 +78,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     question: 'Вопрос клиента',
     secondsLeft: (n) => `${n} сек`,
     late: 'Время вышло',
+    callEnded: 'Звонок завершён',
+    ownerCheck: 'Нужно ответить на вопрос клиента',
     answer: { yes: 'Можно', no: 'Нельзя', unsure: 'Не знаю' },
     endReason: {
       confirmed: 'Заказ подтверждён',
@@ -119,6 +125,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     question: '손님 질문',
     secondsLeft: (n) => `${n}초`,
     late: '시간 지남',
+    callEnded: '통화 끝',
+    ownerCheck: '사장님 확인 필요 · 손님 질문',
     answer: { yes: '돼요', no: '안 돼요', unsure: '모르겠어요' },
     endReason: {
       confirmed: '주문 확정',

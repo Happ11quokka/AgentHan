@@ -5,6 +5,8 @@ import {
   type QuestionCard,
   canAnswer,
   initialOwnerState,
+  needsSeen,
+  questionClock,
   openQuestions,
   ownerReducer,
   secondsLeft,
@@ -69,5 +71,33 @@ describe('owner screen question cards (ticket 05)', () => {
     expect(secondsLeft(card, sent + 7_400)).toBe(13)
     expect(secondsLeft(card, sent + 20_000)).toBe(0)
     expect(secondsLeft(card, sent + 60_000)).toBe(0)
+  })
+})
+
+describe('owner screen question timing (ticket 06)', () => {
+  it('keeps timed-out and call-ended cards answerable on screen', () => {
+    const s = run(
+      withQuestions(question('call-1-q1'), question('call-2-q1')),
+      changed(question('call-1-q1', 'timeout')),
+      changed(question('call-2-q1', 'call_ended')),
+    )
+    expect(ids(openQuestions(s))).toEqual(['call-1-q1', 'call-2-q1'])
+    expect(openQuestions(s).every(canAnswer)).toBe(true)
+  })
+
+  it('shows the countdown while open, then why the wait is over', () => {
+    const card = question('call-1-q1')
+    const sent = Date.parse(card.sent_at)
+    expect(questionClock(card, sent + 7_400)).toBe(13)
+    expect(questionClock(card, sent + 25_000)).toBe('late')
+    expect(questionClock(question('call-1-q1', 'timeout'), sent)).toBe('late')
+    expect(questionClock(question('call-1-q1', 'call_ended'), sent)).toBe('ended')
+  })
+
+  it('reports a card as seen once, only while the call is still waiting', () => {
+    expect(needsSeen(question('a'))).toBe(true)
+    expect(needsSeen({ ...question('a'), seen_at: '2026-11-08T16:02:03+09:00' })).toBe(false)
+    expect(needsSeen(question('a', 'timeout'))).toBe(false)
+    expect(needsSeen(question('a', 'answered'))).toBe(false)
   })
 })

@@ -6,6 +6,8 @@
 // 통화 카드(티켓 02): 맨 위 줄에 통화 중 카드, 그 아래 "손님 연락 필요"(넘김)·회색 미완료 카드(닫기 버튼).
 // 알림 소리·깜빡임·리마인드·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
 // 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
+// 티켓 06: 시간 초과·통화 끝 카드도 남아 답을 받는다. 화면이 보이는 동안 뜬 카드는 열람으로 알린다.
+// 답을 못 받은 질문이 있던 확정 주문 카드에는 "사장님 확인 필요".
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
@@ -15,13 +17,16 @@ import {
   type OrderCardLine,
   type OwnerAnswer,
   type QuestionCard,
+  type QuestionClock,
   canAccept,
   followUpCalls,
   initialOwnerState,
   liveCalls,
+  needsSeen,
   openQuestions,
   ownerReducer,
-  secondsLeft,
+  questionClock,
+  questionsWaiting,
 } from './ownerState.ts'
 import {
   acceptOrder,
@@ -29,6 +34,7 @@ import {
   connectOwnerStream,
   dismissCall,
   ownerKey,
+  seeQuestion,
   wakeDevice,
 } from './ownerStream.ts'
 import {
@@ -66,6 +72,8 @@ export default function OwnerPage() {
   const [reminded, setReminded] = useState<ReadonlySet<string>>(new Set())
   const [now, setNow] = useState(() => Date.now())
   const alerts = useRef<OrderAlerts | null>(null)
+  /** 열람을 알린 질문 카드 id (카드마다 한 번) */
+  const seenSent = useRef(new Set<string>())
 
   useEffect(() => {
     const current = new OrderAlerts({
@@ -90,8 +98,26 @@ export default function OwnerPage() {
     return () => clearInterval(timer)
   }, [])
 
-  // 답을 기다리는 질문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
-  const waiting = openQuestions(state).length > 0
+  // 화면이 보이는 동안 뜬 질문 카드는 사장님이 봤다고 알린다(티켓 06). 통화가 기다리는 카드만,
+  // 카드마다 한 번. 탭이 가려져 있으면 다시 보일 때 알린다
+  useEffect(() => {
+    const report = () => {
+      if (document.visibilityState !== 'visible') return
+      for (const q of state.questions) {
+        if (!needsSeen(q) || seenSent.current.has(q.id)) continue
+        seenSent.current.add(q.id)
+        void seeQuestion(key.current, q.id).then((card) => {
+          if (card) dispatch({ type: 'owner.question.update', data: card })
+        })
+      }
+    }
+    report()
+    document.addEventListener('visibilitychange', report)
+    return () => document.removeEventListener('visibilitychange', report)
+  }, [state.questions])
+
+  // 통화가 답을 기다리는 질문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
+  const waiting = questionsWaiting(state)
   useEffect(() => {
     if (!waiting) return
     const tick = () => setNow(Date.now())
@@ -176,7 +202,7 @@ export default function OwnerPage() {
             <QuestionCardView
               key={q.id}
               question={q}
-              left={secondsLeft(q, now)}
+              clock={questionClock(q, now)}
               lang={lang}
               text={text}
               onAnswer={(value) => void answer(q.id, value)}
@@ -220,6 +246,7 @@ export default function OwnerPage() {
               <strong className="owner-total">{card.total_label}</strong>
             </header>
             <CardLines lines={card.lines} lang={lang} text={text} />
+            {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
             {canAccept(card) ? (
               <button type="button" className="owner-btn owner-btn-accept" onClick={() => void accept(card.id)}>
                 {text.accept}
@@ -330,29 +357,31 @@ function FollowUpCard({
   )
 }
 
-/** 손님 질문 카드. 버튼 하나로 답한다. 시간이 지나도 카드는 남는다(늦은 답은 티켓 07) */
+/** 손님 질문 카드. 버튼 하나로 답한다. 시간이 지나거나 통화가 끝나도 카드는 남는다(늦은 답은 티켓 07) */
 function QuestionCardView({
   question,
-  left,
+  clock,
   lang,
   text,
   onAnswer,
 }: {
   question: QuestionCard
-  left: number
+  /** 남은 초 · 시간 지남 · 통화 끝 (`questionClock`) */
+  clock: QuestionClock
   lang: OwnerLang
   text: OwnerText
   onAnswer: (answer: OwnerAnswer) => void
 }) {
   const view = questionView(question, lang)
+  const late = typeof clock !== 'number'
   return (
     <article className="owner-card owner-question">
       <header className="owner-card-head">
         <span className="owner-question-title">
           {text.question} · {view.menu}
         </span>
-        <span className={`owner-question-left${left === 0 ? ' owner-question-late' : ''}`} role="timer">
-          {left > 0 ? text.secondsLeft(left) : text.late}
+        <span className={`owner-question-left${late ? ' owner-question-late' : ''}`} role="timer">
+          {late ? (clock === 'ended' ? text.callEnded : text.late) : text.secondsLeft(clock)}
         </span>
       </header>
       {view.question && <p className="owner-question-text">“{view.question}”</p>}

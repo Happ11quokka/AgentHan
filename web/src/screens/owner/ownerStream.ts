@@ -53,6 +53,18 @@ export async function dismissCall(key: string, id: string): Promise<CallCard | n
 }
 
 /**
+ * 질문 카드 열람(티켓 06). 통화가 기다리는 중이면 손님이 "사장님이 보고 계세요"를 한 번 듣는다.
+ * 성공하면 열람 시각이 찍힌 카드, 실패면 null
+ */
+export async function seeQuestion(key: string, id: string): Promise<QuestionCard | null> {
+  const res = await fetch(
+    `${BASE}/questions/${encodeURIComponent(id)}/seen?key=${encodeURIComponent(key)}`,
+    { method: 'POST' },
+  )
+  return res.ok ? ((await res.json()) as QuestionCard) : null
+}
+
+/**
  * 질문 카드 버튼 답(티켓 05). 성공하면 답한 카드(SSE `owner.question.update`로도 온다).
  * 실패면 null(이미 답함 409 등)
  */

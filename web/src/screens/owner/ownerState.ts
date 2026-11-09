@@ -38,6 +38,11 @@ export interface OrderCard {
   total: number
   /** 서버가 넣은 고정 표기 `25,000₩` */
   total_label: string
+  /**
+   * 그 통화에 답을 못 받은 손님 질문이 있다(티켓 06). 손님은 "확인해서 문자로 알려 드릴게요"를
+   * 들었다. 화면은 "사장님 확인 필요"를 붙인다. 06 전 서버는 안 보낸다
+   */
+  owner_check?: boolean
 }
 
 /**
@@ -81,8 +86,11 @@ export interface CallCard {
 /** 사장님 버튼 답 (티켓 05): 돼요 · 안 돼요 · 모르겠어요 */
 export type OwnerAnswer = 'yes' | 'no' | 'unsure'
 
-/** 질문 카드 상태. open: 답 기다림. answered: 답함. 시간 초과·통화 끝은 티켓 06·07이 더한다 */
-export type QuestionStatus = 'open' | 'answered'
+/**
+ * 질문 카드 상태. open: 답 기다림. answered: 답함. timeout: 통화 중 답 대기 시간이 지났다(손님은
+ * 문자 약속을 들었다). call_ended: 답 전에 통화가 끝났다. timeout·call_ended도 답을 받는다(티켓 06)
+ */
+export type QuestionStatus = 'open' | 'answered' | 'timeout' | 'call_ended'
 
 /** 질문 카드 (티켓 05): 손님이 한 근거 없는 메뉴 질문. `id`는 `{통화 id}-q{번호}` */
 export interface QuestionCard {
@@ -104,6 +112,8 @@ export interface QuestionCard {
   deadline_at: string
   status: QuestionStatus
   answer: OwnerAnswer | ''
+  /** 사장님이 카드를 처음 본 시각(ISO 8601), 아직이면 ''. 06 전 서버는 안 보낸다 */
+  seen_at?: string
 }
 
 /** SSE 이벤트 이름(`event:`)과 `data:` JSON */
@@ -208,13 +218,33 @@ export function canAccept(card: OrderCard): boolean {
   return card.status === 'new'
 }
 
-/** 버튼으로 답할 질문 카드 (먼저 온 것이 앞) */
+/** 버튼으로 답할 질문 카드 (먼저 온 것이 앞). 시간 초과·통화 끝 카드도 남는다(늦은 답) */
 export function openQuestions(state: OwnerState): QuestionCard[] {
   return state.questions.filter(canAnswer)
 }
 
 export function canAnswer(card: QuestionCard): boolean {
-  return card.status === 'open'
+  return card.status !== 'answered'
+}
+
+/** 통화가 아직 답을 기다리는 카드가 있다(카운트다운을 다시 그린다) */
+export function questionsWaiting(state: OwnerState): boolean {
+  return state.questions.some((q) => q.status === 'open')
+}
+
+/** 화면에 뜬 이 카드를 봤다고 서버에 알릴까. 통화가 기다리는 중이고 아직 안 알린 카드만 */
+export function needsSeen(card: QuestionCard): boolean {
+  return card.status === 'open' && !card.seen_at
+}
+
+/** 질문 카드 오른쪽 위: 남은 초(1 이상), 시간 지남, 통화 끝. 문구는 `ownerText` 사전이 붙인다 */
+export type QuestionClock = number | 'late' | 'ended'
+
+/** 기다리는 중이면 남은 초, 아니면 왜 기다림이 끝났는지 */
+export function questionClock(card: QuestionCard, nowMs: number): QuestionClock {
+  if (card.status === 'call_ended') return 'ended'
+  const left = card.status === 'open' ? secondsLeft(card, nowMs) : 0
+  return left > 0 ? left : 'late'
 }
 
 /** 마감까지 남은 초(올림). 지났으면 0. 서버가 보낸 시각부터 센 마감과 같은 시계다 */
