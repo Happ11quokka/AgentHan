@@ -1,0 +1,55 @@
+{
+  "id": "s26-reprompt-repeats-only-the-question",
+  "title": "3단계 감사 문제 A: 무응답 되묻기·못 알아들음은 앞 사과 문장 없이 직전 질문만 다시 한다",
+  "now": "2026-11-08T17:10:00+09:00",
+  "turns": [
+    {
+      "guest": "블린 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [{"menu_id": "m04", "qty": 1}]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "guest": "10시에 갈게요",
+      "expect_state": "ask_pickup",
+      "expect_say_exact": ["죄송해요, 저희가 9시에 문을 닫아요. 그 전에 몇 시쯤 오세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ask_pickup",
+      "expect_say_exact": ["여보세요?", "9시 전에 몇 시쯤 오세요?"]
+    },
+    {
+      "guest": "음",
+      "expect_state": "ask_pickup",
+      "expect_say_exact": ["죄송해요, 잘 못 알아들었어요.", "9시 전에 몇 시쯤 오세요?"]
+    },
+    {
+      "guest": "4시 50분이요",
+      "expect_state": "ask_pickup",
+      "expect_say_exact": ["그 시간은 이미 지났어요. 가장 빠른 시간은 5시 25분인데 괜찮으세요?"]
+    },
+    {
+      "event": "no_input",
+      "expect_state": "ask_pickup",
+      "expect_say_exact": ["여보세요?", "가장 빠른 시간은 5시 25분인데 괜찮으세요?"]
+    },
+    {
+      "guest": "네",
+      "expect_state": "confirm",
+      "expect_say": ["5시 25분 픽업"]
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing"
+    }
+  ],
+  "expect_order": {
+    "lines": [{"menu_id": "m04", "quantity": 1}],
+    "pickup_time": "2026-11-08T17:25:00+09:00",
+    "status": "confirmed"
+  }
+}

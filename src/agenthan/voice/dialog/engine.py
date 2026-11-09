@@ -151,6 +151,9 @@ class DialogEngine:
         self._pickup_offer_question = ""  # 그 시각을 물은 말. 항목을 고친 뒤 다시 묻는다
         self._pickup_text = ""  # 주문 중에 말했지만 되물어야 하는 시각 원문
         self._last_question = ""
+        # 되물을 때(무응답·못 알아들음) 직전 질문 대신 할 짧은 질문. 없으면 직전 질문의 질문 문장만
+        # (`templates.question_only`, 감사 문제 A)
+        self._again: str | None = None
         self._transcript: list[str] = []
         # CLARIFY가 무엇을 기다리는지. 티켓 02(메뉴 확인)·03(옵션)이 자기 타입을 넣는다.
         self._pending: _MenuClarify | _OptionPending | None = None
@@ -254,7 +257,7 @@ class DialogEngine:
             self._say(turn, templates.no_input_goodbye())
             return self._result(turn)
         self._say(turn, templates.hello_again())
-        self._ask(turn, self._question_again())
+        self._ask(turn, self._question_again(short=True))
         return self._result(turn)
 
     def nlu_context(self) -> NluContext:
@@ -362,7 +365,7 @@ class DialogEngine:
             self._finish_pickup_items(turn)
         if turn.unhandled and not turn.asked and self._state not in TERMINAL:
             self._say(turn, templates.not_understood())
-            self._ask(turn, self._question_again())
+            self._ask(turn, self._question_again(short=True))
         if turn.answered and not turn.asked and self._state not in TERMINAL:
             self._ask(turn, self._question_again())
         if self._state is State.CONFIRM and self._cancel_resume is None:
@@ -466,14 +469,22 @@ class DialogEngine:
         """대사는 턴이 끝날 때 `_result`가 transcript에 옮긴다 (FALLBACK이 바꿀 수 있게)."""
         turn.utterances.append(text)
 
-    def _ask(self, turn: _Turn, question: str, *, force: bool = False) -> None:
-        """이번 턴의 질문 하나. 이미 물었으면 무시한다. `force`면 앞 질문을 지우고 이것을 묻는다."""
+    def _ask(
+        self, turn: _Turn, question: str, *, force: bool = False, again: str | None = None
+    ) -> None:
+        """이번 턴의 질문 하나. 이미 물었으면 무시한다. `force`면 앞 질문을 지우고 이것을 묻는다.
+
+        `again`은 되물을 때 할 짧은 질문이다(없으면 `question`의 질문 문장만). 같은 질문을 다시
+        물을 때는 앞에서 받은 `again`을 그대로 둔다.
+        """
         if turn.asked:
             if not force:
                 return
             if turn.question_at is not None:
                 del turn.utterances[turn.question_at]
         turn.asked = True
+        if question != self._last_question or again is not None:
+            self._again = again
         self._last_question = question
         turn.question_at = len(turn.utterances)
         self._say(turn, question)
@@ -489,10 +500,13 @@ class DialogEngine:
         turn.unhandled = True
         self._fail(turn)
 
-    def _question_again(self) -> str:
+    def _question_again(self, *, short: bool = False) -> str:
         """다시 할 질문. ORDERING에서는 되받기("메도빅 하나요.")를 빼고 질문만 한다.
 
         CONFIRM에서는 늘 지금 장바구니로 만든 복창이다 (리뷰 C2, P1).
+        `short`(무응답 되묻기·못 알아들음)면 직전 질문 앞의 안내·사과 문장("죄송해요, 저희가 9시에
+        문을 닫아요.")은 빼고 질문만 한다(spec "여보세요? + 직전 질문", 감사 문제 A). 손님이 다시
+        말해 달라고 했을 때("뭐라고요?")는 앞 문장까지 그대로 한다.
         """
         if self._cancel_resume is None:
             if self._state is State.ORDERING:
@@ -503,7 +517,11 @@ class DialogEngine:
                 return templates.anything_else()
             if self._state is State.CONFIRM and self._pickup is not None:
                 return self._readback(after_fix=False)
-        return self._last_question or templates.ask_order()
+        if not self._last_question:
+            return templates.ask_order()
+        if short:
+            return self._again or templates.question_only(self._last_question)
+        return self._last_question
 
     # ------------------------------------------------------------ 실패 카운터·FALLBACK (티켓 05)
 
@@ -587,6 +605,7 @@ class DialogEngine:
             return False  # 취소 질문은 그대로 두고 평소처럼 (다시 묻기·답하기·사장님 연결)
         self._cancel_resume = None
         self._last_question = resume
+        self._again = None
         return False
 
     # ------------------------------------------------------------ 다시 말하기·메뉴 질문 (티켓 05)
@@ -1076,7 +1095,8 @@ class DialogEngine:
             self._ask(turn, templates.pickup_before_open(open_at))
         elif verdict.kind == "after_close":
             close = today_at(turn.now, self._config.close_time)
-            self._ask(turn, templates.pickup_after_close(close))
+            self._ask(turn, templates.pickup_after_close(close),
+                      again=templates.pickup_before_close(close))
         elif verdict.kind == "too_early":
             assert verdict.at is not None
             self._offer_pickup(turn, verdict.at, templates.pickup_too_early(prep, verdict.at))

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from datetime import datetime
 
@@ -250,6 +251,12 @@ def pickup_after_close(close: datetime) -> str:
     return f"죄송해요, 저희가 {spoken_time(close)}에 문을 닫아요. 그 전에 몇 시쯤 오세요?"
 
 
+def pickup_before_close(close: datetime) -> str:
+    """영업 종료 뒤 시각을 거절한 뒤 되물을 때(무응답·못 알아들음). "그 전에"가 가리킬 앞 문장이
+    빠지므로 닫는 시각을 넣는다 (감사 문제 A)."""
+    return f"{spoken_time(close)} 전에 몇 시쯤 오세요?"
+
+
 def pickup_before_open(open_at: datetime) -> str:
     return f"죄송해요, 저희는 {spoken_time(open_at)}에 문을 열어요. 몇 시쯤 오세요?"
 
@@ -392,3 +399,21 @@ def take_your_time(*, after_reply: bool = False) -> str:
 def not_heard() -> str:
     """말소리는 있었는데 STT 글이 없을 때. 실패로 세지 않는다."""
     return "죄송해요, 잘 못 들었어요. 다시 말씀해 주세요."
+
+
+_SENTENCES = re.compile(r"(?<=[.?!])\s+")
+
+
+def question_only(text: str) -> str:
+    """되물을 때 다시 할 부분: 끝의 질문 문장. 앞의 안내·사과 문장("죄송해요, …")은 뺀다.
+
+    무응답 되묻기("여보세요?")와 못 알아들음("잘 못 알아들었어요") 뒤에 쓴다(spec "여보세요? +
+    직전 질문", 감사 문제 A). 질문 문장이 없으면 그대로 돌려준다.
+    """
+    sentences = _SENTENCES.split(text.strip())
+    kept: list[str] = []
+    for sentence in reversed(sentences):
+        if not sentence.endswith("?"):
+            break
+        kept.insert(0, sentence)
+    return " ".join(kept) if kept else text

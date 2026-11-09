@@ -17,6 +17,8 @@
          "expect_cart": [{"menu_id": "m01", "qty": 1}],     # 선택. options·request 기본값은 빈 값
                                                             # 없으면 직전 턴과 같아야 한다
          "expect_say": ["메도빅 하나요"]},  # 선택. 이번 턴 대사에 들어 있어야 할 조각
+        {"guest": "음", "expect_say_exact": ["죄송해요, 잘 못 알아들었어요.", "몇 시쯤 오세요?"]},
+                                                # 선택. 이번 턴 대사 전체(문장 목록)가 이것과 같다
         {"event": "no_input"},                  # 손님 말 대신 엔진 진입점 (3단계 티켓 04):
                                                 # no_input(무응답) · not_heard(말했는데 글 없음)
         {"guest": "잠깐만요", "wait_request": true}  # 끝말 규칙이 기다림 요청으로 본 말
@@ -241,6 +243,8 @@ def run(scenario: Scenario) -> Run:
         for piece in turn.get("expect_say", ()):
             if piece not in said:
                 out.failures.append(f"{where}: 대사에 {piece!r} 없음 → {said!r}")
+        if "expect_say_exact" in turn and result.utterances != turn["expect_say_exact"]:
+            out.failures.append(f"{where}: 대사 {result.utterances} ≠ {turn['expect_say_exact']}")
         if result.order is not None:
             if i != last:
                 out.failures.append(f"{where}: 마지막 턴 전에 주문서가 나왔다")
