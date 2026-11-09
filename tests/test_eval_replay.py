@@ -262,7 +262,8 @@ def test_route_uses_whole_branch_not_only_embedding(basis_index):
         Case(id="match", text="메뉴 추가", expected_feature="menu"),
     ]
     rows, results, _ = run.evaluate({"route": cases}, backend)
-    assert [(r["got"], r["via"]) for r in rows] == [("statistics", "report"), ("menu", "match")]
+    # Scripted has no select(): DASH is unavailable, so the thresholded match is used.
+    assert [(r["got"], r["via"]) for r in rows] == [("statistics", "report"), ("menu", "fallback")]
     assert results["route"]["selection_accuracy"] == 1
 
 
@@ -434,6 +435,8 @@ def test_rejection_is_recorded_replayed_and_scored_as_failed_turn(tmp_path, basi
         def chat(self, messages, *, tools):
             self.requests.append(tools)
             raise ClovaRequestRejected("rejected")
+
+        select = chat  # DASH rejects too, so routing falls back without an API error.
 
     path = tmp_path / "record.json"
     recorder = Recorder(path, Rejects(basis_index["smartcall"]))

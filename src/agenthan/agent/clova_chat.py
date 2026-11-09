@@ -1,6 +1,6 @@
 """Owner-assistant chat turn over the shared HCX client (see the hcx package).
 
-Messages use the OpenAI format (tool_calls, tool_call_id). tool_choice is never sent
+Messages use the OpenAI format (tool_calls, tool_call_id). tool_choice is sent only when given
 and errors are sanitized so a server body or key is never shown.
 """
 
@@ -80,13 +80,24 @@ def parse_message(value: object) -> dict:
     return parsed
 
 
-def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = CHAT_MODEL) -> dict:
-    """One chat completion. Tools are sent only when non-empty; tool_choice is never sent."""
+def chat(
+    messages: list[dict],
+    *,
+    tools: list[dict],
+    client=None,
+    model: str = CHAT_MODEL,
+    tool_choice: dict | None = None,
+) -> dict:
+    """One chat completion. Tools are sent only when non-empty.
+
+    tool_choice is sent only when given (HCX-DASH-002 accepts a forced function)."""
     client = client or make_client()
     kwargs = {"model": model, "messages": messages, "temperature": TEMPERATURE}
     kwargs.update(hcx.tool_call_options(model))
     if tools:
         kwargs["tools"] = tools
+        if tool_choice:
+            kwargs["tool_choice"] = tool_choice
     failure, rejected = None, False
     try:
         choice = client.chat.completions.create(**kwargs).choices[0]

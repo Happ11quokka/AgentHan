@@ -24,9 +24,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from agenthan.agent import food_photo, menu_photo, report_explainer, review_delegate
+from agenthan.agent import (
+    feature_selector,
+    food_photo,
+    menu_photo,
+    report_explainer,
+    review_delegate,
+)
 from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, chat, parse_message
-from agenthan.agent.place_matcher import get_feature, match_features
+from agenthan.agent.place_matcher import RELEVANCE_THRESHOLD, get_feature
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError
@@ -69,6 +75,18 @@ APPROVAL_TEXT = {
     "saved": "저장했어요.",
     "cancel": "취소했어요. 저장한 것은 없어요.",
 }
+CLARIFY_TEXT = "어떤 걸 도와드릴까요? {options} 중에서 골라 말씀해 주세요."
+# Read-only search visibility diagnosis, exposed with the search_keywords feature.
+DIAGNOSE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "diagnose_search_visibility",
+        "description": "검색 노출·대표키워드: 손님이 검색할 때 우리 가게가 어떻게 나오는지 "
+        "진단한다. 대표키워드를 바꾸지 않는 조회다. 로컬 더미 자료만 쓴다.",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+}
+EXTRA_TOOLS = {"search_keywords": [DIAGNOSE_TOOL]}
 REJECTED_TEXT = (
     "{name}: 이 요청은 지금 처리하지 못했어요. 저장한 것은 없어요. 다른 말로 다시 말씀해 주세요."
 )
@@ -79,11 +97,12 @@ class Route:
     """Which feature one utterance goes to, and why (via)."""
 
     feature_id: str | None
-    via: str  # photo | glossary | report | pending | match | none | approval
-    search_question: bool = False
+    # photo | glossary | report | select | clarify | none | fallback | approval
+    via: str
     follow_question: bool = False
     details: bool = False
     glossary: str | None = None
+    candidates: tuple[str, ...] = ()  # select_feature candidates (top-5 by embedding)
 
 
 def new_trace(feature_id: str | None, via: str) -> dict:
@@ -174,6 +193,7 @@ class OwnerAssistant:
         review_session: Callable[..., review_delegate.ReviewSession] | None = None,
         knowledge: StoreKnowledge | None = None,
         clova_v3: menu_photo.Call | None = None,
+        select_chat: Callable | None = None,
     ):
         """owner_lang=None detects the language per utterance (review answers only).
         review_session(store, owner_lang=...) builds the review session lazily; tests
@@ -182,11 +202,14 @@ class OwnerAssistant:
             raise ValueError("max_tool_calls must be a positive integer")
         self.store = DummyStore(store)
         self.chat = chat
+        # HCX-DASH-002 select_feature; failures fall back to the thresholded match.
+        self.select_chat = select_chat or feature_selector.default_select_chat
         self.embed = embed
         self.max_tool_calls = max_tool_calls
         self.history: list[dict] = []
         self.pending_feature: str | None = None
         self.pending_action: dict | None = None
+        self._clarify_options: tuple[str, ...] = ()
         self.trace: dict = new_trace(None, "none")
         self.owner_lang = owner_lang
         self._review_factory = review_session or review_delegate.new_session
@@ -226,13 +249,6 @@ class OwnerAssistant:
         if glossary:
             return Route("statistics", "glossary", glossary=glossary)
         review_question = bool(re.search(r"리뷰|후기|댓글", text))
-        keyword_edit = bool(
-            re.search(r"검색\s*(?:어|키워드)|키워드", text)
-            and re.search(r"바꿔|바꾸|등록|추가|수정|삭제", text)
-        )
-        search_question = not keyword_edit and bool(
-            re.search(r"검색.*(?:어떻게|나와|나오|노출)|(?:어떻게|어디서).*찾아(?:와|오)", text)
-        )
         follow_question = bool(
             not review_question
             and (
@@ -242,19 +258,25 @@ class OwnerAssistant:
             )
         )
         details = bool(re.fullmatch(r"자세히(?:\s*(?:보여\s*줘|알려\s*줘))?[.!?]?", text))
-        if not review_question and (
-            search_question or follow_question or (details and self._detail_subject is not None)
-        ):
-            return Route("statistics", "report", search_question, follow_question, details)
-        candidates = [m.feature_id for m in match_features(text, embed=self.embed)]
-        if self.pending_feature and (not candidates or self.pending_feature in candidates):
-            # While asking for missing input, answers such as "5000원" or a reply
-            # mentioning "예약" stay in the same feature unless the owner clearly
-            # switches to another one.
-            return Route(self.pending_feature, "pending")
-        if candidates:
-            return Route(candidates[0], "match")
-        return Route(None, "none")
+        if follow_question or (details and self._detail_subject is not None):
+            return Route("statistics", "report", follow_question, details)
+        ids, ranked = feature_selector.candidates(text, self.embed, keep=self.pending_feature)
+        context = None
+        if self.pending_feature and self.history and self.history[-1]["role"] == "assistant":
+            name = get_feature(self.pending_feature)["name_ko"]
+            context = f"비서가 {name} 기능에서 물었다: {self.history[-1]['content'][:200]}"
+        elif self._clarify_options and self.history:
+            context = "비서가 되물었다: " + self.history[-1]["content"][:200]
+        choice = feature_selector.select(text, ids, select_chat=self.select_chat, context=context)
+        if choice is None:
+            # DASH failed: previous rule (pending feature, then thresholded top-1).
+            above = [m.feature_id for m in ranked if m.score > RELEVANCE_THRESHOLD][:3]
+            if self.pending_feature and (not above or self.pending_feature in above):
+                return Route(self.pending_feature, "fallback", candidates=tuple(ids))
+            return Route(feature_selector.fallback(ranked), "fallback", candidates=tuple(ids))
+        if choice.decision == feature_selector.CLARIFY:
+            return Route(None, "clarify", candidates=choice.candidates)
+        return Route(choice.feature_id, "select", candidates=choice.candidates)
 
     def ask(self, text: str) -> str:
         text = text.strip()
@@ -294,9 +316,15 @@ class OwnerAssistant:
         text = text.strip()
         self.trace = new_trace(route.feature_id, route.via)
         self.history.append({"role": "user", "content": text})
+        self._clarify_options = ()
         if route.glossary:
             self.pending_feature = None
             return self._finish(route.glossary, [], [])
+        if route.via == "clarify":
+            self.pending_feature = None
+            self._clarify_options = route.candidates[:2]
+            names = " / ".join(get_feature(f)["name_ko"] for f in self._clarify_options)
+            return self._finish(CLARIFY_TEXT.format(options=names), [], [])
         feature = get_feature(route.feature_id) if route.feature_id else None
         if not feature:
             self.pending_feature = None
@@ -305,8 +333,6 @@ class OwnerAssistant:
             return self._delegate_review(feature["id"], text)
         if feature["id"] == "statistics":
             self.pending_feature = None
-            if route.search_question:
-                return self._finish(self._search_visibility(), [], [])
             if route.follow_question and self.last_report is not None:
                 self._detail_subject = "report"
                 return self._finish(report_explainer.follow_up(text, self.last_report), [], [])
@@ -332,8 +358,8 @@ class OwnerAssistant:
 
         feature_id = feature["id"]
         self.pending_feature = feature_id
-        tool = feature_tool_schema(feature_id)
-        tool_name = tool["function"]["name"]
+        exposed = [feature_tool_schema(feature_id), *EXTRA_TOOLS.get(feature_id, [])]
+        names = {t["function"]["name"] for t in exposed}
         system = {
             "role": "system",
             "content": SYSTEM + json.dumps(self.store.read(), ensure_ascii=False),
@@ -343,7 +369,7 @@ class OwnerAssistant:
         count = 0
         turn_start = len(self.history) - 1  # Index of this turn's user message.
         while True:
-            tools = [] if saved or count >= self.max_tool_calls else [tool]
+            tools = [] if saved or count >= self.max_tool_calls else exposed
             try:
                 message = parse_message(
                     self.chat(
@@ -372,7 +398,7 @@ class OwnerAssistant:
                         "error": "tool_not_allowed",
                         "message": "저장이 완료됐습니다.",
                     }
-                elif fn["name"] != tool_name:
+                elif fn["name"] not in names:
                     # Only the exposed tool may run, even though the executor knows all 16.
                     result = {
                         "ok": False,
@@ -385,8 +411,14 @@ class OwnerAssistant:
                         "error": "awaiting_approval",
                         "message": "앞의 변경을 사장님이 승인하기 전에는 실행하지 않습니다.",
                     }
-                elif needs_approval(tool_name):
-                    result = self._preview(feature_id, tool_name, fn.get("arguments"))
+                elif fn["name"] == DIAGNOSE_TOOL["function"]["name"]:
+                    # Deterministic diagnosis text goes straight to the owner.
+                    del self.history[-1]
+                    self.pending_feature = None
+                    self.trace["results"].append({"ok": True, "action": "read"})
+                    return self._finish(self._search_visibility(), [], [])
+                elif needs_approval(fn["name"]):
+                    result = self._preview(feature_id, fn["name"], fn.get("arguments"))
                 else:
                     result = execute_feature_tool(self.store, fn["name"], fn.get("arguments"))
                 self.trace["results"].append(result)

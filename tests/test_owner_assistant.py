@@ -279,7 +279,8 @@ def test_only_matched_feature_tool_is_exposed(tmp_path, mock_index, feature_id):
         tmp_path / "store.json", chat=fake, embed=feature_embed(mock_index, feature_id)
     )
     assistant.ask("요청")
-    assert fake.requests[0][1] == [feature_tool_schema(feature_id)]
+    extra = owner.EXTRA_TOOLS.get(feature_id, [])
+    assert fake.requests[0][1] == [feature_tool_schema(feature_id), *extra]
     assert assistant.pending_feature == feature_id
     assert not assistant.store.path.exists()
 

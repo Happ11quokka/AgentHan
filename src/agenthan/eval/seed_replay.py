@@ -10,7 +10,7 @@ from agenthan.agent.clova_chat import CHAT_MODEL
 from agenthan.eval.cases import load_cases
 from agenthan.eval.replay import Recorder, canonical
 from agenthan.eval.run import FLOW_CASES, REPLAY_PATH, ROUTE_CASES, evaluate, load_splits
-from agenthan.tools.feature_tools import all_tool_schemas
+from agenthan.tools.feature_tools import TOOL_FEATURES, all_tool_schemas
 
 
 class Synthetic:
@@ -47,6 +47,25 @@ class Synthetic:
             ],
         }
 
+    def select(self, messages, *, tools):
+        case = self.cases.get(messages[-1]["content"])
+        allowed = tools[0]["function"]["parameters"]["properties"]["feature_id"]["enum"]
+        feature = (case.expected_feature or TOOL_FEATURES.get(case.expected_tool)) if case else None
+        choice = feature if feature in allowed else "none"
+        return {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "select",
+                    "function": {
+                        "name": "select_feature",
+                        "arguments": canonical({"feature_id": choice}),
+                    },
+                }
+            ],
+        }
+
     def embed(self, text):
         # Deliberately constant: no oracle feature vectors or model-quality claim.
         return [1.0] + [0.0] * 1023
@@ -61,7 +80,7 @@ def main(argv=None):
         "route": load_cases(ROUTE_CASES, splits=splits),
         "flow": load_cases(FLOW_CASES, splits=splits),
     }
-    recorder = Recorder(args.out, Synthetic(cases["flow"]), provenance="synthetic")
+    recorder = Recorder(args.out, Synthetic(cases["flow"] + cases["route"]), provenance="synthetic")
     evaluate(cases, recorder)
     args.out.write_text(canonical(recorder.data) + "\n", encoding="utf-8")
     print(f"Recorded {len(recorder.data['entries'])} requests ({recorder.data['provenance']})")

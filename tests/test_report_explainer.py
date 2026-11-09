@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -167,11 +166,8 @@ def test_template_numbers_are_grounded_for_all_rules(tmp_path):
 
 
 def test_statistics_delegates_once_and_keeps_only_final_answer(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        owner_assistant,
-        "match_features",
-        lambda *args, **kwargs: [SimpleNamespace(feature_id="statistics")],
-    )
+    selection = owner_assistant.feature_selector.Selection("statistics", "feature", ())
+    monkeypatch.setattr(owner_assistant.feature_selector, "select", lambda *a, **k: selection)
     delegated = Mock(wraps=report_explainer.explain)
     monkeypatch.setattr(owner_assistant.report_explainer, "explain", delegated)
     chat = fake_chat()

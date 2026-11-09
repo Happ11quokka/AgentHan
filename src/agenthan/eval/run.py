@@ -13,8 +13,7 @@ from pathlib import Path
 from agenthan.agent import owner_assistant, place_matcher
 from agenthan.agent.clova_chat import CHAT_MODEL
 from agenthan.eval.cases import Case, load_cases
-from agenthan.eval.flow import run_flow, run_route, summarize_flow
-from agenthan.eval.metrics import summarize
+from agenthan.eval.flow import run_flow, run_route, summarize_flow, summarize_route
 from agenthan.eval.replay import EMBED_MODEL, Live, Recorder, Replay, canonical
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import all_tool_schemas
@@ -64,7 +63,7 @@ def evaluate(case_sets: dict[str, list[Case]], backend, *, repeat: int = 1, paus
 
     def summary(mode, selected, planned=None):
         if mode == "route":
-            return summarize(selected, planned=planned)
+            return summarize_route(selected, planned=planned)
         return summarize_flow(selected, planned_cases=planned)
 
     results = {
@@ -92,12 +91,17 @@ def render_table(summary: dict) -> str:
     route = summary["results"].get("route")
     if route:
         lines += [
-            "| 기능 매칭 | 정확도 | 오분기율 | 지연 p50/p95(초) | API 오류 | 미실행 |",
-            "|" + " --- |" * 6,
+            "| 기능 매칭 | 정확도 | 후보 재현율@5 | 후보 안 선택 정확도 | 오분기율 | "
+            "지연 p50/p95(초) | API 오류 | 미실행 |",
+            "|" + " --- |" * 8,
             f"| route | {percent(route['selection_accuracy'])} | "
+            f"{percent(route.get('candidate_recall'))} | "
+            f"{percent(route.get('select_accuracy_when_recalled'))} | "
             f"{percent(route['false_call_rate'])} | "
             f"{number(route['latency_p50_sec'])}/{number(route['latency_p95_sec'])} | "
             f"{route['api_errors']} | {route['unexecuted']} |",
+            "",
+            "분기 경로: " + ", ".join(f"{k} {v}" for k, v in route.get("via", {}).items()),
             "",
         ]
     flow = summary["results"].get("flow")

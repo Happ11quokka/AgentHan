@@ -14,6 +14,14 @@ def failing_chat(*args, **kwargs):
     raise RuntimeError("offline")
 
 
+def search_chat(messages, *, tools):
+    """The model picks the read-only diagnosis tool that search_keywords exposes."""
+    if any(t["function"]["name"] == "diagnose_search_visibility" for t in tools):
+        call = {"name": "diagnose_search_visibility", "arguments": "{}"}
+        return {"role": "assistant", "content": "", "tool_calls": [{"id": "d", "function": call}]}
+    return failing_chat(messages, tools=tools)
+
+
 def test_card_rejects_fabrication_and_has_comparisons():
     answer = report.explain("통계", chat=failing_chat)
     fake = Mock(return_value={"content": json.dumps(["지난주보다 999% 늘었어요", "문제", "행동"])})
@@ -110,7 +118,7 @@ def test_glossary_does_not_intercept_edit_requests(question):
 
 
 def test_seed_search_and_card_action(tmp_path):
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=failing_chat)
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
     summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
     assert "샘플 러시안 베이커리: 1위" in summary
     assert "이태원동 메도빅: 3위" in summary
@@ -139,7 +147,7 @@ def test_search_summary_is_short_and_details_reuse_results(tmp_path, monkeypatch
     client.blog = Mock(wraps=client.blog)
     monkeypatch.setattr(owner_assistant, "FixtureSearch", Mock(return_value=client))
     monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "0")
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=failing_chat)
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
     summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
     lines = summary.splitlines()
     assert len(lines) <= 5
@@ -168,7 +176,7 @@ def test_search_summary_without_results(tmp_path, monkeypatch):
         owner_assistant, "diagnose", lambda profile, client, queries: VisibilityReport(profile)
     )
     monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "0")
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=failing_chat)
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
     answer = assistant.ask("우리 가게 검색하면 어떻게 나와?")
     assert "상위 5개에 나오는 검색어가 없어요" in answer
     assert "안 나오는 검색어: 확인된 검색어가 없어요" in answer
@@ -176,7 +184,7 @@ def test_search_summary_without_results(tmp_path, monkeypatch):
 
 
 def test_search_action_subject_particle(tmp_path):
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=failing_chat)
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
     store = assistant.store.read()
     store["shop"]["keywords"] = []
     assistant.store.read = Mock(return_value=store)

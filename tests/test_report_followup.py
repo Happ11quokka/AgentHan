@@ -1,5 +1,4 @@
 from dataclasses import replace
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -7,6 +6,10 @@ import pytest
 from agenthan.agent import owner_assistant
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.tools.report_insights import Insight
+
+
+def pick(feature_id):
+    return owner_assistant.feature_selector.Selection(feature_id, "feature", (feature_id,))
 
 
 def offline(*args, **kwargs):
@@ -112,23 +115,24 @@ def test_smartcall_followup_subject_particle(tmp_path):
     ["검색어 어떻게 바꿔?", "검색 키워드 어떻게 등록해?", "대표키워드 뭐 추가하면 좋아?"],
 )
 def test_keyword_edit_routes_to_feature_not_search(tmp_path, monkeypatch, question):
-    match = Mock(return_value=[SimpleNamespace(feature_id="search_keywords")])
-    monkeypatch.setattr(owner_assistant, "match_features", match)
+    match = Mock(return_value=pick("search_keywords"))
+    monkeypatch.setattr(owner_assistant.feature_selector, "select", match)
     chat = Mock(return_value={"role": "assistant", "content": "어떤 키워드로 바꿀까요?"})
     assistant = OwnerAssistant(tmp_path / "store.json", chat=chat)
     assistant._search_visibility = Mock(side_effect=AssertionError("검색 진단 호출 금지"))
     assert assistant.ask(question) == "어떤 키워드로 바꿀까요?"
     tools = chat.call_args.kwargs["tools"]
-    assert [t["function"]["name"] for t in tools] == ["set_representative_keywords"]
+    assert [t["function"]["name"] for t in tools] == [
+        "set_representative_keywords",
+        "diagnose_search_visibility",
+    ]
     match.assert_called_once()
     assistant._search_visibility.assert_not_called()
 
 
 def test_review_question_routes_to_review_not_followup(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        owner_assistant,
-        "match_features",
-        lambda *args, **kwargs: [SimpleNamespace(feature_id="review_reply")],
+        owner_assistant.feature_selector, "select", lambda *a, **k: pick("review_reply")
     )
     follow = Mock(side_effect=AssertionError("통계 후속 질문 호출 금지"))
     monkeypatch.setattr(owner_assistant.report_explainer, "follow_up", follow)

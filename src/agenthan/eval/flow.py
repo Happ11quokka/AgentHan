@@ -38,12 +38,30 @@ class Probe:
     def reset(self):
         self.errors: list[str] = []
         self.tokens: list[int] = []
+        self.select_rejected = 0
 
     def chat(self, messages, *, tools):
         try:
             response = self.backend.chat(messages, tools=tools)
         except ClovaRequestRejected:
             raise  # The app answers the owner; scored as a failed turn, not an outage.
+        except ClovaChatError as error:
+            self.errors.append(str(error))
+            raise
+        usage = response.get("usage") if isinstance(response, dict) else None
+        if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
+            self.tokens.append(usage["total_tokens"])
+        return response
+
+    def select(self, messages, *, tools):
+        """HCX-DASH-002 select_feature. A rejection is app behavior (it falls back)."""
+        if not hasattr(self.backend, "select"):
+            raise ClovaChatError("backend has no select_feature")  # Test fakes: fallback.
+        try:
+            response = self.backend.select(messages, tools=tools)
+        except ClovaRequestRejected:
+            self.select_rejected += 1
+            raise
         except ClovaChatError as error:
             self.errors.append(str(error))
             raise
@@ -116,12 +134,12 @@ def _arguments(value):
 
 def _assistant(folder: str, probe: Probe):
     return owner_assistant.OwnerAssistant(
-        Path(folder) / "store.json", chat=probe.chat, embed=probe.embed
+        Path(folder) / "store.json", chat=probe.chat, embed=probe.embed, select_chat=probe.select
     )
 
 
 def run_route(case: Case, backend) -> dict:
-    """Route the first turn in a fresh assistant; no chat, no tools, no store writes."""
+    """Route the first turn in a fresh assistant: embedding candidates + DASH select only."""
     turn = case.turns[0]
     feature = expected_feature(case, 0, turn)
     row = {
@@ -138,10 +156,36 @@ def run_route(case: Case, backend) -> dict:
         started = time.monotonic()
         route = _assistant(folder, probe).route(turn.say)
         row["latency_sec"] = time.monotonic() - started
-    row.update(got=route.feature_id, via=route.via)
+    got = "clarify" if route.via == "clarify" else route.feature_id
+    row.update(got=got, via=route.via, candidates=list(route.candidates))
+    if probe.tokens:
+        row["usage"] = {"total_tokens": sum(probe.tokens)}
+    if probe.select_rejected:
+        row["select_rejected"] = True
     if probe.errors:
         row["api_error"] = probe.errors[0]
     return row
+
+
+def summarize_route(rows: list[dict], *, planned: int | None = None) -> dict:
+    """Shared metrics plus where routing failed: candidate recall vs DASH choice."""
+    summary = summarize(rows, planned=planned)
+    answered = [r for r in rows if not r.get("api_error")]
+    positives = [r for r in answered if r["expected"] not in (None, "clarify")]
+    recalled = [r for r in positives if r["expected"] in r.get("candidates", [])]
+    selected = [r for r in answered if r.get("via") in ("select", "clarify")]
+    summary.update(
+        candidate_recall=_rate([r in recalled for r in positives]),
+        select_accuracy_when_recalled=_rate(
+            [r["got"] == r["expected"] for r in recalled if r in selected]
+        ),
+        via={
+            v: sum(r.get("via") == v for r in answered)
+            for v in sorted({r.get("via") for r in answered})
+        },
+        select_rejected=sum(bool(r.get("select_rejected")) for r in rows),
+    )
+    return summary
 
 
 def run_flow(case: Case, backend) -> list[dict]:

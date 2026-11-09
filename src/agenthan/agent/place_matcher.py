@@ -101,16 +101,16 @@ def _load_index(features: list[dict]) -> dict[str, list[float]]:
     return {key: validate_embedding(value) for key, value in embeddings.items()}
 
 
-def match_features(
-    text: str, top_k: int = 3, embed: Callable[[str], list[float]] | None = None
+def rank_features(
+    text: str, embed: Callable[[str], list[float]] | None = None
 ) -> list[FeatureMatch]:
-    """Rank features; embedding_score=None and keyword_only=True mark fallback.
+    """Every feature ranked by score, no threshold (candidates for select_feature).
 
     Scores are the weighted sum of keyword evidence and cosine similarity. With
-    no usable embedding, the full keyword score is used with the same threshold.
+    no usable embedding, the full keyword score is used (keyword_only=True).
     Invalid or stale indexes also use fallback rather than unrelated embeddings.
     """
-    if not text.strip() or top_k <= 0:
+    if not text.strip():
         return []
     features = load_features()
     query = None
@@ -129,13 +129,20 @@ def match_features(
             if embedding_score is not None
             else keyword_score
         )
-        if score > RELEVANCE_THRESHOLD:
-            matches.append(
-                FeatureMatch(
-                    feature["id"], score, keyword_score, embedding_score, terms, query is None
-                )
-            )
-    return sorted(matches, key=lambda match: (-match.score, match.feature_id))[:top_k]
+        matches.append(
+            FeatureMatch(feature["id"], score, keyword_score, embedding_score, terms, query is None)
+        )
+    return sorted(matches, key=lambda match: (-match.score, match.feature_id))
+
+
+def match_features(
+    text: str, top_k: int = 3, embed: Callable[[str], list[float]] | None = None
+) -> list[FeatureMatch]:
+    """Features above RELEVANCE_THRESHOLD; embedding_score=None marks keyword fallback."""
+    if top_k <= 0:
+        return []
+    ranked = rank_features(text, embed)
+    return [m for m in ranked if m.score > RELEVANCE_THRESHOLD][:top_k]
 
 
 def build_index() -> None:

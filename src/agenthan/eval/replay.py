@@ -14,6 +14,7 @@ from agenthan.agent.clova_chat import (
     make_client,
     parse_message,
 )
+from agenthan.agent.feature_selector import SELECT_MODEL, TOOL_CHOICE
 from agenthan.core.embedding import ClovaEmbeddingError, embed_text, validate_embedding
 from agenthan.core.llm import tool_call_options
 
@@ -32,14 +33,24 @@ def request_hash(operation: str, payload: dict) -> str:
     return hashlib.sha256(canonical({"operation": operation, **payload}).encode()).hexdigest()
 
 
-def chat_request(messages: list[dict], tools: list[dict], model: str) -> dict:
-    return {
+def chat_request(
+    messages: list[dict], tools: list[dict], model: str, tool_choice: dict | None = None
+) -> dict:
+    request = {
         "model": model,
         "messages": messages,
         "tools": tools,
         "temperature": TEMPERATURE,
         **tool_call_options(model),
     }
+    if tool_choice:
+        request["tool_choice"] = tool_choice
+    return request
+
+
+def select_request(messages: list[dict], tools: list[dict]) -> dict:
+    """The HCX-DASH-002 select_feature call (forced tool) as OwnerAssistant sends it."""
+    return chat_request(messages, tools, SELECT_MODEL, TOOL_CHOICE)
 
 
 class ReplayMiss(ClovaChatError, ClovaEmbeddingError):
@@ -54,13 +65,20 @@ class Live:
         self.client = None
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._create(chat_request(messages, tools, self.model))
+
+    def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._create(select_request(messages, tools))
+
+    def _create(self, request: dict) -> dict:
         failure, rejected = "CLOVA evaluation chat failed", False
         try:
             if self.client is None:
                 self.client = make_client()
-            request = chat_request(messages, tools, self.model)
-            if not tools:
+            request = copy.deepcopy(request)
+            if not request["tools"]:
                 request.pop("tools")
+                request.pop("tool_choice", None)
             response = self.client.chat.completions.create(**request)
             choice = response.choices[0]
             if choice.finish_reason == "length":
@@ -100,9 +118,19 @@ class Recorder:
         return response
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        key = request_hash("chat", chat_request(messages, tools, self.model))
+        request = chat_request(messages, tools, self.model)
+        return self._record(request, lambda: self.backend.chat(messages, tools=tools))
+
+    def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        if not hasattr(self.backend, "select"):
+            raise ClovaChatError("backend has no select_feature")  # Test fakes: fallback.
+        request = select_request(messages, tools)
+        return self._record(request, lambda: self.backend.select(messages, tools=tools))
+
+    def _record(self, request: dict, call) -> dict:
+        key = request_hash("chat", request)
         try:
-            response = self.backend.chat(messages, tools=tools)
+            response = call()
         except ClovaRequestRejected:
             self._save(key, REJECTED)
             raise
@@ -134,7 +162,13 @@ class Replay:
         return copy.deepcopy(self.data["entries"][key])
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        response = self._read("chat", chat_request(messages, tools, self.model))
+        return self._replay(chat_request(messages, tools, self.model))
+
+    def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._replay(select_request(messages, tools))
+
+    def _replay(self, request: dict) -> dict:
+        response = self._read("chat", request)
         if response == REJECTED:
             raise ClovaRequestRejected("Recorded CLOVA rejection (HTTP 400)")
         return response
