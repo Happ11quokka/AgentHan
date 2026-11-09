@@ -1,13 +1,24 @@
 // Part C 사장님 화면 (4단계). 이 폴더(src/screens/owner/)는 Part C 몫이다.
 // `/owner?key=…`로 연다. "가게 열기"를 누르면 소리 잠금 풀기·화면 꺼짐 방지·SSE 연결을 한 번에 한다.
 // 이 티켓(01)의 카드는 한국어 메뉴명·수량·옵션·픽업 시각·총액만 보인다(사장님 언어는 티켓 03).
+// 통화 카드(티켓 02): 맨 위 줄에 통화 중 카드, 그 아래 "손님 연락 필요"(넘김)·회색 미완료 카드(닫기 버튼).
 // 알림 소리·깜빡임·리마인드·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
-import { type Connection, canAccept, initialOwnerState, ownerReducer } from './ownerState.ts'
-import { acceptOrder, connectOwnerStream, ownerKey, wakeDevice } from './ownerStream.ts'
+import {
+  type CallCard,
+  type CallEndReason,
+  type Connection,
+  type OrderCardLine,
+  canAccept,
+  followUpCalls,
+  initialOwnerState,
+  liveCalls,
+  ownerReducer,
+} from './ownerState.ts'
+import { acceptOrder, connectOwnerStream, dismissCall, ownerKey, wakeDevice } from './ownerStream.ts'
 import { pickupBand } from './pickupBand.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
 import './owner.css'
@@ -17,6 +28,16 @@ const CONNECTION_LABEL: Record<Connection, string> = {
   connecting: '연결 중…',
   live: '주문 받는 중',
   failed: '연결할 수 없어요. 주소의 토큰을 확인해 주세요',
+}
+
+/** 미완료 카드의 끝난 이유 (사장님 언어는 티켓 03) */
+const END_REASON_LABEL: Record<CallEndReason, string> = {
+  confirmed: '주문 확정',
+  handoff: '사장님 연결 요청',
+  cancelled: '손님이 주문 취소',
+  no_input: '손님 응답 없음',
+  hangup: '손님이 끊음',
+  error: '연결 오류',
 }
 
 /** locked: 가게 열기 전(브라우저가 사용자 동작 전 소리를 막는다). on: 알림음 켜짐. unavailable: 켤 수 없음 */
@@ -81,7 +102,14 @@ export default function OwnerPage() {
     if (card) dispatch({ type: 'order.update', data: card })
   }
 
+  async function dismiss(id: string) {
+    const card = await dismissCall(key.current, id)
+    if (card) dispatch({ type: 'call.update', data: card })
+  }
+
   const showOpen = state.connection === 'closed' || state.connection === 'failed'
+  const live = liveCalls(state)
+  const followUps = followUpCalls(state)
 
   return (
     <main className="owner">
@@ -97,6 +125,33 @@ export default function OwnerPage() {
           </button>
         )}
       </header>
+
+      {live.length > 0 && (
+        <section className="owner-calls owner-calls-live" aria-label="통화 중">
+          {live.map((call) => (
+            <article key={call.id} className="owner-card owner-call owner-call-live">
+              <header className="owner-card-head">
+                <span className="owner-call-title">통화 중</span>
+                <span className="owner-call-time">{call.started_label}</span>
+              </header>
+              {call.lines.length > 0 ? (
+                <CardLines lines={call.lines} />
+              ) : (
+                <p className="owner-call-empty">아직 담은 메뉴가 없어요</p>
+              )}
+              {call.lines.length > 0 && <strong className="owner-total">{call.total_label}</strong>}
+            </article>
+          ))}
+        </section>
+      )}
+
+      {followUps.length > 0 && (
+        <section className="owner-calls" aria-label="확인할 통화">
+          {followUps.map((call) => (
+            <FollowUpCard key={call.id} call={call} onDismiss={() => void dismiss(call.id)} />
+          ))}
+        </section>
+      )}
 
       <section className="owner-orders" aria-label="주문">
         {state.connection === 'live' && state.orders.length === 0 && (
@@ -116,15 +171,7 @@ export default function OwnerPage() {
               <span className="owner-pickup">{card.pickup_label}</span>
               <strong className="owner-total">{card.total_label}</strong>
             </header>
-            <ul className="owner-lines">
-              {card.lines.map((line, i) => (
-                <li key={i}>
-                  <span className="owner-qty">{line.quantity}×</span> {line.name_ko}
-                  {line.options.length > 0 && <small> ({line.options.join(', ')})</small>}
-                  {line.request && <p className="owner-request">{line.request}</p>}
-                </li>
-              ))}
-            </ul>
+            <CardLines lines={card.lines} />
             {canAccept(card) ? (
               <button type="button" className="owner-btn owner-btn-accept" onClick={() => void accept(card.id)}>
                 접수
@@ -136,5 +183,48 @@ export default function OwnerPage() {
         ))}
       </section>
     </main>
+  )
+}
+
+function CardLines({ lines }: { lines: OrderCardLine[] }) {
+  return (
+    <ul className="owner-lines">
+      {lines.map((line, i) => (
+        <li key={i}>
+          <span className="owner-qty">{line.quantity}×</span> {line.name_ko}
+          {line.options.length > 0 && <small> ({line.options.join(', ')})</small>}
+          {line.request && <p className="owner-request">{line.request}</p>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** "손님 연락 필요"(넘김) 또는 회색 "미완료 통화" 카드. 사장님이 닫을 때까지 남는다 */
+function FollowUpCard({ call, onDismiss }: { call: CallCard; onDismiss: () => void }) {
+  const handoff = call.status === 'handoff'
+  return (
+    <article className={`owner-card owner-call owner-call-${call.status}`}>
+      <header className="owner-card-head">
+        <span className="owner-call-title">{handoff ? '손님 연락 필요' : '미완료 통화'}</span>
+        <span className="owner-call-time">{call.started_label}</span>
+      </header>
+      {!handoff && call.reason && <p className="owner-call-reason">{END_REASON_LABEL[call.reason]}</p>}
+      {call.lines.length > 0 ? (
+        <CardLines lines={call.lines} />
+      ) : (
+        <p className="owner-call-empty">담은 메뉴 없음</p>
+      )}
+      {handoff && call.heard.length > 0 && (
+        <ol className="owner-heard" aria-label="마지막 손님 말">
+          {call.heard.map((text, i) => (
+            <li key={i}>“{text}”</li>
+          ))}
+        </ol>
+      )}
+      <button type="button" className="owner-btn owner-btn-dismiss" onClick={onDismiss}>
+        닫기
+      </button>
+    </article>
   )
 }

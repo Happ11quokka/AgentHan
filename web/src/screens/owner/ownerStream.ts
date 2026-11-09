@@ -1,6 +1,6 @@
 // 사장님 화면 ↔ 서버 (서버 `voice/owner/http.py`). SSE 하나로 받고 POST로 보낸다.
 // 모든 경로에 쿼리 `key`(사장님 화면 비밀 토큰)를 붙인다. `EventSource`는 헤더를 못 붙인다.
-import type { OrderCard, OwnerAction } from './ownerState.ts'
+import type { CallCard, OrderCard, OwnerAction } from './ownerState.ts'
 
 const BASE = '/api/owner'
 
@@ -18,6 +18,9 @@ export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => vo
   source.addEventListener('order.update', (e) => {
     dispatch({ type: 'order.update', data: JSON.parse((e as MessageEvent<string>).data) })
   })
+  source.addEventListener('call.update', (e) => {
+    dispatch({ type: 'call.update', data: JSON.parse((e as MessageEvent<string>).data) })
+  })
   source.onerror = () => {
     // 200이 아니면(토큰 틀림 401) 브라우저가 다시 붙지 않고 CLOSED가 된다. 그 밖은 스스로 다시 붙는다
     dispatch({ type: source.readyState === EventSource.CLOSED ? 'failed' : 'lost' })
@@ -32,6 +35,15 @@ export async function acceptOrder(key: string, id: string): Promise<OrderCard | 
     { method: 'POST' },
   )
   return res.ok ? ((await res.json()) as OrderCard) : null
+}
+
+/** 닫기 버튼(넘김·미완료 통화 카드). 성공하면 닫힌 카드(SSE `call.update`로도 온다). 실패면 null */
+export async function dismissCall(key: string, id: string): Promise<CallCard | null> {
+  const res = await fetch(
+    `${BASE}/calls/${encodeURIComponent(id)}/dismiss?key=${encodeURIComponent(key)}`,
+    { method: 'POST' },
+  )
+  return res.ok ? ((await res.json()) as CallCard) : null
 }
 
 /**

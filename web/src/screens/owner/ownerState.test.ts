@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  type CallCard,
   type OrderCard,
   type OwnerAction,
   type OwnerState,
   canAccept,
+  canDismiss,
+  followUpCalls,
   initialOwnerState,
+  liveCalls,
   ownerReducer,
 } from './ownerState.ts'
 
@@ -25,7 +29,10 @@ function card(id: string, status: OrderCard['status'] = 'new'): OrderCard {
   }
 }
 
-const snapshot = (...orders: OrderCard[]): OwnerAction => ({ type: 'snapshot', data: { orders } })
+const snapshot = (...orders: OrderCard[]): OwnerAction => ({
+  type: 'snapshot',
+  data: { orders, calls: [] },
+})
 const update = (order: OrderCard): OwnerAction => ({ type: 'order.update', data: order })
 const ids = (s: OwnerState) => s.orders.map((o) => o.id)
 
@@ -68,5 +75,66 @@ describe('owner screen state (ticket 01)', () => {
     const s = run({ type: 'open' }, { type: 'failed' })
     expect(s.connection).toBe('failed')
     expect(ownerReducer(s, { type: 'open' }).connection).toBe('connecting')
+  })
+})
+
+function call(id: string, status: CallCard['status'] = 'live', reason: CallCard['reason'] = ''): CallCard {
+  return {
+    id,
+    status,
+    started_at: '2026-11-08T16:02:00+09:00',
+    started_label: '16:02',
+    reason,
+    lines: [],
+    total: 0,
+    total_label: '0₩',
+    heard: [],
+  }
+}
+
+const callUpdate = (c: CallCard): OwnerAction => ({ type: 'call.update', data: c })
+const withCalls = (...calls: CallCard[]): OwnerAction => ({ type: 'snapshot', data: { orders: [], calls } })
+const callIds = (cards: CallCard[]) => cards.map((c) => c.id)
+
+describe('owner screen call cards (ticket 02)', () => {
+  it('puts a call in progress on the top row and follows its cart in place', () => {
+    const one = { ...call('a'), lines: card('a').lines, total: 7500, total_label: '7,500₩' }
+    const s = run(withCalls(), callUpdate(call('a')), callUpdate(call('b')), callUpdate(one))
+    expect(callIds(liveCalls(s))).toEqual(['a', 'b'])
+    expect(liveCalls(s)[0].total_label).toBe('7,500₩')
+    expect(followUpCalls(s)).toEqual([])
+  })
+
+  it('drops the call card when the call became an order card', () => {
+    const s = run(withCalls(call('a')), callUpdate(call('a', 'ordered')), update(card('a')))
+    expect(liveCalls(s)).toEqual([])
+    expect(ids(s)).toEqual(['a'])
+  })
+
+  it('keeps a handoff and a grey missed card until the owner closes them', () => {
+    const s = run(
+      withCalls(call('a'), call('b')),
+      callUpdate(call('a', 'handoff', 'handoff')),
+      callUpdate(call('b', 'missed', 'hangup')),
+    )
+    expect(liveCalls(s)).toEqual([])
+    expect(followUpCalls(s).map((c) => [c.id, c.status, c.reason])).toEqual([
+      ['a', 'handoff', 'handoff'],
+      ['b', 'missed', 'hangup'],
+    ])
+    expect(followUpCalls(s).map(canDismiss)).toEqual([true, true])
+    const closed = ownerReducer(s, callUpdate(call('a', 'closed', 'handoff')))
+    expect(callIds(followUpCalls(closed))).toEqual(['b'])
+  })
+
+  it('offers the close button only on handoff and missed cards', () => {
+    expect(canDismiss(call('a'))).toBe(false)
+    expect(canDismiss(call('a', 'missed', 'error'))).toBe(true)
+  })
+
+  it('replaces the call cards with a snapshot', () => {
+    const s = run(withCalls(call('a')), withCalls(call('b', 'missed', 'no_input')))
+    expect(callIds(liveCalls(s))).toEqual([])
+    expect(callIds(followUpCalls(s))).toEqual(['b'])
   })
 })

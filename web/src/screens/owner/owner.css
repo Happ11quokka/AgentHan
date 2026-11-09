@@ -191,3 +191,60 @@
     box-shadow: 0 0 0 4px var(--owner-accent);
   }
 }
+
+/* 통화 카드 (티켓 02). 맨 위 줄: 통화 중. 그 아래: 손님 연락 필요(넘김)·회색 미완료 */
+.owner-calls {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.owner-call-live {
+  border-style: dashed;
+  border-color: var(--owner-accent);
+}
+
+.owner-call-handoff {
+  border-color: var(--owner-danger);
+  border-width: 2px;
+}
+
+.owner-call-missed {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--owner-muted);
+}
+
+.owner-call-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.owner-call-live .owner-call-title {
+  color: var(--owner-accent);
+}
+
+.owner-call-handoff .owner-call-title {
+  color: var(--owner-danger);
+}
+
+.owner-call-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--owner-muted);
+}
+
+.owner-call-reason,
+.owner-call-empty {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+.owner-heard {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 16px;
+}
+
+.owner-btn-dismiss {
+  background: var(--owner-muted);
+}
