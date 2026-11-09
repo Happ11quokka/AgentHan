@@ -3,11 +3,11 @@ import json
 import pytest
 
 from agenthan.eval.cases import READ_ONLY_TOOLS, Case, load_cases, needs_approval
-from agenthan.eval.run import MATCH_CASES, TOOL_CASES
+from agenthan.eval.run import FLOW_CASES, ROUTE_CASES
 
 
 def test_existing_sets_are_adapted_without_modifying_files():
-    for path, count in ((TOOL_CASES, 61), (MATCH_CASES, 64)):
+    for path, count in ((FLOW_CASES, 61), (ROUTE_CASES, 64)):
         before = path.read_bytes()
         cases = load_cases(path)
         assert len(cases) == count
@@ -19,8 +19,8 @@ def test_existing_sets_are_adapted_without_modifying_files():
             assert case.turns[0].expect.tool == case.expected_tool
             assert case.needs_approval == needs_approval(case.expected_tool or case.near_tool)
         assert path.read_bytes() == before
-    assert load_cases(MATCH_CASES)[0].expected_tool == "update_business_info"
-    assert load_cases(MATCH_CASES)[0].expected_feature == "business_info"
+    assert load_cases(ROUTE_CASES)[0].expected_tool == "update_business_info"
+    assert load_cases(ROUTE_CASES)[0].expected_feature == "business_info"
 
 
 def test_three_goldset_lines_preserve_turns_split_and_origin(tmp_path):

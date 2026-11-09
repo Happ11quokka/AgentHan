@@ -6,30 +6,21 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from agenthan.tools.feature_tools import TOOL_FEATURES
+from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES, needs_approval
 
-READ_ONLY_TOOLS = frozenset(
-    {
-        "list_call_history",
-        "get_naverpay_signup_guide",
-        "get_settlement_summary",
-        "check_pos_compatibility",
-        "get_statistics",
-        "search_help_articles",
-    }
-)
+__all__ = ["READ_ONLY_TOOLS", "needs_approval"]
 FEATURE_TO_TOOL = {feature: tool for tool, feature in TOOL_FEATURES.items()}
 
 
-def needs_approval(tool: str | None) -> bool:
-    """Unknown tools are conservatively treated as writes; no call needs no approval."""
-    return tool is not None and tool not in READ_ONLY_TOOLS
-
-
 class Expect(BaseModel):
+    """Per-turn expectations. An omitted field is not scored (see eval.flow)."""
+
+    feature: str | None = None  # Route; derived from tool/near_tool on legacy first turns.
+    ask_missing: list[str] | None = None  # Labels the turn must ask for (missing_fields).
     tool: str | None = None
     args: dict | None = None
-    result: object = None  # Preserved, deliberately not scored by M0.
+    store: dict | None = None  # Dot path → value in the store after this turn.
+    result: object = None  # Preserved, deliberately not scored.
 
 
 class Turn(BaseModel):

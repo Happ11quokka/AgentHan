@@ -3,7 +3,8 @@ import json
 import pytest
 
 from agenthan.agent import place_matcher as matcher
-from agenthan.eval import tool_selection as ev
+from agenthan.eval.cases import load_cases
+from agenthan.eval.run import FLOW_CASES
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore
 from agenthan.tools.feature_tools import (
     DELEGATED_FEATURES,
@@ -155,72 +156,11 @@ def test_menu_tool_delegates_and_review_tools_are_gone(store):
 
 
 def test_eval_dataset_covers_every_tool():
-    cases = ev.load_cases(ev.DEFAULT_CASES)
-    assert len({c["id"] for c in cases}) == len(cases)
-    full = [c for c in cases if c["kind"] == "full"]
-    assert {c["expected_tool"] for c in full} == set(TOOL_FEATURES)
+    cases = load_cases(FLOW_CASES)
+    full = [c for c in cases if c.kind == "full"]
+    assert {c.expected_tool for c in full} == set(TOOL_FEATURES)
     for name in TOOL_FEATURES:
-        langs = {c["lang"] for c in full if c["expected_tool"] == name}
+        langs = {c.lang for c in full if c.expected_tool == name}
         assert langs == {"ko", "en", "ko_simple"}
-    assert all(c["expected_tool"] is None for c in cases if c["kind"] != "full")
-    assert all(c["near_tool"] in TOOL_FEATURES for c in cases if c["kind"] == "missing")
-
-
-def fake_call(name, arguments):
-    return {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {"id": "c1", "type": "function", "function": {"name": name, "arguments": arguments}}
-        ],
-    }
-
-
-def test_eval_metrics_with_fake_chat():
-    cases = [
-        {"id": "a", "kind": "full", "lang": "ko", "text": "x", "expected_tool": "get_statistics"},
-        {"id": "b", "kind": "full", "lang": "en", "text": "y", "expected_tool": "get_statistics"},
-        {"id": "c", "kind": "full", "lang": "en", "text": "z", "expected_tool": "upsert_menu"},
-        {"id": "d", "kind": "unrelated", "lang": "ko", "text": "w", "expected_tool": None},
-        {
-            "id": "e",
-            "kind": "missing",
-            "lang": "ko",
-            "text": "v",
-            "expected_tool": None,
-            "near_tool": "upsert_menu",
-        },
-    ]
-    replies = iter(
-        [
-            fake_call("get_statistics", {"period": "7d"}),
-            fake_call("get_statistics", {"period": "1y"}),
-            fake_call("get_settlement_summary", {"period": "this_week"}),
-            {"role": "assistant", "content": "도와드릴 수 없어요."},
-            fake_call("upsert_menu", {}),
-        ]
-    )
-    seen = []
-
-    def chat(messages, *, tools):
-        seen.append((len(tools), messages[-1]["content"]))
-        return next(replies)
-
-    rows, summary = ev.evaluate(cases, chat)
-    assert seen[0][0] == 16
-    assert summary["selection_accuracy"] == round(2 / 3, 3)
-    assert summary["wrong_tool"] == 1
-    assert summary["args_valid_rate"] == 0.5
-    assert summary["false_call_rate"] == 0.5
-    assert summary["missing_called_near_tool"] == 1
-    assert summary["per_tool"]["get_statistics"] == {"total": 2, "correct": 2}
-    assert not SEED_PATH.with_name("store.json").exists()
-
-
-def test_eval_records_api_errors():
-    def chat(*args, **kwargs):
-        raise ev.ClovaChatError("CLOVA 대화 요청에 실패했습니다.")
-
-    case = {"id": "a", "kind": "full", "lang": "ko", "text": "x", "expected_tool": "get_statistics"}
-    rows, summary = ev.evaluate([case], chat, repeat=2)
-    assert summary["api_errors"] == 2 and summary["selection_accuracy"] is None
+    assert all(c.expected_tool is None for c in cases if c.kind != "full")
+    assert all(c.near_tool in TOOL_FEATURES for c in cases if c.kind == "missing")

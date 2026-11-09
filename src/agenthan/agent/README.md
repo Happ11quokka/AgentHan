@@ -19,7 +19,9 @@
         ├ 메뉴판·음식 사진          → ask_photo(): 사진 분류 → 초안 → 사장님 승인 → 저장
         ├ review_reply, ai_review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
         ├ statistics (A-3, R2)    → R1 facts → 해석 규칙 → 도구 없는 HCX-005 문장화/템플릿
-        └ 그 밖의 기능              → 이름·설명 안내 (도구는 tools/feature_tools.py에 정의만)
+        └ 그 밖의 14개 기능          → 그 기능 도구 하나 (tools/feature_tools.py)
+     ④ 쓰기 도구(메뉴 포함 10개)는 저장소 사본에 미리 실행 → "네"에만 실제 저장, "취소"는 버림.
+        조회 도구 5개(통화 기록·네이버페이 안내·정산·POS·도움말)는 바로 실행
 ```
 
 | 위치 | 하는 일 |
@@ -34,13 +36,12 @@
 | `tools/place_report.py`, `place_report_data.json` | R1 로컬 더미 통계 계산 (`ReportFacts`) |
 | `tools/report_insights.py` | R2 가게 정보와 통계를 연결하는 해석 규칙, 우선순위 상위 3개 |
 | `tools/dummy_store.py` | 더미 플레이스 API (로컬 `.agenthan/store.json`, 실제 네이버 연동 없음) |
-| `tools/owner_tools.py`, `feature_tools.py` | 메뉴 도구와 15개 기능 도구(미연결) |
+| `tools/owner_tools.py`, `feature_tools.py` | 메뉴 도구와 15개 기능 도구, 조회 전용 도구 목록 |
 | `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`은 실제 리뷰로 학습해 레포에 없음 · 카톡으로 받기) |
 | `tools/knowledge_adapters.py` | `StoreKnowledge`(Part B 계약) → 리뷰 서브에이전트의 리뷰·메뉴 입력 |
 | `tools/review_adapters.py` | 더미 플레이스 API → 리뷰 서브에이전트 입력 |
 | `tools/image_cutout.py` | M1a 음식 사진 배경 제거 → 흰 배경 정사각형 바이트 (음식 사진 등록에 연결) |
-| `eval/tool_selection.py` | 16개 도구를 다 붙였을 때 HCX-005 도구 선택 평가 |
-| `eval/run.py`, `eval/gate.py` | [M0 공통 평가·재생·기준선·회귀 게이트](../eval/README.md) |
+| `eval/run.py`, `eval/flow.py`, `eval/gate.py` | [기능 매칭·전체 흐름 평가, 재생·기준선·회귀 게이트](../eval/README.md) |
 
 공통 HCX 클라이언트는 `core/llm.py`, 임베딩은 `core/embedding.py`를 쓴다.
 
@@ -63,11 +64,11 @@
 uv run --env-file .env python -m agenthan.agent.owner_assistant
 uv run --env-file .env python -m agenthan.agent.owner_assistant --store /tmp/agenthan-demo/store.json
 uv run python -m agenthan.agent.place_matcher build-index   # 카탈로그를 고친 뒤 기능 벡터 다시 만들기
-uv run --env-file .env python -m agenthan.eval.tool_selection --out tool_eval.jsonl
+uv run --env-file .env python -m agenthan.eval.run --backend live   # 기능 매칭·전체 흐름 평가
 uv run pytest -q -m network                                 # 실제 CLOVA 호출 테스트 (키 필요)
 ```
 
-예: `신메뉴 시르니키를 등록하고 싶어요` → 가격 질문 → `8500원`.
+예: `신메뉴 시르니키를 등록하고 싶어요` → 가격 질문 → `8500원` → 미리보기 → `네`.
 메뉴판 사진: `/photo ~/menu.jpg 이거 올려 줘` → 초안 확인 → `3번 가격 9500원` → `네`.
 
 ### A-3 통계 리포트 해석 (R2)

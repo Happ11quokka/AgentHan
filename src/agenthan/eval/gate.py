@@ -5,6 +5,10 @@ import json
 import math
 from pathlib import Path
 
+REQUIRED = ("selection_accuracy", "args_accuracy")
+# Flow stage metrics: compared only when the baseline has them.
+OPTIONAL = ("feature_accuracy", "ask_accuracy", "store_accuracy", "completion_rate")
+
 
 def check(baseline: dict, current: dict) -> tuple[int, str]:
     if not isinstance(baseline, dict) or not isinstance(current, dict):
@@ -39,7 +43,7 @@ def check(baseline: dict, current: dict) -> tuple[int, str]:
     if results.keys() != previous.keys():
         return 2, "INCOMPLETE: 평가 경로 다름"
     for mode, metrics in results.items():
-        for key in ("selection_accuracy", "args_accuracy"):
+        for key in (*REQUIRED, *OPTIONAL):
             old, new = previous[mode].get(key), metrics.get(key)
             if old is not None and new is None:
                 return 2, f"INCOMPLETE: {mode}.{key} 채점 없음"
@@ -54,8 +58,10 @@ def _valid_metrics(metrics: object) -> bool:
     counts = ("planned", "cases", "api_errors", "unexecuted", "safety_violations")
     if any(type(metrics.get(key)) is not int or metrics[key] < 0 for key in counts):
         return False
-    for key in ("selection_accuracy", "args_accuracy"):
+    for key in (*REQUIRED, *OPTIONAL):
         if key not in metrics:
+            if key in OPTIONAL:
+                continue
             return False
         value = metrics[key]
         if value is not None and (

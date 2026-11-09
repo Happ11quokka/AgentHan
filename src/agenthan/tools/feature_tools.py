@@ -470,6 +470,22 @@ TOOLS = {t.feature_id: t for t in _TOOL_LIST}
 DELEGATED_FEATURES = frozenset({"review_reply", "ai_review"})
 # Every other catalog feature has exactly one tool name.
 TOOL_FEATURES = {**{v: k for k, v in TOOL_NAMES.items()}, **{t.name: k for k, t in TOOLS.items()}}
+# Tools that only read. Every other tool writes the store and needs the owner's approval.
+READ_ONLY_TOOLS = frozenset(
+    {
+        "list_call_history",
+        "get_naverpay_signup_guide",
+        "get_settlement_summary",
+        "check_pos_compatibility",
+        "get_statistics",
+        "search_help_articles",
+    }
+)
+
+
+def needs_approval(tool: str | None) -> bool:
+    """Unknown tools are conservatively treated as writes; no call needs no approval."""
+    return tool is not None and tool not in READ_ONLY_TOOLS
 
 
 def feature_tool_schema(feature_id: str) -> dict:

@@ -114,9 +114,12 @@ def test_smartcall_followup_subject_particle(tmp_path):
 def test_keyword_edit_routes_to_feature_not_search(tmp_path, monkeypatch, question):
     match = Mock(return_value=[SimpleNamespace(feature_id="search_keywords")])
     monkeypatch.setattr(owner_assistant, "match_features", match)
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=offline)
+    chat = Mock(return_value={"role": "assistant", "content": "어떤 키워드로 바꿀까요?"})
+    assistant = OwnerAssistant(tmp_path / "store.json", chat=chat)
     assistant._search_visibility = Mock(side_effect=AssertionError("검색 진단 호출 금지"))
-    assert "검색 노출·대표키워드" in assistant.ask(question)
+    assert assistant.ask(question) == "어떤 키워드로 바꿀까요?"
+    tools = chat.call_args.kwargs["tools"]
+    assert [t["function"]["name"] for t in tools] == ["set_representative_keywords"]
     match.assert_called_once()
     assistant._search_visibility.assert_not_called()
 

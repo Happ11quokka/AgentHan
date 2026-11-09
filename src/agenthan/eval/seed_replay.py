@@ -9,7 +9,7 @@ from pathlib import Path
 from agenthan.agent.clova_chat import CHAT_MODEL
 from agenthan.eval.cases import load_cases
 from agenthan.eval.replay import Recorder, canonical
-from agenthan.eval.run import MATCH_CASES, REPLAY_PATH, TOOL_CASES, evaluate
+from agenthan.eval.run import FLOW_CASES, REPLAY_PATH, ROUTE_CASES, evaluate
 from agenthan.tools.feature_tools import all_tool_schemas
 
 
@@ -21,8 +21,9 @@ class Synthetic:
         self.schemas = {tool["function"]["name"]: tool["function"] for tool in all_tool_schemas()}
 
     def chat(self, messages, *, tools):
-        tool = self.cases[messages[-1]["content"]].expected_tool
-        if tool is None:
+        case = self.cases.get(messages[-1]["content"]) if messages[-1]["role"] == "user" else None
+        tool = case.expected_tool if case else None
+        if tool is None or not tools:
             return {"role": "assistant", "content": "더미 응답: 입력을 확인해 주세요."}
         parameters = self.schemas[tool]["parameters"]
         arguments = {}
@@ -55,8 +56,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=REPLAY_PATH)
     args = parser.parse_args(argv)
-    cases = {"all_tools": load_cases(TOOL_CASES), "match": load_cases(MATCH_CASES)}
-    recorder = Recorder(args.out, Synthetic(cases["all_tools"]), provenance="synthetic")
+    cases = {"route": load_cases(ROUTE_CASES), "flow": load_cases(FLOW_CASES)}
+    recorder = Recorder(args.out, Synthetic(cases["flow"]), provenance="synthetic")
     evaluate(cases, recorder)
     args.out.write_text(canonical(recorder.data) + "\n", encoding="utf-8")
     print(f"Recorded {len(recorder.data['entries'])} requests ({recorder.data['provenance']})")

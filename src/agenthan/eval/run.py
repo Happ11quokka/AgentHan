@@ -1,4 +1,4 @@
-"""Run the two current evaluation paths and persist reproducible M0 summaries."""
+"""Run route and flow evaluation over OwnerAssistant and persist reproducible summaries."""
 
 import argparse
 import hashlib
@@ -10,20 +10,20 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from agenthan.agent import place_matcher
+from agenthan.agent import owner_assistant, place_matcher
 from agenthan.agent.clova_chat import CHAT_MODEL
-from agenthan.core.embedding import ClovaEmbeddingError
-from agenthan.eval import tool_selection
 from agenthan.eval.cases import Case, load_cases
-from agenthan.eval.metrics import score_tool_row, summarize
+from agenthan.eval.flow import run_flow, run_route, summarize_flow
+from agenthan.eval.metrics import summarize
 from agenthan.eval.replay import EMBED_MODEL, Live, Recorder, Replay, canonical
 from agenthan.tools.dummy_store import DummyStore
-from agenthan.tools.feature_tools import TOOL_FEATURES, all_tool_schemas
+from agenthan.tools.feature_tools import all_tool_schemas
 
 ROOT = Path(__file__).resolve().parents[3]
-TOOL_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
-MATCH_CASES = ROOT / "tests/data/place_request_cases.jsonl"
+FLOW_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
+ROUTE_CASES = ROOT / "tests/data/place_request_cases.jsonl"
 REPLAY_PATH = ROOT / "tests/fixtures/replay/m0.json"
+MODES = ("route", "flow")
 
 
 def display_path(path: Path) -> str:
@@ -42,68 +42,32 @@ def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def run_match(case: Case, backend) -> dict:
-    tool = case.turns[0].expect.tool
-    expected = case.expected_feature or TOOL_FEATURES.get(tool, tool)
-    row = {
-        "id": case.id,
-        "lang": case.lang,
-        "kind": case.kind,
-        "expected": expected,
-        "got": None,
-        "calls": [],  # Feature matching invokes no tools.
-        "safety_violation": False,
-    }
-    errors, attempted = [], []
-
-    def embed(text):
-        attempted.append(True)
-        try:
-            return backend.embed(text)
-        except ClovaEmbeddingError as error:
-            errors.append(str(error))
-            raise
-
-    started = time.monotonic()
-    matches = place_matcher.match_features(case.turns[0].say, top_k=1, embed=embed)
-    row["latency_sec"] = time.monotonic() - started
-    row["got"] = matches[0].feature_id if matches else None
-    row["keyword_only"] = bool(matches and matches[0].keyword_only)
-    # match_features intentionally swallows embedding failures. Evaluation must not.
-    if errors or not attempted:
-        row["api_error"] = errors[0] if errors else "Embedding was not executed (input/index)"
-    return row
-
-
 def evaluate(case_sets: dict[str, list[Case]], backend, *, repeat: int = 1, pause: float = 0):
     rows = []
-    tools = all_tool_schemas()
     for mode, cases in case_sets.items():
         for round_ in range(repeat):
             for case in cases:
-                if mode == "all_tools":
-                    first = case.turns[0]
-                    single = {
-                        **case.model_dump(),
-                        "text": first.say,
-                        "expected_tool": first.expect.tool,
-                        "expected_args": first.expect.args,
-                    }
-                    row = tool_selection.run_case(single, backend.chat, tools)
-                    score_tool_row(row, case.turns[0].expect.args)
-                else:
-                    row = run_match(case, backend)
-                row.update(mode=mode, round=round_, split=case.split, origin=case.origin)
-                rows.append(row)
+                produced = (
+                    [run_route(case, backend)] if mode == "route" else run_flow(case, backend)
+                )
+                for row in produced:
+                    row.update(mode=mode, round=round_, split=case.split, origin=case.origin)
+                rows.extend(produced)
                 if pause:
                     time.sleep(pause)
+
+    def summary(mode, selected, planned=None):
+        if mode == "route":
+            return summarize(selected, planned=planned)
+        return summarize_flow(selected, planned_cases=planned)
+
     results = {
-        mode: summarize([r for r in rows if r["mode"] == mode], planned=len(cases) * repeat)
+        mode: summary(mode, [r for r in rows if r["mode"] == mode], len(cases) * repeat)
         for mode, cases in case_sets.items()
     }
     by_split = {
         "null" if split is None else split: {
-            mode: summarize([r for r in rows if r["mode"] == mode and r["split"] == split])
+            mode: summary(mode, [r for r in rows if r["mode"] == mode and r["split"] == split])
             for mode in case_sets
         }
         for split in (None, "dev", "holdout")
@@ -112,34 +76,47 @@ def evaluate(case_sets: dict[str, list[Case]], backend, *, repeat: int = 1, paus
 
 
 def render_table(summary: dict) -> str:
-    columns = (
-        "평가 | 선택 정확도 | 인자 정확 일치 | 인자 유효성 | 오발동률 | 안전 위반 | "
-        "지연 p50/p95(초) | 토큰/호출 | API 오류 | 미실행"
-    )
-    lines = [f"| {columns} |", "|" + " --- |" * 10]
-
     def percent(value):
         return "N/A" if value is None else f"{value:.2%}"
 
     def number(value):
         return "N/A" if value is None else f"{value:.4f}"
 
-    for mode, metrics in summary["results"].items():
-        lines.append(
-            f"| {mode} | {percent(metrics['selection_accuracy'])} | "
-            f"{percent(metrics['args_accuracy'])} | {percent(metrics['args_valid_rate'])} | "
-            f"{percent(metrics['false_call_rate'])} | {metrics['safety_violations']} | "
-            f"{number(metrics['latency_p50_sec'])}/{number(metrics['latency_p95_sec'])} | "
-            f"{number(metrics['tokens_per_call'])} | {metrics['api_errors']} | "
-            f"{metrics['unexecuted']} |"
-        )
-    lines.append("| 기능 선택 후 도구 노출 | 미구현 | — | — | — | — | — | — | — | — |")
+    lines = []
+    route = summary["results"].get("route")
+    if route:
+        lines += [
+            "| 기능 매칭 | 정확도 | 오분기율 | 지연 p50/p95(초) | API 오류 | 미실행 |",
+            "|" + " --- |" * 6,
+            f"| route | {percent(route['selection_accuracy'])} | "
+            f"{percent(route['false_call_rate'])} | "
+            f"{number(route['latency_p50_sec'])}/{number(route['latency_p95_sec'])} | "
+            f"{route['api_errors']} | {route['unexecuted']} |",
+            "",
+        ]
+    flow = summary["results"].get("flow")
+    if flow:
+        lines += [
+            "| 전체 흐름 | 분기 | 질문 | 도구 | 인자 일치 | 저장소 | 완주율 | 오발동률 | "
+            "안전 위반 | 지연 p50/p95(초) | 토큰/턴 | API 오류 | 미실행 |",
+            "|" + " --- |" * 13,
+            f"| flow | {percent(flow['feature_accuracy'])} | {percent(flow['ask_accuracy'])} | "
+            f"{percent(flow['selection_accuracy'])} | {percent(flow['args_accuracy'])} | "
+            f"{percent(flow['store_accuracy'])} | {percent(flow['completion_rate'])} | "
+            f"{percent(flow['false_call_rate'])} | {flow['safety_violations']} | "
+            f"{number(flow['latency_p50_sec'])}/{number(flow['latency_p95_sec'])} | "
+            f"{number(flow['tokens_per_call'])} | {flow['api_errors']} | {flow['unexecuted']} |",
+            "",
+            "처음 실패한 단계: "
+            + (", ".join(f"{k} {v}" for k, v in sorted(flow["first_failures"].items())) or "없음"),
+            "",
+        ]
     for external in summary.get("extra_summaries", []):
         # Keep unknown external metric keys verbatim, without guessing their semantics.
         payload = json.dumps(external["summary"], ensure_ascii=False, sort_keys=True)
         payload = payload.replace("|", "\\|").replace("\n", " ")
-        lines.append(f"| 리뷰(외부 결과) | {payload} | — | — | — | — | — | — | — | — |")
-    return "\n".join(lines) + "\n"
+        lines.append(f"리뷰(외부 결과): {payload}")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _git(*args):
@@ -149,8 +126,9 @@ def _git(*args):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=["live", "replay"], default="live")
-    parser.add_argument("--cases", type=Path, help="common schema JSONL for both evaluation paths")
-    parser.add_argument("--match-cases", type=Path, default=MATCH_CASES)
+    parser.add_argument("--cases", type=Path, help="common schema JSONL for both route and flow")
+    parser.add_argument("--route-cases", type=Path, default=ROUTE_CASES)
+    parser.add_argument("--flow-cases", type=Path, default=FLOW_CASES)
     parser.add_argument("--split", choices=["dev", "holdout"])
     parser.add_argument("--only", help="comma-separated IDs (union of both evaluation paths)")
     parser.add_argument("--repeat", type=int, default=1)
@@ -175,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("baseline name must contain only letters, numbers, underscores, or hyphens")
     if args.record and args.backend != "live":
         parser.error("--record requires --backend live")
-    paths = {"all_tools": args.cases or TOOL_CASES, "match": args.cases or args.match_cases}
+    paths = {"route": args.cases or args.route_cases, "flow": args.cases or args.flow_cases}
     case_sets = {mode: load_cases(path, split=args.split) for mode, path in paths.items()}
     if args.only:
         wanted = set(args.only.split(","))
@@ -192,12 +170,12 @@ def main(argv: list[str] | None = None) -> int:
         backend = Recorder(args.record, backend)
     rows, results, by_split = evaluate(case_sets, backend, repeat=args.repeat, pause=args.pause)
     with tempfile.TemporaryDirectory() as folder:
-        system = tool_selection.SYSTEM + json.dumps(
+        system = owner_assistant.SYSTEM + json.dumps(
             DummyStore(Path(folder) / "store.json").read(), ensure_ascii=False
         )
     now = datetime.now(UTC)
     summary = {
-        "version": 1,
+        "version": 2,
         "conditions": {
             "git_commit": _git("rev-parse", "HEAD"),
             "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=normal")),
