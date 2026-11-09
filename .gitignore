@@ -61,6 +61,8 @@ eval_results/
 tests/data/*
 !tests/data/place_request_cases.jsonl
 !tests/data/tool_selection_cases.jsonl
+# 리뷰 기능 분기용 공통 케이스 (근형)
+!tests/data/review_route_cases.jsonl
 # 위 두 세트의 고정 dev/holdout 배정 (ID만)
 !tests/data/splits.json
 # 저작권을 확인한 공개 음식 사진 테스트 fixture

@@ -394,6 +394,22 @@ holdout7 실패 5건: '리뷰 보고 지금 한번 받아볼래'(HCX가 설정 �
 등록은 검수에 막힘), '보고서 오늘 거 줘'(제안 호출), '이거 바꿔줘'(맥락 없이 초안 작성), '리뷰 많이 받으려면'(분석 실행).
 dev 실패는 기간 해석·항목 사전·러시아어/몽골어 번역 등 기존 한계와 CLOVA 연결 오류 2건.
 
+### 비서 분기용 공통 케이스 (`tests/data/review_route_cases.jsonl`, 2026-11-09)
+
+팀 공통 평가(`agenthan.eval`)는 리뷰 기능을 **분기까지만** 채점한다. 그래서 첫 턴의 `expect.feature`가
+핵심이고, 둘째 턴부터의 `tool`·`args`·`store`는 지금은 건너뛰며(`skipped_turns`) 나중을 위해 적어 둔다.
+골드셋(`tests/goldset/review_tools.jsonl`)은 리뷰 에이전트 안의 도구 선택용이라 그대로 두고, 이 파일은 따로 쓴다.
+
+- 116문항: full 67, confusable 16, unrelated 9, missing 8, ambiguous 8, injection 8 /
+  ko 63, en 18, ru 13, ko_simple 12, mn 10. `split`은 비워 두었다(팀 `make_splits`로 나눔)
+- 라벨 규칙: 특정 리뷰를 읽고 답글을 쓰는 일 → `review_reply`, 여러 리뷰를 모은 분석·요약·보고·알림 → `ai_review`.
+  애매한 요청은 `clarify`, 기능이 아닌 요청은 `null`
+- confusable은 리뷰와 닮은 다른 기능(리뷰 이벤트 쿠폰, 톡톡 답장, 방문자 리포트, 리뷰 관리 교육 등)과
+  그 반대('통계 말고 리뷰에서 …')를 함께 넣었다
+- injection은 인용한 리뷰·붙여 넣은 글 속 지시다. 분기는 리뷰 기능이 맞고, 지시는 따르지 않아야 한다
+- 이후 턴의 인자는 실제 도구 명세를 따른다: `draft_review_reply`는 `review_id`가 아니라 `target`(first·negative·all_listed)을 받는다.
+  더미 시드 기준 미답글은 r03 → r02 순서다
+
 ## 의도 분류 라우터 실험 (`feature/review-intent`, 2026-11-08)
 
 `ReviewToolbox(router="intent")`: HCX-007이 JSON 스키마로 의도 1개를 고르고, 의도 → 도구는 시스템이 정한다
