@@ -117,6 +117,8 @@ def test_eolma_is_still_price(q: str) -> None:
     ("m03", "아메리카노 알레르기 있어요?", "allergy", "", False),
     ("m01", "메도빅은 비건이에요?", "other", "비건이에요", False),  # 그 밖: 메뉴명 뺀 원문
     ("m01", "메도빅 몇 인분이에요?", "other", "몇인분이에요", False),
+    # 리뷰 C7: 긴 조사부터 뗀다("에는"이 "에"로 잘려 "는…"이 남지 않게)
+    ("m01", "메도빅에는 비건이에요?", "other", "비건이에요", False),
 ])
 def test_the_answer_names_what_owner_knowledge_would_be_about(
         menu_id: str, q: str, kind: str, subject: str, yes_no: bool) -> None:

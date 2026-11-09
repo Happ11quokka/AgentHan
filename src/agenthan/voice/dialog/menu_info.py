@@ -153,7 +153,8 @@ def _gist(question: str, item: MenuItem) -> str:
     """
     text = re.sub(r"[\s?!.,~]", "", question)
     for name in sorted((item.name_ko, *item.aliases), key=len, reverse=True):
-        text = re.sub(rf"{re.escape(name.replace(' ', ''))}(?:은|는|이|가|에|에는|도)?", "", text)
+        # 긴 조사부터 본다("에는"을 "에"로 떼면 "는"이 남아 열쇠가 갈린다, 리뷰 C7)
+        text = re.sub(rf"{re.escape(name.replace(' ', ''))}(?:에는|은|는|이|가|에|도)?", "", text)
     return text
 
 
