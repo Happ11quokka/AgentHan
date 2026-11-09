@@ -17,6 +17,7 @@ from agenthan.voice.call.ports import ClientGone, PortError
 from agenthan.voice.call.session import SessionSettings
 
 ORDER_SCRIPT = ["메도빅 하나요", "그게 다예요", "6시 반이요", "네"]
+MEDOVIK = OrderLine("m01", 1, name="메도빅", unit_price=7_500)
 
 
 def run(coro):
@@ -42,7 +43,7 @@ def test_the_owner_hears_the_call_start_the_cart_and_a_confirmed_end(tmp_path) -
     assert owner.customer_lines == ORDER_SCRIPT
     assert owner.bot_lines[0] == "네, 샘플 러시안 베이커리입니다. 주문 도와드릴게요."
     assert owner.carts[0] == ()
-    assert owner.carts[-1] == (OrderLine("m01", 1),)
+    assert owner.carts[-1] == (MEDOVIK,)
     assert owner.ended == ["confirmed"]
     assert owner.notes[-1] == ("ended", "test-call", "confirmed")
 
@@ -97,7 +98,7 @@ def test_the_customer_hanging_up_mid_order_ends_with_the_hangup_reason(tmp_path)
 
     c = run(call())  # 하네스가 나가며 `close()`로 한 번 더 끝내도 알림은 한 번
     assert c.owner.ended == ["hangup"]
-    assert c.owner.carts[-1] == (OrderLine("m01", 1),)
+    assert c.owner.carts[-1] == (MEDOVIK,)
 
 
 def test_a_socket_that_just_goes_away_ends_with_the_hangup_reason(tmp_path) -> None:
