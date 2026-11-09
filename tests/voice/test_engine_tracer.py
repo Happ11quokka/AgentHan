@@ -1,6 +1,6 @@
 """tracer bullet: 메뉴 하나 주문이 인사부터 확인된 Order까지 간다."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -64,9 +64,26 @@ def test_single_item_order_end_to_end(engine: DialogEngine) -> None:
     assert order is not None
     assert order.id == "o-test"
     assert order.status == "confirmed"
-    assert order.lines == [OrderLine(menu_id="m01", quantity=1)]
+    assert order.lines == [OrderLine(menu_id="m01", quantity=1, name="메도빅", unit_price=7500)]
     assert order.pickup_time == "2026-11-08T18:30:00+09:00"
     assert order.customer_phone == StoreConfig.from_fixture().demo_phone
+
+
+def test_confirmed_order_carries_time_names_and_unit_prices(engine: DialogEngine) -> None:
+    """계약 v1 제안 6·7: 주문서에 만든 시각(가게 시간대, 초까지)과 줄마다 이름·한 개 가격이 실린다.
+    한 개 가격 = 메뉴 가격 + 고른 옵션 추가금 (아메리카노 4,500 + 디카페인 500)."""
+    engine.start(NOW)
+    for text in ["메도빅 하나랑 아메리카노 두 잔이요", "차갑게요", "디카페인으로 해 주세요",
+                 "그게 다예요", "6시 반이요"]:
+        engine.handle(text, NOW)
+    yes_at = datetime(2026, 11, 8, 7, 3, 12, 345678, tzinfo=UTC)  # 가게 시각 16:03:12
+    order = engine.handle("네", yes_at).order
+    assert order is not None and order.status == "confirmed"
+    assert [(line.menu_id, line.name, line.quantity, line.unit_price) for line in order.lines] == [
+        ("m01", "메도빅", 1, 7500),
+        ("m03", "아메리카노", 2, 5000),
+    ]
+    assert order.created_at == "2026-11-08T16:03:12+09:00"
 
 
 def test_order_is_none_until_yes(engine: DialogEngine) -> None:
