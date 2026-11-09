@@ -34,7 +34,7 @@ from typing import Literal
 from agenthan.core.contracts import MenuItem, MenuOption, Order, StoreKnowledge
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.cart import Cart, CartLine
-from agenthan.voice.dialog.menu_info import grounded_answer
+from agenthan.voice.dialog.menu_info import menu_answer
 from agenthan.voice.dialog.options import find_options
 from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion
 from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
@@ -691,10 +691,10 @@ class DialogEngine:
                 self._say(turn, templates.dont_know())
                 return
             item = line.item
-        answer = grounded_answer(item, act.free_text or act.menu_text)
-        if answer is not None:
-            self._say(turn, answer)
-        elif self._ask_owner:
+        answer = menu_answer(item, act.free_text or act.menu_text)
+        if answer.text is not None:
+            self._say(turn, answer.text)
+        elif self._ask_owner and answer.for_owner:
             self._open_owner_question(turn, item)
         else:
             self._say(turn, templates.dont_know())

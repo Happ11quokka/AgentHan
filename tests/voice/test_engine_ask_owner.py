@@ -73,7 +73,9 @@ def test_an_ungrounded_menu_question_opens_an_owner_question() -> None:
 
 @pytest.mark.parametrize(("before", "question", "menu_id"), [
     ((), "메도빅에 견과류 들어가요?", "m01"),  # 목록에 없는 알레르기 성분
-    ((), "아메리카노 어떤 맛이에요?", "m03"),  # 설명이 빈 메뉴의 맛
+    ((), "아메리카노 알레르기 있어요?", "m03"),  # 빈 알레르기 목록
+    ((), "아메리카노 재료가 뭐예요?", "m03"),  # 설명이 빈 메뉴의 재료 (06)
+    ((), "블린에 시나몬 들어가요?", "m04"),  # 목록 밖 재료·가능 여부
     (("메도빅 하나요",), "글루텐 프리예요?", "m01"),  # 메뉴 이름 없이 방금 담은 메뉴, 그 밖의 질문
 ])
 def test_ungrounded_menu_questions_open(before: tuple[str, ...], question: str,
@@ -91,6 +93,8 @@ def test_ungrounded_menu_questions_open(before: tuple[str, ...], question: str,
     ("나폴레옹 얼마예요?", "나폴레옹은 7,000원이에요."),  # 가격
     ("아메리카노 디카페인 돼요?", "네, 아메리카노는 디카페인 변경 할 수 있어요. 500원 추가예요."),
     ("주차 돼요?", DONT_KNOW),  # 가게 정보 질문
+    ("아메리카노 어떤 맛이에요?", DONT_KNOW),  # 설명이 빈 메뉴의 맛: 버튼 셋으로 답하기 어색 (06)
+    ("아메리카노 달아요?", DONT_KNOW),
     ("글루텐 프리예요?", DONT_KNOW),  # 담은 메뉴가 없어 어느 메뉴인지 모름
 ])
 def test_grounded_or_store_questions_do_not_open(question: str, say: str) -> None:
@@ -168,7 +172,7 @@ def test_questions_are_numbered_within_the_call() -> None:
     first = talk(engine, NUTS).owner_question
     assert first is not None
     engine.owner_answered(first.number, "yes", NOW)
-    second = talk(engine, "아메리카노 어떤 맛이에요?").owner_question
+    second = talk(engine, "블린에 시나몬 들어가요?").owner_question
     assert (first.number, second.number if second else None) == (1, 2)
 
 
