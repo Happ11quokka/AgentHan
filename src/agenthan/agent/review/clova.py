@@ -92,7 +92,10 @@ class ClovaClient:
         max_retries: int | None = None,
         min_interval: float | None = None,
         transport: Transport | None = None,
+        on_usage: Callable[[dict], None] | None = None,
     ):
+        """on_usage: 응답마다 토큰 수를 받는 함수 (평가에서 리뷰 위임 토큰을 모을 때).
+        {"prompt_tokens", "completion_tokens", "total_tokens"} 형식으로 넘긴다."""
         self._key = api_key if api_key is not None else os.getenv("CLOVASTUDIO_API_KEY", "")
         self.host = (host or os.getenv("CLOVASTUDIO_HOST") or DEFAULT_HOST).rstrip("/")
         self.timeout = timeout
@@ -105,6 +108,7 @@ class ClovaClient:
         )
         self._last = 0.0
         self._send = transport or _urllib_transport
+        self.on_usage = on_usage
 
     def __repr__(self) -> str:  # 키를 로그에 남기지 않는다
         return f"ClovaClient(host={self.host!r})"
@@ -180,6 +184,7 @@ class ClovaClient:
             if tool_choice is not None:
                 payload["toolChoice"] = tool_choice
         result = self._post(CHAT_PATH.format(model=model), payload)
+        self._report_usage(result.get("usage"))  # 잘린 응답도 토큰은 쓴다
         if result.get("finishReason") == "length":
             raise ClovaError("CLOVA 응답이 출력 한도에서 잘렸습니다.")
         msg = result.get("message")
@@ -201,6 +206,17 @@ class ClovaClient:
         if calls:
             out["toolCalls"] = calls
         return out
+
+    def _report_usage(self, usage) -> None:
+        if self.on_usage is None or not isinstance(usage, dict):
+            return
+        counts = {
+            "prompt_tokens": usage.get("promptTokens"),
+            "completion_tokens": usage.get("completionTokens"),
+            "total_tokens": usage.get("totalTokens"),
+        }
+        if isinstance(counts["total_tokens"], int):
+            self.on_usage(counts)
 
     def text(self, model: str, messages: list[dict], **kw) -> str:
         """도구 없이 답변 본문만."""

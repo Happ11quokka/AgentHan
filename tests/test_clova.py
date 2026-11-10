@@ -93,3 +93,34 @@ def test_model_options():
         "thinking": {"effort": "none"},
         "responseFormat": {"type": "json", "schema": {"type": "object"}},
     }
+
+
+def test_usage_reported_per_response():
+    usage = {"promptTokens": 10, "completionTokens": 5, "totalTokens": 15}
+    seen = []
+    c, _ = client(
+        (200, {}, {**OK, "result": {**msg("안녕")["result"], "usage": usage}}), on_usage=seen.append
+    )
+    assert c.text("HCX-005", [{"role": "user", "content": "q"}]) == "안녕"
+    assert seen == [{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}]
+
+
+def test_usage_reported_even_when_truncated():
+    usage = {"promptTokens": 10, "completionTokens": 99, "totalTokens": 109}
+    result = {**msg("…")["result"], "usage": usage, "finishReason": "length"}
+    seen = []
+    c, _ = client((200, {}, {**OK, "result": result}), on_usage=seen.append)
+    with pytest.raises(ClovaError, match="잘렸"):
+        c.text("HCX-005", [{"role": "user", "content": "q"}])
+    assert [u["total_tokens"] for u in seen] == [109]
+
+
+def test_usage_missing_or_no_callback_is_fine():
+    seen = []
+    c, _ = client((200, {}, msg("안녕")), on_usage=seen.append)
+    assert c.text("HCX-005", [{"role": "user", "content": "q"}]) == "안녕"
+    assert seen == []
+    c, _ = client(
+        (200, {}, {**OK, "result": {**msg("안녕")["result"], "usage": {"totalTokens": 3}}})
+    )
+    assert c.text("HCX-005", [{"role": "user", "content": "q"}]) == "안녕"
