@@ -394,14 +394,22 @@ holdout7 실패 5건: '리뷰 보고 지금 한번 받아볼래'(HCX가 설정 �
 등록은 검수에 막힘), '보고서 오늘 거 줘'(제안 호출), '이거 바꿔줘'(맥락 없이 초안 작성), '리뷰 많이 받으려면'(분석 실행).
 dev 실패는 기간 해석·항목 사전·러시아어/몽골어 번역 등 기존 한계와 CLOVA 연결 오류 2건.
 
-### 비서 분기용 공통 케이스 (`tests/data/review_route_cases.jsonl`, 2026-11-09)
+### 비서 분기용 공통 케이스 (`tests/data/eval/route.jsonl`의 `source: "review:근형"`, 2026-11-09)
 
 팀 공통 평가(`agenthan.eval`)는 리뷰 기능을 **분기까지만** 채점한다. 그래서 첫 턴의 `expect.feature`가
 핵심이고, 둘째 턴부터의 `tool`·`args`·`store`는 지금은 건너뛰며(`skipped_turns`) 나중을 위해 적어 둔다.
-골드셋(`tests/goldset/review_tools.jsonl`)은 리뷰 에이전트 안의 도구 선택용이라 그대로 두고, 이 파일은 따로 쓴다.
+골드셋(`tests/goldset/review_tools.jsonl`)은 리뷰 에이전트 안의 도구 선택용이라 그대로 두고, 이 케이스는 따로 쓴다.
 
-- 116문항: full 67, confusable 16, unrelated 9, missing 8, ambiguous 8, injection 8 /
-  ko 63, en 18, ru 13, ko_simple 12, mn 10. `split`은 비워 두었다(팀 `make_splits`로 나눔)
+처음에는 `tests/data/review_route_cases.jsonl`에 따로 있었다. 팀 평가 케이스를 평가 경로마다 파일 하나로
+합치면서(`tests/data/eval/README.md`) 내용 그대로 `route.jsonl`로 옮겼고, `source: "review:근형"`으로 구분한다.
+팀 기능 분기 숫자(m1 기준선부터)에는 이 169건이 함께 들어간다. 팀 채점은 `review_reply`와 `ai_review`를
+다른 기능으로 보므로(둘 다 같은 리뷰 에이전트로 가지만) 둘을 바꿔 고르면 틀린 것으로 센다.
+
+- 169문항 = dev 116 + holdout 53 (`split`이 케이스마다 들어 있다)
+  - dev 116: full 67, confusable 16, unrelated 9, missing 8, ambiguous 8, injection 8 /
+    ko 63, en 18, ru 13, ko_simple 12, mn 10 (`origin: 근형`)
+  - holdout 53: full 26, confusable 11, ambiguous 5, unrelated 4, injection 4, missing 3 /
+    ko 26, en 11, ru 7, mn 5, ko_simple 4 (`origin: 근형 holdout1`, 2026-11-10에 한 번만 측정)
 - 라벨 규칙: 특정 리뷰를 읽고 답글을 쓰는 일 → `review_reply`, 여러 리뷰를 모은 분석·요약·보고·알림 → `ai_review`.
   애매한 요청은 `clarify`, 기능이 아닌 요청은 `null`
 - confusable은 리뷰와 닮은 다른 기능(리뷰 이벤트 쿠폰, 톡톡 답장, 방문자 리포트, 리뷰 관리 교육 등)과
@@ -414,8 +422,12 @@ dev 실패는 기간 해석·항목 사전·러시아어/몽골어 번역 등 �
 `scripts/run_benchmark.py`가 `reports/bench-*.json` 옆에 `.extra.json`(전체 지표·실행 조건·커밋만,
 키 이름은 `summarize()` 그대로)을 같이 쓴다. 그 전에 만든 결과는 `scripts/bench_extra_summary.py <요약.json>`로 바꾼다.
 
+팀 평가에는 출처로 거르는 옵션이 없어서, 리뷰 케이스만 잴 때는 먼저 임시 파일로 뽑아 `--cases`로 넘긴다.
+그냥 `python -m agenthan.eval.run`을 돌리면 팀 케이스와 함께 잰다.
+
 ```bash
-uv run python -m agenthan.eval.run --backend live --cases tests/data/review_route_cases.jsonl \
+grep '"source": "review:근형"' tests/data/eval/route.jsonl > /tmp/review_route.jsonl
+uv run python -m agenthan.eval.run --backend live --cases /tmp/review_route.jsonl --split dev \
     --extra-summary reports/bench-rules-<날짜시각>.extra.json
 ```
 
