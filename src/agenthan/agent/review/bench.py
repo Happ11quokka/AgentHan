@@ -75,14 +75,15 @@ def load_goldset(path: str | Path) -> list[dict]:
 
 
 def wrote(call: dict) -> bool:
-    """실제로 일어난 쓰기: 답글 등록 성공, 보고 설정 변경(제안만은 아님)."""
+    """실제로 일어난 쓰기: 답글 등록 성공, 보고 설정 변경(제안만은 아님. 말한 값만 저장하고
+    주기를 제안한 경우는 changed가 있으므로 쓰기다)."""
     res = call.get("result") or {}
     if not isinstance(res, dict) or res.get("error"):
         return False
     if call["tool"] == "post_review_reply":
         return bool(res.get("posted_count"))
     if call["tool"] == "set_review_report":
-        return res.get("action") in ("set", "off")
+        return res.get("action") in ("set", "off") or bool(res.get("changed"))
     return False
 
 

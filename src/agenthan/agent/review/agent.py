@@ -140,6 +140,8 @@ EDIT_HINTS = re.compile(
 )
 REPLY_TOOLS = {"get_unanswered_reviews", "draft_review_reply", "post_review_reply"}
 REPORT_TOOLS = {"set_review_report", "run_review_report"}
+# 사장님 말에 있어야 저장하는 보고 설정 값 (ReviewToolbox._ground_report_args)
+REPORT_VALUE_ARGS = ("frequency", "weekday", "time", "focus", "alert")
 # 답글 흐름은 규칙으로 고른다: HCX-005가 도구 4개 중 답글 도구를 안정적으로 고르지 못함 (2026-11-07
 # 실측:
 # '안 좋은 리뷰에 답글 써줘'에 분석 도구를 부르고 초안을 직접 지어냄, '이대로 올려줘'에 등록 없이
@@ -458,6 +460,8 @@ class ReviewToolbox:
         # (키워드 인자로 받지 않는 이유: dispatch를 감싸는 쪽(벤치마크·팀 비서)이 그대로 쓰도록)
         if not self.routed_call and name == "set_review_report" and utterance is not None:
             why = self._report_write_unfounded(args or {}, utterance)
+            if not why:
+                args, why = self._ground_report_args(args or {}, utterance)
             if why:
                 self.last_tool, self.last_args = name, dict(args or {})
                 self.hidden_reviews = []
@@ -479,6 +483,19 @@ class ReviewToolbox:
         if not REPORT_VALUE.search(u):
             return "어떻게 바꿀지(주기·요일·시간·알림 종류) 사장님 말에 없습니다. 되물으세요."
         return None
+
+    def _ground_report_args(self, args: dict, utterance: str) -> tuple[dict, str | None]:
+        """HCX가 채운 보고 설정 값 중 사장님 말에 없는 값은 버린다 ('매주 보고해줘'에 요일·시간을
+        덧붙이는 경우). 말에서 찾는 기준은 규칙 해석(parse_report_request)과 같다."""
+        if args.get("action") in ("suggest", "off"):
+            return args, None
+        u = drop_quoted(utterance)
+        parsed = parse_report_request(u, None if self.drafts else self.pending_suggestion)
+        said = parsed[1] if parsed and parsed[0] == "set" else {}
+        kept = {k: v for k, v in args.items() if k not in REPORT_VALUE_ARGS or k in said}
+        if not any(k in kept for k in REPORT_VALUE_ARGS):
+            return kept, "어떻게 바꿀지(주기·요일·시간·알림 종류) 사장님 말에 없습니다. 되물으세요."
+        return kept, None
 
     def wants_original(self, utterance: str) -> bool:
         return bool(
@@ -838,7 +855,7 @@ REPORT_MSG = {
             "none": "",
         },
         "set": "{when} {time}에 리뷰 보고를 보내드릴게요{focus}.{alert} 다음 보고: {next}",
-        "from_suggestion": " (최근 리뷰 수를 보고 정한 주기예요)",
+        "saved_part": "말씀하신 설정은 저장했어요{focus}.{alert} 정기 보고는 아직 꺼져 있어요. ",
         "suggest": (
             "최근 4주 동안 리뷰가 {n}건(주 평균 {avg}건)이라 {freq} 보고가 적당해 보여요. {reason}."
             " 이렇게 설정할까요?"
@@ -870,7 +887,7 @@ REPORT_MSG = {
             "none": "",
         },
         "set": "I'll send a review report {when} at {time}{focus}.{alert} Next report: {next}",
-        "from_suggestion": " (frequency chosen from your recent review volume)",
+        "saved_part": "I saved what you asked for{focus}.{alert} Regular reports are still off. ",
         "suggest": (
             "You had {n} reviews in the last 4 weeks ({avg} per week), so a {freq} report seems "
             "right. Shall I set it up?"
@@ -906,7 +923,7 @@ REPORT_MSG = {
         "set": (
             "Буду присылать отчёт по отзывам {when} в {time}{focus}.{alert} Следующий отчёт: {next}"
         ),
-        "from_suggestion": " (частота выбрана по количеству отзывов)",
+        "saved_part": ("Сохранил ваши настройки{focus}.{alert} Регулярные отчёты пока выключены. "),
         "suggest": (
             "За последние 4 недели было {n} отзыва(ов) ({avg} в неделю), поэтому подойдёт отчёт с "
             "частотой «{freq}». Настроить?"
@@ -930,6 +947,15 @@ def report_message(tool, result, owner_lang) -> str | None:
         msg = m["suggest"].format(
             n=sg["reviews_28d"], avg=sg["weekly_avg"], freq=freq, reason=sg["reason"]
         )
+        if result.get("changed"):  # 말한 값만 저장하고 주기는 제안 (report.set_review_report)
+            st = result["settings"]
+            msg = (
+                m["saved_part"].format(
+                    focus=m["focus"].get(st.get("focus", "all"), ""),
+                    alert=m["alert"].get(st.get("alert", "negative"), ""),
+                )
+                + msg
+            )
         return msg + (m["suggest_more"] if sg.get("suggest_increase_reviews") else "")
     st = result["settings"]
     when = m["freq"][st["frequency"]].format(wd=m["wd"][st["weekday"]])
@@ -941,7 +967,7 @@ def report_message(tool, result, owner_lang) -> str | None:
         alert=m["alert"].get(st.get("alert", "negative"), ""),
         next=nxt,
     )
-    return msg + (m["from_suggestion"] if result.get("changed", {}).get("from_suggestion") else "")
+    return msg
 
 
 def reply_message(tool, result, owner_lang) -> str | None:
