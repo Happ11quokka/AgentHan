@@ -156,7 +156,7 @@ def test_menu_tool_delegates_and_review_tools_are_gone(store):
 
 
 def test_eval_dataset_covers_every_tool():
-    cases = load_cases(FLOW_CASES)
+    cases = [c for c in load_cases(FLOW_CASES) if c.source == "m0"]
     full = [c for c in cases if c.kind == "full"]
     assert {c.expected_tool for c in full} == set(TOOL_FEATURES)
     for name in TOOL_FEATURES:

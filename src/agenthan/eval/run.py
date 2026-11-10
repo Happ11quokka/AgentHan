@@ -19,15 +19,15 @@ from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import all_tool_schemas
 
 ROOT = Path(__file__).resolve().parents[3]
-FLOW_CASES = ROOT / "tests/data/tool_selection_cases.jsonl"
-ROUTE_CASES = ROOT / "tests/data/place_request_cases.jsonl"
-# Augmented cases (scripts/augment_cases.py) live apart so the M0 files stay untouched.
-# Every *_aug*.jsonl batch next to them is part of the default set, in name order.
-FLOW_AUG = sorted(ROOT.glob("tests/data/tool_selection_cases_aug*.jsonl"))
-ROUTE_AUG = sorted(ROOT.glob("tests/data/place_request_cases_aug*.jsonl"))
-DEFAULT_PATHS = {"route": [ROUTE_CASES, *ROUTE_AUG], "flow": [FLOW_CASES, *FLOW_AUG]}
+# One file per evaluation path. Each case carries its own split (dev/holdout) and source
+# (m0, aug:…, aug2:…, review:근형); see tests/data/eval/README.md.
+CASES_DIR = ROOT / "tests/data/eval"
+FLOW_CASES = CASES_DIR / "flow.jsonl"
+ROUTE_CASES = CASES_DIR / "route.jsonl"
+DEFAULT_PATHS = {"route": [ROUTE_CASES], "flow": [FLOW_CASES]}
 REPLAY_PATH = ROOT / "tests/fixtures/replay/m0.json"
-SPLITS_PATH = ROOT / "tests/data/splits.json"
+# Optional id → split for --cases files without inline splits (the default files need none).
+SPLITS_PATH = CASES_DIR / "splits.json"
 MODES = ("route", "flow")
 
 

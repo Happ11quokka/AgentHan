@@ -7,12 +7,12 @@
 
 - **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `ask()`의 분기 전체(상태 규칙 →
   임베딩 후보 5개 → HCX-DASH-002 `select_feature`, 실패 시 임계값 규칙)를
-  `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/place_request_cases.jsonl`(64건)
-  + 증강 `place_request_cases_aug.jsonl`(55건)·`place_request_cases_aug2.jsonl`(22건).
+  `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/eval/route.jsonl`(310건).
 - **전체 흐름(`flow`)**: 케이스마다 새 비서와 임시 더미 저장소로 `turns`를 차례로 실행해
   턴마다 분기 → 빠진 정보 질문 → 도구 호출·인자 → 저장소 변화를 채점한다.
-  기본 세트는 `tests/data/tool_selection_cases.jsonl`(61건) + 증강 `tool_selection_cases_aug.jsonl`(59건)
-  + `tool_selection_cases_aug2.jsonl`(73건, 여러 턴 31건 포함).
+  기본 세트는 `tests/data/eval/flow.jsonl`(193건, 237턴).
+
+케이스 파일 구성·출처·dev/holdout은 [`tests/data/eval/README.md`](../../../tests/data/eval/README.md)에 정리했다.
 
 16개 도구를 한꺼번에 노출하던 `all_tools` 경로는 앱에 없는 흐름이라 뺐다. 앱은 기능을 고른 뒤
 그 기능의 도구 하나만 노출한다.
@@ -41,9 +41,9 @@ uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/e
 
 ## 케이스
 
-`cases.py`는 기존 JSONL 두 파일을 수정하지 않고 읽는다. 기존 단일 문장은 턴 한 개로 바뀐다.
-dev/holdout은 `tests/data/splits.json`에 고정돼 있다(`cases.make_splits`, 기능·종류별 7:3,
-route 47/17·flow 43/18). 프롬프트·카탈로그는 dev만 보고 고치고 holdout은 마지막에 한 번만 잰다.
+`cases.py`는 케이스 파일을 수정하지 않고 읽는다. 단일 문장 케이스는 턴 한 개로 바뀐다.
+케이스마다 `split`(dev/holdout)과 `source`(묶음)가 들어 있다. 프롬프트·카탈로그는 dev만 보고 고치고
+holdout은 마지막에 한 번만 잰다.
 턴의 `expect`에서 **적지 않은 항목은 채점하지 않는다.**
 
 ```json
@@ -85,20 +85,19 @@ uv run --frozen --offline python -m agenthan.eval.run --backend replay --extra-s
 `scripts/augment_cases.py`가 Gemini(agy `gemini-4-argon-high`)로 초안을 만들고, 코드로 스키마·인자 실행·중복(문자
 3-gram 0.7)을 걸러낸 뒤, Sonnet(agy `claude-sonnet-5-5-medium`)이 생성 정답을 보지 않고 다시 단 정답(route=기능,
 flow=도구+인자)이 **정확히 같을 때만** 채택한다. 리뷰 기능은 만들지 않는다. 증강 full 케이스는 `expected_args`가 있어
-인자까지 채점한다. M0 파일과 배정은 그대로 두고 증강 파일마다 같은 규칙으로 dev/holdout을 나눈다
-(route 38/17·flow 47/12). `--route-cases`/`--flow-cases`는 파일 여러 개를 받으며 기본값은 M0 + 증강이다.
+인자까지 채점한다. 증강 묶음마다 같은 규칙으로 dev/holdout을 나눠 앞선 배정은 움직이지 않는다.
+`--route-cases`/`--flow-cases`는 파일 여러 개를 받는다.
 
-2차 증강(`scripts/augment_cases_v2.py`, `*_aug2.jsonl`)은 실측에서 약했던 세 곳을 채운다.
+2차 증강(`scripts/augment_cases_v2.py`, `source: aug2:…`)은 실측에서 약했던 세 곳을 채운다.
 `nofab`(구체적이지만 필수 항목 하나가 빠져 값을 지어내고 싶어지는 요청, missing 20), `shopword`(기능 단어가 섞인
 무관 질문, route 22·flow 22), 여러 턴(`category: multi:ask_fill|confirm|decline|revise`, 31건)이다. 여러 턴은 쓰기
 도구 뒤에 승인(`네`·`응`·`ok` 등)이나 취소(`취소`·`아니요` 등)를 코드가 붙이고, 그 턴의 `store` 기대값은 도구를 더미
 저장소에 실제로 실행해 계산한다(새 레코드의 무작위 id는 빼고, 취소는 원래 값). 여러 턴 케이스는 뒤 턴의 정상 쓰기가
 안전 위반으로 잡히지 않도록 `kind: full`로 두고, 첫 턴에 `tool: null`을 적어 지어내기를 채점한다.
-`run.py`는 `tests/data/*_aug*.jsonl`을 이름 순서로 모두 기본 세트에 넣는다.
 
 ```bash
 .venv/bin/python scripts/augment_cases.py all --out <레포 밖 폴더>    # 생성 + 검사, REPORT.md 확인
-.venv/bin/python scripts/augment_cases.py apply --out <같은 폴더>     # *_aug.jsonl·splits.json 반영
+.venv/bin/python scripts/augment_cases.py apply --out <같은 폴더>     # route.jsonl·flow.jsonl 끝에 추가
 uv run --frozen --offline python -m agenthan.eval.seed_replay          # 합성 재생 다시 만들기
 ```
 

@@ -9,11 +9,11 @@ from agenthan.eval.run import FLOW_CASES, ROUTE_CASES
 def test_existing_sets_are_adapted_without_modifying_files():
     for path, count in ((FLOW_CASES, 61), (ROUTE_CASES, 64)):
         before = path.read_bytes()
-        cases = load_cases(path)
+        cases = [c for c in load_cases(path) if c.source == "m0"]
         assert len(cases) == count
         assert len({c.id for c in cases}) == count
         for case in cases:
-            assert case.split is None and case.expected_args is None
+            assert case.split in ("dev", "holdout") and case.expected_args is None
             assert len(case.turns) == 1
             assert case.turns[0].say == case.text
             assert case.turns[0].expect.tool == case.expected_tool

@@ -16,7 +16,7 @@ import pytest
 from agenthan.agent import place_matcher as matcher
 from agenthan.core import embedding as clova
 
-CASES_PATH = Path(__file__).parent / "data" / "place_request_cases.jsonl"
+CASES_PATH = Path(__file__).parent / "data" / "eval" / "route.jsonl"
 SUPPORTED = {"menu", "review_reply"}
 FEATURE_IDS = {
     "business_info",
@@ -41,7 +41,9 @@ FEATURE_IDS = {
 
 
 def cases():
-    return [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
+    """The 64 M0 feature-matching sentences (source m0) in the shared route file."""
+    rows = [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
+    return [row for row in rows if row["source"] == "m0"]
 
 
 def vector(first=1.0, second=0.0):
@@ -112,7 +114,7 @@ def test_dataset():
     assert all(expected_counts[feature] >= 5 for feature in SUPPORTED)
     assert len({row["text"] for row in data}) == len(data)
     for row in data:
-        assert set(row) == {"text", "lang", "expected"}
+        assert set(row) == {"id", "split", "source", "text", "lang", "expected"}
         assert isinstance(row["text"], str) and row["text"].strip()
         assert row["expected"] is None or row["expected"] in FEATURE_IDS
 

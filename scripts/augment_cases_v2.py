@@ -6,7 +6,7 @@
 3. multi: 여러 턴 흐름. 되묻기 → 답 → 승인, 바로 승인, 취소, 말 바꾸기 (flow, 저장소 기대값은 코드가 계산)
 
   .venv/bin/python scripts/augment_cases_v2.py all --out <폴더>     # 생성 + 검사, REPORT.md
-  .venv/bin/python scripts/augment_cases_v2.py apply --out <폴더>   # tests/data/*_aug2.jsonl·splits.json 반영
+  .venv/bin/python scripts/augment_cases_v2.py apply --out <폴더>   # tests/data/eval/route.jsonl·flow.jsonl 끝에 추가
 """
 
 import argparse
@@ -17,13 +17,12 @@ from pathlib import Path
 
 import augment_cases as base  # 같은 scripts 폴더
 
-from agenthan.eval.cases import Case, make_splits
+from agenthan.eval.cases import Case
 from agenthan.eval.flow import store_diff
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES, execute_feature_tool
 
-ROUTE_OUT = base.ROOT / "tests/data/place_request_cases_aug2.jsonl"
-FLOW_OUT = base.ROOT / "tests/data/tool_selection_cases_aug2.jsonl"
+ROUTE_OUT, FLOW_OUT = base.ROUTE_FILE, base.FLOW_FILE
 # 통계는 평가에서 분기까지만 보므로 흐름 케이스에서 뺀다.
 SKIP_TOOLS = {"get_statistics", "list_call_history"}
 CONFIRM_WORDS = ["네", "네!", "응", "좋아요", "저장해 주세요", "ok"]
@@ -453,24 +452,8 @@ def check(out: Path, log: Path) -> None:
 
 
 def apply(out: Path) -> None:
-    from agenthan.eval.cases import load_cases
-
-    splits = json.loads(base.SPLITS_FILE.read_text(encoding="utf-8"))
     for src, dst in (("route_aug2.jsonl", ROUTE_OUT), ("flow_aug2.jsonl", FLOW_OUT)):
-        old = base.load_jsonl(dst) if dst.exists() else []
-        ids = {r["id"] for r in old}
-        new = [r for r in base.load_jsonl(out / src) if r["id"] not in ids]
-        base.dump(dst, old + new)
-        cases = load_cases(dst)
-        splits["splits"].update(make_splits(cases))
-        print(
-            f"{dst.name}: +{len(new)} → {len(cases)}",
-            Counter(splits["splits"][c.id] for c in cases),
-        )
-    splits["splits"] = dict(sorted(splits["splits"].items()))
-    base.SPLITS_FILE.write_text(
-        json.dumps(splits, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+        base.append_batch(dst, base.load_jsonl(out / src))
 
 
 def main() -> int:

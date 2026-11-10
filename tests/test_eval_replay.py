@@ -99,17 +99,17 @@ def test_default_replay_outputs_conditions_table_rows_and_splits(offline, tmp_pa
     directory = next(tmp_path.glob("*-test"))
     summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
     rows = [json.loads(line) for line in (directory / "rows.jsonl").read_text().splitlines()]
-    assert len(rows) == 378
+    assert len(rows) == 547  # route 310 (리뷰 분기 169 포함) + flow 237턴
     assert set(summary["results"]) == {"route", "flow"}
-    assert summary["results"]["route"]["cases"] == 141
+    assert summary["results"]["route"]["cases"] == 310
     assert summary["results"]["flow"]["flow_cases"] == 193
     assert summary["results"]["flow"]["cases"] == 237  # turns; multi-turn cases since aug2
     assert summary["status"] == "COMPLETE"
     assert set(summary["by_split"]) == {"null", "dev", "holdout"}
-    # Fixed stratified split (tests/data/splits.json); no case is left without one.
+    # Every case carries its own split (tests/data/eval); none is left without one.
     assert summary["by_split"]["null"]["route"]["cases"] == 0
-    assert summary["by_split"]["dev"]["route"]["cases"] == 101
-    assert summary["by_split"]["holdout"]["route"]["cases"] == 40
+    assert summary["by_split"]["dev"]["route"]["cases"] == 217
+    assert summary["by_split"]["holdout"]["route"]["cases"] == 93
     assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 41
     conditions = summary["conditions"]
     assert conditions["model_id"] == CHAT_MODEL
@@ -477,7 +477,7 @@ def test_saved_summaries_have_no_local_absolute_paths():
     for path in run.BASELINES.glob("*.json"):
         text = path.read_text(encoding="utf-8")
         assert "/Users/" not in text and "/home/" not in text, path.name
-    assert run.display_path(run.FLOW_CASES) == "tests/data/tool_selection_cases.jsonl"
+    assert run.display_path(run.FLOW_CASES) == "tests/data/eval/flow.jsonl"
     assert run.display_path(Path("/tmp/elsewhere/summary.json")) == "summary.json"
 
 
@@ -506,15 +506,24 @@ def test_rejection_is_recorded_replayed_and_scored_as_failed_turn(tmp_path, basi
 def test_splits_are_fixed_stratified_and_cover_every_case():
     from agenthan.eval.cases import make_splits
 
-    splits = run.load_splits()
     for path in (run.ROUTE_CASES, run.FLOW_CASES):
         cases = load_cases(path)
-        assert make_splits(cases) == {c.id: splits[c.id] for c in cases}
-        holdout = {
-            c.expected_feature or c.expected_tool for c in cases if splits[c.id] == "holdout"
-        }
+        assert all(c.split in ("dev", "holdout") for c in cases)
+        batches = {}
+        for case in cases:
+            batches.setdefault(case.source.split(":")[0], []).append(case)
+        assert {"m0", "aug", "aug2"} <= set(batches)
+        # Each generated batch is split on its own so earlier assignments never move. Holdout
+        # cases already inspected were moved to dev and say so in origin.
+        for name, batch in batches.items():
+            if name == "review":
+                continue  # 근형's own dev/holdout (holdout written later as a fresh set).
+            expected = make_splits(batch)
+            for case in batch:
+                if (case.origin or "").startswith("holdout-seen"):
+                    assert case.split == "dev" and expected[case.id] == "holdout"
+                else:
+                    assert case.split == expected[case.id], case.id
+        m0 = batches["m0"]
+        holdout = {c.expected_feature or c.expected_tool for c in m0 if c.split == "holdout"}
         assert len(holdout) >= 14
-    # Augmented files are split on their own so the M0 assignment never moves.
-    for path in (*run.ROUTE_AUG, *run.FLOW_AUG):
-        cases = load_cases(path)
-        assert cases and make_splits(cases) == {c.id: splits[c.id] for c in cases}

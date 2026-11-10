@@ -5,7 +5,7 @@
 Sonnet 정답(route=기능, flow=도구+인자)이 생성 정답과 정확히 같을 때만 채택한다. .env·키는 읽지 않는다.
 
   .venv/bin/python scripts/augment_cases.py gen --out <폴더>     # 초안 + REPORT.md
-  .venv/bin/python scripts/augment_cases.py apply --out <폴더>   # tests/data/*_aug.jsonl·splits.json에 추가
+  .venv/bin/python scripts/augment_cases.py apply --out <폴더>   # tests/data/eval/route.jsonl·flow.jsonl 끝에 추가 (split은 이번 묶음 안에서 배정)
 """
 
 import argparse
@@ -28,11 +28,9 @@ from agenthan.tools.feature_tools import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-ROUTE_FILE = ROOT / "tests/data/place_request_cases.jsonl"
-FLOW_FILE = ROOT / "tests/data/tool_selection_cases.jsonl"
-ROUTE_AUG = ROOT / "tests/data/place_request_cases_aug.jsonl"
-FLOW_AUG = ROOT / "tests/data/tool_selection_cases_aug.jsonl"
-SPLITS_FILE = ROOT / "tests/data/splits.json"
+# All cases of one evaluation path live in one file; source tells the batch apart.
+ROUTE_FILE = ROOT / "tests/data/eval/route.jsonl"
+FLOW_FILE = ROOT / "tests/data/eval/flow.jsonl"
 CATALOG = ROOT / "src/agenthan/agent/place_features.json"
 
 GEN_MODELS = ["gemini-4-argon-high", "gemini-3.8-flash-high"]
@@ -272,7 +270,9 @@ def context():
 
 def generate(out: Path, log: Path) -> None:
     catalog, features, schemas, tools, store = context()
-    route_old, flow_old = load_jsonl(ROUTE_FILE), load_jsonl(FLOW_FILE)
+    # Examples come from the hand-written M0 sentences only.
+    route_old = [r for r in load_jsonl(ROUTE_FILE) if r.get("source") == "m0"]
+    flow_old = [r for r in load_jsonl(FLOW_FILE) if r.get("source") == "m0"]
     ex_route = "\n".join(f"- {r['text']}" for r in route_old[::6])
     ex_flow = "\n".join(f"- {r['text']}" for r in flow_old[::6])
     common = {"lang_rule": LANG_RULE}
@@ -405,9 +405,7 @@ def check(out: Path, log: Path) -> None:
         t["function"]["name"]: t["function"]["parameters"].get("required", []) for t in schemas
     }
     raw = json.loads((out / "raw.json").read_text(encoding="utf-8"))
-    old = [
-        r for f in (ROUTE_FILE, FLOW_FILE, ROUTE_AUG, FLOW_AUG) if f.exists() for r in load_jsonl(f)
-    ]
+    old = [r for f in (ROUTE_FILE, FLOW_FILE) if f.exists() for r in load_jsonl(f)]
     seen = {norm(o["text"]) for o in old}
     seen_g = [grams(o["text"]) for o in old]
     kept: dict[str, list] = {"route": [], "flow": []}
@@ -512,30 +510,29 @@ def report(out: Path, final: dict, rejected: list) -> None:
 # ---------- 반영 ----------
 
 
-def apply(out: Path) -> None:
-    """증강 파일에 새 케이스를 붙이고, 증강 파일마다 make_splits로 다시 배정한다(M0 배정은 그대로)."""
-    from agenthan.eval.cases import load_cases
+def append_batch(dst: Path, rows: list[dict]) -> int:
+    """Append one generated batch to dst. Its dev/holdout split is made within the batch
+    (cases.make_splits), so the splits of earlier cases never move."""
+    from agenthan.eval.cases import Case
 
-    splits = json.loads(SPLITS_FILE.read_text(encoding="utf-8"))
-    added = 0
-    for src, dst in (("route_aug.jsonl", ROUTE_AUG), ("flow_aug.jsonl", FLOW_AUG)):
-        old = load_jsonl(dst) if dst.exists() else []
-        ids = {r["id"] for r in old}
-        new = [r for r in load_jsonl(out / src) if r["id"] not in ids]
-        added += len(new)
-        dump(dst, old + new)
-        cases = load_cases(dst)
-        splits["splits"].update(make_splits(cases))
-        print(
-            f"{dst.name}: +{len(new)} → {len(cases)}",
-            Counter(splits["splits"][c.id] for c in cases),
-        )
-    splits["splits"] = dict(sorted(splits["splits"].items()))
-    note = " 증강 파일(*_aug.jsonl, scripts/augment_cases.py)은 M0 배정을 바꾸지 않고 파일마다 같은 규칙으로 배정한다."
-    if note not in splits["note"]:
-        splits["note"] += note
-    SPLITS_FILE.write_text(
-        json.dumps(splits, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    old = load_jsonl(dst) if dst.exists() else []
+    ids = {r["id"] for r in old}
+    new = [r for r in rows if r["id"] not in ids]
+    splits = make_splits([Case.model_validate(r) for r in new])
+    new = [
+        {"id": r["id"], "split": splits[r["id"]], **{k: v for k, v in r.items() if k != "id"}}
+        for r in new
+    ]
+    dump(dst, old + new)
+    print(f"{dst.name}: +{len(new)} → {len(old) + len(new)}", Counter(r["split"] for r in new))
+    return len(new)
+
+
+def apply(out: Path) -> None:
+    """검사를 통과한 케이스를 공통 파일 끝에 붙인다."""
+    added = sum(
+        append_batch(dst, load_jsonl(out / src))
+        for src, dst in (("route_aug.jsonl", ROUTE_FILE), ("flow_aug.jsonl", FLOW_FILE))
     )
     print(f"added {added}")
 
