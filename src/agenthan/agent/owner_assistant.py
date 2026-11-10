@@ -594,7 +594,9 @@ class OwnerAssistant:
         pending = task.feature if task is not None else None
         held = self._held_tasks(task)
         ids, ranked = feature_selector.candidates(
-            text, self.embed, keep=[pending, *(t.feature for t in held)]
+            text,
+            self.embed,
+            keep=[pending, *(t.feature for t in held), *self._named_record_features(text)],
         )
         context = None
         if self._clarify_options and self.history:
@@ -623,6 +625,16 @@ class OwnerAssistant:
         if choice.decision == feature_selector.CLARIFY:
             return Route(None, "clarify", candidates=choice.candidates)
         return Route(choice.feature_id, "select", candidates=choice.candidates, act=choice.act)
+
+    def _named_record_features(self, text: str) -> list[str]:
+        """Features whose record id (resv-1, order-2) the owner said outright."""
+        store = self.store.read()
+        said = text.casefold()
+        return [
+            feature_id
+            for feature_id, (collection, _, _) in RECORD_TARGETS.items()
+            if any(r.get("id") and r["id"].casefold() in said for r in store.get(collection, []))
+        ]
 
     def _held_tasks(self, current) -> list:
         """Open tool tasks set aside below the current one, most recent first (max 3)."""
@@ -961,7 +973,8 @@ class OwnerAssistant:
         if targets is not None:
             if not targets["stated"]:
                 note = (
-                    "사장님이 대상을 아직 가리키지 않음. 하나로 정해지지 않으면 어느 건인지 물을 것"
+                    "사장님이 대상을 아직 가리키지 않음. 조회 질문이면 후보로 답만 하고, "
+                    "상태를 바꾸려는데 하나로 정해지지 않을 때만 어느 건인지 물을 것"
                 )
             elif not targets["views"]:
                 note = "사장님 말에 맞는 건이 없음. 그렇다고 알리고 다시 물을 것"
@@ -1035,8 +1048,9 @@ class OwnerAssistant:
         if not isinstance(arguments, dict):
             return raw, None
         given = {k: v for k, v in arguments.items() if v is not None and v != ""}
-        # Held values fill in the change being collected, not a new item of a batch.
-        slots = {} if self._adding else dict(task.slots)
+        # Held values fill in the change being collected, not a new item of a batch. A second
+        # call in the turn that already previewed one is a new item (월요일 휴무 + 금요일 9시).
+        slots = {} if self._adding or self._previewed_now() else dict(task.slots)
         merged = {**{k: s.value for k, s in slots.items()}, **given}
         params = tool_params(feature_id)
         store = self.store.read()

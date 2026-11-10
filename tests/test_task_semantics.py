@@ -240,6 +240,49 @@ def test_resume_brings_a_held_task_back_into_the_candidates(tmp_path, mock_index
     assert "다시 하자고" in fake.requests[2][0][0]["content"]
 
 
+def test_owner_named_record_id_keeps_its_feature_in_the_candidates(tmp_path, mock_index):
+    select = Select(picked("reservation"))
+    fake = FakeChat(answer("어느 예약인가요?"))
+    bot = bot_with(tmp_path, mock_index, fake, select, "learning_support")
+    bot.ask("resv-1이랑 resv-2 둘 다 확정해 주세요")
+    enum = select.requests[0][1][0]["function"]["parameters"]["properties"]["feature_id"]["enum"]
+    assert "reservation" in enum
+
+
+def test_second_call_in_one_turn_is_not_filled_with_the_first_calls_values(tmp_path, mock_index):
+    two = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": f"c{i}",
+                "type": "function",
+                "function": {"name": "update_business_hours", "arguments": args},
+            }
+            for i, args in enumerate(
+                [
+                    {"day": "mon", "closed": True},
+                    {"day": "fri", "open_time": "09:00", "close_time": "23:00"},
+                ]
+            )
+        ],
+    }
+    fake = FakeChat(answer("월요일을 쉬는 걸로 할까요?"), two, answer("이대로 바꿀까요?"))
+    select = Select(picked("business_hours"), picked("business_hours", "answer"))
+    bot = bot_with(
+        tmp_path,
+        mock_index,
+        fake,
+        select,
+        "business_hours",
+    )
+    bot.ask("월요일은 쉬는 걸로 해 주세요")
+    bot.ask("그리고 금요일은 9시부터 밤 11시까지요")
+    actions = [json.loads(a["arguments"]) for a in bot.pending_action["actions"]]
+    assert [a["day"] for a in actions] == ["mon", "fri"]
+    assert actions[1].get("open_time") == "09:00" and not actions[1].get("closed")
+
+
 def test_invalid_act_is_dropped_but_the_choice_kept():
     select = Select(picked("menu", "approve"))
     choice = fs.select(
