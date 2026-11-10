@@ -384,14 +384,58 @@ CONFIRM = re.compile(
 )
 
 
+# '이대로 올릴까요?'에 짧게 하는 긍정. 말 전체가 이것뿐일 때만 (다른 기능의 승인과 같은 말).
+# 확인을 막 물은 상태(ReviewToolbox.confirm_pending)에서만 등록 확정으로 받는다
+_YES = (
+    r"네|넵|예|응|그래요?|좋아요?|좋습니다|오케이|ok(?:ay)?|yes|yep|sure|"
+    r"그렇게\s?(?:해|하자|해\s?줘|해\s?주세요)|да|ага|хорошо|давай"
+)
+BARE_YES = re.compile(rf"^\s*(?:{_YES})(?:[\s,.!~]*(?:{_YES}))*[\s,.!~]*$", re.I)
+# 초안을 올리지 않겠다는 말. '안 올려'·'등록 취소'는 등록 단어가 있어도 취소다
+DECLINE_POST = re.compile(
+    r"(?:안|못)\s?올|올리지\s?(?:마|말|않)|(?:등록|게시)\s?(?:취소|하지\s?마|안\s?해)|"
+    r"don'?t post|do not post|не (?:публикуй|надо публиковать)",
+    re.I,
+)
+DECLINE = re.compile(
+    r"취소|버려|지워|필요\s?없|안\s?할게|그만\s?(?:둘|두|할)|됐어요?\s*$|됐습니다|"
+    r"never\s?mind|cancel|discard|отмен|не надо",
+    re.I,
+)
+# 다른 기능의 취소('예약 취소해줘')는 초안 취소가 아니다
+DECLINE_OTHER_OBJECT = re.compile(r"예약|주문|쿠폰|메뉴|정산|알림|보고|reservation|order", re.I)
+# '아직 올리지 마', '올리지 말고 기다려'는 보류다 (초안을 남긴다, 벤치마크 H14·H32)
+NOT_YET = re.compile(
+    r"아직|기다려|잠깐|잠시|나중에|이따|보류|wait|hold on|later|not yet|подожди|позже|пока не",
+    re.I,
+)
+
+
+def declines_post(utterance: str) -> bool:
+    """초안을 올리지 않겠다는 말인가 ('이 답글은 안 올릴게요', '그 답글 취소해 주세요')."""
+    if DECLINE_OTHER_OBJECT.search(utterance) or NOT_YET.search(utterance):
+        return False
+    if DECLINE_POST.search(utterance):
+        return True
+    return bool(DECLINE.search(utterance)) and not CONFIRM.search(utterance)
+
+
 def post_review_reply(
-    *, drafts: dict | None, store: MockReplyStore, utterance: str | None, **_
+    *,
+    drafts: dict | None,
+    store: MockReplyStore,
+    utterance: str | None,
+    allow_bare_yes: bool = False,
+    **_,
 ) -> dict:
     """drafts(시스템 값: 직전 초안들)를 등록한다. 사장님 문장에 확정 표현이 없으면 등록하지 않는다
-    (자동 등록 금지)."""
+    (자동 등록 금지). allow_bare_yes: 초안을 보여 주고 확인을 막 물었으면 '네'만으로도 확정이다."""
     if not drafts:
         return {"error": "no_draft", "message": "등록할 초안이 없습니다."}
-    if not utterance or not CONFIRM.search(utterance):
+    confirmed = bool(utterance) and (
+        bool(CONFIRM.search(utterance)) or (allow_bare_yes and bool(BARE_YES.search(utterance)))
+    )
+    if not confirmed or declines_post(utterance or ""):
         return {
             "error": "not_confirmed",
             "message": "사장님이 등록을 확정하지 않았습니다. 확정할지 물어보세요.",
