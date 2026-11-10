@@ -14,7 +14,7 @@
 
 케이스 파일 구성·출처·dev/holdout은 [`tests/data/eval/README.md`](../../../tests/data/eval/README.md)에 정리했다.
 
-16개 도구를 한꺼번에 노출하던 `all_tools` 경로는 앱에 없는 흐름이라 뺐다. 앱은 기능을 고른 뒤
+17개 도구를 한꺼번에 노출하던 `all_tools` 경로는 앱에 없는 흐름이라 뺐다. 앱은 기능을 고른 뒤
 그 기능의 도구 하나만 노출한다.
 
 ```bash
@@ -35,7 +35,7 @@ uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/e
 기준선에는 케이스 원문·응답·개별 rows를 넣지 않는다.
 
 요약의 `conditions`에는 Git 커밋과 dirty 여부, UTC 날짜, 모델 ID, 실제 더미 시드가 포함된
-비서 시스템 프롬프트 SHA256, 선택된 케이스 세트 SHA256, 원본 파일 SHA256과 선택 ID,
+비서 시스템 프롬프트(기능별 절차·예시 포함) SHA256, 선택된 케이스 세트 SHA256, 원본 파일 SHA256과 선택 ID,
 도구 스키마·카탈로그·임베딩 인덱스 SHA256, repeat, backend, split을 기록한다.
 `by_split`은 `dev`, `holdout`, `null`(미지정) 각각에 두 축의 결과를 담는다.
 

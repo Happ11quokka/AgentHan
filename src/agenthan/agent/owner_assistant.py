@@ -35,10 +35,10 @@ from agenthan.agent import (
 )
 from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, chat, parse_message
 from agenthan.agent.place_matcher import RELEVANCE_THRESHOLD, get_feature
-from agenthan.agent.task_ledger import QUIET_AFTER, Slot, TaskLedger
+from agenthan.agent.task_ledger import QUIET_AFTER, TaskLedger
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
-from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError
+from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError, find_records
 from agenthan.tools.feature_tools import (
     TOOL_FEATURES,
     TOOLS,
@@ -144,17 +144,7 @@ APPROVAL_TEXT = {
     "cancel": "취소했어요. 저장한 것은 없어요.",
 }
 CLARIFY_TEXT = "어떤 걸 도와드릴까요? {options} 중에서 골라 말씀해 주세요."
-# Read-only search visibility diagnosis, exposed with the search_keywords feature.
-DIAGNOSE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "diagnose_search_visibility",
-        "description": "검색 노출·대표키워드: 손님이 검색할 때 우리 가게가 어떻게 나오는지 "
-        "진단한다. 대표키워드를 바꾸지 않는 조회다. 로컬 더미 자료만 쓴다.",
-        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-    },
-}
-EXTRA_TOOLS = {"search_keywords": [DIAGNOSE_TOOL]}
+DIAGNOSE_TOOL_NAME = "diagnose_search_visibility"  # Read-only tool of search_diagnosis.
 # A text-only answer that imitates the system preview or claims a save that did not happen.
 PREVIEW_MARK = "(시스템이 변경 미리보기를 보여 줌)"
 FAKE_ASK = re.compile(
@@ -197,6 +187,9 @@ class Route:
     details: bool = False
     glossary: str | None = None
     candidates: tuple[str, ...] = ()  # select_feature candidates (top-5 by embedding)
+    # What the reply does to open tasks (feature_selector.ACTS), proposed with the feature
+    # choice while a task is open. Code checks it against the ledger before acting.
+    act: str | None = None
 
 
 # Store parts each feature's model call sees (the whole store is no longer sent).
@@ -204,9 +197,7 @@ STORE_SLICE = {
     "menu": ["menus"],
     "business_info": ["shop.address", "shop.phone", "shop.introduction"],
     "business_hours": ["shop.hours"],
-    "talktalk": ["talktalk"],
-    "order": ["orders"],
-    "reservation": ["reservations"],
+    # talktalk, order, reservation: only the candidate records (see RECORD_TARGETS).
     "search_keywords": ["shop.keywords", "shop.category"],
     "coupon": ["coupons"],
     "new_opening": ["shop.new_opening"],
@@ -214,6 +205,23 @@ STORE_SLICE = {
 }
 CONTEXT_MESSAGES = 8
 HIDDEN_KEYS = {"photo", "photo_mime"}
+# Features whose write points at one stored record: (collection, id parameter, fields that
+# tell records apart). Code narrows the records from the owner's words; the model picks an
+# id among them or asks. The whole collection is never sent.
+RECORD_TARGETS = {
+    "talktalk": ("talktalk", "inquiry", ("message", "status")),
+    "order": ("orders", "order_id", ("items", "type", "status")),
+    "reservation": ("reservations", "reservation_id", ("date", "time", "people", "status")),
+}
+MAX_TARGETS = 5
+# Short per-feature procedure and contrasting examples, added only for the chosen feature.
+# Required inputs and validation stay in the tool schema (feature_tools / catalog).
+GUIDES = json.loads((Path(__file__).with_name("feature_guides.json")).read_text(encoding="utf-8"))
+ACT_NOTE = {
+    "edit": "사장님이 앞서 말한 값을 고치는 중이다. "
+    "고친 항목만 바꾸고 다른 확인된 값은 그대로 둔다.",
+    "resume": "사장님이 보류했던 이 작업을 다시 하자고 했다. 확인된 값은 그대로 이어 쓴다.",
+}
 
 
 def _plain(message: dict) -> str:
@@ -247,9 +255,36 @@ def store_slice(feature_id: str, store: dict) -> dict:
 
 
 def prompt_fingerprint(store: dict) -> str:
-    """Rules plus every feature's slice of this store (the evaluation's prompt hash)."""
+    """Rules, guides and every feature's slice of this store (the evaluation's prompt hash)."""
     slices = {f: store_slice(f, store) for f in sorted(TOOL_FEATURE_IDS)}
-    return SYSTEM + json.dumps(slices, ensure_ascii=False, sort_keys=True)
+    for feature_id, (collection, _, _) in RECORD_TARGETS.items():
+        slices[feature_id][collection] = store.get(collection, [])
+    return (
+        SYSTEM
+        + json.dumps(slices, ensure_ascii=False, sort_keys=True)
+        + json.dumps(GUIDES, ensure_ascii=False, sort_keys=True)
+    )
+
+
+def guide_text(feature_id: str) -> str:
+    """The chosen feature's procedure and examples, or "" when it has none."""
+    guide = GUIDES.get(feature_id)
+    if not guide:
+        return ""
+    lines = ["이 기능의 순서:"]
+    lines += [f"{i}. {step}" for i, step in enumerate(guide["steps"], 1)]
+    lines.append("예시 (판단 방식만 참고하고 값은 지금 대화에서만 가져온다):")
+    lines += [f"- {say} → {do}" for say, do in guide["examples"]]
+    return "\n".join(lines)
+
+
+def record_view(record: dict, fields: tuple[str, ...]) -> dict:
+    """The id plus the fields that tell records apart (long texts cut)."""
+    view = {"id": record.get("id")}
+    for key in fields:
+        value = record.get(key)
+        view[key] = value[:60] if isinstance(value, str) else value
+    return view
 
 
 def tool_params(feature_id: str) -> list[tuple[str, str, tuple[str, ...], str]]:
@@ -285,8 +320,8 @@ SYSTEM = (
     "인자에는 사장님이 이 대화에서 직접 말한 값만 쓰세요. 지금 가게 데이터의 값(현재 키워드 등), "
     "이번 주·오늘 같은 기본값, 짐작한 id나 예시 값을 대신 넣지 마세요. 필수 입력이 하나라도 "
     "없으면 도구를 부르지 말고 빠진 항목만 짧게 물으세요. "
-    "톡톡 문의·주문·예약은 가게 데이터의 id로 지정하세요. 사장님이 날짜·시간·내용으로 하나를 "
-    "가리키면 그 id를 쓰고, 해당하는 건이 둘 이상이라 고를 수 없으면 어느 건인지 물으세요. "
+    "톡톡 문의·주문·예약은 '대상 후보'의 id 중에서만 고르세요. 사장님 말로 하나로 정해지지 "
+    "않으면 후보의 구분 정보(날짜·시간·인원·내용)로 어느 건인지 물으세요. "
     "필수 입력이 다 모이면 다시 확인을 묻지 말고 바로 도구를 호출하세요. 저장·변경을 말로 "
     "확인하거나 미리보기 문구를 직접 쓰지 마세요. 미리보기와 승인 질문은 시스템이 보여 줍니다. "
     "미리보기 뒤에 사장님이 값을 고치면 고친 값을 "
@@ -379,6 +414,8 @@ class OwnerAssistant:
         self.reads = ReadContext()
         self._turn_task: str | None = None  # Ledger task this owner turn works on.
         self._adding = False  # This reply adds a change to the shown batch.
+        self._act: str | None = None  # Route.act of this owner turn, checked by code.
+        self._targets: dict | None = None  # Candidate records for this turn's id parameter.
         self.today = today or date.today()
         self._clarify_options: tuple[str, ...] = ()
         self.trace: dict = new_trace(None, "none")
@@ -555,7 +592,10 @@ class OwnerAssistant:
             return Route("statistics", "report", follow_question, details)
         task = self._routing_task()
         pending = task.feature if task is not None else None
-        ids, ranked = feature_selector.candidates(text, self.embed, keep=pending)
+        held = self._held_tasks(task)
+        ids, ranked = feature_selector.candidates(
+            text, self.embed, keep=[pending, *(t.feature for t in held)]
+        )
         context = None
         if self._clarify_options and self.history:
             context = "비서가 되물었다: " + self.history[-1]["content"][:200]
@@ -573,6 +613,7 @@ class OwnerAssistant:
             context=context,
             confident=confident,
             pending=pending if context else None,
+            tasks=self._tasks_summary(task, held),
         )
         if choice is None:
             # DASH failed: previous rule (pending feature, then thresholded top-1).
@@ -581,7 +622,23 @@ class OwnerAssistant:
             return Route(feature_selector.fallback(ranked), "fallback", candidates=tuple(ids))
         if choice.decision == feature_selector.CLARIFY:
             return Route(None, "clarify", candidates=choice.candidates)
-        return Route(choice.feature_id, "select", candidates=choice.candidates)
+        return Route(choice.feature_id, "select", candidates=choice.candidates, act=choice.act)
+
+    def _held_tasks(self, current) -> list:
+        """Open tool tasks set aside below the current one, most recent first (max 3)."""
+        return [
+            t for t in reversed(self.ledger.open_tasks()) if t is not current and t.kind == "tool"
+        ][:3]
+
+    def _tasks_summary(self, current, held: list) -> str | None:
+        """One line per open task for select_feature's act, or None when nothing is open."""
+        parts = []
+        for label, task in [("진행 중", current), *(("보류", t) for t in held)]:
+            if task is None:
+                continue
+            state = "승인 대기" if task.preview is not None else "값 모으는 중"
+            parts.append(f"{label} {task.feature}({get_feature(task.feature)['name_ko']}, {state})")
+        return "; ".join(parts) or None
 
     def ask(self, text: str) -> str:
         text = text.strip()
@@ -663,7 +720,11 @@ class OwnerAssistant:
         text = text.strip()
         self._begin_turn()
         self._adding = False
+        self._act = route.act
+        self._targets = None
         self.trace = new_trace(route.feature_id, route.via)
+        if route.act:
+            self.trace["act"] = route.act
         self.history.append({"role": "user", "content": text})
         self._clarify_options = ()
         held = self.ledger.active()
@@ -677,7 +738,7 @@ class OwnerAssistant:
             # counts. A question about it keeps the preview; a new preview would replace it.
             if ADD_HINT.search(text):
                 self._adding = True  # "그리고 금요일은 …": one more change in the same batch.
-            elif EDIT_HINT.search(text):
+            elif EDIT_HINT.search(text) or route.act == "edit":
                 self.ledger.drop_preview(held)
         # Glossary, clarify, help and statistics answers are one-shot: a held task stays.
         if route.glossary:
@@ -715,9 +776,30 @@ class OwnerAssistant:
             )
 
         feature_id = feature["id"]
+        if route.act == "resume":
+            same = [
+                t for t in self.ledger.open_tasks() if t.feature == feature_id and t.kind == "tool"
+            ]
+            if len(same) > 1:
+                # Two held tasks of one feature: which one is the owner's call, not ours.
+                options = " / ".join(t.prompt[:40] or t.feature for t in same)
+                return self._finish(f"어느 작업을 이어서 할까요? {options}", [], [])
         task = self._task_for(feature_id, "tool")
+        if (
+            route.act == "resume"
+            and task.started < self.ledger.turn
+            and task.preview is not None
+            and not EDIT_HINT.search(text)
+            and not ADD_HINT.search(text)
+        ):
+            # "아까 그거 계속하자" with nothing new: show the held change again, no model call.
+            self.trace["pending_approval"] = True
+            return self._finish(
+                self._approval_question(feature_id, task.preview["actions"]), [], []
+            )
         task.said.append(text)
-        exposed = [feature_tool_schema(feature_id), *EXTRA_TOOLS.get(feature_id, [])]
+        self._targets = self._record_targets(feature_id, task)
+        exposed = [self._tool_schema(feature_id)]
         names = {t["function"]["name"] for t in exposed}
         system = {"role": "system", "content": self._system(feature_id, task)}
         saved: list[dict] = []
@@ -802,7 +884,7 @@ class OwnerAssistant:
                         "message": "저장이 완료됐습니다.",
                     }
                 elif fn["name"] not in names:
-                    # Only the exposed tool may run, even though the executor knows all 16.
+                    # Only the exposed tool may run, even though the executor knows all 17.
                     result = {
                         "ok": False,
                         "error": "tool_not_allowed",
@@ -817,7 +899,7 @@ class OwnerAssistant:
                         "error": "awaiting_approval",
                         "message": "앞의 변경을 사장님이 승인하기 전에는 실행하지 않습니다.",
                     }
-                elif fn["name"] == DIAGNOSE_TOOL["function"]["name"]:
+                elif fn["name"] == DIAGNOSE_TOOL_NAME:
                     # Deterministic diagnosis text goes straight to the owner.
                     del self.history[-1]
                     self.ledger.close(task, "done")
@@ -867,17 +949,62 @@ class OwnerAssistant:
             "기능": get_feature(feature_id)["name_ko"],
             "사장님이 확인한 값": {k: v.value for k, v in task.slots.items()},
         }
+        if self._act in ACT_NOTE:
+            state["이번 말"] = ACT_NOTE[self._act]
         lines = [
             SYSTEM,
             f"오늘: {self.today.isoformat()} ({'월화수목금토일'[self.today.weekday()]}요일)",
             "가게 데이터: "
             + json.dumps(store_slice(feature_id, self.store.read()), ensure_ascii=False),
-            "현재 작업: " + json.dumps(state, ensure_ascii=False),
         ]
+        targets = self._targets
+        if targets is not None:
+            if not targets["stated"]:
+                note = (
+                    "사장님이 대상을 아직 가리키지 않음. 하나로 정해지지 않으면 어느 건인지 물을 것"
+                )
+            elif not targets["views"]:
+                note = "사장님 말에 맞는 건이 없음. 그렇다고 알리고 다시 물을 것"
+            else:
+                note = "사장님 말에 맞는 건"
+            lines.append(
+                f"대상 후보 ({note}, 전체 {targets['total']}건 중 {len(targets['views'])}건): "
+                + json.dumps(targets["views"], ensure_ascii=False)
+            )
+        lines.append("현재 작업: " + json.dumps(state, ensure_ascii=False))
+        guide = guide_text(feature_id)
+        if guide:
+            lines.append(guide)
         done = self.ledger.log()[-5:]
         if done:
             lines.append("앞서 끝난 작업: " + "; ".join(done))
         return "\n".join(lines)
+
+    def _record_targets(self, feature_id: str, task) -> dict | None:
+        """Records the owner's words in this task point at (all of them, capped, when the
+        owner has not pointed yet). Only the owner's words narrow it; nothing is assumed."""
+        if feature_id not in RECORD_TARGETS:
+            return None
+        collection, param, fields = RECORD_TARGETS[feature_id]
+        records = self.store.read().get(collection, [])
+        fits, stated = value_source.candidates(records, "\n".join(task.said), self.today)
+        fits = fits[:MAX_TARGETS]
+        return {
+            "param": param,
+            "ids": [r["id"] for r in fits],
+            "views": [record_view(r, fields) for r in fits],
+            "stated": stated,
+            "total": len(records),
+        }
+
+    def _tool_schema(self, feature_id: str) -> dict:
+        """The feature's tool; a record id may only be one of this turn's candidates."""
+        schema = feature_tool_schema(feature_id)
+        targets = self._targets
+        if targets and targets["ids"]:
+            prop = schema["function"]["parameters"]["properties"][targets["param"]]
+            prop["enum"] = list(targets["ids"])
+        return schema
 
     def _context(self, turn_start: int) -> list[dict]:
         """This turn in full plus the last CONTEXT_TURNS earlier messages as plain text.
@@ -909,17 +1036,60 @@ class OwnerAssistant:
             return raw, None
         given = {k: v for k, v in arguments.items() if v is not None and v != ""}
         # Held values fill in the change being collected, not a new item of a batch.
-        held = {} if self._adding else {k: s.value for k, s in task.slots.items()}
-        merged = {**held, **given}
+        slots = {} if self._adding else dict(task.slots)
+        merged = {**{k: s.value for k, s in slots.items()}, **given}
+        params = tool_params(feature_id)
+        store = self.store.read()
+        # A confirmed value changes only when the owner's later words say the new one; a
+        # different value the model carried over from older words keeps the confirmed one.
+        for name, value in given.items():
+            slot = slots.get(name)
+            if slot is None or slot.value == value:
+                continue
+            newer = "\n".join(task.said[slot.said_at :])
+            spec = [p for p in params if p[0] == name]
+            if newer and spec:
+                ok, _ = value_source.check(spec, {name: value}, newer, store, today=self.today)
+                if ok:
+                    continue
+            merged[name] = slot.value
+            self.trace.setdefault("kept_slots", []).append(name)
+        targets = self._targets
+        target = merged.get(targets["param"]) if targets else None
+        if targets and isinstance(target, str) and target not in targets["ids"]:
+            # A quoted text instead of an id (톡톡 "단체 주문"): code maps it to the one
+            # candidate whose text it quotes; the model never owns the id mapping.
+            text_key = RECORD_TARGETS[feature_id][2][0]
+            quoted = find_records(targets["views"], target, text_key)
+            if len(quoted) == 1:
+                target = merged[targets["param"]] = quoted[0]["id"]
+        if targets and target is not None and target not in targets["ids"]:
+            return raw, {
+                "ok": False,
+                "error": "not_a_candidate",
+                "message": "대상 후보에 없는 id입니다. 후보 중에서 고르거나 사장님께 물어보세요.",
+                "candidates": targets["views"],
+            }
         sources, unconfirmed = value_source.check(
-            tool_params(feature_id),
-            merged,
-            "\n".join(task.said),
-            self.store.read(),
-            today=self.today,
+            params, merged, "\n".join(task.said), store, today=self.today
         )
         for param_id, source in sources.items():
-            task.slots[param_id] = Slot(merged[param_id], source, self.ledger.turn)
+            self.ledger.set_slot(task, param_id, merged[param_id], source)
+        label = next((p[3] for p in params if targets and p[0] == targets["param"]), None)
+        if label in unconfirmed:
+            # The owner's words do not single out one record: ask, showing what differs.
+            return raw, {
+                "ok": False,
+                "error": "ambiguous_target" if targets["views"] else "no_matching_target",
+                "message": (
+                    "사장님 말로는 대상이 하나로 정해지지 않습니다. 후보의 구분 정보로 "
+                    "어느 건인지 물어보세요."
+                    if targets["views"]
+                    else "사장님 말에 맞는 건이 없습니다. 그렇다고 알리고 다시 물어보세요."
+                ),
+                "candidates": targets["views"],
+                "missing_fields": unconfirmed,
+            }
         if unconfirmed:
             return raw, {
                 "ok": False,

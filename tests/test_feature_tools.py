@@ -55,6 +55,7 @@ VALID = {
     "set_onsite_payment": {"enabled": True},
     "get_settlement_summary": {"period": "this_month"},
     "check_pos_compatibility": {"pos_name": "연습POS 플러스"},
+    "diagnose_search_visibility": {},
     "get_statistics": {"period": "7d"},
     "search_help_articles": {"query": "예약 교육"},
 }
@@ -63,7 +64,7 @@ VALID = {
 def test_every_catalog_feature_has_one_tool():
     schemas = all_tool_schemas()
     names = [s["function"]["name"] for s in schemas]
-    assert len(names) == len(set(names)) == 16
+    assert len(names) == len(set(names)) == 17
     features = {f["id"] for f in matcher.load_features()}
     assert {TOOL_FEATURES[n] for n in names} == features - DELEGATED_FEATURES
     assert DELEGATED_FEATURES < features  # review features go to agenthan.agent.review

@@ -52,8 +52,8 @@ class FakeChat:
 
 
 def fake_embed(_):
-    # Orthogonal to every catalog vector: use the first 18 basis vectors in tests.
-    return [0.0] * 18 + [1.0] + [0.0] * 1005
+    # Orthogonal to every catalog vector: use the first 19 basis vectors in tests.
+    return [0.0] * 19 + [1.0] + [0.0] * 1004
 
 
 @pytest.fixture
@@ -269,7 +269,24 @@ TOOL_LOOP_FEATURES = sorted(
 def test_every_catalog_feature_has_a_route():
     routed = owner.TOOL_FEATURE_IDS | DELEGATED_FEATURES
     assert routed == {f["id"] for f in matcher.load_features()}
-    assert len(TOOL_LOOP_FEATURES) == 15
+    assert len(TOOL_LOOP_FEATURES) == 16
+
+
+def with_targets(feature_id, ids):
+    """The feature's tool whose record id may only be one of the candidate ids."""
+    schema = feature_tool_schema(feature_id)
+    if feature_id in owner.RECORD_TARGETS:
+        param = owner.RECORD_TARGETS[feature_id][1]
+        schema["function"]["parameters"]["properties"][param]["enum"] = list(ids)
+    return schema
+
+
+# Seed records the owner has not pointed at yet: all of them are candidates (capped).
+SEED_IDS = {
+    "order": ["order-1", "order-2"],
+    "reservation": ["resv-1", "resv-2"],
+    "talktalk": ["talk-1", "talk-2"],
+}
 
 
 @pytest.mark.parametrize("feature_id", TOOL_LOOP_FEATURES)
@@ -279,8 +296,7 @@ def test_only_matched_feature_tool_is_exposed(tmp_path, mock_index, feature_id):
         tmp_path / "store.json", chat=fake, embed=feature_embed(mock_index, feature_id)
     )
     assistant.ask("요청")
-    extra = owner.EXTRA_TOOLS.get(feature_id, [])
-    assert fake.requests[0][1] == [feature_tool_schema(feature_id), *extra]
+    assert fake.requests[0][1] == [with_targets(feature_id, SEED_IDS.get(feature_id, []))]
     assert assistant.pending_feature == feature_id
     assert not assistant.store.path.exists()
 
@@ -363,7 +379,7 @@ def test_other_reply_edits_request_instead_of_approving(tmp_path, mock_index):
     assert "cancelled" in assistant.ask("예약 취소로 바꿔줘")
     assert not path.exists()
     assert json.loads(assistant.pending_action["arguments"])["status"] == "cancelled"
-    assert fake.requests[1][1] == [feature_tool_schema("reservation")]
+    assert fake.requests[1][1] == [with_targets("reservation", ["resv-1"])]
     assistant.ask("네")
     assert read_file(path)["reservations"][0]["status"] == "cancelled"
 
@@ -374,6 +390,7 @@ def test_read_only_tools_skip_approval():
         "get_naverpay_signup_guide",
         "get_settlement_summary",
         "check_pos_compatibility",
+        "diagnose_search_visibility",
         "get_statistics",
         "search_help_articles",
     }

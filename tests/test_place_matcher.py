@@ -27,6 +27,7 @@ FEATURE_IDS = {
     "reservation",
     "smartcall",
     "search_keywords",
+    "search_diagnosis",
     "coupon",
     "new_opening",
     "review_reply",
@@ -293,7 +294,7 @@ def test_build_index_is_atomic_and_uses_catalog(fake_index, monkeypatch):
     monkeypatch.setattr(matcher, "embed_text", embed)
     matcher.build_index()
     assert texts == [matcher.feature_embedding_text(f) for f in matcher.load_features()]
-    assert len(matcher._load_index(matcher.load_features())) == 18
+    assert len(matcher._load_index(matcher.load_features())) == 19
     original = matcher.INDEX_PATH.read_bytes()
 
     def fail(_):

@@ -235,23 +235,44 @@
     "stage": "손님 끌기",
     "summary_ko": "손님이 검색할 때 가게를 찾기 쉽도록 정보를 살펴봐요. 가게를 잘 나타내는 대표키워드를 설정해요.",
     "keywords_ko": [
-      "검색",
-      "노출",
       "대표키워드",
       "검색어",
       "키워드",
+      "키워드 설정",
+      "키워드 바꿔"
+    ],
+    "keywords_en": [
+      "keyword",
+      "keywords",
+      "representative keywords",
+      "set keywords"
+    ],
+    "input_supported": false
+  },
+  {
+    "id": "search_diagnosis",
+    "name_ko": "검색 노출 진단",
+    "name_en": "Search visibility check",
+    "stage": "손님 끌기",
+    "summary_ko": "손님이 우리 가게를 검색하면 몇 위로 나오는지, 어떤 검색어에서 안 나오는지 확인해요. 보기만 하고 바꾸지는 않아요.",
+    "keywords_ko": [
+      "검색하면",
+      "검색 노출",
+      "노출",
+      "검색 순위",
+      "순위",
       "안 보여",
       "안 나와",
+      "잘 안 나와",
       "찾기"
     ],
     "keywords_en": [
-      "search",
-      "visibility",
-      "keyword",
-      "keywords",
       "search results",
+      "search ranking",
+      "visibility",
       "discoverability",
-      "find my shop"
+      "find my shop",
+      "does not appear"
     ],
     "input_supported": false
   },

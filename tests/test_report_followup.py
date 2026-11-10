@@ -122,10 +122,7 @@ def test_keyword_edit_routes_to_feature_not_search(tmp_path, monkeypatch, questi
     assistant._search_visibility = Mock(side_effect=AssertionError("검색 진단 호출 금지"))
     assert assistant.ask(question) == "어떤 키워드로 바꿀까요?"
     tools = chat.call_args.kwargs["tools"]
-    assert [t["function"]["name"] for t in tools] == [
-        "set_representative_keywords",
-        "diagnose_search_visibility",
-    ]
+    assert [t["function"]["name"] for t in tools] == ["set_representative_keywords"]
     match.assert_called_once()
     assistant._search_visibility.assert_not_called()
 

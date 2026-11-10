@@ -9,7 +9,7 @@
 {"id": "place_request_cases-009", "split": "dev", "source": "m0", "text": "손님이 미리 주문하고 와서 가져갈 수 있게 하고 싶어요.", "lang": "ko", "expected": "order"}
 {"id": "place_request_cases-010", "split": "dev", "source": "m0", "text": "손님이 예약할 수 있는 인원을 줄이려면 어디로 가요?", "lang": "ko", "expected": "reservation"}
 {"id": "place_request_cases-011", "split": "dev", "source": "m0", "text": "바빠서 못 받은 전화가 몇 통인지 확인하고 싶어요.", "lang": "ko", "expected": "smartcall"}
-{"id": "place_request_cases-012", "split": "dev", "source": "m0", "text": "우리 가게를 검색해도 잘 나오지 않아서 걱정이에요.", "lang": "ko", "expected": "search_keywords"}
+{"id": "place_request_cases-012", "split": "dev", "source": "m0", "text": "우리 가게를 검색해도 잘 나오지 않아서 걱정이에요.", "lang": "ko", "expected": "search_diagnosis"}
 {"id": "place_request_cases-013", "split": "dev", "source": "m0", "text": "두 번째 방문한 손님에게 할인권을 주고 싶어요.", "lang": "ko", "expected": "coupon"}
 {"id": "place_request_cases-014", "split": "dev", "source": "m0", "text": "이번 주에 개업했는데 새 매장이라고 알리고 싶어요.", "lang": "ko", "expected": "new_opening"}
 {"id": "place_request_cases-015", "split": "dev", "source": "m0", "text": "맛있었다는 후기에 감사 인사를 남기고 싶어요.", "lang": "ko", "expected": "review_reply"}
@@ -48,7 +48,7 @@
 {"id": "place_request_cases-048", "split": "dev", "source": "m0", "text": "I want people to order ahead and collect their food.", "lang": "en", "expected": "order"}
 {"id": "place_request_cases-049", "split": "dev", "source": "m0", "text": "How can guests book a table before they arrive?", "lang": "en", "expected": "reservation"}
 {"id": "place_request_cases-050", "split": "dev", "source": "m0", "text": "Where can I see the missed calls to my restaurant?", "lang": "en", "expected": "smartcall"}
-{"id": "place_request_cases-051", "split": "dev", "source": "m0", "text": "My cafe does not appear in search results.", "lang": "en", "expected": "search_keywords"}
+{"id": "place_request_cases-051", "split": "dev", "source": "m0", "text": "My cafe does not appear in search results.", "lang": "en", "expected": "search_diagnosis"}
 {"id": "place_request_cases-052", "split": "dev", "source": "m0", "text": "I want to offer a discount for returning customers.", "lang": "en", "expected": "coupon"}
 {"id": "place_request_cases-053", "split": "dev", "source": "m0", "text": "We just opened and want to tell people we are new.", "lang": "en", "expected": "new_opening"}
 {"id": "place_request_cases-054", "split": "dev", "source": "m0", "text": "A guest left a nice review. I want to thank them publicly.", "lang": "en", "expected": "review_reply"}

@@ -99,18 +99,18 @@ def test_default_replay_outputs_conditions_table_rows_and_splits(offline, tmp_pa
     directory = next(tmp_path.glob("*-test"))
     summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
     rows = [json.loads(line) for line in (directory / "rows.jsonl").read_text().splitlines()]
-    assert len(rows) == 547  # route 310 (리뷰 분기 169 포함) + flow 237턴
+    assert len(rows) == 550  # route 310 (리뷰 분기 169 포함) + flow 240턴
     assert set(summary["results"]) == {"route", "flow"}
     assert summary["results"]["route"]["cases"] == 310
-    assert summary["results"]["flow"]["flow_cases"] == 193
-    assert summary["results"]["flow"]["cases"] == 237  # turns; multi-turn cases since aug2
+    assert summary["results"]["flow"]["flow_cases"] == 196
+    assert summary["results"]["flow"]["cases"] == 240  # turns; multi-turn cases since aug2
     assert summary["status"] == "COMPLETE"
     assert set(summary["by_split"]) == {"null", "dev", "holdout"}
     # Every case carries its own split (tests/data/eval); none is left without one.
     assert summary["by_split"]["null"]["route"]["cases"] == 0
     assert summary["by_split"]["dev"]["route"]["cases"] == 217
     assert summary["by_split"]["holdout"]["route"]["cases"] == 93
-    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 41
+    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 42
     conditions = summary["conditions"]
     assert conditions["model_id"] == CHAT_MODEL
     assert conditions["backend"] == "replay" and conditions["repeat"] == 1
@@ -214,7 +214,9 @@ def test_flow_scores_route_ask_tool_args_and_store_across_turns(basis_index):
     assert metrics["selection_accuracy"] == metrics["args_accuracy"] == 1
     assert metrics["tokens_per_call"] == (14 + 7) / 2  # Per turn with chat usage.
     assert metrics["first_failures"] == {}
-    assert backend.requests[0] == [feature_tool_schema("reservation")]
+    schema = feature_tool_schema("reservation")
+    schema["function"]["parameters"]["properties"]["reservation_id"]["enum"] = ["resv-1"]
+    assert backend.requests[0] == [schema]  # Only the record the owner named is a candidate.
 
 
 def test_flow_records_first_failure_and_unsafe_preview(basis_index):

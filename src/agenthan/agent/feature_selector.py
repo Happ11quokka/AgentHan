@@ -52,6 +52,16 @@ TEXT_SYSTEM = SYSTEM.replace("select_feature로 고른다", "골라 그 ID를 �
 USER_TEMPLATE = '분류할 사장님 요청:\n"""{text}"""'
 # Repeated next to the request: DASH weighs the user turn more than the system context.
 PENDING_NOTE = "\n(진행 중인 기능: {feature_id}. 직전 비서 말에 대한 답이나 고침이면 이 기능)"
+# What the utterance does to the owner's open tasks. Sent only while a task is open, so a
+# request with nothing in progress costs the same call as before. Code checks it against the
+# ledger; an act never writes or approves anything by itself.
+ACTS = ("answer", "edit", "resume", "new")
+ACT_RULE = (
+    "act도 고른다. answer=진행 중인 작업에서 비서가 물은 값을 답함, "
+    "edit=진행 중이거나 방금 보여 준 변경의 값을 고침, "
+    "resume=보류해 둔 작업을 다시 하자고 함(그 작업의 기능을 고른다), "
+    "new=새 요청(진행 중인 작업은 보류).\n"
+)
 
 # chat(messages, *, tools) that sends select_model with the forced tool call.
 default_select_chat = partial(chat, model=SELECT_MODEL, tool_choice=TOOL_CHOICE)
@@ -62,16 +72,20 @@ class Selection:
     feature_id: str | None  # None for none/clarify
     decision: str  # feature | none | clarify
     candidates: tuple[str, ...]
+    act: str | None = None  # One of ACTS when asked and valid, else None (code decides).
 
 
 def candidates(
-    text: str, embed: Callable | None, *, keep: str | None = None
+    text: str, embed: Callable | None, *, keep: str | Collection[str] | None = None
 ) -> tuple[list[str], list[FeatureMatch]]:
-    """Top-K by score without a threshold; keep (the feature being asked about) stays in."""
+    """Top-K by score without a threshold; keep (features of open tasks) stays in."""
     ranked = rank_features(text, embed)
     ids = [m.feature_id for m in ranked[:TOP_K]]
-    if keep and keep not in ids:
-        ids = [keep, *ids[: TOP_K - 1]]
+    kept = [keep] if isinstance(keep, str) else list(keep or [])
+    kept = [k for k in dict.fromkeys(kept) if k][:TOP_K]
+    ids = [k for k in kept if k not in ids] + ids
+    while len(ids) > TOP_K:  # Drop the lowest-ranked candidate that is not kept.
+        ids.remove(next(i for i in reversed(ids) if i not in kept))
     return ids, ranked
 
 
@@ -80,7 +94,10 @@ def fallback(ranked: list[FeatureMatch]) -> str | None:
     return ranked[0].feature_id if ranked and ranked[0].score > RELEVANCE_THRESHOLD else None
 
 
-def select_tool(ids: list[str]) -> dict:
+def select_tool(ids: list[str], *, acts: bool = False) -> dict:
+    properties = {"feature_id": {"type": "string", "enum": [*ids, NONE, CLARIFY]}}
+    if acts:
+        properties["act"] = {"type": "string", "enum": list(ACTS)}
     return {
         "type": "function",
         "function": {
@@ -88,9 +105,7 @@ def select_tool(ids: list[str]) -> dict:
             "description": "사장님 요청에 맞는 기능 하나를 고른다.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "feature_id": {"type": "string", "enum": [*ids, NONE, CLARIFY]},
-                },
+                "properties": properties,
                 "required": ["feature_id"],
             },
         },
@@ -104,13 +119,19 @@ def select_messages(
     pending: str | None = None,
     *,
     rule: str = TOOL_RULE,
+    tasks: str | None = None,
 ) -> list[dict]:
+    """tasks: the open-task summary; given only with the forced call, it adds act."""
     lines = []
     for feature_id in ids:
         feature = get_feature(feature_id)
         lines.append(f"- {feature_id}: {feature['name_ko']} — {feature['summary_ko']}")
-    system = (SYSTEM if rule == TOOL_RULE else TEXT_SYSTEM) + rule + "후보 기능:\n"
-    system += "\n".join(lines)
+    system = (SYSTEM if rule == TOOL_RULE else TEXT_SYSTEM) + rule
+    if tasks and rule == TOOL_RULE:
+        system += ACT_RULE
+    system += "후보 기능:\n" + "\n".join(lines)
+    if tasks and rule == TOOL_RULE:
+        system += "\n열린 작업: " + tasks
     if context:
         system += "\n직전 대화: " + context
     user = USER_TEMPLATE.format(text=text)
@@ -127,13 +148,19 @@ def select(
     context: str | None = None,
     confident: Collection[str] | None = None,
     pending: str | None = None,
+    tasks: str | None = None,
 ) -> Selection | None:
-    """One DASH-002 call; None means the caller should fall back."""
+    """One DASH-002 call; None means the caller should fall back.
+
+    tasks (open-task summary) also asks for act; without it the request is unchanged."""
     if not ids:
         return None  # A forced call with an enum of only none/clarify is rejected (40009).
     try:
         message = parse_message(
-            select_chat(select_messages(text, ids, context, pending), tools=[select_tool(ids)])
+            select_chat(
+                select_messages(text, ids, context, pending, tasks=tasks),
+                tools=[select_tool(ids, acts=bool(tasks))],
+            )
         )
     except ClovaRequestRejected:
         return select_text(
@@ -150,13 +177,17 @@ def select(
     if not calls or calls[0]["function"]["name"] != TOOL_NAME:
         return None
     try:
-        choice = json.loads(calls[0]["function"]["arguments"]).get("feature_id")
+        arguments = calls[0]["function"]["arguments"]
+        arguments = json.loads(arguments) if isinstance(arguments, str) else arguments
+        choice = arguments.get("feature_id")
     except (ValueError, AttributeError):
         return None
+    act = arguments.get("act") if tasks else None
+    act = act if act in ACTS else None  # An invalid act is dropped, not the choice.
     if choice in (NONE, CLARIFY):
         return Selection(None, choice, tuple(ids))
     if choice in ids:
-        return Selection(choice, "feature", tuple(ids))
+        return Selection(choice, "feature", tuple(ids), act)
     return None
 
 

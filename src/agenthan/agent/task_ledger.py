@@ -11,7 +11,9 @@ getting resume notices after QUIET_AFTER owner turns, but it stays in the ledger
 resumed by id.
 
 Slots (value + where it came from) are recorded here so later steps can check that a write
-uses only values the owner said or a lookup confirmed.
+uses only values the owner said or a lookup confirmed. A slot changes only through set_slot,
+which keeps the earlier value in the task's change log; an edit replaces only the slots it
+names and every other confirmed value stays.
 """
 
 from dataclasses import dataclass, field
@@ -30,6 +32,7 @@ class Slot:
     value: object
     source: Source
     turn: int
+    said_at: int = 0  # len(task.said) when set: later owner words start at this index.
 
 
 @dataclass
@@ -49,6 +52,8 @@ class Task:
     paused_at: int | None = None
     held_status: Status | None = None  # Status to restore when resumed.
     summary: str = ""
+    # (turn, slot, old value, new value, source) for every slot change, oldest first.
+    changes: list[tuple] = field(default_factory=list)
 
     @property
     def is_open(self) -> bool:
@@ -125,6 +130,15 @@ class TaskLedger:
         self._restore(task)
         self.touch(task)
         return task
+
+    def set_slot(self, task: Task, name: str, value: object, source: Source) -> bool:
+        """Record one confirmed value; True when it is new or changed."""
+        old = task.slots.get(name)
+        if old is not None and old.value == value:
+            return False
+        task.slots[name] = Slot(value, source, self.turn, len(task.said))
+        task.changes.append((self.turn, name, old.value if old else None, value, source))
+        return True
 
     def set_preview(self, task: Task, preview: dict) -> None:
         task.version += 1

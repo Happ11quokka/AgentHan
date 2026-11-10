@@ -15,7 +15,7 @@ def failing_chat(*args, **kwargs):
 
 
 def search_chat(messages, *, tools):
-    """The model picks the read-only diagnosis tool that search_keywords exposes."""
+    """The model picks the read-only diagnosis tool that search_diagnosis exposes."""
     if any(t["function"]["name"] == "diagnose_search_visibility" for t in tools):
         call = {"name": "diagnose_search_visibility", "arguments": "{}"}
         return {"role": "assistant", "content": "", "tool_calls": [{"id": "d", "function": call}]}

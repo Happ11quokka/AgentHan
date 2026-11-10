@@ -43,6 +43,9 @@
 {"id": "get_statistics-1", "split": "dev", "source": "m0", "kind": "full", "lang": "ko", "text": "최근 7일 동안 가게 조회수 통계 보여 주세요.", "expected_tool": "get_statistics"}
 {"id": "get_statistics-2", "split": "dev", "source": "m0", "kind": "full", "lang": "en", "text": "Show me my store statistics for the last 30 days.", "expected_tool": "get_statistics"}
 {"id": "get_statistics-3", "split": "holdout", "source": "m0", "kind": "full", "lang": "ko_simple", "text": "한 달 통계 보여 주세요 30일", "expected_tool": "get_statistics"}
+{"id": "diagnose_search_visibility-1", "split": "dev", "source": "m0", "kind": "full", "lang": "ko", "text": "우리 가게를 검색하면 몇 위로 나오는지 확인해 주세요.", "expected_tool": "diagnose_search_visibility"}
+{"id": "diagnose_search_visibility-2", "split": "holdout", "source": "m0", "kind": "full", "lang": "en", "text": "Can you check where my shop shows up when customers search for it?", "expected_tool": "diagnose_search_visibility"}
+{"id": "diagnose_search_visibility-3", "split": "dev", "source": "m0", "kind": "full", "lang": "ko_simple", "text": "검색하면 우리 가게 나와요? 순위 알려 주세요", "expected_tool": "diagnose_search_visibility"}
 {"id": "search_help_articles-1", "split": "holdout", "source": "m0", "kind": "full", "lang": "ko", "text": "예약 받는 방법을 배울 수 있는 교육이 있나요?", "expected_tool": "search_help_articles"}
 {"id": "search_help_articles-2", "split": "dev", "source": "m0", "kind": "full", "lang": "en", "text": "How do I contact the SmartPlace customer center?", "expected_tool": "search_help_articles"}
 {"id": "search_help_articles-3", "split": "dev", "source": "m0", "kind": "full", "lang": "ko_simple", "text": "리뷰 답글 쓰는 거 배우고 싶어요", "expected_tool": "search_help_articles"}

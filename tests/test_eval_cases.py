@@ -7,7 +7,7 @@ from agenthan.eval.run import FLOW_CASES, ROUTE_CASES
 
 
 def test_existing_sets_are_adapted_without_modifying_files():
-    for path, count in ((FLOW_CASES, 61), (ROUTE_CASES, 64)):
+    for path, count in ((FLOW_CASES, 64), (ROUTE_CASES, 64)):
         before = path.read_bytes()
         cases = [c for c in load_cases(path) if c.source == "m0"]
         assert len(cases) == count

@@ -16,8 +16,10 @@
      ① 기능 후보: agent/place_matcher.py rank_features 상위 5개, 임계값 없음 (키워드 30% + 임베딩 70%)
      ② 기능 하나 고르기: agent/feature_selector.py — HCX-DASH-002 select_feature 강제 호출
         (후보 + none + clarify). 되묻는 중이면 그 기능과 직전 질문을 함께 준다.
-        DASH가 실패하면 예전 규칙(임계값 0.48 넘는 1위)으로 대신한다
+        열린 작업이 있으면 같은 호출에서 act(answer/edit/resume/new)도 받는다(추가 호출 없음).
+        보류한 작업의 기능은 후보에 늘 남긴다. DASH가 실패하면 예전 규칙(임계값 0.48 넘는 1위)
      ③ 대표 기능 위임 또는 그 기능 도구만 붙여 HCX-005 실행
+        (그 기능의 짧은 절차·예시와, 예약·주문·톡톡이면 코드가 좁힌 대상 후보만 함께 준다)
         ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
         ├ 메뉴판·음식 사진          → ask_photo(): 사진 분류 → 초안 → 사장님 승인 → 저장
         ├ review_reply, ai_review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
@@ -33,7 +35,10 @@
 | `agent/food_photo.py` | 음식 사진 분류·AI 메뉴 추측·배경 제거 연결 |
 | `agent/menu_photo.py` | A-1 메뉴 사진 → 초안: HCX-005 사진 읽기 → 가게 지식(`StoreKnowledge`) 대조 → 한국어 이름·설명 |
 | `agent/place_matcher.py`, `place_features.json` | 플레이스 기능 카탈로그(=PRD의 `features.json`)와 후보 순위 |
-| `agent/feature_selector.py` | HCX-DASH-002 `select_feature`로 후보 중 기능 하나 고르기 |
+| `agent/feature_selector.py` | HCX-DASH-002 `select_feature`로 후보 중 기능 하나와 열린 작업에 대한 act 고르기 |
+| `agent/task_ledger.py` | 세션 작업 원장: 작업 스택(보류·재개), 승인 대기 미리보기, 값(slot)과 출처·변경 이력 |
+| `agent/value_source.py` | 값 출처 게이트와 사장님 말로 대상 레코드 후보 좁히기 |
+| `agent/feature_guides.json` | 쓰기 기능별 짧은 판단 순서와 대표 예시(선택된 기능 것만 프롬프트에 넣음) |
 | `agent/review/` | 리뷰 서브에이전트: 분석·요약, 미답글, 답글 초안·등록(더미), 정기 보고 루틴(A-2·A-4) |
 | `agent/review_delegate.py` | 오케스트레이터 → 리뷰 서브에이전트 위임 |
 | `agent/report_explainer.py` | A-3 통계 해석 문장화·숫자 검증·실패 시 코드 템플릿 (`ReportAnswer`) |
@@ -48,6 +53,43 @@
 | `eval/run.py`, `eval/flow.py`, `eval/gate.py` | [기능 매칭·전체 흐름 평가, 재생·기준선·회귀 게이트](../eval/README.md) |
 
 공통 HCX 클라이언트는 `core/llm.py`, 임베딩은 `core/embedding.py`를 쓴다.
+
+### 대화 의미 → 작업 원장 (act)
+
+열린 작업(진행 중이거나 보류한 도구 작업)이 있을 때만 `select_feature`에 `act`를 붙이고
+열린 작업 요약을 시스템에 넣는다. 열린 작업이 없으면 요청은 예전과 같다. 모델은 제안만 하고
+코드가 원장과 대조해 반영한다. act만으로 저장하거나 승인을 만들지 않는다.
+
+| act | 예 | 코드가 하는 일 |
+|---|---|---|
+| `answer` | `8500원` | 진행 중인 작업에 이어 HCX-005 호출 (예전과 같음) |
+| `edit` | `아니, 금요일만` | 같은 기능의 미리보기를 무효로 하고, 고친 항목만 바꾸게 안내 |
+| `new` | `그건 두고 전화부터 보여 줘` | 지금 작업은 보류(원장 스택), 새 기능 처리 후 보류 작업 재개 안내 |
+| `resume` | `아까 메뉴 계속하자` | 보류한 같은 기능 작업을 위로. 승인 대기였고 새 값이 없으면 모델 호출 없이 미리보기를 다시 보여 줌. 같은 기능의 열린 작업이 둘이면 되묻는다 |
+
+확실한 `네`/`취소`는 여전히 정규식(`approval_intent`)이 먼저 처리한다. 값(slot)은
+`TaskLedger.set_slot`으로만 바뀌고 `Task.changes`에 이전 값·새 값·출처가 남는다. 이미 확인된
+값을 모델이 다른 값으로 보내면, 그 값이 slot이 정해진 **뒤의** 사장님 말에 있을 때만 바꾸고
+아니면 확인된 값을 유지한다(`trace["kept_slots"]`). DASH가 act를 빼거나 잘못 쓰면 act 없이
+예전 규칙으로 처리한다.
+
+### 기능별 절차·예시
+
+`feature_guides.json`의 쓰기 기능 10개(메뉴·업체 정보·영업시간·톡톡·주문·예약·대표키워드·쿠폰·
+신규 오픈·매장결제)는 판단 순서 1~3줄과 예시 2~4개(정상·입력 누락·수정·조회/다른 대상)를 가진다.
+선택된 기능의 것만 HCX-005 시스템 프롬프트에 붙는다(조회 기능은 없음). 필수값·형식·검증은
+도구 스키마(`feature_tools.py`, 카탈로그)가 정본이고 여기서 새 규칙을 만들지 않는다. 예시 문장은
+평가 케이스와 겹치지 않게 `tests/test_task_semantics.py`가 확인한다.
+
+### 대상 레코드 후보 (예약·주문·톡톡)
+
+이 세 기능은 가게 데이터 전체 대신 **대상 후보**만 보낸다. 코드가 이 작업에서 사장님이 한 말의
+조건(id, 날짜·`오늘`/`내일`, 시각·`점심`/`저녁`, 인원, 메뉴·문의 단어)을 **모두** 만족하는 레코드를
+고르고(`value_source.candidates`), 레코드에 없는 필드는 거르지 않는다. 조건을 말하지 않았으면 앞의
+5건을 보여 주고 되묻게 한다. 도구의 id 인자는 후보 id만 enum으로 열린다.
+모델이 고른 id는 후보 안이어야 하고(`not_a_candidate`), 사장님 말로 하나로 정해져야 한다
+(`ambiguous_target`/`no_matching_target`, 후보의 구분 정보를 함께 돌려줘 되묻게 함). 톡톡 문의를
+id 대신 원문 일부로 보내면 코드가 그 원문을 가진 후보 하나의 id로 바꾼다. 승인 직전 재검증은 그대로다.
 
 ### PRD 방향과 아직 다른 점
 

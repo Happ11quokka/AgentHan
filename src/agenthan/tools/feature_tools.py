@@ -1,4 +1,4 @@
-"""Tools for the catalog features handled by agenthan (menu + 15 features).
+"""Tools for the catalog features handled by agenthan (menu + 16 features).
 
 Review features (review_reply, ai_review) are delegated to agenthan.agent.review.
 
@@ -300,6 +300,12 @@ def _statistics(store, args):
     return {"ok": True, "action": "read", "period": args["period"], "record": record}
 
 
+def _search_diagnosis(store, args):
+    # The diagnosis text is built by the assistant (live search, report facts); this only
+    # marks the read so the tool registry stays one feature, one tool.
+    return {"ok": True, "action": "read"}
+
+
 def _help(store, args):
     key = normalize(args["query"])
     found = [
@@ -392,6 +398,12 @@ _TOOL_LIST = [
         _keywords,
     ),
     FeatureTool(
+        "search_diagnosis",
+        "diagnose_search_visibility",
+        (),
+        _search_diagnosis,
+    ),
+    FeatureTool(
         "coupon",
         "create_coupon",
         (
@@ -477,6 +489,7 @@ READ_ONLY_TOOLS = frozenset(
         "get_naverpay_signup_guide",
         "get_settlement_summary",
         "check_pos_compatibility",
+        "diagnose_search_visibility",
         "get_statistics",
         "search_help_articles",
     }
@@ -512,14 +525,14 @@ def feature_tool_schema(feature_id: str) -> dict:
 
 
 def all_tool_schemas() -> list[dict]:
-    """All 16 agenthan tools in catalog order (review features are delegated)."""
+    """All 17 agenthan tools in catalog order (review features are delegated)."""
     return [
         feature_tool_schema(f["id"]) for f in load_features() if f["id"] not in DELEGATED_FEATURES
     ]
 
 
 def execute_feature_tool(store: DummyStore, name: str, arguments: object) -> dict:
-    """Run any of the 16 tools by name after validating its arguments."""
+    """Run any of the 17 tools by name after validating its arguments."""
     feature_id = TOOL_FEATURES.get(name)
     if feature_id is None:
         return {"ok": False, "error": "tool_not_allowed", "message": "허용되지 않은 도구입니다."}

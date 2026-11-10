@@ -152,30 +152,60 @@ def _record_words(record: dict) -> set[str]:
     return words
 
 
-def _describes(record: dict, said: str, today: date) -> bool:
-    """The owner's words fit this record (an item, people count, date or meal time)."""
-    if any(_norm(w) in _norm(said) for w in _record_words(record) if not w[0].isdigit()):
-        return True
-    if "people" in record and re.search(rf"(?<!\d){record['people']}\s*(명|분|인)", said):
-        return True
-    if "date" in record and record["date"] in _dates(said, today):
-        return True
-    if "time" in record:
-        hour = int(record["time"][:2])
-        meal = "점심" if 11 <= hour <= 14 else "저녁" if hour >= 17 else "아침"
-        if record["time"] in _times(said) or meal in said:
-            return True
-    return False
+MEALS = ("아침", "점심", "저녁")
+
+
+def _meal(time: str) -> str:
+    hour = int(time[:2])
+    return "점심" if 11 <= hour <= 14 else "저녁" if hour >= 17 else "아침"
+
+
+def candidates(records: list[dict], said: str, today: date) -> tuple[list[dict], bool]:
+    """Records the owner's words point at, and whether the owner stated any condition.
+
+    A record id said outright wins. Otherwise every condition the owner stated (date, clock
+    time or meal, people count, words of an item or message) must hold for a record that
+    has that field; a field the record lacks does not narrow it. Nothing is assumed: with no
+    condition stated, every record is returned and stated is False."""
+    said_ids = [r for r in records if r.get("id") and _norm(r["id"]) in _norm(said)]
+    if said_ids:
+        return said_ids, True
+    dates = _dates(said, today)
+    times = _times(said)
+    meals = [m for m in MEALS if m in said]
+    people = {int(n) for n in re.findall(r"(?<!\d)(\d{1,3})\s*(?:명|분|인)", said)}
+    said_norm = _norm(said)
+
+    def words(record: dict) -> set[str]:
+        return {w for w in _record_words(record) if not w[0].isdigit() and _norm(w) in said_norm}
+
+    by_words = any(words(r) for r in records)
+    stated = bool(dates or times or meals or people or by_words)
+    fits = []
+    for record in records:
+        if dates and "date" in record and record["date"] not in dates:
+            continue
+        if "time" in record and (times or meals):
+            if times and record["time"] not in times:
+                continue
+            if not times and _meal(record["time"]) not in meals:
+                continue
+        if people and "people" in record and record["people"] not in people:
+            continue
+        if by_words and not words(record):
+            continue
+        fits.append(record)
+    return fits, stated
 
 
 def _pointed(records: list[dict], value: object, said: str, today: date) -> bool:
-    """The record id was said, or it is the only record the owner's description fits."""
+    """The record id was said, or it is the only record every stated condition fits."""
     if not isinstance(value, str):
         return False
     if _norm(value) in _norm(said):
         return True
-    fits = [r for r in records if _describes(r, said, today)]
-    return len(fits) == 1 and fits[0].get("id") == value
+    fits, stated = candidates(records, said, today)
+    return stated and len(fits) == 1 and fits[0].get("id") == value
 
 
 def confirmed(
