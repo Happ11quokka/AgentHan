@@ -24,7 +24,7 @@ EMBED_MODEL = "embedding-v2"
 REJECTED = {"rejected": True}
 # Live eval only: a transient outage (connection drop, 5xx) on one of ~1,100 calls made the
 # whole run INCOMPLETE. HTTP 400 and truncation are answers, not outages, so never retried.
-LIVE_RETRIES = 3
+LIVE_RETRIES = 5
 LIVE_RETRY_DELAY = 2.0
 
 
@@ -85,7 +85,7 @@ class Live:
                 if attempt == self.retries:
                     raise
                 self.retried += 1
-                time.sleep(LIVE_RETRY_DELAY * (attempt + 1))
+                time.sleep(LIVE_RETRY_DELAY * 2**attempt)  # 2, 4, 8, 16, 32 s
         raise AssertionError("unreachable")  # pragma: no cover
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
