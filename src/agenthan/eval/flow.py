@@ -12,6 +12,7 @@ Expectation fields that are omitted are not scored. Nothing is sent to Naver.
 import json
 import tempfile
 import time
+from datetime import date
 from pathlib import Path
 
 from agenthan.agent import owner_assistant
@@ -132,9 +133,17 @@ def _arguments(value):
     return value
 
 
+# Cases assume this date (dummy reservations 2026-11-10/11); replay requests stay stable.
+EVAL_TODAY = date(2026, 11, 10)
+
+
 def _assistant(folder: str, probe: Probe):
     return owner_assistant.OwnerAssistant(
-        Path(folder) / "store.json", chat=probe.chat, embed=probe.embed, select_chat=probe.select
+        Path(folder) / "store.json",
+        chat=probe.chat,
+        embed=probe.embed,
+        select_chat=probe.select,
+        today=EVAL_TODAY,
     )
 
 

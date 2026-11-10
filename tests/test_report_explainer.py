@@ -180,7 +180,8 @@ def test_statistics_delegates_once_and_keeps_only_final_answer(tmp_path, monkeyp
     assert "이번 주 할 일" in text
     assert assistant.last_report is not None
     assert "해 볼 일" in assistant.last_report.text
-    assert assistant.pending_feature is None
+    # A statistics answer is one-shot: the held menu task stays for the next reply.
+    assert assistant.pending_feature == "menu"
     assert assistant.history == [
         {"role": "user", "content": question},
         {"role": "assistant", "content": text},

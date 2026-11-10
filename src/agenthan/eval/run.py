@@ -204,9 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         backend = Recorder(args.record, backend)
     rows, results, by_split = evaluate(case_sets, backend, repeat=args.repeat, pause=args.pause)
     with tempfile.TemporaryDirectory() as folder:
-        system = owner_assistant.SYSTEM + json.dumps(
-            DummyStore(Path(folder) / "store.json").read(), ensure_ascii=False
-        )
+        system = owner_assistant.prompt_fingerprint(DummyStore(Path(folder) / "store.json").read())
     now = datetime.now(UTC)
     summary = {
         "version": 2,

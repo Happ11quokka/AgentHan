@@ -208,3 +208,12 @@ def test_read_gives_up_after_two_bad_answers():
 
     with pytest.raises(food_photo.menu_photo.MenuPhotoError):
         food_photo.read_food_photo(CAKE.read_bytes(), call=call)
+
+
+def test_owner_named_food_is_kept_when_the_text_call_misses(tmp_path):
+    assistant = bot(tmp_path, fake=FakeV3(owner_name=""))  # The name call returns nothing.
+    out = assistant.ask_photo(CAKE.read_bytes(), "이거 메도빅이에요")
+    assert assistant.menu_drafts[0].name_ko == "메도빅" and "1. 메도빅" in out
+    other = bot(tmp_path / "x", fake=FakeV3(owner_name=""))
+    other.ask_photo(CAKE.read_bytes(), "이거 올려 줘")
+    assert other.menu_drafts[0].name_ko == "밀푀유 케이크"
