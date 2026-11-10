@@ -108,9 +108,9 @@ def test_default_replay_outputs_conditions_table_rows_and_splits(offline, tmp_pa
     assert set(summary["by_split"]) == {"null", "dev", "holdout"}
     # Fixed stratified split (tests/data/splits.json); no case is left without one.
     assert summary["by_split"]["null"]["route"]["cases"] == 0
-    assert summary["by_split"]["dev"]["route"]["cases"] == 100
-    assert summary["by_split"]["holdout"]["route"]["cases"] == 41
-    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 45
+    assert summary["by_split"]["dev"]["route"]["cases"] == 101
+    assert summary["by_split"]["holdout"]["route"]["cases"] == 40
+    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 41
     conditions = summary["conditions"]
     assert conditions["model_id"] == CHAT_MODEL
     assert conditions["backend"] == "replay" and conditions["repeat"] == 1

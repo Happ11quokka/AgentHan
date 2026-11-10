@@ -1,4 +1,4 @@
-{"id": "route-aug-none-27b29f", "text": "고향 가족한테 돈 보내야되는데 한국 은행 오늘 몇시까지 문 열어요?", "lang": "ko_simple", "expected": null, "source": "aug:gemini-4-argon-high+check:claude-sonnet-5-5-medium"}
+{"id": "route-aug-none-27b29f", "text": "고향 가족한테 돈 보내야되는데 한국 은행 오늘 몇시까지 문 열어요?", "lang": "ko_simple", "expected": null, "source": "aug:gemini-4-argon-high+check:claude-sonnet-5-5-medium", "split": "dev", "origin": "holdout-seen-20261110"}
 {"id": "route-aug-none-462843", "text": "주방 이모님이 담주에 그만두는데 8개월 일했으면 퇴직금 안줘도 되는거 맞죠?", "lang": "ko", "expected": null, "source": "aug:gemini-4-argon-high+check:claude-sonnet-5-5-medium"}
 {"id": "route-aug-none-6c54b4", "text": "비자 연장하러 출입국청 가야되는데 거기 방문예약 어디서 하는지 알려줘요", "lang": "ko", "expected": null, "source": "aug:gemini-4-argon-high+check:claude-sonnet-5-5-medium"}
 {"id": "route-aug-none-7ada11", "text": "가게에서 쓰던 헌 제빙기 당근에다 팔고 싶은데 동네 인증은 어케 하는거에요?", "lang": "ko", "expected": null, "source": "aug:gemini-4-argon-high+check:claude-sonnet-5-5-medium"}

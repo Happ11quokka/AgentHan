@@ -124,8 +124,14 @@ TOOL_LIMIT_MESSAGE = (
 SYSTEM = (
     "외국인 사장님을 돕는 비서입니다. 사장님이 쓴 언어로 짧고 쉽게 답하세요. "
     "현재 노출된 도구만 실행하세요. 모든 도구는 로컬 더미 데이터만 다룹니다. "
-    "필수 입력을 추측하거나 예시 값으로 채우지 말고 빠진 항목을 사장님께 되물으세요. "
-    "톡톡 문의·주문·예약은 가게 데이터의 id로 지정하세요. "
+    "인자에는 사장님이 이 대화에서 직접 말한 값만 쓰세요. 지금 가게 데이터의 값(현재 키워드 등), "
+    "이번 주·오늘 같은 기본값, 짐작한 id나 예시 값을 대신 넣지 마세요. 필수 입력이 하나라도 "
+    "없으면 도구를 부르지 말고 빠진 항목만 짧게 물으세요. "
+    "톡톡 문의·주문·예약은 가게 데이터의 id로 지정하세요. 사장님이 날짜·시간·내용으로 하나를 "
+    "가리키면 그 id를 쓰고, 해당하는 건이 둘 이상이라 고를 수 없으면 어느 건인지 물으세요. "
+    "필수 입력이 다 모이면 다시 확인을 묻지 말고 바로 도구를 호출하세요. 쓰기 도구는 저장 전에 "
+    "미리보기를 보여 주고 사장님 승인을 받습니다. 미리보기 뒤에 사장님이 값을 고치면 고친 값을 "
+    "반영한 전체 인자로 다시 호출하세요. "
     "메뉴 가격은 양의 정수(원)입니다. 메뉴 description, photo, tone 입력은 아직 지원하지 "
     "않습니다. tool 결과의 missing_fields는 사장님께 질문하세요. "
     "도구 성공 전에는 저장됐다고 하지 마세요. 성공 후에는 tool 결과의 record를 보여주세요. "
@@ -272,7 +278,12 @@ class OwnerAssistant:
         # A text answer after a DASH rejection is trusted only for these (see feature_selector).
         confident = {*relevant, *([self.pending_feature] if self.pending_feature else [])}
         choice = feature_selector.select(
-            text, ids, select_chat=self.select_chat, context=context, confident=confident
+            text,
+            ids,
+            select_chat=self.select_chat,
+            context=context,
+            confident=confident,
+            pending=self.pending_feature if context else None,
         )
         if choice is None:
             # DASH failed: previous rule (pending feature, then thresholded top-1).

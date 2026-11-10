@@ -49,7 +49,8 @@ class Synthetic:
 
     def select(self, messages, *, tools):
         prefix, suffix = USER_TEMPLATE.split("{text}")
-        case = self.cases.get(messages[-1]["content"].removeprefix(prefix).removesuffix(suffix))
+        body = messages[-1]["content"].removeprefix(prefix)
+        case = self.cases.get(body[: body.rfind(suffix)] if suffix in body else body)
         allowed = tools[0]["function"]["parameters"]["properties"]["feature_id"]["enum"]
         feature = (case.expected_feature or TOOL_FEATURES.get(case.expected_tool)) if case else None
         choice = feature if feature in allowed else "none"
