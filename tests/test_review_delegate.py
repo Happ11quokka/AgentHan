@@ -102,6 +102,31 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     assert SEED_PATH.read_bytes() == seed
 
 
+def test_pending_drafts_version_goes_up_on_edit(tmp_path):
+    store = DummyStore(tmp_path / "store.json")
+    session = factory(SilentHCX())(store)
+    assert session.pending_drafts == []
+    review_delegate.handle("답글 안 단 리뷰 있어?", session)
+    review_delegate.handle("안 좋은 리뷰에 답글 써줘", session)
+    assert session.pending_drafts == [{"review_id": "r03", "version": 1}]
+    review_delegate.handle("더 정중하게 고쳐줘", session)
+    assert session.pending_drafts == [{"review_id": "r03", "version": 2}]
+    # 읽기 전용 사본: 바꿔도 세션의 초안은 그대로다
+    session.pending_drafts[0]["version"] = 99
+    assert session.toolbox.drafts["r03"]["version"] == 2
+    review_delegate.handle("이대로 올려줘", session)
+    assert session.pending_drafts == [] and not session.waiting
+    assert session.toolbox.draft_versions == {"r03": 2}  # 등록 뒤에도 번호는 줄지 않는다
+
+
+def test_draft_version_stays_out_of_tool_result(tmp_path):
+    """도구 결과(모델에 돌아가는 값)는 그대로라 녹화 재생과 프롬프트가 바뀌지 않는다."""
+    session = factory(SilentHCX())(DummyStore(tmp_path / "store.json"))
+    res = session.toolbox.dispatch("draft_review_reply", {"target": "negative"}, "답글 써줘")
+    assert res["drafts"] and all("version" not in d for d in res["drafts"])
+    assert session.pending_drafts == [{"review_id": "r03", "version": 1}]
+
+
 class TagTranslator:
     """번역 대신 '<언어>' 꼬리표만 붙인다. 영어 → 한국어 입력은 고정 문장으로 바꾼다."""
 

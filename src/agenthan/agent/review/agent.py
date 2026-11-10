@@ -312,6 +312,9 @@ class ReviewToolbox:
         self.listed: list[dict] = []  # 직전 미답글 목록 (draft의 대상)
         self.listed_for: str | None = None  # 그 목록을 만든 사장님 발화
         self.drafts: dict[str, dict] = {}  # review_id → 직전 초안 (수정·등록의 대상)
+        # review_id → 마지막 초안 버전. 고칠 때마다 1씩 늘고 등록 뒤에도 줄지 않는다.
+        # 비서가 '사장님이 본 그 초안'일 때만 승인을 받도록 밖에서 읽는다 (drafts[id]["version"])
+        self.draft_versions: dict[str, int] = {}
         self.routed_call = False  # 지금 실행하는 호출을 규칙·의도 분류가 정했는지
         self.hidden_reviews: list[str] = []  # 직전에 거친 표현을 가린 리뷰 ('원문 보여줘' 대상)
         self.specs = [
@@ -628,7 +631,10 @@ class ReviewToolbox:
         )
         for d in res.get("drafts", []):
             if "reply_ko" in d:
-                self.drafts[d["review_id"]] = d
+                rid = d["review_id"]
+                self.draft_versions[rid] = self.draft_versions.get(rid, 0) + 1
+                # 사본에만 붙인다: res는 그대로 모델에 돌아가므로 도구 결과 모양을 바꾸지 않는다
+                self.drafts[rid] = {**d, "version": self.draft_versions[rid]}
         return res
 
 
