@@ -10,9 +10,9 @@ import pytest
 
 from agenthan.agent import owner_assistant as owner
 from agenthan.agent import place_matcher
-from agenthan.agent.clova_chat import CHAT_MODEL, ClovaChatError
+from agenthan.agent.clova_chat import CHAT_MODEL, ClovaChatError, ClovaRequestRejected
 from agenthan.core.embedding import ClovaEmbeddingError
-from agenthan.eval import run
+from agenthan.eval import replay, run
 from agenthan.eval.cases import Case, load_cases
 from agenthan.eval.metrics import summarize
 from agenthan.eval.replay import Live, Recorder, Replay, ReplayMiss, request_hash
@@ -353,8 +353,60 @@ def test_live_chat_preserves_usage_without_headers(monkeypatch):
     assert result["usage"] == {"total_tokens": 10}
     assert requests[0]["model"] == CHAT_MODEL and "tools" not in requests[0]
     response.choices[0].finish_reason = "length"
+    with pytest.raises(ClovaChatError, match="truncated"):
+        backend.chat([], tools=[])
+    assert len(requests) == 2 and backend.retried == 0  # Truncation is not retried.
+
+
+def test_live_retries_transient_failures_but_not_rejections(monkeypatch):
+    monkeypatch.setattr(replay, "LIVE_RETRY_DELAY", 0)
+    ok = NS(choices=[NS(finish_reason="stop", message={"role": "assistant", "content": "hi"})])
+    outcomes = [ConnectionResetError("secret"), ConnectionResetError("secret"), ok]
+
+    def create(**kwargs):
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    backend = Live()
+    backend.client = NS(chat=NS(completions=NS(create=create)))
+    assert backend.chat([], tools=[])["content"] == "hi"
+    assert backend.retried == 2
+
+    calls = []
+
+    def reject(**kwargs):
+        calls.append(kwargs)
+        raise StatusError(400)
+
+    backend.client = NS(chat=NS(completions=NS(create=reject)))
+    with pytest.raises(ClovaRequestRejected):
+        backend.chat([], tools=[])
+    assert len(calls) == 1
+
+    def down(**kwargs):
+        raise OSError("secret")
+
+    backend.client = NS(chat=NS(completions=NS(create=down)))
     with pytest.raises(ClovaChatError, match="evaluation chat failed"):
         backend.chat([], tools=[])
+
+    embeds = [ClovaEmbeddingError("x"), [0.1, 0.2]]
+
+    def embed_text(text):
+        outcome = embeds.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(replay, "embed_text", embed_text)
+    assert backend.embed("dummy") == [0.1, 0.2]
+
+
+class StatusError(Exception):
+    def __init__(self, status_code):
+        self.status_code = status_code
 
 
 def test_live_errors_are_counted_even_when_matching_falls_back():

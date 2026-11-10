@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+import time
 from pathlib import Path
 
 from agenthan.agent.clova_chat import (
@@ -21,6 +22,10 @@ from agenthan.core.llm import tool_call_options
 EMBED_MODEL = "embedding-v2"
 # Recorded in place of a response when HCX answered HTTP 400 (no body is stored).
 REJECTED = {"rejected": True}
+# Live eval only: a transient outage (connection drop, 5xx) on one of ~1,100 calls made the
+# whole run INCOMPLETE. HTTP 400 and truncation are answers, not outages, so never retried.
+LIVE_RETRIES = 3
+LIVE_RETRY_DELAY = 2.0
 
 
 def canonical(value: object) -> str:
@@ -53,6 +58,10 @@ def select_request(messages: list[dict], tools: list[dict]) -> dict:
     return chat_request(messages, tools, SELECT_MODEL, TOOL_CHOICE)
 
 
+class TransientChatError(ClovaChatError):
+    """A live eval chat failure other than HTTP 400 or truncation: worth retrying."""
+
+
 class ReplayMiss(ClovaChatError, ClovaEmbeddingError):
     """A missing recording must count as an API error, including matcher fallback."""
 
@@ -60,9 +69,24 @@ class ReplayMiss(ClovaChatError, ClovaEmbeddingError):
 class Live:
     """Same HCX chat settings as clova_chat, retaining usage discarded by chat()."""
 
-    def __init__(self, model: str = CHAT_MODEL):
+    def __init__(self, model: str = CHAT_MODEL, *, retries: int = LIVE_RETRIES):
         self.model = model
         self.client = None
+        self.retries = retries
+        self.retried = 0  # Transient failures absorbed by a retry (for the run log).
+
+    def _retry(self, call, transient: type[Exception]):
+        for attempt in range(self.retries + 1):
+            try:
+                return call()
+            except ClovaRequestRejected:
+                raise
+            except transient:
+                if attempt == self.retries:
+                    raise
+                self.retried += 1
+                time.sleep(LIVE_RETRY_DELAY * (attempt + 1))
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._create(chat_request(messages, tools, self.model))
@@ -71,7 +95,10 @@ class Live:
         return self._create(select_request(messages, tools))
 
     def _create(self, request: dict) -> dict:
-        failure, rejected = "CLOVA evaluation chat failed", False
+        return self._retry(lambda: self._create_once(request), TransientChatError)
+
+    def _create_once(self, request: dict) -> dict:
+        failure, rejected, truncated = "CLOVA evaluation chat failed", False, False
         try:
             if self.client is None:
                 self.client = make_client()
@@ -82,6 +109,7 @@ class Live:
             response = self.client.chat.completions.create(**request)
             choice = response.choices[0]
             if choice.finish_reason == "length":
+                truncated = True
                 raise ClovaChatError("CLOVA evaluation response was truncated")
             message = parse_message(choice.message)
             usage = getattr(response, "usage", None)
@@ -98,10 +126,12 @@ class Live:
             rejected = is_rejected(error)
         if rejected:
             raise ClovaRequestRejected("CLOVA evaluation chat rejected (HTTP 400)")
-        raise ClovaChatError(failure)
+        if truncated:
+            raise ClovaChatError("CLOVA evaluation response was truncated")
+        raise TransientChatError(failure)
 
     def embed(self, text: str) -> list[float]:
-        return embed_text(text)
+        return self._retry(lambda: embed_text(text), ClovaEmbeddingError)
 
 
 class Recorder:

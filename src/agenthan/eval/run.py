@@ -198,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
         }
     if not any(case_sets.values()):
         parser.error("No cases selected")
-    backend = Replay(args.replay_file, args.model) if args.backend == "replay" else Live(args.model)
+    source = Replay(args.replay_file, args.model) if args.backend == "replay" else Live(args.model)
+    backend = source
     if args.record:
         backend = Recorder(args.record, backend)
     rows, results, by_split = evaluate(case_sets, backend, repeat=args.repeat, pause=args.pause)
@@ -212,6 +213,8 @@ def main(argv: list[str] | None = None) -> int:
         "conditions": {
             "git_commit": _git("rev-parse", "HEAD"),
             "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=normal")),
+            # Transient live failures absorbed by Live's retry (0 for replay).
+            "transient_retries": getattr(source, "retried", 0),
             "date": now.isoformat(),
             "model_id": args.model,
             "embedding_model_id": EMBED_MODEL,
