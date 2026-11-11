@@ -36,6 +36,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from typing import Any
 
 import anyio
@@ -249,7 +250,6 @@ def store_clock(settings: VoiceSettings, *,
 
 def make_gate(settings: VoiceSettings) -> CallGate:
     """설정 → 문지기. 하루 예산·점검 표시는 로그 폴더에 둔다. 지난 배포의 점검 표시는 지운다."""
-    clock = store_clock(settings)
     log_dir = settings.log_dir
     gate = CallGate(
         GateSettings(
@@ -260,7 +260,9 @@ def make_gate(settings: VoiceSettings) -> CallGate:
             day_max_calls=settings.day_max_calls,
             day_max_minutes=settings.day_max_minutes,
         ),
-        today=lambda: clock.now().date().isoformat(),
+        # 하루 예산의 "오늘"은 실제 날짜다. 가게 시계는 `PHONE_NOW`로 고정하면 다시 뜰 때마다 같은
+        # 날로 돌아가서, 그 날짜로 세면 하루 상한이 누적 상한이 된다 (6단계 배포 뒤 확인)
+        today=lambda: datetime.now(settings.tz).date().isoformat(),
         budget_file=log_dir / BUDGET_FILE if log_dir is not None else None,
         drain_file=log_dir / DRAIN_FILE if log_dir is not None else None,
     )

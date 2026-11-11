@@ -302,3 +302,20 @@ def test_gate_defaults_are_loose_and_the_daily_budget_is_off() -> None:
 def test_wrong_gate_values_stop_the_server_with_the_variable_name(name, value) -> None:
     with pytest.raises(SettingsError, match=name):
         VoiceSettings.from_env({name: value}, env_file=None)
+
+
+def test_the_daily_budget_counts_real_days_not_the_fixed_store_clock(tmp_path) -> None:
+    """`PHONE_NOW`로 가게 시각을 고정해도 하루 예산의 날짜는 실제 오늘이다 (6단계 배포 뒤 확인)."""
+    import json as _json
+    from datetime import datetime
+
+    from agenthan.voice.ws import make_gate
+
+    fixed = datetime.fromisoformat("2026-01-01T16:00:00+09:00")
+    settings = VoiceSettings(nlu="fake", stt="fake", tts="fake", log_dir=tmp_path / "logs",
+                             web_dist=tmp_path / "none", turn_model="off", now=fixed,
+                             day_max_calls=5)
+    gate = make_gate(settings)
+    gate.release(gate.admit("203.0.113.9"))
+    saved = _json.loads((tmp_path / "logs" / "phone-budget.json").read_text())
+    assert saved["date"] == datetime.now(settings.tz).date().isoformat() != "2026-01-01"
