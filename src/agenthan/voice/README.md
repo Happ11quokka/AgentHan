@@ -221,3 +221,29 @@
 - 테스트 `test_store_profile.py`·`test_nlu_catalog.py`·`test_hcx_prompt.py`·`test_engine_second_store.py`(쌀국수집 한 통화 끝까지), 골드셋 `test_hcx_gold.py`(가게 메뉴 정보를 넣어 다시 녹화)
 - 복창: 꼭 고를 것의 **기본값**(쌀국수집 "보통")은 손님에게 말하지 않는다(`DialogEngine._unsaid`, `CartLine.phrase(hide)`). 주문서·사장님 카드에는 남는다(티켓 06)
 - 가게 데이터 검사(`store_check.py`, 티켓 06): 오류(꼭 고를 것을 건 메뉴 id 없음·기본값이 선택지에 없음·선택지 둘 미만)면 서버가 뜨지 않고(`StoreDataError`), 경고(꼭 고를 것 값이 옵션·옵션 대상어와 겹침·두 메뉴가 같은 이름·한 메뉴에 같은 옵션 두 번)는 로그. 새 가게를 붙이기 전에 `uv run python -m agenthan.voice.store_check <가게 JSON>`
+
+## 6단계: 운영 보강
+
+공개 주소로 불특정 다수가 걸어도 버티게 서버·배포를 보강했다. 근거는 `research/s6-production-readiness.md`. 새 방어는 모두 환경 변수로 끄거나 조정하고, 변수를 안 주면 로컬 개발(`uv run python -m agenthan.voice.server`)은 전처럼 뜬다. 숫자 상한은 `0`이면 끈다. 운영 절차·비상 대응은 `deploy/phone/README.md`.
+
+- **문지기 (`gate.py`, 라우터 `ws.py`)**: 통화를 받기 전에 순서대로 본다. 거절은 `busy`와 같은 `error` 이벤트로 가서 화면이 문구를 그대로 보여 준다
+  - Origin: `PHONE_ALLOWED_ORIGINS`(쉼표)에 없는 화면은 `accept()` 전에 닫는다(403). 비거나 `*`면 검사 안 함. compose는 기본으로 `https://$DOMAIN`을 넣는다. 가짜 휴대폰(`fake_phone`)은 접속 주소의 오리진을 붙인다
+  - 손님 주소: 소켓 상대가 `PHONE_TRUSTED_PROXIES`(CIDR 목록·`private`)일 때만 `X-Forwarded-For`를 오른쪽부터 읽는다. compose 기본 `private`(Caddy 컨테이너)
+  - IP별: 동시 `PHONE_IP_MAX_CALLS`(4) → `busy_ip`, 시간당 `PHONE_IP_CALLS_PER_HOUR`(30) → `rate_limited`. 루프백·사설 주소는 세지 않는다(로컬 개발, 프록시 설정을 빠뜨린 서버)
+  - 하루 예산: `PHONE_DAY_MAX_CALLS`·`PHONE_DAY_MAX_MINUTES`(기본 끔) → `closed_today` "오늘은 전화 주문이 마감됐어요"(`retry: false`). 가게 날짜로 세고 `<로그 폴더>/phone-budget.json`에 적어 재시작에도 남는다
+  - 점검(drain): `<로그 폴더>/DRAIN` 파일이 있으면 새 통화를 `maintenance`로 돌려보낸다. 진행 중 통화는 그대로. 서버가 뜰 때 지난 표시는 지운다
+  - 메시지 크기: `PHONE_WS_MAX_BYTES`(65536). uvicorn `ws_max_size`로 걸고, 라우터도 큰 메시지는 버린다
+- **HCX 한도 (`runtime.py`, `nlu/budget.py`)**: NLU·답변기와 연결 풀을 프로세스에 하나만 만들어 모든 통화가 쓴다(전에는 통화마다 만들고 닫지 않았다)
+  - 429·5xx는 0.4초 뒤 한 번만 다시 부른다. 요청 시간 제한 `PHONE_NLU_TIMEOUT_S`(4초)
+  - 그래도 실패하거나 분당 한도를 넘으면 그 턴은 규칙 NLU(`FakeNlu`)가 맡는다(`PHONE_NLU_FALLBACK=rules` 기본, `off`면 전처럼 되묻기). 통화는 끊기지 않는다
+  - 분당 버킷 `PHONE_HCX_RPM`·`PHONE_HCX_TPM`(기본 끔, 토큰은 입력 + `maxTokens`로 센다). 반 넘게 쓰면 미리 해석(prefetch)을 건너뛴다(턴 기록 `nlu_prefetch.skipped`)
+  - `PHONE_NLU_MAX_TOKENS`: 요청 `maxTokens`. 기본은 그대로(튜닝 512)다. 정답셋 녹화본이 요청 본문으로 맞춰져 있어서 코드 기본값은 안 바꾸고 서버 `.env`에서만 줄인다
+  - 사용량 기록 `<로그 폴더>/hcx-YYYYMMDD.jsonl`: 호출마다 `{at, kind(nlu·answer), status, fallback, ms, prompt, completion, max_tokens, left_requests, left_tokens}`. 손님 말은 없다. `completion` 최댓값을 보고 `PHONE_NLU_MAX_TOKENS`를 정한다
+- **TTS·STT 일시 오류**: CLOVA Voice 429·5xx·VS26·VS99·시간 초과는 0.3~0.8초 뒤 한 번 다시(`PHONE_TTS_RETRIES` 1). 그래도 안 되면 그 문장 하나는 무음으로 넘기고 자막만 보낸다(`PHONE_TTS_FALLBACK=caption`). 연달아 실패하면 전처럼 안내 후 종료. 합성 결과를 저장·재사용하는 캐시는 없다(약관). TTS 연결 풀도 프로세스에 하나(유휴 60초 유지). CLOVA Speech 첫 연결의 자리 없음·`UNAVAILABLE`은 0.5초 뒤 한 번 다시 건다
+- **비밀·개인정보**: 접속 로그는 Caddy가 `key`를 가리고 남기고(`Caddyfile`), uvicorn 접속 로그는 끈다. 손님 말이 든 `phone-*`·`stt-*`·`hcx-*` JSONL과 녹음은 `PHONE_LOG_KEEP_DAYS`(14일) 뒤 지운다(`housekeeping.py`, 시작 때 + 1시간마다. **로컬 `logs/`도 같은 규칙**이니 오래 둘 기록은 다른 폴더로 옮기거나 `0`으로 끈다). 통화 화면 아래에 AI·개인정보 안내 한 줄
+- **AI 고지**: 첫 인사가 "네, ○○ AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?"(`dialog/templates.py` `greeting`)
+- **사장님 허브 상한 (`owner/hub.py` `HubLimits`)**: 끝난 통화 카드 최근 50개·24시간, 주문 카드 최근 200개·72시간(`PHONE_OWNER_MAX_CALL_CARDS`·`_CALL_CARD_HOURS`·`_MAX_ORDER_CARDS`·`_ORDER_CARD_HOURS`). 지워진 통화의 문자·질문도 같이 지운다
+- **배포 안전 (`server.py`)**: `GET /healthz` → `{ok, active, draining, version, engines}`(사장님 토큰 `?key=`를 주면 하루 예산·디스크·스레드·HCX 분당 사용량까지). SIGTERM이 오면 통화 중인 화면에 "서버 점검으로 통화를 끝낼게요"를 보내고 1초 뒤 종료로 넘긴다(uvicorn은 열린 WS를 1012로 닫는다. 화면은 1012도 점검 안내로 보여 준다). 디스크 사용률이 `PHONE_DISK_WARN_PCT`(80)를 넘으면 경고 로그
+- **주문 가드**: 한 통화 총 수량·총액 상한(`StoreConfig.max_order_qty` 100 · `max_order_total` 1,000,000원, 가게 JSON `phone` 묶음이나 `PHONE_MAX_ORDER_QTY`·`PHONE_MAX_ORDER_TOTAL`). 넘는 말은 담지 않고 "전화로는 한 번에 모두 합쳐 N개까지만 받을 수 있어요"라고 한다(통화는 이어진다)
+- 안 한 것: 봇 차단(Turnstile·체험 코드), 답변기 금지 말 검사, 욕설 처리, 바깥 감시 알림. `research/s6-production-readiness.md` 2·12·13·11번
+
