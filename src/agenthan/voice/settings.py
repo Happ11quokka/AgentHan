@@ -40,6 +40,18 @@
 | `PHONE_ANSWER_MODEL` | 답변기 모델 (`nlu/hcx_answer.py`가 읽는다) | `HCX-005` |
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
 
+6단계 운영 보강 (문지기 `gate.py`). 숫자 상한은 `0`이면 끈다.
+
+| 변수 | 값 | 기본 |
+|---|---|---|
+| `PHONE_ALLOWED_ORIGINS` | 통화를 걸 수 있는 화면 오리진(쉼표). 비면 검사 안 함 | 없음 |
+| `PHONE_TRUSTED_PROXIES` | 믿는 프록시 CIDR(쉼표)·`private`. `X-Forwarded-For`를 읽는다 | 없음 |
+| `PHONE_IP_MAX_CALLS` | 주소 하나의 동시 통화 상한 (사설·루프백 주소는 안 셈) | `4` |
+| `PHONE_IP_CALLS_PER_HOUR` | 주소 하나가 한 시간에 걸 수 있는 통화 수 | `30` |
+| `PHONE_DAY_MAX_CALLS` | 하루 통화 수 상한. 넘으면 `closed_today` | `0`(끔) |
+| `PHONE_DAY_MAX_MINUTES` | 하루 통화 분 합계 상한 | `0`(끔) |
+| `PHONE_WS_MAX_BYTES` | WS 메시지 하나의 최대 크기(바이트) | `65536` |
+
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
 """
@@ -67,6 +79,7 @@ from agenthan.voice.call.defaults import (
     WAIT_REQUEST_S,
 )
 from agenthan.voice.call.vad import VadSettings
+from agenthan.voice.gate import parse_networks
 from agenthan.voice.store_config import KST
 
 if TYPE_CHECKING:
@@ -124,6 +137,14 @@ class VoiceSettings:
     owner_wait_s: float = OWNER_WAIT_S
     ask_owner: bool = False  # 통화 중 사장님께 바로 묻기 (5단계 티켓 09). 기본 끔
     answer: bool = True  # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11)
+    # ---- 6단계 운영 보강: 문지기 (`gate.py`). 숫자 상한은 0이면 끈다
+    allowed_origins: tuple[str, ...] = ()  # 비면 Origin을 검사하지 않는다
+    trusted_proxies: tuple[str, ...] = ()  # CIDR 또는 "private". 비면 소켓 상대 주소를 쓴다
+    ip_max_calls: int = 4  # 주소 하나의 동시 통화 (발표장 NAT를 생각해 느슨하게)
+    ip_calls_per_hour: int = 30
+    day_max_calls: int = 0  # 하루 예산. 0이면 세지 않는다
+    day_max_minutes: float = 0.0
+    ws_max_bytes: int = 65_536  # WS 메시지 하나 (OWASP 권고 64KB. 오디오 프레임은 3,200바이트)
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -138,6 +159,16 @@ class VoiceSettings:
             )
         if self.now is not None and self.now.tzinfo is None:
             raise SettingsError("PHONE_NOW에 시간대를 붙여 주세요. 예: 2026-11-08T16:00:00+09:00")
+        for origin in self.allowed_origins:
+            if not origin.lower().startswith(("http://", "https://")):
+                raise SettingsError(
+                    "PHONE_ALLOWED_ORIGINS는 https://도메인 모양이어야 해요 (쉼표로 여러 개)")
+        try:
+            parse_networks(self.trusted_proxies)
+        except ValueError as err:
+            raise SettingsError(
+                "PHONE_TRUSTED_PROXIES는 CIDR(예: 172.16.0.0/12) 목록이나 private이어야 해요"
+            ) from err
 
     def session_settings(self) -> SessionSettings:
         """통화 세션 설정. 같은 이름의 값만 옮기고 나머지는 세션 기본값이다 (리뷰 S12)."""
@@ -226,6 +257,16 @@ class VoiceSettings:
                                  OWNER_WAIT_S),
             ask_owner=get("PHONE_ASK_OWNER", "off") == "on",
             answer=get("PHONE_ANSWER", "on") == "on",
+            allowed_origins=_names(get("PHONE_ALLOWED_ORIGINS", "")),
+            trusted_proxies=_names(get("PHONE_TRUSTED_PROXIES", "")),
+            ip_max_calls=_count("PHONE_IP_MAX_CALLS", get("PHONE_IP_MAX_CALLS", ""), 4),
+            ip_calls_per_hour=_count("PHONE_IP_CALLS_PER_HOUR",
+                                     get("PHONE_IP_CALLS_PER_HOUR", ""), 30),
+            day_max_calls=_count("PHONE_DAY_MAX_CALLS", get("PHONE_DAY_MAX_CALLS", ""), 0),
+            day_max_minutes=_limit("PHONE_DAY_MAX_MINUTES", get("PHONE_DAY_MAX_MINUTES", ""),
+                                   0.0),
+            ws_max_bytes=int(_number("PHONE_WS_MAX_BYTES", get("PHONE_WS_MAX_BYTES", ""),
+                                     65_536, minimum=4_096)),
             env=env,
         )
 
@@ -289,6 +330,31 @@ def _number(name: str, value: str, default: float, *, minimum: float = 0.0) -> f
         least = f"{minimum:g} 이상" if minimum else "0보다 큰"
         raise SettingsError(f"{name}는 {least} 숫자여야 해요: {value!r}")
     return number
+
+
+def _limit(name: str, value: str, default: float) -> float:
+    """0 이상인 수. 0은 "상한 없음(끔)"이다."""
+    if not value:
+        return float(default)
+    try:
+        number = float(value)
+    except ValueError:
+        number = math.nan
+    if not (math.isfinite(number) and number >= 0):
+        raise SettingsError(f"{name}는 0 이상 숫자여야 해요 (0이면 끔): {value!r}")
+    return number
+
+
+def _count(name: str, value: str, default: int) -> int:
+    """0 이상인 정수. 0은 "상한 없음(끔)"이다."""
+    number = _limit(name, value, default)
+    if number != int(number):
+        raise SettingsError(f"{name}는 0 이상 정수여야 해요 (0이면 끔): {value!r}")
+    return int(number)
+
+
+def _names(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
 def _fraction(name: str, value: str, default: float) -> float:

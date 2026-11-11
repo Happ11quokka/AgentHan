@@ -9,6 +9,9 @@
   끊김) 세션을 닫고(STT 닫기·JSONL 쓰기) 소켓을 닫는다
 - 동시 통화가 `max_calls`를 넘으면 세션 없이 `error{code: "busy"}`를 보내고 닫는다 (리뷰 17번).
   통화 길이(`max_call_s`)와 `call.start` 대기(10초)는 세션이 지킨다
+- 문지기(`gate.py`, 6단계): Origin이 허용 목록에 없으면 `accept()` 전에 닫고(403), 점검 중·IP별
+  상한·하루 예산에 걸리면 `busy`와 같은 길로 `error`(`maintenance`·`busy_ip`·`rate_limited`·
+  `closed_today`)를 보낸다. `PHONE_WS_MAX_BYTES`보다 큰 메시지는 버린다
 - 턴 모델(Smart Turn, 3단계 티켓 03)은 라우터를 만들 때 한 번 연다(체크섬 확인). 없거나 틀리면
   경고를 남기고 끝말 규칙만으로 뜬다. 모델 세션 하나와 전용 2스레드 풀(`phone-turn-*`)을 모든
   통화가 같이 쓴다
@@ -51,6 +54,7 @@ from agenthan.voice.call.ports import (
 )
 from agenthan.voice.call.session import CallSession, turn_pool
 from agenthan.voice.dialog.knowledge import KnowledgeReader
+from agenthan.voice.gate import BUDGET_FILE, DRAIN_FILE, CallGate, GateSettings, client_ip
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smart_turn import load_turn_model
 from agenthan.voice.store_config import StoreConfig
@@ -103,6 +107,7 @@ def phone_router(
     turn_model: TurnModel | None = None,
     owner: OwnerChannel | None = None,
     knowledge: KnowledgeReader | None = None,
+    gate: CallGate | None = None,
 ) -> APIRouter:
     """`settings.stt`·`tts`가 `clova`인데 어댑터가 없으면 여기서 `AdapterMissing`.
 
@@ -110,6 +115,7 @@ def phone_router(
     `turn_model`을 주면 설정(`PHONE_TURN_MODEL`) 대신 그 턴 모델을 쓴다.
     `knowledge`는 사장님 보충 지식 읽기 포트(4단계 티켓 13, 보통 `OwnerHub.knowledge`). `owner`가
     있는 통화만 쓴다.
+    `gate`를 주면(서버가 `/healthz`와 같이 쓸 때) 그 문지기를, 없으면 설정으로 하나 만든다.
     """
     if stt_factory is None:
         # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
@@ -129,22 +135,29 @@ def phone_router(
     session_settings = settings.session_settings()
     log.info("말 끝 판정: %s", "끝말 규칙 + Smart Turn" if turn_model else "끝말 규칙만")
     router = APIRouter()
-    active = 0  # 지금 열린 통화 수 (이벤트 루프 하나라 잠금이 필요 없다)
+    if gate is None:
+        gate = make_gate(settings)
+    door = gate
 
     @router.websocket(WS_PATH)
     async def phone_ws(ws: WebSocket) -> None:
-        nonlocal active
-        await ws.accept()
-        if active >= settings.max_calls:
-            log.info("동시 통화 %d개 상한이라 거절", settings.max_calls)
-            await _refuse(ws, PortError("동시 통화 상한", code="busy",
-                                        customer="지금 통화가 많아요. " + CUSTOMER_RETRY))
+        if not door.origin_allowed(ws.headers.get("origin")):
+            log.info("허용하지 않은 Origin이라 연결을 받지 않음")
+            await ws.close(code=1008)  # accept 전이라 브라우저는 403을 본다
             return
-        active += 1
+        await ws.accept()
+        peer = ws.client.host if ws.client else None
+        ip = client_ip(peer, ws.headers.get("x-forwarded-for"), settings.trusted_proxies)
+        admission = door.admit(ip)  # 지금 열린 통화 수도 여기서 센다 (이벤트 루프 하나라 잠금 없음)
+        if (refusal := admission.refusal) is not None:
+            await _refuse(ws, PortError(f"문지기 거절 {refusal.code}", code=refusal.code,
+                                        retry=refusal.retry, customer=refusal.message),
+                          quiet=True)
+            return
         try:
             await _serve(ws)
         finally:
-            active -= 1
+            door.release(admission)
 
     async def _serve(ws: WebSocket) -> None:
         tts: Tts | None = None
@@ -174,7 +187,7 @@ def phone_router(
             turn_executor=turn_pool() if turn_model is not None else None,
         )
         await session.open()
-        reader = asyncio.create_task(_read(ws, session))
+        reader = asyncio.create_task(_read(ws, session, settings.ws_max_bytes))
         done = asyncio.create_task(session.wait_done())
         try:
             await asyncio.wait({reader, done}, return_when=asyncio.FIRST_COMPLETED)
@@ -202,7 +215,32 @@ def store_clock(settings: VoiceSettings, *,
     return SystemClock(settings.tz)
 
 
-async def _read(ws: WebSocket, session: CallSession) -> None:
+def make_gate(settings: VoiceSettings) -> CallGate:
+    """설정 → 문지기. 하루 예산·점검 표시는 로그 폴더에 둔다. 지난 배포의 점검 표시는 지운다."""
+    clock = store_clock(settings)
+    log_dir = settings.log_dir
+    gate = CallGate(
+        GateSettings(
+            allowed_origins=settings.allowed_origins,
+            max_calls=settings.max_calls,
+            ip_max_calls=settings.ip_max_calls,
+            ip_calls_per_hour=settings.ip_calls_per_hour,
+            day_max_calls=settings.day_max_calls,
+            day_max_minutes=settings.day_max_minutes,
+        ),
+        today=lambda: clock.now().date().isoformat(),
+        budget_file=log_dir / BUDGET_FILE if log_dir is not None else None,
+        drain_file=log_dir / DRAIN_FILE if log_dir is not None else None,
+    )
+    gate.clear_stale_drain()
+    return gate
+
+
+def _oversized(session: CallSession, size: int) -> None:
+    log.warning("너무 큰 메시지를 버림 (%s, %d바이트)", session.call_id, size)
+
+
+async def _read(ws: WebSocket, session: CallSession, max_bytes: int) -> None:
     """읽기 작업 하나. 손님이 끊으면 끝난다. 세션 쪽 호출은 STT·엔진을 기다리지 않는다."""
     try:
         while not session.done:
@@ -210,8 +248,14 @@ async def _read(ws: WebSocket, session: CallSession) -> None:
             if message["type"] == "websocket.disconnect":
                 return
             if (data := message.get("bytes")) is not None:
+                if len(data) > max_bytes:
+                    _oversized(session, len(data))
+                    continue
                 await session.feed_audio(data)
             elif (text := message.get("text")) is not None:
+                if len(text) > max_bytes:
+                    _oversized(session, len(text))
+                    continue
                 event = _parse(text)
                 if event is not None:
                     await session.feed_event(event)
@@ -233,10 +277,10 @@ def _parse(text: str) -> dict[str, Any] | None:
     return event
 
 
-async def _refuse(ws: WebSocket, err: Exception) -> None:
+async def _refuse(ws: WebSocket, err: Exception, *, quiet: bool = False) -> None:
     if isinstance(err, PortError):
         code, retry, message = err.code, err.retry, err.customer_message
-        if code != "busy":
+        if not quiet:  # 문지기 거절은 문지기가 한 줄 남겼다
             log.warning("통화 포트를 만들지 못함 %s: %s", code, err)  # 상세는 서버 로그에만
     else:
         log.exception("통화 포트를 만들지 못함", exc_info=err)

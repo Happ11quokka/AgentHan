@@ -100,8 +100,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--reload", action="store_true", help="코드가 바뀌면 다시 띄운다")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    settings = VoiceSettings.from_env()
+    # 접속 로그는 끈다: 사장님 토큰이 쿼리(`?key=`)로 와서 줄마다 남는다. 접속 기록은 Caddy가
+    # 토큰을 가리고 남긴다(6단계). WS 메시지는 64KB까지(uvicorn 기본은 16MB)
     uvicorn.run("agenthan.voice.server:create_app", factory=True, host=args.host,
-                port=args.port, reload=args.reload)
+                port=args.port, reload=args.reload, ws_max_size=settings.ws_max_bytes,
+                access_log=False)
 
 
 if __name__ == "__main__":
