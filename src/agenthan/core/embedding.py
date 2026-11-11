@@ -12,6 +12,8 @@ import uuid
 ENDPOINT = "https://clovastudio.stream.ntruss.com/v1/api-tools/embedding/v2"
 EMBEDDING_DIMENSIONS = 1024
 MAX_RETRIES = 2
+# Truncated bodies and dropped connections are transient and frequent (~10% of calls).
+TRANSPORT_RETRIES = 4
 REQUEST_TIMEOUT = 15
 RETRY_DELAY = 0.25
 
@@ -41,7 +43,7 @@ def _retryable(code: int) -> bool:
 
 
 def embed_text(text: str) -> list[float]:
-    """Embed text. Retry HTTP/API 429 and 5xx at most twice.
+    """Embed text. Retry HTTP/API 429 and 5xx at most twice, truncated reads up to 4 times.
 
     Server bodies and underlying exception messages are deliberately never exposed:
     they may contain credentials. The key is read only from the environment.
@@ -51,7 +53,7 @@ def embed_text(text: str) -> list[float]:
         raise ClovaEmbeddingError("CLOVASTUDIO_API_KEY is not configured")
     if not isinstance(text, str) or not text.strip():
         raise ClovaEmbeddingError("Embedding text must not be empty")
-    for attempt in range(MAX_RETRIES + 1):
+    for attempt in range(TRANSPORT_RETRIES + 1):
         request = urllib.request.Request(
             ENDPOINT,
             data=json.dumps({"text": text}, ensure_ascii=False).encode("utf-8"),
@@ -62,7 +64,7 @@ def embed_text(text: str) -> list[float]:
             },
             method="POST",
         )
-        retry = False
+        retry, limit = False, MAX_RETRIES
         failure = "CLOVA embedding request failed"
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
@@ -76,6 +78,10 @@ def embed_text(text: str) -> list[float]:
             retry = _retryable(error.code)
             error.close()
             failure = "CLOVA embedding HTTP request failed"
+        except (http.client.IncompleteRead, ConnectionResetError):
+            # Truncated body or dropped connection (seen ~10% of calls): transient.
+            retry, limit = True, TRANSPORT_RETRIES
+            failure = "CLOVA embedding response or connection is invalid"
         except (
             OSError,
             http.client.HTTPException,
@@ -86,7 +92,7 @@ def embed_text(text: str) -> list[float]:
         ):
             # Never propagate a body, URL, request, or exception from urllib.
             failure = "CLOVA embedding response or connection is invalid"
-        if retry and attempt < MAX_RETRIES:
+        if retry and attempt < limit:
             time.sleep(RETRY_DELAY * (attempt + 1))
             continue
         # Raised outside an except block so sensitive exceptions have no context.

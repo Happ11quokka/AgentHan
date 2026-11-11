@@ -3,7 +3,8 @@ import json
 import pytest
 
 from agenthan.agent import place_matcher as matcher
-from agenthan.eval import tool_selection as ev
+from agenthan.eval.cases import load_cases
+from agenthan.eval.run import FLOW_CASES
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore
 from agenthan.tools.feature_tools import (
     DELEGATED_FEATURES,
@@ -30,14 +31,14 @@ def store(tmp_path):
 
 
 VALID = {
-    "update_business_info": {"field": "phone", "value": "02-123-4567"},
+    "update_business_info": {"field": "phone", "value": "02-000-0001"},
     "update_business_hours": {
         "day": "fri",
         "closed": False,
         "open_time": "10:00",
         "close_time": "23:00",
     },
-    "save_talktalk_reply": {"inquiry": "talk-1", "reply_text": "2대 주차 가능해요."},
+    "save_talktalk_reply": {"inquiry": "talk-1", "reply_text": "메도빅 홀케이크는 예약 가능해요."},
     "update_order_status": {"order_id": "order-1", "status": "accepted"},
     "update_reservation_status": {"reservation_id": "resv-2", "status": "cancelled"},
     "list_call_history": {"missed_only": True},
@@ -54,6 +55,7 @@ VALID = {
     "set_onsite_payment": {"enabled": True},
     "get_settlement_summary": {"period": "this_month"},
     "check_pos_compatibility": {"pos_name": "연습POS 플러스"},
+    "diagnose_search_visibility": {},
     "get_statistics": {"period": "7d"},
     "search_help_articles": {"query": "예약 교육"},
 }
@@ -62,7 +64,7 @@ VALID = {
 def test_every_catalog_feature_has_one_tool():
     schemas = all_tool_schemas()
     names = [s["function"]["name"] for s in schemas]
-    assert len(names) == len(set(names)) == 16
+    assert len(names) == len(set(names)) == 17
     features = {f["id"] for f in matcher.load_features()}
     assert {TOOL_FEATURES[n] for n in names} == features - DELEGATED_FEATURES
     assert DELEGATED_FEATURES < features  # review features go to agenthan.agent.review
@@ -128,7 +130,7 @@ def test_unknown_tool_and_fields(store):
 
 def test_lookup_by_quote_and_not_found(store):
     ok = execute_feature_tool(
-        store, "save_talktalk_reply", {"inquiry": "단체 손님", "reply_text": "네"}
+        store, "save_talktalk_reply", {"inquiry": "단체 주문", "reply_text": "네"}
     )
     assert ok["record"]["id"] == "talk-2" and ok["record"]["status"] == "saved_not_sent"
     missing = execute_feature_tool(
@@ -155,72 +157,11 @@ def test_menu_tool_delegates_and_review_tools_are_gone(store):
 
 
 def test_eval_dataset_covers_every_tool():
-    cases = ev.load_cases(ev.DEFAULT_CASES)
-    assert len({c["id"] for c in cases}) == len(cases)
-    full = [c for c in cases if c["kind"] == "full"]
-    assert {c["expected_tool"] for c in full} == set(TOOL_FEATURES)
+    cases = [c for c in load_cases(FLOW_CASES) if c.source == "m0"]
+    full = [c for c in cases if c.kind == "full"]
+    assert {c.expected_tool for c in full} == set(TOOL_FEATURES)
     for name in TOOL_FEATURES:
-        langs = {c["lang"] for c in full if c["expected_tool"] == name}
+        langs = {c.lang for c in full if c.expected_tool == name}
         assert langs == {"ko", "en", "ko_simple"}
-    assert all(c["expected_tool"] is None for c in cases if c["kind"] != "full")
-    assert all(c["near_tool"] in TOOL_FEATURES for c in cases if c["kind"] == "missing")
-
-
-def fake_call(name, arguments):
-    return {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {"id": "c1", "type": "function", "function": {"name": name, "arguments": arguments}}
-        ],
-    }
-
-
-def test_eval_metrics_with_fake_chat():
-    cases = [
-        {"id": "a", "kind": "full", "lang": "ko", "text": "x", "expected_tool": "get_statistics"},
-        {"id": "b", "kind": "full", "lang": "en", "text": "y", "expected_tool": "get_statistics"},
-        {"id": "c", "kind": "full", "lang": "en", "text": "z", "expected_tool": "upsert_menu"},
-        {"id": "d", "kind": "unrelated", "lang": "ko", "text": "w", "expected_tool": None},
-        {
-            "id": "e",
-            "kind": "missing",
-            "lang": "ko",
-            "text": "v",
-            "expected_tool": None,
-            "near_tool": "upsert_menu",
-        },
-    ]
-    replies = iter(
-        [
-            fake_call("get_statistics", {"period": "7d"}),
-            fake_call("get_statistics", {"period": "1y"}),
-            fake_call("get_settlement_summary", {"period": "this_week"}),
-            {"role": "assistant", "content": "도와드릴 수 없어요."},
-            fake_call("upsert_menu", {}),
-        ]
-    )
-    seen = []
-
-    def chat(messages, *, tools):
-        seen.append((len(tools), messages[-1]["content"]))
-        return next(replies)
-
-    rows, summary = ev.evaluate(cases, chat)
-    assert seen[0][0] == 16
-    assert summary["selection_accuracy"] == round(2 / 3, 3)
-    assert summary["wrong_tool"] == 1
-    assert summary["args_valid_rate"] == 0.5
-    assert summary["false_call_rate"] == 0.5
-    assert summary["missing_called_near_tool"] == 1
-    assert summary["per_tool"]["get_statistics"] == {"total": 2, "correct": 2}
-    assert not SEED_PATH.with_name("store.json").exists()
-
-
-def test_eval_records_api_errors():
-    def chat(*args, **kwargs):
-        raise ev.ClovaChatError("CLOVA 대화 요청에 실패했습니다.")
-
-    case = {"id": "a", "kind": "full", "lang": "ko", "text": "x", "expected_tool": "get_statistics"}
-    rows, summary = ev.evaluate([case], chat, repeat=2)
-    assert summary["api_errors"] == 2 and summary["selection_accuracy"] is None
+    assert all(c.expected_tool is None for c in cases if c.kind != "full")
+    assert all(c.near_tool in TOOL_FEATURES for c in cases if c.kind == "missing")

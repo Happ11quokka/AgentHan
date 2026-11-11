@@ -128,7 +128,7 @@
     "name_ko": "네이버 톡톡",
     "name_en": "Naver TalkTalk",
     "stage": "매일 운영",
-    "summary_ko": "손님과 채팅으로 이야기해요. 손님 질문에 답하고 가게 이용을 안내할 수 있어요.",
+    "summary_ko": "손님과 채팅으로 이야기해요. 톡톡으로 들어온 손님 문의에 답장하고 가게 이용을 안내할 수 있어요.",
     "keywords_ko": [
       "톡톡",
       "채팅",
@@ -235,23 +235,44 @@
     "stage": "손님 끌기",
     "summary_ko": "손님이 검색할 때 가게를 찾기 쉽도록 정보를 살펴봐요. 가게를 잘 나타내는 대표키워드를 설정해요.",
     "keywords_ko": [
-      "검색",
-      "노출",
       "대표키워드",
       "검색어",
       "키워드",
+      "키워드 설정",
+      "키워드 바꿔"
+    ],
+    "keywords_en": [
+      "keyword",
+      "keywords",
+      "representative keywords",
+      "set keywords"
+    ],
+    "input_supported": false
+  },
+  {
+    "id": "search_diagnosis",
+    "name_ko": "검색 노출 진단",
+    "name_en": "Search visibility check",
+    "stage": "손님 끌기",
+    "summary_ko": "손님이 우리 가게를 검색하면 몇 위로 나오는지, 어떤 검색어에서 안 나오는지 확인해요. 보기만 하고 바꾸지는 않아요.",
+    "keywords_ko": [
+      "검색하면",
+      "검색 노출",
+      "노출",
+      "검색 순위",
+      "순위",
       "안 보여",
       "안 나와",
+      "잘 안 나와",
       "찾기"
     ],
     "keywords_en": [
-      "search",
-      "visibility",
-      "keyword",
-      "keywords",
       "search results",
+      "search ranking",
+      "visibility",
       "discoverability",
-      "find my shop"
+      "find my shop",
+      "does not appear"
     ],
     "input_supported": false
   },
@@ -356,7 +377,7 @@
     "name_ko": "AI 리뷰 관리",
     "name_en": "AI review management",
     "stage": "평판 관리",
-    "summary_ko": "AI가 손님 리뷰를 분석하고 답글 작성을 도와줘요. 제공 대상과 이용 조건은 스마트플레이스에서 확인해요.",
+    "summary_ko": "AI가 손님 리뷰를 모아 분석·요약하고 답글 작성도 도와줘요. 손님이 칭찬하거나 불만인 점과 메뉴별 반응을 알려 주고, 리뷰 보고를 받을 때와 알림을 설정해요.",
     "keywords_ko": [
       "AI",
       "인공지능",
@@ -489,7 +510,7 @@
     "name_ko": "통계·리포트",
     "name_en": "Statistics and reports",
     "stage": "성과 확인",
-    "summary_ko": "가게를 본 사람 수와 손님의 관심을 숫자로 확인해요. 통계와 리포트를 보고 운영에 참고해요.",
+    "summary_ko": "가게를 본 사람 수, 검색·유입 경로, 손님의 관심을 숫자로 확인해요. 플레이스 통계와 리포트를 보고 운영에 참고해요. 손님 리뷰 내용 분석은 AI 리뷰 관리에서 해요.",
     "keywords_ko": [
       "통계",
       "리포트",
@@ -520,7 +541,7 @@
     "name_ko": "비즈니스 스쿨·고객센터",
     "name_en": "Business school and help center",
     "stage": "학습·지원",
-    "summary_ko": "가게 운영을 배우는 교육을 찾아요. 서비스 이용 중 어려운 점은 도움말과 고객센터에서 확인해요.",
+    "summary_ko": "가게 운영과 스마트플레이스 기능 사용법을 배우는 교육을 찾아요. 서비스 이용 중 어려운 점은 도움말과 고객센터에서 확인해요.",
     "keywords_ko": [
       "비즈니스 스쿨",
       "비즈니스스쿨",

@@ -16,7 +16,7 @@ import pytest
 from agenthan.agent import place_matcher as matcher
 from agenthan.core import embedding as clova
 
-CASES_PATH = Path(__file__).parent / "data" / "place_request_cases.jsonl"
+CASES_PATH = Path(__file__).parent / "data" / "eval" / "route.jsonl"
 SUPPORTED = {"menu", "review_reply"}
 FEATURE_IDS = {
     "business_info",
@@ -27,6 +27,7 @@ FEATURE_IDS = {
     "reservation",
     "smartcall",
     "search_keywords",
+    "search_diagnosis",
     "coupon",
     "new_opening",
     "review_reply",
@@ -41,7 +42,9 @@ FEATURE_IDS = {
 
 
 def cases():
-    return [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
+    """The 64 M0 feature-matching sentences (source m0) in the shared route file."""
+    rows = [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
+    return [row for row in rows if row["source"] == "m0"]
 
 
 def vector(first=1.0, second=0.0):
@@ -112,7 +115,7 @@ def test_dataset():
     assert all(expected_counts[feature] >= 5 for feature in SUPPORTED)
     assert len({row["text"] for row in data}) == len(data)
     for row in data:
-        assert set(row) == {"text", "lang", "expected"}
+        assert set(row) == {"id", "split", "source", "text", "lang", "expected"}
         assert isinstance(row["text"], str) and row["text"].strip()
         assert row["expected"] is None or row["expected"] in FEATURE_IDS
 
@@ -291,7 +294,7 @@ def test_build_index_is_atomic_and_uses_catalog(fake_index, monkeypatch):
     monkeypatch.setattr(matcher, "embed_text", embed)
     matcher.build_index()
     assert texts == [matcher.feature_embedding_text(f) for f in matcher.load_features()]
-    assert len(matcher._load_index(matcher.load_features())) == 18
+    assert len(matcher._load_index(matcher.load_features())) == 19
     original = matcher.INDEX_PATH.read_bytes()
 
     def fail(_):
@@ -359,6 +362,23 @@ def test_client_retry_policy(monkeypatch, code, api_status):
     assert sleeps == ([0.25, 0.5] if retryable else [])
 
 
+@pytest.mark.parametrize("error", [http.client.IncompleteRead(b""), ConnectionResetError()])
+def test_truncated_read_is_retried_until_success(monkeypatch, error):
+    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-test-key")
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(request)
+        if len(calls) < 5:
+            raise error
+        return response()
+
+    monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
+    assert clova.embed_text("hello") == vector()
+    assert len(calls) == 5
+
+
 def test_client_retry_can_succeed(monkeypatch):
     monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-test-key")
     calls = []
@@ -400,9 +420,11 @@ def test_client_errors_never_expose_key(monkeypatch, capsys, failure):
         return response(code=secret)
 
     monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
     with pytest.raises(clova.ClovaEmbeddingError) as error:
         clova.embed_text("hello")
-    assert len(calls) == 1
+    # Truncated reads are retried; other failures are not.
+    assert len(calls) == (clova.TRANSPORT_RETRIES + 1 if failure == "http_protocol" else 1)
     assert secret not in str(error.value)
     assert secret not in "".join(traceback.format_exception(error.value))
     assert secret not in repr(capsys.readouterr())

@@ -1,14 +1,15 @@
-"""HyperCLOVA X(CLOVA Studio) 백엔드 — OpenAI 호환 API 사용.
+"""HyperCLOVA X(CLOVA Studio) 백엔드 — 네이티브 REST v3 (agent.review.clova, 팀 sdk.md 기준).
 
 설계
 - 리뷰를 먼저 로컬 분절기로 절(clause) 단위로 자르고 번호를 붙여 보낸다.
   LLM은 "몇 번 절이 어떤 특징인지"만 답하므로, 굵게 표시 구간의 오프셋은 항상 정확하다
   (LLM이 문장을 베껴 쓰다 틀리는 문제를 피함). 이웃한 같은 특징 절은 합친다.
-- JSON 형식 지정(response_format)은 HCX-007만 받는다 (HCX-005·DASH는 400). 어느 모델이든
-  응답을 pydantic으로 검증하고 실패하면 한 번 재시도한다. 모델별 옵션은 request_options() 참고.
+- JSON 스키마 지정(responseFormat)은 HCX-007만 받는다 (HCX-005는 400, 2026-11-08 실측).
+  어느 모델이든 응답을 pydantic으로 검증하고 실패하면 한 번 재시도한다.
+  모델별 옵션은 request_options() 참고.
 
 환경 변수
-- CLOVASTUDIO_API_KEY (필수), HCX_MODEL (기본 HCX-005), CLOVASTUDIO_BASE_URL (선택)
+- CLOVASTUDIO_API_KEY (필수), HCX_MODEL (기본 HCX-005), CLOVASTUDIO_HOST (선택)
 """
 
 from __future__ import annotations
@@ -21,14 +22,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from agenthan.core.llm import DEFAULT_BASE_URL, make_client
-from agenthan.core.llm import request_options as _hcx_request_options
+from agenthan.agent.review.clova import ClovaClient, model_options
 
 from ..schema import FEATURE_GUIDE, FEATURES, ClassifyResult, FeatureResult, Span
 from ..segment import merge_adjacent, split_clauses
 from .base import Backend
-
-__all__ = ["DEFAULT_BASE_URL", "HCXBackend", "request_options"]
 
 
 class _Item(BaseModel):
@@ -71,8 +69,9 @@ JSON_SCHEMA = {
 
 
 def request_options(model: str, max_tokens: int = 1024) -> dict:
-    """분류기 요청 옵션: hcx.request_options + 분류기 JSON 스키마 (HCX-007만 사용)."""
-    return _hcx_request_options(model, max_tokens, JSON_SCHEMA)
+    """모델별 네이티브 v3 옵션. HCX-007만 이 분류기의 JSON 스키마(responseFormat)를 붙인다.
+    HCX-005·DASH-002는 프롬프트로 JSON을 요청하고 pydantic으로 검증한다."""
+    return model_options(model, max_tokens, JSON_SCHEMA["schema"])
 
 
 def build_system_prompt() -> str:
@@ -108,7 +107,9 @@ class HCXBackend(Backend):
         min_interval: float | None = None,
     ):
         self.model = model or os.getenv("HCX_MODEL", "HCX-005")
-        self.client = client or make_client()
+        # 테스트에서는 가짜 client(chat(model, messages, **kw) → assistant dict)를 넣는다.
+        # 호출 간격은 아래 min_interval이 맡으므로 클라이언트 자체 간격은 끈다
+        self.client = client or ClovaClient(min_interval=0)
         # 호출 간 최소 간격(초). 테스트 키는 한도가 낮아 기본 1초
         self.min_interval = (
             float(os.getenv("HCX_MIN_INTERVAL", "1.0")) if min_interval is None else min_interval
@@ -155,13 +156,9 @@ class HCXBackend(Backend):
             if wait > 0:
                 time.sleep(wait)
             self._last_call = time.time()
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                **request_options(self.model),
-            )
-            raw = resp.choices[0].message.content or ""
+            raw = self.client.chat(
+                self.model, messages, temperature=self.temperature, **request_options(self.model)
+            )["content"]
             try:
                 return _Answer.model_validate_json(_extract_json(raw))
             except (ValidationError, ValueError) as e:

@@ -1,0 +1,38 @@
+{
+  "_note": "모든 가게·주소·글은 검색 노출 테스트를 위해 만든 가상 데이터입니다.",
+  "local": {
+    "연습동 베이커리": [
+      {"title": "가상 달빛빵집", "category": "베이커리", "roadAddress": "가상시 연습로 11"},
+      {"title": "가상 연습 베이커리 별빛점", "category": "카페", "roadAddress": "가상시 별빛로 2"},
+      {"title": "<b>가상 연습 베이커리</b>", "category": "베이커리", "address": "가상시 연습동 3", "roadAddress": "가상시 연습로 3", "mapx": "0", "mapy": "0"},
+      {"title": "가상 구름빵집", "category": "베이커리"},
+      {"title": "가상 무지개카페", "category": "카페"}
+    ],
+    "연습동 꿀케이크": [
+      {"title": "가상 달빛빵집", "category": "베이커리"},
+      {"title": "가상 연습 베이커리 별빛점", "category": "베이커리", "roadAddress": "가상시 별빛로 2"}
+    ],
+    "꿀케이크": [
+      {"title": "가상 연습 베이커리 별빛점", "category": "베이커리", "roadAddress": "가상시 별빛로 2"}
+    ],
+    "가상 연습 베이커리": [
+      {"title": "가상 연습 베이커리", "category": "베이커리", "roadAddress": "가상시 연습로 3"}
+    ]
+  },
+  "blog": {
+    "가상 연습 베이커리": {
+      "total": 42,
+      "items": [
+        {"title": "<b>가상 연습 베이커리</b> 방문기", "description": "가상 메뉴 이야기", "bloggername": "가상 손님 하나", "postdate": "20261101"},
+        {"title": "연습동 가상 빵집 모음", "description": "가상 연습 베이커리와 가상 달빛빵집", "bloggername": "가상 손님 둘", "postdate": "20261102"},
+        {"title": "연습동 산책", "description": "가상 달빛빵집 이야기", "bloggername": "가상 손님 셋", "postdate": "20261103"}
+      ]
+    },
+    "가상 연습 베이커리 꿀케이크": {
+      "total": 7,
+      "items": [
+        {"title": "꿀케이크 후기", "description": "가상 연습 베이커리의 꿀케이크", "bloggername": "가상 손님 하나", "postdate": "20261104"}
+      ]
+    }
+  }
+}

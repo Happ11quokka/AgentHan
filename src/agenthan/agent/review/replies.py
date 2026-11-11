@@ -13,6 +13,7 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from .harsh import harsh_of, soften_quote
 from .repo import ReviewRepo
 from .sentiment import RuleSentiment, prefetch_reviews
 
@@ -99,8 +100,8 @@ def _review_sentiment(review: dict, sentiment) -> str:
 
 
 def _quote(text: str, limit: int = 60) -> str:
-    t = " ".join(text.split())
-    return t if len(t) <= limit else t[: limit - 1] + "…"
+    """사장님에게 보여 줄 인용. 상처 되는 표현은 거른다 (harsh.py)."""
+    return soften_quote(text, limit)[0]
 
 
 def get_unanswered_reviews(
@@ -127,6 +128,7 @@ def get_unanswered_reviews(
                 "sentiment": senti,
                 "risk": risk_of(r["text"], senti),
                 "quote": _quote(r["text"]),
+                "softened": bool(harsh_of(r["text"])),
             }
         )
     if priority == "negative_first":
@@ -207,6 +209,15 @@ def _first_sentence(t: str) -> str:
     return re.split(r"(?<=[.!?])\s", t.strip(), maxsplit=1)[0]
 
 
+# 팀 용어 규칙(PRD §0): 리뷰를 쓴 사람은 '손님'. 답글에도 그대로 적용한다 (2026-11-08 팀 결정)
+_CUSTOMER = re.compile(r"고객\s?(님|분)")
+
+
+def to_sonnim(reply: str) -> str:
+    """'고객님'·'고객분' → '손님'. 모델이 지시를 어겨도 답글에는 남지 않게 한다."""
+    return _CUSTOMER.sub("손님", reply)
+
+
 def check_reply(
     reply: str,
     recent: list[str] | None = None,
@@ -239,6 +250,8 @@ def check_reply(
         issues.append("리뷰·별점 수정이나 삭제 요구")
     if _CAUSE.search(reply):
         issues.append("확인 전 원인 추정·단정")
+    if _CUSTOMER.search(reply):
+        issues.append("'고객님' 대신 '손님'")
     if not reply.strip():
         issues.append("빈 답글")
     return {"passed": not issues, "issues": issues, "warnings": warnings}
@@ -330,6 +343,7 @@ def draft_review_reply(
                 )
         else:
             reply = prev if (prev and not edit_request) else _TEMPLATE[route]
+        reply = to_sonnim(reply)
         chk = check_reply(reply, recent_all, owner_promise=owner_promise)
         checklist = build_checklist(reply, glossary)
         translated, promises_tr = None, []
@@ -342,6 +356,7 @@ def draft_review_reply(
                 "draft_id": f"d-{rid}",
                 "review_id": rid,
                 "review_quote": _quote(r["text"], 80),
+                "softened": bool(harsh_of(r["text"])),
                 "sentiment": senti,
                 "route": route,
                 "risk": risk,
@@ -369,14 +384,58 @@ CONFIRM = re.compile(
 )
 
 
+# '이대로 올릴까요?'에 짧게 하는 긍정. 말 전체가 이것뿐일 때만 (다른 기능의 승인과 같은 말).
+# 확인을 막 물은 상태(ReviewToolbox.confirm_pending)에서만 등록 확정으로 받는다
+_YES = (
+    r"네|넵|예|응|그래요?|좋아요?|좋습니다|오케이|ok(?:ay)?|yes|yep|sure|"
+    r"그렇게\s?(?:해|하자|해\s?줘|해\s?주세요)|да|ага|хорошо|давай"
+)
+BARE_YES = re.compile(rf"^\s*(?:{_YES})(?:[\s,.!~]*(?:{_YES}))*[\s,.!~]*$", re.I)
+# 초안을 올리지 않겠다는 말. '안 올려'·'등록 취소'는 등록 단어가 있어도 취소다
+DECLINE_POST = re.compile(
+    r"(?:안|못)\s?올|올리지\s?(?:마|말|않)|(?:등록|게시)\s?(?:취소|하지\s?마|안\s?해)|"
+    r"don'?t post|do not post|не (?:публикуй|надо публиковать)",
+    re.I,
+)
+DECLINE = re.compile(
+    r"취소|버려|지워|필요\s?없|안\s?할게|그만\s?(?:둘|두|할)|됐어요?\s*$|됐습니다|"
+    r"never\s?mind|cancel|discard|отмен|не надо",
+    re.I,
+)
+# 다른 기능의 취소('예약 취소해줘')는 초안 취소가 아니다
+DECLINE_OTHER_OBJECT = re.compile(r"예약|주문|쿠폰|메뉴|정산|알림|보고|reservation|order", re.I)
+# '아직 올리지 마', '올리지 말고 기다려'는 보류다 (초안을 남긴다, 벤치마크 H14·H32)
+NOT_YET = re.compile(
+    r"아직|기다려|잠깐|잠시|나중에|이따|보류|wait|hold on|later|not yet|подожди|позже|пока не",
+    re.I,
+)
+
+
+def declines_post(utterance: str) -> bool:
+    """초안을 올리지 않겠다는 말인가 ('이 답글은 안 올릴게요', '그 답글 취소해 주세요')."""
+    if DECLINE_OTHER_OBJECT.search(utterance) or NOT_YET.search(utterance):
+        return False
+    if DECLINE_POST.search(utterance):
+        return True
+    return bool(DECLINE.search(utterance)) and not CONFIRM.search(utterance)
+
+
 def post_review_reply(
-    *, drafts: dict | None, store: MockReplyStore, utterance: str | None, **_
+    *,
+    drafts: dict | None,
+    store: MockReplyStore,
+    utterance: str | None,
+    allow_bare_yes: bool = False,
+    **_,
 ) -> dict:
     """drafts(시스템 값: 직전 초안들)를 등록한다. 사장님 문장에 확정 표현이 없으면 등록하지 않는다
-    (자동 등록 금지)."""
+    (자동 등록 금지). allow_bare_yes: 초안을 보여 주고 확인을 막 물었으면 '네'만으로도 확정이다."""
     if not drafts:
         return {"error": "no_draft", "message": "등록할 초안이 없습니다."}
-    if not utterance or not CONFIRM.search(utterance):
+    confirmed = bool(utterance) and (
+        bool(CONFIRM.search(utterance)) or (allow_bare_yes and bool(BARE_YES.search(utterance)))
+    )
+    if not confirmed or declines_post(utterance or ""):
         return {
             "error": "not_confirmed",
             "message": "사장님이 등록을 확정하지 않았습니다. 확정할지 물어보세요.",

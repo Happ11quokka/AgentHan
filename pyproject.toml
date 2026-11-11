@@ -8,6 +8,7 @@ dependencies = [
     "joblib>=1.6.0",
     "numpy>=2.4.6",
     "openai>=1.40",
+    "opencv-python-headless>=5.0.0.93",
     "openpyxl>=3.1.5",
     "pydantic>=2",
     # models/baseline.joblib이 1.9.1로 저장됨. 버전을 바꾸면 scripts/train_baseline.py로 재학습
