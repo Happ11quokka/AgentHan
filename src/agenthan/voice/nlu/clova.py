@@ -67,7 +67,14 @@ class ClovaClient:
 
     def chat(self, model: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """chat-completions 한 번. 성공하면 본문의 `result`를 돌려준다."""
-        body = self._post(f"{CLOVA}/v3/chat-completions/{model}", payload)
+        return self._chat(f"{CLOVA}/v3/chat-completions/{model}", payload)
+
+    def chat_task(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """튜닝한 모델(학습 작업 id)로 chat-completions 한 번 (5단계 티켓 08)."""
+        return self._chat(f"{CLOVA}/v3/tasks/{task_id}/chat-completions", payload)
+
+    def _chat(self, url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        body = self._post(url, payload)
         status = body.get("status")
         code = status.get("code") if isinstance(status, dict) else None
         result = body.get("result")

@@ -118,7 +118,6 @@ _GUIDE = """act 종류:
 - 메뉴를 시키면서 재료를 빼 달라고 하면 그 메뉴 add_item 하나에 option_text로 넣는다
 - 담긴 메뉴에서 재료를 빼 달라는 말은 set_option이다
 - 옵션을 말하면서 메뉴 이름도 말했으면 menu_text에 쓴다. 메뉴를 말하지 않았으면 비운다
-- 옵션을 말하면서 메뉴 이름도 말했으면 menu_text에 쓴다. 메뉴를 말하지 않았으면 비운다
 - remove_item은 담긴 메뉴를 통째로 뺄 때만 쓴다
 - 발화는 전화 음성을 받아 적은 글이라 메뉴 이름이 비슷한 소리로 틀려 있을 수 있다
 - 소리가 비슷하면 그 메뉴로 보고 unknown으로 두지 않는다. menu_guess에 메뉴 목록의 이름을 쓴다
@@ -188,19 +187,39 @@ _SYSTEM = "\n\n".join((_INTRO, _GUIDE, _example_lines()))
 
 def build_messages(text: str, ctx: NluContext) -> list[dict[str, str]]:
     """시스템(메뉴명·장바구니·직전 질문) + 손님 발화 하나 (D4). 대화 기록은 넣지 않는다."""
+    system = f"{_SYSTEM}\n\n{_context_block(ctx)}"
+    return [{"role": "system", "content": system}, {"role": "user", "content": text}]
+
+
+# 튜닝한 모델용 지시문 (5단계 티켓 08). 예시 없이 규칙과 가게 문맥만. 학습 데이터(`tuning_data`)와
+# 추론이 이 함수 하나로 만든다(CLOVA: 학습 때와 같은 지시문을 추론 때도 써야 한다)
+_TUNED_INTRO = (
+    "너는 가게 전화 주문의 발화 분석기다. 손님 발화 하나를 읽고 "
+    '{"acts": [...]} 모양의 JSON 한 줄로만 답한다. 대답 문장은 쓰지 않는다.'
+)
+
+
+def tuned_system(ctx: NluContext) -> str:
+    return f"{_TUNED_INTRO}\n\n{_GUIDE}\n\n{_context_block(ctx)}"
+
+
+def build_tuned_messages(text: str, ctx: NluContext) -> list[dict[str, str]]:
+    return [{"role": "system", "content": tuned_system(ctx)}, {"role": "user", "content": text}]
+
+
+def _context_block(ctx: NluContext) -> str:
+    """가게 메뉴 정보·장바구니·직전 질문. 기본 프롬프트와 튜닝 지시문이 같이 쓴다."""
     if ctx.menu_catalog:
         menu = "메뉴 목록 (이름 | 다른 이름 | 꼭 고를 것 | 옵션):\n" + "\n".join(
             f"- {line}" for line in ctx.menu_catalog
         )
     else:
         menu = f"메뉴 목록: {', '.join(ctx.menu_names) or '없음'}"
-    system = (
-        f"{_SYSTEM}\n\n"
+    return (
         f"{menu}\n"
         f"장바구니: {ctx.cart_summary or '비어 있음'}\n"
         f"직전 질문: {ctx.last_question or '없음'}"
     )
-    return [{"role": "system", "content": system}, {"role": "user", "content": text}]
 
 
 def acts_from_result(result: Mapping[str, Any], text: str, ctx: NluContext) -> list[Act]:
@@ -359,8 +378,11 @@ class HcxNlu:
         tools: bool = False,
         tool_choice: str | Mapping[str, Any] = "auto",
         temperature: float = 0.1,
+        task_id: str = "",
     ) -> None:
+        """`task_id`가 있으면 그 튜닝 모델을 짧은 지시문(`tuned_system`)으로 부른다(티켓 08)."""
         self._client = client
+        self._task_id = task_id
         self._model = model
         self._tools = tools
         self._tool_choice = tool_choice
@@ -374,15 +396,20 @@ class HcxNlu:
         return cls(ClovaClient(key), **kwargs)
 
     def payload(self, text: str, ctx: NluContext, *, tools: bool | None = None) -> dict[str, Any]:
+        if self._task_id:  # 튜닝 모델은 도구를 못 쓴다
+            return {"messages": build_tuned_messages(text, ctx), "maxTokens": 512,
+                    "temperature": self._temperature}
         payload: dict[str, Any] = {"messages": build_messages(text, ctx)}
         if self._tools if tools is None else tools:
             payload |= {"tools": [PARSE_TURN_TOOL], "toolChoice": self._tool_choice}
         return payload | {"maxTokens": 1024, "temperature": self._temperature}  # FC 문서 권장값
 
     def parse(self, text: str, ctx: NluContext) -> list[Act]:
-        for tools in (True, False) if self._tools else (False,):
+        for tools in (True, False) if self._tools and not self._task_id else (False,):
             try:
-                result = self._client.chat(self._model, self.payload(text, ctx, tools=tools))
+                payload = self.payload(text, ctx, tools=tools)
+                result = (self._client.chat_task(self._task_id, payload) if self._task_id
+                          else self._client.chat(self._model, payload))
             except ClovaError as err:
                 log.warning("HCX NLU 호출 실패: %s (code=%s, tools=%s)", err, err.code, tools)
                 if err.code == _TOOL_CALL_FAILED:
