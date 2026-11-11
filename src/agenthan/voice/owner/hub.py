@@ -553,7 +553,13 @@ class OwnerHub:
         limits, now = self._limits, self._clock.now()
         dropped: set[str] = set()
         done = [c for c in self._calls.values() if c["status"] != "live"]
-        for card in _over(done, "started_at", limits.max_call_cards, limits.call_card_hours, now):
+        # 화면에 떠 있는 카드(넘김·미완료)와 이미 내려간 카드를 따로 센다. 같이 세면 처리 안 한
+        # 넘김 카드가 뒤에 온 주문 통화들에 밀려 화면에서 사라진다 (6단계 리뷰 4번)
+        shown = [c for c in done if c["status"] not in _OFF_SCREEN]
+        hidden = [c for c in done if c["status"] in _OFF_SCREEN]
+        over = (_over(shown, "started_at", limits.max_call_cards, limits.call_card_hours, now)
+                + _over(hidden, "started_at", limits.max_call_cards, limits.call_card_hours, now))
+        for card in over:
             del self._calls[card["id"]]
             dropped.add(card["id"])
             if card["status"] not in _OFF_SCREEN:  # 화면에 떠 있던 카드: 화면에서도 뺀다

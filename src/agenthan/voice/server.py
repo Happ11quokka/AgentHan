@@ -117,7 +117,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
             "version": version,
             "engines": {"nlu": settings.nlu, "stt": settings.stt, "tts": settings.tts},
         }
-        if settings.owner_key and secrets.compare_digest(key, settings.owner_key):
+        if settings.owner_key and secrets.compare_digest(key.encode(), settings.owner_key.encode()):
             body |= {"day": state["day"], "threads": threading.active_count(),
                      "hcx": (hcx.ready() | hcx.budget.used()) if hcx is not None else None,
                      **keeper.status()}

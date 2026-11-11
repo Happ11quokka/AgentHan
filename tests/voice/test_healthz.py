@@ -116,3 +116,13 @@ def test_the_server_gives_shutdown_a_time_limit(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw))
     server.main([])
     assert 0 < seen["timeout_graceful_shutdown"] <= 10
+
+
+def test_healthz_survives_a_non_ascii_key(tmp_path) -> None:
+    """비ASCII 키로 물어도 500이 아니다 (6단계 리뷰 6번)."""
+    settings = _settings(tmp_path, owner_key="비밀-토큰")
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/healthz", params={"key": "한"}).json().keys() == {
+            "ok", "active", "draining", "version", "engines"}
+        assert "day" in client.get("/healthz", params={"key": "비밀-토큰"}).json()

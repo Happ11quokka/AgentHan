@@ -384,6 +384,39 @@ def test_a_bare_no_after_anything_else_goes_on_alone_after_the_short_wait(tmp_pa
     assert c.out.of("state")[-1]["dialog"] == "ask_pickup"
 
 
+def test_background_noise_does_not_stretch_the_short_wait_after_a_bare_no(tmp_path) -> None:
+    # 말 시작(200ms)에 못 미치는 배경 소리가 0.2초마다 나도 맨 "아니요"는 짧은 대기 뒤에 넘어간다.
+    # 전에는 마지막 소리 시각이 계속 밀려 `cont_max_s`까지 붙잡혔다 (6단계 리뷰 1번)
+    stt = FakeSttStream(replies=["메도빅 하나요", "아니요"])
+
+    async def call() -> tuple[Call, float]:
+        async with Call(tmp_path, stt=stt, settings=settings(more_no_wait_s=0.4,
+                                                             cont_wait_s=2.0)) as c:
+            await c.start()
+            await c.turn(1)
+            await c.feed(tone(800))
+            spoke = time.monotonic()
+            await c.feed(silence(600))
+
+            async def noise() -> None:
+                while True:
+                    await c.feed(tone(100))
+                    await c.feed(silence(100))
+                    await asyncio.sleep(0.2)
+
+            noisy = asyncio.ensure_future(noise())
+            try:
+                await asyncio.wait_for(c.out.wait_for("stt.final", turn=2), 4.0)
+            finally:
+                noisy.cancel()
+            return c, time.monotonic() - spoke
+
+    c, waited = run(call())
+    assert waited < 2.0
+    turn2 = next(r for r in records(c) if r["turn"] == 2)
+    assert turn2["text"] == "아니요"
+
+
 def test_the_short_wait_after_a_bare_no_can_be_turned_off(tmp_path) -> None:
     stt = FakeSttStream(replies=["메도빅 하나요", "아니요"])
 

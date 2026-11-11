@@ -54,7 +54,8 @@ drain_and_wait() {
     return 0
   fi
   "${COMPOSE[@]}" exec -T app touch "$DRAIN_FILE"
-  trap 'echo "중단: 새 통화를 다시 받아요" >&2; undrain' ERR INT TERM
+  # 끊기면(SSH 끊김 HUP 포함) 점검 표시를 지우고 그만둔다. 안 그러면 새 통화가 계속 거절된다
+  trap 'echo "중단: 새 통화를 다시 받아요" >&2; undrain; exit 130' ERR INT TERM HUP
   echo "새 통화 받기를 멈췄어요. 진행 중 통화 ${active}개"
   while [[ "$active" != 0 ]] && ((waited < DRAIN_TIMEOUT_S)); do
     sleep "$DRAIN_POLL_S"
@@ -69,7 +70,7 @@ drain_and_wait() {
 
 # 교체 뒤: 점검 표시를 지운다(컨테이너가 안 바뀌었어도 통화를 다시 받게). 새 앱도 시작할 때 지운다
 after_swap() {
-  trap - ERR INT TERM
+  trap - ERR INT TERM HUP
   undrain
 }
 

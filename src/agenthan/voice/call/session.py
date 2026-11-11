@@ -1186,7 +1186,12 @@ class CallSession:
         now = self._clock.monotonic()
         assert self._cont_text_at is not None and self._cont_decision is not None
         last_voice = self._last_voice_at if self._last_voice_at is not None else now
-        if self._cont_timer.wait(now, due=last_voice + self._cont_decision.wait_s,
+        due = last_voice + self._cont_decision.wait_s
+        if self._cont_decision.verdict.reason == "no_after_more":
+            # 짧은 대기는 글이 온 때부터도 센다: 말 시작(200ms)에 못 미치는 배경 소리가 마지막 소리
+            # 시각을 계속 밀어 맨 "아니요"가 `cont_max_s`까지 붙잡히지 않게 (6단계 리뷰 1번)
+            due = min(due, self._cont_text_at + self._cont_decision.wait_s)
+        if self._cont_timer.wait(now, due=due,
                                  cap=self._cont_text_at + self._settings.cont_max_s,
                                  busy=self._vad.in_speech or self._ep_waiting(),
                                  hold=bool(self._parts)):

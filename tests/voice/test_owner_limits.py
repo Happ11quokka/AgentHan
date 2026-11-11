@@ -143,3 +143,15 @@ def test_hub_limits_come_from_the_environment() -> None:
     }, env_file=None)
     assert settings.hub_limits() == HubLimits(max_call_cards=20, call_card_hours=6,
                                               max_order_cards=0, order_card_hours=48)
+
+
+def test_an_unhandled_missed_card_is_not_pushed_out_by_later_ordered_calls() -> None:
+    """화면에 떠 있는 카드와 내려간 카드는 따로 센다 (6단계 리뷰 4번)."""
+    async def scenario() -> dict:
+        hub = _hub(max_call_cards=3)
+        _missed(hub, "call-missed")
+        for n in range(1, 6):
+            _ordered(hub, f"call-{n}")
+        return await _snapshot(hub)
+
+    assert "call-missed" in [c["id"] for c in asyncio.run(scenario())["calls"]]
