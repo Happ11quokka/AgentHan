@@ -114,7 +114,8 @@ def phone_router(
     if stt_factory is None:
         # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
         # 통화마다 이벤트 루프에서 부르지 않는다). 메뉴 이름이 바뀌면 서버를 다시 띄운다
-        boost = menu_boost_words(store.list_menu()) if settings.stt == "clova" else ()
+        boost = (menu_boost_words(store.list_menu())
+                 if settings.stt == "clova" and settings.stt_boost_weight > 0 else ())
         stt_factory = adapters.stt_factory(settings, boost_words=boost)
     make_stt = stt_factory
     make_tts = tts_factory or adapters.tts_factory(settings)

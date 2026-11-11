@@ -54,7 +54,7 @@ def stt_factory(settings: VoiceSettings, *, boost_words: Sequence[str] = ()) -> 
     default_grpc_dns(settings.env)
     module = _require("PHONE_STT", CLOVA_STT)
     words = tuple(boost_words)
-    return lambda: _clova_stt(module, settings.env, words)
+    return lambda: _clova_stt(module, settings.env, words, settings.stt_boost_weight)
 
 
 def default_grpc_dns(env: Mapping[str, str]) -> None:
@@ -83,14 +83,16 @@ def _require(var: str, spec: tuple[str, str, str]) -> Any:
     return importlib.import_module(name)
 
 
-def _clova_stt(module: Any, env: Mapping[str, str], boost_words: tuple[str, ...]) -> SttStream:
+def _clova_stt(module: Any, env: Mapping[str, str], boost_words: tuple[str, ...],
+               boost_weight: float) -> SttStream:
     key = env.get(STT_KEY_ENV, "").strip()
     if not key:
         raise PortError(f"CLOVA Speech 키가 없어요 ({STT_KEY_ENV})", code="stt_config",
                         retry=False)
     endpoint = env.get(STT_ENDPOINT_ENV, "").strip()
     settings = module.ClovaSttSettings.from_env({STT_KEY_ENV: key, STT_ENDPOINT_ENV: endpoint},
-                                                boost_words=boost_words)
+                                                boost_words=boost_words,
+                                                boost_weight=boost_weight)
     return module.ClovaSttStream(settings)
 
 

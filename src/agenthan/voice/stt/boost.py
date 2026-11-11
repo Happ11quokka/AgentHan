@@ -5,8 +5,12 @@
 
 - 요청별 단어(`boostings`)만 쓴다. 도메인 ID 방식(`useDomainBoostings` + `boostingIDs`)은 가게가
   바뀔 때마다 빌더 작업이 필요하고, 둘을 섞으면 요청이 실패한다(공식 문서)
-- 가중치는 3. 실측 A/B에서 3은 "나폴내용"을 "나폴레옹"으로 고쳤고 5는 3보다 나은 점이 없었다.
-  가중치가 크면 비슷한 소리를 키워드로 끌어온다(과부스팅)
+- **기본은 끔(가중치 0)**. 켜려면 `PHONE_STT_BOOST_WEIGHT`. 처음엔 3이었다(녹음 A/B에서 3은
+  "나폴내용"을 "나폴레옹"으로 고쳤고 5는 3보다 나은 점이 없었다). 그런데 2026-11-11 실기기
+  통화(call-7296e35a675b, 5단계 티켓 07)에서 가중치 3이 3.2초 주문("메도비 두 개랑 아이스
+  아메리카노 하나요")을 "메도비"로 자르고, 같은 스트림의 뒤 말 네 개를 모두 빈 글로 만들었다.
+  같은 녹음을 그대로 다시 넣어도 재현됐고, 가중치 2는 일부("두 개랑")만 잘림, 1과 끔은 모두 정상.
+  메뉴명 오인식("메도비", "맥도빅")은 매처가 되묻기로 받으므로 끈다
 - 한 음절 단어("샷")는 넣지 않는다. 비슷한 소리가 많아 과부스팅 위험이 크다
 - 부스팅이 고친 음절은 `alignInfos` 신뢰도가 0.02~0.05로 떨어진다(실측 C3 "나폴레옹").
   그래서 메뉴 단어 신뢰도로 되묻는 규칙은 두지 않는다(2026-11 현재 없음, 어댑터는 `alignInfos`를
@@ -24,7 +28,7 @@ from collections.abc import Iterable
 from agenthan.core.contracts import MenuItem
 from agenthan.voice.dialog.options import option_target
 
-BOOST_WEIGHT = 3.0
+BOOST_WEIGHT = 0.0  # 끔. 켜면 1 이하 권장(위 설명)
 MAX_BOOST_WORDS = 500  # 빌더 권장 상한. 요청별 상한은 문서에 없다
 
 _SEPARATOR = re.compile(r",")

@@ -249,7 +249,20 @@ def test_clova_stt_gets_the_boost_words_for_its_config() -> None:
     assert make_stt()._settings.boost_words == ("메도빅", "사워크림")
 
 
-def test_phone_router_boosts_the_store_menu_for_clova_stt(monkeypatch) -> None:
+def test_boost_weight_is_off_unless_set() -> None:
+    assert VoiceSettings.from_env({}, env_file=None).stt_boost_weight == 0.0
+    on = VoiceSettings.from_env({"PHONE_STT_BOOST_WEIGHT": "1"}, env_file=None)
+    assert on.stt_boost_weight == 1.0
+
+
+def test_clova_stt_gets_the_boost_weight_from_the_settings() -> None:
+    env = {"PHONE_STT": "clova", "CLOVA_SPEECH_SECRET_KEY": "stt-secret-1",
+           "PHONE_STT_BOOST_WEIGHT": "1.5"}
+    make_stt = stt_factory(VoiceSettings.from_env(env, env_file=None), boost_words=("메도빅",))
+    assert make_stt()._settings.boost_weight == 1.5
+
+
+def test_phone_router_sends_no_boost_words_when_boosting_is_off(monkeypatch) -> None:
     from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
     from agenthan.voice.store_config import StoreConfig
     from agenthan.voice.ws import phone_router
@@ -264,6 +277,25 @@ def test_phone_router_boosts_the_store_menu_for_clova_stt(monkeypatch) -> None:
     phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
                  order_sink=MemoryOrderSink(),
                  settings=VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))
+    assert seen["boost_words"] == ()
+
+
+def test_phone_router_boosts_the_store_menu_for_clova_stt(monkeypatch) -> None:
+    from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
+    from agenthan.voice.store_config import StoreConfig
+    from agenthan.voice.ws import phone_router
+
+    seen: dict = {}
+
+    def capture(settings, **kw):
+        seen.update(kw)
+        return lambda: None
+
+    monkeypatch.setattr(adapters, "stt_factory", capture)
+    phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
+                 order_sink=MemoryOrderSink(),
+                 settings=VoiceSettings.from_env({"PHONE_STT": "clova",
+                                                  "PHONE_STT_BOOST_WEIGHT": "1"}, env_file=None))
     assert seen["boost_words"][:3] == ("메도빅", "꿀케이크", "허니케이크")
     assert "사워크림" in seen["boost_words"]
 

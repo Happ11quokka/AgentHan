@@ -26,6 +26,7 @@ def test_boost_words_skip_one_syllable_targets_duplicates_and_commas() -> None:
     assert menu_boost_words(menu) == ("라떼", "카페라떼", "시럽")
 
 
-def test_boost_weight_starts_at_three() -> None:
-    # 실측 A/B: 5는 3보다 나은 점이 없었다 (research s2-stt-misrecognition Q1)
-    assert BOOST_WEIGHT == 3.0
+def test_boosting_is_off_by_default() -> None:
+    # 2026-11-11 실기기 call-7296e35a675b: 가중치 3이면 3.2초 주문이 "메도비"로 잘리고 같은 스트림의
+    # 뒤 말이 모두 빈 글. 2는 일부 잘림, 1·끔은 정상 (5단계 티켓 07)
+    assert BOOST_WEIGHT == 0.0

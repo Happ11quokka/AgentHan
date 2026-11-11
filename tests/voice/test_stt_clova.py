@@ -156,14 +156,15 @@ def test_server_closing_the_stream_unasked_is_a_disconnect() -> None:
 def test_keyword_boosting_goes_into_config_and_its_status_is_recorded() -> None:
     async def go():
         async with NestServer(FakeNest()) as srv:
-            stt = ClovaSttStream(settings(srv.endpoint, boost_words=("메도빅", "나폴레옹")))
+            stt = ClovaSttStream(settings(srv.endpoint, boost_words=("메도빅", "나폴레옹"),
+                                          boost_weight=1.0))
             await stt.start()
             await stt.close()
             return srv.servicer.connections[0].configs, stt.boost_status
 
     (config,), status = run(go())
     assert config["keywordBoosting"] == {
-        "boostings": [{"words": "메도빅,나폴레옹", "weight": 3.0}]
+        "boostings": [{"words": "메도빅,나폴레옹", "weight": 1.0}]
     }
     assert "useDomainBoostings" not in config  # 요청별 단어와 섞으면 요청이 실패한다
     assert config["semanticEpd"]["gapThreshold"] == 700
@@ -173,7 +174,7 @@ def test_keyword_boosting_goes_into_config_and_its_status_is_recorded() -> None:
 def test_a_failed_boosting_status_is_recorded_and_the_call_goes_on() -> None:
     async def go():
         async with NestServer(FakeNest(["메도빅 하나요 "], boost_status="Failure")) as srv:
-            stt = ClovaSttStream(settings(srv.endpoint, boost_words=("메도빅",)))
+            stt = ClovaSttStream(settings(srv.endpoint, boost_words=("메도빅",), boost_weight=1.0))
             await stt.start()
             await stt.write(FRAME, ep_flag=True, seq_id=1)
             result = await next_result(stt)
