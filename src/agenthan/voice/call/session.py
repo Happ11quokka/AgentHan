@@ -82,6 +82,7 @@ from agenthan.voice.call.barge import (
     WindowKind,
     is_early_yes,
 )
+from agenthan.voice.call.debuglog import CallDebugLog
 from agenthan.voice.call.defaults import (
     CONT_WAIT_S,
     MODEL_HIGH,
@@ -346,6 +347,9 @@ class CallSession:
         # 통화 녹음 (5단계 티켓 01). `PHONE_RECORD_DIR`이 있을 때만. 시간축은 `self._log.ms()`
         self._rec_name = f"{clock.now():%Y%m%d}/{self.call_id}.wav"
         self._rec = CallRecorder(record_dir / self._rec_name) if record_dir is not None else None
+        # 진단 기록 (티켓 03): STT 결과 원본·프레임 도착 간격. `log_dir`이 있으면 늘
+        self._debug = CallDebugLog()
+        self._log_dir = log_dir
         self._vad = SilenceDetector(self._settings.vad)
 
         self._out: asyncio.Queue[tuple[str, Any, Callable[[], None] | None] | None] = (
@@ -443,10 +447,15 @@ class CallSession:
 
     async def feed_audio(self, pcm: bytes) -> None:
         """올라온 PCM16LE 16kHz mono 프레임 하나 (헤더 없음)."""
-        if self._rec is not None and not self.done:
-            self._rec.customer(pcm, at_ms=self._log.ms())  # STT 연결 전 소리도 녹음엔 남긴다
+        if not self.done:
+            at_ms = self._log.ms()
+            self._debug.frame(at_ms=at_ms, nbytes=len(pcm))
+            if self._rec is not None:
+                self._rec.customer(pcm, at_ms=at_ms)  # STT 연결 전 소리도 녹음엔 남긴다
         if not self._ready or self.done:
             return
+        if self._vad.offset_ms == 0:
+            self._debug.stt_origin(at_ms=self._log.ms())  # STT 오디오 0ms = 이 프레임
         was_speaking = self._vad.in_speech
         frame_from = self._vad.offset_ms
         ended = self._vad.feed(pcm)
@@ -467,6 +476,7 @@ class CallSession:
             self._commit = self._cut_ep = False
             self._ep_at = now
             self._ep_voiced_ms, self._voiced_ms = self._voiced_ms, 0
+            self._debug.ep(at_ms=self._log.ms(now), audio_ms=self._vad.offset_ms)
         elif not self._vad.in_speech and not self._vad.last_voiced:
             self._voiced_ms = 0  # 말 구간 밖 무음: 짧은 잡음은 쌓지 않는다
         self._stt_q.put_nowait((pcm, ep, self._turn + 1))
@@ -580,6 +590,7 @@ class CallSession:
         except Exception:
             log.exception("STT 닫기 실패 (%s)", self.call_id)
         self._flush_log()
+        self._write_debug()
         await self._write_recording()
         if self._writer is not None:
             self._out.put_nowait(None)
@@ -587,6 +598,15 @@ class CallSession:
                 await asyncio.wait_for(self._writer, 2.0)
             except (TimeoutError, asyncio.CancelledError):
                 self._writer.cancel()
+
+    def _write_debug(self) -> None:
+        if self._log_dir is None:
+            return
+        try:
+            path = self._log_dir / f"stt-{self._clock.now():%Y%m%d}.jsonl"
+            self._debug.write(path, self.call_id)
+        except Exception:
+            log.exception("진단 기록 쓰기 실패 (%s)", self.call_id)
 
     async def _write_recording(self) -> None:
         rec, self._rec = self._rec, None
@@ -704,6 +724,7 @@ class CallSession:
     async def _read_stt(self) -> None:
         try:
             async for result in self._stt.results():
+                self._debug.result(at_ms=self._log.ms(), r=result)
                 self._on_result(result)
         except asyncio.CancelledError:
             raise

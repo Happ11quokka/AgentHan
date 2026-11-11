@@ -379,7 +379,7 @@ def test_the_turn_model_runs_on_its_own_pool_and_its_score_reaches_the_turn_reco
         phone.send(type="call.end", turn=1)
         assert phone.closed_by_server()
     assert model.threads and all(t.startswith(TURN_THREAD_PREFIX) for t in model.threads)
-    lines = [json.loads(x) for x in (tmp_path / "logs").glob("*.jsonl").__next__().read_text()
+    lines = [json.loads(x) for x in (tmp_path / "logs").glob("phone-*.jsonl").__next__().read_text()
              .splitlines()]
     turn1 = next(line for line in lines if line["turn"] == 1)
     assert turn1["turn_end"]["score"] == 0.9
@@ -396,7 +396,7 @@ def test_a_missing_model_file_starts_the_server_on_rules_only(tmp_path, caplog) 
         _talk(ws, phone)
         phone.send(type="call.end", turn=1)
         assert phone.closed_by_server()
-    lines = (tmp_path / "logs").glob("*.jsonl").__next__().read_text().splitlines()
+    lines = (tmp_path / "logs").glob("phone-*.jsonl").__next__().read_text().splitlines()
     turn1 = next(json.loads(x) for x in lines if json.loads(x)["turn"] == 1)
     assert turn1["turn_end"]["score"] is None and "turn_model" not in turn1
 

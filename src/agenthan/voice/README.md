@@ -202,3 +202,9 @@
 - 턴 기록에 `bot`(그 턴에 봇이 말한 문장들, 녹음과 상관없이 늘)과 턴 0의 `recording`(WAV 경로)
 - 서버에서 꺼내기: `docker cp agenthan-phone-app-1:/app/logs/recordings ./private/recordings-server` 뒤 맥으로 `scp`. 맥에서도 `private/` 밖에 두지 않는다(목소리는 개인정보)
 - 테스트 `test_call_recorder.py`·`test_call_recording.py`, 설정 `test_phone_settings.py`, WS `test_phone_ws.py`
+
+## 5단계: 통화 진단 기록 (`call/debuglog.py`, 티켓 03)
+
+- 통화마다 `<PHONE_LOG_DIR>/stt-YYYYMMDD.jsonl`에 한 줄: CLOVA가 돌려준 결과 원본(받은 세션 시각·글·STT 오디오 구간·epd·epFlag 응답 여부·신뢰도), 보낸 epFlag(세션 시각·STT 오디오 시각), 손님 프레임 도착 간격(`frames.late`·`max_gap_ms`·`max_behind_ms`). 녹음과 상관없이 늘 쓴다(글이 들어 있으니 턴 기록과 같은 취급)
+- 세션 시각 ↔ STT 오디오 시각: `stt_origin_ms` + STT 시각 (프레임이 제때 왔을 때)
+- 테스트 `test_call_debuglog.py`
