@@ -221,6 +221,10 @@ class SessionSettings:
     # 사장님 질문 답 대기 (4단계 티켓 06). 질문 카드를 보낸 때부터 센다. 넘으면 "확인해서 문자로
     # 알려 드릴게요" (`PHONE_OWNER_WAIT_S`, 허브 카드 마감과 같은 값)
     owner_wait_s: float = OWNER_WAIT_S
+    # 통화 중에 사장님께 바로 묻기(질문 카드·늦은 답 문자, 4단계 05~07). 기본 끔(5단계 티켓 09):
+    # 사장님은 바빠서 바로 답하기 어렵다. 끄면 "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께
+    # 전해 둘게요." + 사장님 화면 "손님이 궁금해한 것" 카드(나중에 보충, 티켓 13)
+    ask_owner: bool = False
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
     not_heard_min_ms: int = 500
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
@@ -331,7 +335,7 @@ class CallSession:
         self._sink = order_sink
         self._owner: OwnerChannel = owner or NullOwnerChannel()  # 사장님 쪽 알림 (4단계 티켓 02)
         # 사장님 쪽이 붙은 통화만 근거 없는 메뉴 질문을 사장님께 묻는다 (4단계 티켓 05)
-        self._asks_owner = owner is not None
+        self._asks_owner = owner is not None and (settings or SessionSettings()).ask_owner
         # 사장님 보충 지식 읽기 포트 (티켓 13). 사장님 쪽이 붙은 통화만 엔진에 넣는다(보충 요청을
         # 받을 곳이 있어야 "사장님께 전해 둘게요"라고 한다)
         self._knowledge = knowledge if owner is not None else None

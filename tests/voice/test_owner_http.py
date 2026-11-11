@@ -35,7 +35,7 @@ ASK_SCRIPT = ("메도빅 하나요", NUTS, "그게 다예요", "6시 반이요",
 def _client(tmp_path, replies: tuple[str, ...] = ORDER_SCRIPT) -> TestClient:
     settings = VoiceSettings(
         log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
-        fake_replies=replies, turn_model="off", owner_key=KEY,
+        fake_replies=replies, turn_model="off", owner_key=KEY, ask_owner=True,
     )
     return TestClient(create_app(settings))
 
@@ -280,6 +280,7 @@ def test_a_late_owner_answer_reaches_the_customer_text_stream(tmp_path) -> None:
     settings = VoiceSettings(
         log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
         fake_replies=ASK_SCRIPT, turn_model="off", owner_key=KEY, owner_wait_s=0.3,
+        ask_owner=True,
     )
     with TestClient(create_app(settings)) as client:
         with client.websocket_connect(WS_PATH) as ws:

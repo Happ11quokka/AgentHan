@@ -1,8 +1,9 @@
 // Part C 전화 주문 통화 화면. 이 폴더(src/screens/phone/)는 Part C 몫이다.
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 // 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 2분 동안 스트림으로 받는다.
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
+import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
 import { PhoneCall, phoneOptions } from './phoneCall.ts'
 import './phone.css'
@@ -43,6 +44,14 @@ export default function PhonePage() {
     return () => call.detach()
   }, [call])
 
+  // 자막 따라가기(5단계 티켓 09): 맨 아래를 보고 있으면 새 글이 올 때 같이 내려간다
+  const captionsRef = useRef<HTMLElement>(null)
+  const follow = useRef(true)
+  useLayoutEffect(() => {
+    const el = captionsRef.current
+    if (el && follow.current) el.scrollTop = el.scrollHeight
+  }, [state.captions])
+
   const inCall = state.status === 'starting' || state.status === 'live'
   const cart = state.order?.cart ?? state.cart
   const total = state.order?.total ?? state.total
@@ -74,7 +83,16 @@ export default function PhonePage() {
         </div>
       )}
 
-      <section className="phone-captions" aria-label="자막" aria-live="polite">
+      <section
+        ref={captionsRef}
+        className="phone-captions"
+        aria-label="자막"
+        aria-live="polite"
+        onScroll={(e) => {
+          const el = e.currentTarget
+          follow.current = nearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)
+        }}
+      >
         {state.captions.length === 0 && <p className="phone-empty">통화가 연결되면 대화가 여기에 보여요.</p>}
         {state.captions.map((c, i) => (
           <p key={i} className={`phone-line phone-line-${c.who}`}>

@@ -327,3 +327,11 @@ def test_call_recording_is_off_unless_a_folder_is_given(tmp_path) -> None:
     on = VoiceSettings.from_env({"PHONE_RECORD_DIR": "/app/logs/recordings"},
                                 env_file=tmp_path / "없는.env")
     assert on.record_dir == Path("/app/logs/recordings")
+
+
+def test_asking_the_owner_during_a_call_is_off_unless_turned_on() -> None:
+    """5단계 티켓 09: 기본은 사과 + 보충 카드. `PHONE_ASK_OWNER=on`일 때만 통화 중 질문 카드."""
+    off = VoiceSettings.from_env({}, env_file=None)
+    assert off.ask_owner is False and off.session_settings().ask_owner is False
+    on = VoiceSettings.from_env({"PHONE_ASK_OWNER": "on"}, env_file=None)
+    assert on.session_settings().ask_owner is True

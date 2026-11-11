@@ -10,6 +10,7 @@ import math
 import struct
 from collections.abc import Callable
 from concurrent.futures import Executor, Future
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -117,6 +118,7 @@ class Call:
         knowledge: Any = None,
         no_owner: bool = False,
         record_dir: Path | None = None,
+        ask_owner: bool = True,
     ) -> None:
         """`knowledge`는 보충 지식 읽기 포트(4단계 티켓 13). `no_owner`면 사장님 쪽 없이 띄운다."""
         self.out = RecordingOutbound()
@@ -139,7 +141,8 @@ class Call:
             knowledge=knowledge,
             log_dir=self.log_dir,
             call_id="test-call",
-            settings=settings or SessionSettings(),
+            # 하네스는 4단계 사장님 바로 묻기 테스트를 위해 기본 켬. 운영 기본은 끔(5단계 티켓 09)
+            settings=replace(settings or SessionSettings(), ask_owner=ask_owner),
             executor=executor,
             turn_model=turn_model,
             turn_executor=turn_executor,

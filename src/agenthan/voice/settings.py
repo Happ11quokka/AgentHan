@@ -34,6 +34,7 @@
 | `PHONE_OWNER_KEY` | 사장님 화면 비밀 토큰. `/owner?key=…`. 없으면 사장님 경로가 모두 401 | 없음 |
 | `PHONE_TRANSLATE_TIMEOUT_S` | Papago 요청 하나의 시간 제한(초). 넘으면 카드는 원문만 | `3.0` |
 | `PHONE_TRANSLATE_KEEPALIVE_S` | Papago 유휴 연결을 두는 시간(초). 쉬었다 불러도 안 끊게 | `60.0` |
+| `PHONE_ASK_OWNER` | `on`이면 통화 중 사장님께 바로 묻기. 끄면 사과 + 보충 카드 | `off` |
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
@@ -117,6 +118,7 @@ class VoiceSettings:
     translate_keepalive_s: float = TRANSLATE_KEEPALIVE_S
     # 사장님 질문 답 대기 (4단계 티켓 06). 허브 카드 마감과 세션 시간 초과가 같이 쓴다
     owner_wait_s: float = OWNER_WAIT_S
+    ask_owner: bool = False  # 통화 중 사장님께 바로 묻기 (5단계 티켓 09). 기본 끔
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -216,13 +218,14 @@ class VoiceSettings:
                                           TRANSLATE_KEEPALIVE_S),
             owner_wait_s=_number("PHONE_OWNER_WAIT_S", get("PHONE_OWNER_WAIT_S", ""),
                                  OWNER_WAIT_S),
+            ask_owner=get("PHONE_ASK_OWNER", "off") == "on",
             env=env,
         )
 
 
 # 서버 설정에서 통화 세션 설정으로 그대로 옮기는 값 (`SessionSettings`와 이름이 같다)
 _SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "no_input_s", "wait_request_s",
-                   "turn_model_low", "turn_model_high", "barge", "owner_wait_s")
+                   "turn_model_low", "turn_model_high", "barge", "owner_wait_s", "ask_owner")
 
 
 def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:

@@ -311,3 +311,27 @@ def test_a_stale_answer_for_another_question_is_dropped(tmp_path) -> None:
     c = run(call())
     assert said(c, 3).startswith("사장님께 여쭤보니 메도빅에 견과는 안 들어간대요.")
     assert c.out.of("bot.say", 4) == []
+
+
+def test_by_default_the_call_apologizes_and_leaves_the_question_for_the_owner(tmp_path) -> None:
+    """5단계 티켓 09 (동현님 결정 2026-11-11): 사장님은 바빠서 바로 답하기 어렵다. 통화 중에 묻지
+    않고 손님에게 사과한 뒤, 사장님 화면 "손님이 궁금해한 것" 카드로 남긴다(티켓 13)."""
+    from agenthan.voice.dialog.knowledge import KnowledgeStore
+
+    stt = FakeSttStream(replies=["메도빅 하나요", NUTS, "그게 다예요", "6시 반이요", "네"])
+    owner = RecordingOwnerChannel(answer="yes")
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, owner=owner, knowledge=KnowledgeStore(),
+                        ask_owner=False) as c:
+            await c.start()
+            for turn in (1, 2, 3, 4, 5):
+                await c.turn(turn)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert said(c, 2).startswith("죄송해요, 그건 제가 정확히 모르겠어요. 사장님께 전해 둘게요.")
+    assert owner.questions == []  # 질문 카드 없음
+    assert [r.menu_name for _, r in owner.knowledge] == ["메도빅"]  # 보충 카드
+    assert len(c.sink.orders) == 1
