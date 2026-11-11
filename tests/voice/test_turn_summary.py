@@ -123,3 +123,97 @@ def test_the_command_prints_numbers_without_any_transcript(tmp_path, capsys) -> 
     out = capsys.readouterr().out
     assert "비밀 글" not in out
     assert json.loads(out)["voice"]["p50_ms"] == 1_400
+
+
+# ------------------------------------------------ 6단계 품질: 경로별 지연·구간·되묻기
+
+
+def _marks(end: int, ep: int, stt: int, engine: int, tts: int, play: int) -> dict:
+    """말 끝 0에서 시작해 구간 길이로 marks를 만든다 (판정 대기 10ms, 합성 → 송신 5ms)."""
+    ep_sent = end + ep
+    stt_final = ep_sent + stt
+    engine_start = stt_final + 10
+    engine_end = engine_start + engine
+    tts_first = engine_end + tts
+    audio_first = tts_first + 5
+    return {"speech_end": end, "ep_sent": ep_sent, "stt_final": stt_final,
+            "engine_start": engine_start, "engine_end": engine_end, "tts_start": engine_end,
+            "tts_first": tts_first, "audio_first": audio_first, "play_start": audio_first + play}
+
+
+ROUTED = [
+    _turn("c1", 0),
+    _turn("c1", 1, 1_800, end_by="vad", route="nlu", marks=_marks(0, 300, 400, 950, 40, 100)),
+    _turn("c1", 2, 900, end_by="vad", route="rule", marks=_marks(0, 300, 380, 2, 100, 110)),
+    _turn("c1", 3, 2_000, end_by="vad", route="nlu", marks=_marks(0, 320, 360, 1_100, 80, 120)),
+    _turn("c1", 4, 1_000, end_by="vad", route="rule", marks=_marks(0, 300, 420, 4, 150, 110),
+          reask={"slot": "confirm", "n": 1}),
+    _turn("c2", 0),
+    _turn("c2", 1, 2_600, end_by="vad", route="answer", answer={"kind": "answer"},
+          marks=_marks(0, 310, 400, 1_700, 60, 115)),
+    _turn("c2", 2, 2_400, end_by="vad", answer={"kind": "unsure"},  # 예전 기록: route 없음
+          marks=_marks(0, 310, 400, 1_500, 60, 115)),
+    _turn("c2", 3, 1_100, end_by="vad", marks=_marks(0, 300, 400, 3, 300, 90)),  # 예전 기록
+    _turn("c2", 4, bot_turn="not_heard", reask={"slot": "not_heard", "n": 1}),
+    _turn("c2", 5, 1_900, end_by="vad", route="nlu", marks=_marks(0, 300, 400, 1_000, 90, 100),
+          reask={"slot": "order", "n": 2},
+          handoff={"reason": "call_failures", "slot": "order", "reasks": 2}),
+]
+
+
+def test_voice_latency_is_split_by_engine_route() -> None:
+    by_route = summarize(ROUTED)["by_route"]
+    assert set(by_route) == {"rule", "nlu", "answer", "unknown"}
+    assert by_route["rule"]["voice"] == {"n": 2, "p50_ms": 950, "p90_ms": 990}
+    assert by_route["nlu"]["voice"] == {"n": 3, "p50_ms": 1_900, "p90_ms": 1_980}
+    # route가 없는 예전 기록도 답변기 결과가 있으면 답변기 경로다
+    assert by_route["answer"]["voice"] == {"n": 2, "p50_ms": 2_500, "p90_ms": 2_580}
+    assert by_route["unknown"]["voice"]["n"] == 1
+
+
+def test_each_stage_of_a_turn_gets_a_median() -> None:
+    s = summarize(ROUTED)
+    # 손님 턴 8개의 구간별 P50: 말 끝→epFlag, epFlag→STT 글, 엔진, TTS 첫 바이트, 보냄→재생 보고
+    assert s["stages"] == {
+        "end_to_ep": {"n": 8, "p50_ms": 300},
+        "ep_to_stt": {"n": 8, "p50_ms": 400},
+        "stt_to_engine": {"n": 8, "p50_ms": 10},
+        "engine": {"n": 8, "p50_ms": 975},
+        "tts_first": {"n": 8, "p50_ms": 85},
+        "send_to_play": {"n": 8, "p50_ms": 110},
+    }
+    rule = s["by_route"]["rule"]["stages"]
+    assert rule["engine"] == {"n": 2, "p50_ms": 3}
+    assert rule["tts_first"] == {"n": 2, "p50_ms": 125}
+    assert s["by_route"]["nlu"]["stages"]["engine"] == {"n": 3, "p50_ms": 1_000}
+    assert s["by_route"]["answer"]["stages"]["engine"] == {"n": 2, "p50_ms": 1_600}
+
+
+def test_reasks_and_handoff_reasons_are_counted() -> None:
+    s = summarize(ROUTED)
+    assert s["reask"] == {"turns": 3, "per_guest_turn": 0.38,
+                          "by_slot": {"confirm": 1, "not_heard": 1, "order": 1}}
+    assert s["handoff"] == {"call_failures": 1}
+
+
+def test_old_logs_have_empty_route_and_stage_summaries() -> None:
+    s = summarize([_turn("c1", 0), _turn("c1", 1, 1_000, end_by="vad")])
+    assert s["by_route"] == {"unknown": {"voice": {"n": 1, "p50_ms": 1_000, "p90_ms": 1_000},
+                                         "stages": {}}}
+    assert s["stages"] == {}
+    assert s["reask"] == {"turns": 0, "per_guest_turn": 0.0, "by_slot": {}}
+    assert s["handoff"] == {}
+
+
+def test_smoke_calls_are_left_out_unless_asked_for() -> None:
+    lines = [
+        _turn("c1", 0),
+        _turn("c1", 1, 1_000, end_by="vad"),
+        _turn("smoke1", 0, smoke=True),
+        _turn("smoke1", 1, 9_000, end_by="vad"),
+    ]
+    s = summarize(lines)
+    assert (s["calls"], s["guest_turns"], s["smoke_calls"]) == (1, 1, 1)
+    assert s["voice"]["p50_ms"] == 1_000
+    with_smoke = summarize(lines, include_smoke=True)
+    assert (with_smoke["calls"], with_smoke["guest_turns"]) == (2, 2)

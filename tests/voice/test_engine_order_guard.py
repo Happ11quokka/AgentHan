@@ -21,7 +21,8 @@ NOW = datetime(2026, 11, 8, 17, 10, tzinfo=KST)
 
 
 def make(**limits: int) -> DialogEngine:
-    config = replace(StoreConfig.from_fixture(), **limits)
+    # 큰 수량 확인(6단계 품질, 10개부터 되묻기)은 이 파일이 보는 것이 아니라 끈다
+    config = replace(StoreConfig.from_fixture(), **{"confirm_qty_from": 0, **limits})
     engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), config, order_id="o1")
     engine.start(NOW)
     return engine
@@ -94,3 +95,12 @@ def test_limits_come_from_the_store_json_and_the_server_settings_win() -> None:
                                  env_file=None)
     changed = env.with_order_limits(config)
     assert (changed.max_order_qty, changed.max_order_total) == (30, 0)
+
+
+def test_a_confirmed_big_quantity_still_meets_the_order_limit() -> None:
+    """큰 수량을 "네"로 확인해도 주문 전체 상한은 그대로 건다 (두 장치가 만나는 곳)."""
+    engine = make(confirm_qty_from=10, max_order_qty=20)
+    asked = engine.handle("메도빅 30개요", NOW)
+    assert lines(asked) == [] and "맞으세요" in said(asked)
+    answered = engine.handle("네", NOW)
+    assert lines(answered) == [] and "20개까지만" in said(answered)

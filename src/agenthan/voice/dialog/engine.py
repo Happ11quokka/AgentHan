@@ -4,7 +4,8 @@
 1. `_parse`: 발화 → act 목록. 규칙 단계(`dialog/rules.py`)가 먼저 보고, 안 걸리면 NLU
 2. `_dispatch`: act마다 (상태, act 종류)에 등록된 처리기를 부른다. 없으면 `_on_unhandled`
 3. `_finish`: 처리기들이 남긴 표시(`_Turn`)를 보고 이번 턴의 질문 하나를 정한다
-4. `_count_failure`: 같은 슬롯에서 3번 연속 못 알아들으면 FALLBACK (티켓 05)
+4. `_count_failure`: 같은 슬롯에서 3번 연속 못 알아들으면 FALLBACK (티켓 05). 두 번째에는 보기를
+   붙이고, 통화 전체 되묻기가 가게 기준(`StoreConfig.max_reasks`)이면 넘긴다 (6단계 품질)
 5. `_result`: 이번 턴 대사를 transcript에 쌓고, 확정·handoff면 `Order`를 만든다
 
 처리기 추가는 `@on("act 종류", State.X, ...)`를 붙인 메서드 하나를 쓰면 된다. 공용 코드는 안 고친다.
@@ -50,8 +51,14 @@ from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeReader, Knowl
 from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
 from agenthan.voice.dialog.options import find_options
 from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion
-from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
-from agenthan.voice.dialog.rules import apply_rules, no_and_done, retracted, wait_request_rest
+from agenthan.voice.dialog.pickup import PickupVerdict, earliest_pickup, judge_pickup, today_at
+from agenthan.voice.dialog.rules import (
+    apply_rules,
+    frustrated,
+    no_and_done,
+    retracted,
+    wait_request_rest,
+)
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
@@ -74,8 +81,17 @@ def _pool() -> ThreadPoolExecutor:
 
 
 OrderStatus = Literal["draft", "confirmed", "handoff"]
+# 사장님께 넘긴 이유 (6단계 품질). requested: 손님이 사람을 찾음 · slot_failures: 같은 슬롯 3번 ·
+# call_failures: 통화 전체 되묻기 상한 · frustrated: 손님 짜증
+HandoffReason = Literal["requested", "slot_failures", "call_failures", "frustrated"]
+# 이번 턴이 엔진 안에서 탄 길 (턴 기록의 경로별 지연용). rule: NLU를 안 부름 · nlu: NLU(HCX)를
+# 부름 · answer: 답변기까지 부름
+Route = Literal["rule", "nlu", "answer"]
 
 MAX_FAILURES = 3  # 같은 슬롯에서 이만큼 연속으로 못 알아들으면 사장님께 넘긴다 (spec §5)
+HINT_AT_FAILURE = 2  # 같은 슬롯 이만큼째 되묻기에는 보기를 붙인다 (6단계 품질)
+MENU_EXAMPLES = 3  # 보기로 드는 메뉴 수. 길면 못 외운다
+TIME_EXAMPLE_GAP = timedelta(minutes=30)  # 시각 보기 둘 사이
 # 무응답(3단계 티켓 04): 이만큼째 무응답이면 마지막 인사를 하고 끝낸다. 그 전에는 되묻는다
 # (두 번 되묻고 세 번째에 끝냄, CLOVA AiCall 시나리오 가이드와 같다)
 MAX_NO_INPUT = 3
@@ -124,6 +140,16 @@ class TurnResult:
     knowledge_requests: tuple[KnowledgeRequest, ...] = ()
     # 5단계 티켓 11. 이번 턴에 답변기가 낸 결과(검사 뒤). 답변기를 안 불렀으면 None
     answer: AnswerReply | None = None
+    # 6단계 품질 (턴 기록용). `route`: 이번 턴이 탄 길. `reask`: 이번 턴에 못 알아듣고 되물은 슬롯
+    # (order·option·pickup·confirm·cancel, 말했는데 글 없음은 not_heard). 없으면 "".
+    # `reasks`: 통화 전체 누적. `handoff`: 이번 턴에 사장님께 넘겼으면 그 이유
+    route: Route = "rule"
+    reask: str = ""
+    reasks: int = 0
+    handoff: HandoffReason | Literal[""] = ""
+    # 이 턴의 첫 말이 받아들인 대답이다(담기·고치기·빼기 되받기, 마무리). 세션이 `PHONE_ACK_FIRST`
+    # 일 때 그 앞에 고정 문장 "네."를 따로 둔다(TTS 첫 바이트, `templates.ack_first`)
+    ack: bool = False
 
 
 @dataclass
@@ -158,6 +184,14 @@ class _Turn:
     owner_question: OwnerQuestion | None = None
     knowledge_requests: list[KnowledgeRequest] = field(default_factory=list)  # 티켓 13
     answer: AnswerReply | None = None  # 5단계 티켓 11. 이번 턴에 답변기가 낸 결과 (로그용)
+    # 6단계 품질
+    nlu_called: bool = False  # 이번 턴에 NLU를 불렀다 (`TurnResult.route`)
+    lost: bool = False  # 못 알아들은 턴(모르는 말·못 읽은 시각). 두 번째 되묻기에 보기를 붙인다
+    reask: str = ""  # 세어진 되묻기의 슬롯
+    handoff: HandoffReason | Literal[""] = ""
+    # 이번 턴에 손님이 확인해 준 큰 수량 (메뉴 id, 수량). 같은 턴에 다시 묻지 않는다
+    qty_confirmed: tuple[str, int] | None = None
+    acks: list[str] = field(default_factory=list)  # 받아들인 대답 문장들 (`TurnResult.ack`)
 
     @property
     def question(self) -> str:
@@ -196,7 +230,7 @@ SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
     "_state": "value", "_cart": "value", "_pickup": "value", "_pickup_offer": "value",
     "_pickup_offer_question": "value", "_pickup_text": "value", "_last_question": "value",
     "_again": "value", "_focus": "value", "_fixing": "value", "_cancel_resume": "value",
-    "_fail_key": "value", "_fail_count": "value", "_no_input": "value",
+    "_fail_key": "value", "_fail_count": "value", "_no_input": "value", "_reasks": "value",
     "_owner_open": "value", "_owner_asked": "value", "_read_back": "value",
     "_owner_timed_out": "value", "_owner_seen_said": "value",
     "_transcript": "copy", "_pending": "copy",
@@ -288,6 +322,8 @@ class DialogEngine:
         self._cancel_resume: str | None = None  # "주문 취소할까요?" 답을 기다리는 중. 돌아갈 질문
         self._fail_key = ""  # 연속으로 실패한 슬롯과 횟수
         self._fail_count = 0
+        # 통화 전체에서 못 알아듣거나 되물은 횟수 (6단계 품질). 진전이 있어도 지우지 않는다
+        self._reasks = 0
         self._no_input = 0  # 연속 무응답 횟수 (3단계 티켓 04). 받아들인 말이 오면 0
         # 4단계 티켓 05. 상태는 그대로 두고 열린 사장님 질문 하나만 든다(`_cancel_resume`과 같은
         # 모양). 하던 질문은 `_last_question`에 그대로 있고 답이 오면 `_question_again`으로 돌아간다
@@ -330,7 +366,12 @@ class DialogEngine:
             self._no_input = 0
             self._say(turn, templates.take_your_time())
             return self._result(turn)
-        acts = self._parse(text if rest is None else rest)
+        if self._reasks and self._state in _ACTIVE and frustrated(text):
+            # 이미 되물은 통화에서 손님이 짜증을 냈다. 더 묻지 않고 넘긴다 (6단계 품질)
+            self._say(turn, templates.sorry_for_trouble())
+            self._hand_off(turn, "frustrated")
+            return self._result(turn)
+        acts = self._parse(text if rest is None else rest, turn)
         acts = self._question_rescue(turn, text if rest is None else rest, acts)
         if any(a.type != "unknown" for a in acts):
             self._no_input = 0  # 받아들인 말. 못 알아들은 말(unknown)만이면 그대로 둔다
@@ -377,13 +418,19 @@ class DialogEngine:
     def not_heard(self, now: datetime) -> TurnResult:
         """말소리는 있었는데 STT 글이 없었다(세션이 불렀다, 3단계 티켓 04). 다시 말해 달라고 한다.
 
-        못 알아들음 실패로 세지 않고, 무응답 횟수도 그대로 둔다. 직전 질문은 바꾸지 않는다.
+        같은 슬롯의 못 알아들음 실패로 세지 않고, 무응답 횟수도 그대로 둔다. 직전 질문은 바꾸지
+        않는다. 통화 전체 되묻기에는 넣는다(6단계 품질): 상한이면 다시 말해 달라고 하지 않고 넘긴다.
         """
         if self._state is State.GREETING:
             raise RuntimeError("start()를 먼저 불러야 해요")
         turn = _Turn(self._local(now), cart_before=self._cart)
         if self._state is not State.DONE:
-            self._say(turn, templates.not_heard())
+            self._reasks += 1
+            turn.reask = "not_heard"
+            if self._over_call_limit():
+                self._give_up(turn, "call_failures")
+            else:
+                self._say(turn, templates.not_heard())
         return self._result(turn)
 
     def no_input(self, now: datetime) -> TurnResult:
@@ -493,7 +540,7 @@ class DialogEngine:
 
     # ------------------------------------------------------------ 턴 골격
 
-    def _parse(self, text: str) -> list[Act]:
+    def _parse(self, text: str, turn: _Turn | None = None) -> list[Act]:
         """규칙 단계 → (안 걸리면) NLU. 내용 앞의 "네/아니요"는 뗀다.
 
         "아니요, 두 개요" → [no, change_qty]에서 no를 떼고 change_qty만 남긴다. 복창(CONFIRM)에서는
@@ -505,6 +552,8 @@ class DialogEngine:
         self._answer_early = None
         if acts is None:
             self._start_answer_early(text)
+            if turn is not None:
+                turn.nlu_called = True
             acts = self._nlu.parse(text, self.nlu_context())
             acts = self._menu_word_rescue(text, acts)
         if not any(a.type == "add_item" for a in acts):  # 같은 말에서 담으면 붙일 데가 있다
@@ -617,7 +666,8 @@ class DialogEngine:
     def _awaiting_menu_yes(self) -> bool:
         """CLARIFY가 후보 하나짜리 메뉴 확인("맞으세요?")의 답을 기다린다."""
         pending = self._pending
-        return isinstance(pending, _MenuClarify) and len(pending.candidates) == 1
+        return (isinstance(pending, _MenuClarify) and len(pending.candidates) == 1
+                and not pending.declined)
 
     def _dispatch(self, turn: _Turn, act: Act) -> None:
         if self._cancel_resume is not None and self._on_cancel_answer(turn, act):
@@ -635,7 +685,7 @@ class DialogEngine:
                 if turn.correcting:
                     self._say_corrections(turn)
                 elif turn.accepted:
-                    self._say(turn, templates.items_noted(turn.accepted))
+                    self._say(turn, self._noted(turn, turn.accepted))
                 if turn.pickup_note and self._missing_required() is None:
                     # "아니요, 지금 갈게요" → 복창 앞에 준비 시간 안내 (2단계 리뷰 5번).
                     # 필수 옵션을 먼저 물을 때는 그 질문만 한다
@@ -643,15 +693,16 @@ class DialogEngine:
                 self._advance(turn)
             elif (missing := self._missing_required()) is not None:
                 if turn.accepted:
-                    self._say(turn, templates.items_noted(turn.accepted))
+                    self._say(turn, self._noted(turn, turn.accepted))
                 if turn.pickup_note:
                     self._say(turn, turn.pickup_note)
                 self._ask_required(turn, *missing)
             elif turn.accepted and turn.pickup_note:
-                self._say(turn, templates.items_noted(turn.accepted))
+                self._say(turn, self._noted(turn, turn.accepted))
                 self._say(turn, turn.pickup_note)
                 self._ask(turn, templates.anything_else())
             elif turn.accepted:
+                self._noted(turn, turn.accepted)
                 self._ask(turn, templates.item_accepted(turn.accepted))
             elif turn.changed or turn.time_said or turn.menu_listed:
                 if turn.pickup_note:
@@ -728,9 +779,9 @@ class DialogEngine:
             (changed if was_there else added).append(line.phrase(self._unsaid(line.item)))
         notes = []
         if changed:
-            notes.append(templates.changed_to(changed))
+            notes.append(self._ok(turn, templates.changed_to(changed)))
         if added:
-            notes.append(templates.items_noted(added))
+            notes.append(self._noted(turn, added))
         for note in notes:
             if before_question and turn.question_at is not None:
                 turn.utterances.insert(turn.question_at, note)
@@ -786,7 +837,10 @@ class DialogEngine:
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
                             readback=readback, owner_question=turn.owner_question,
                             knowledge_requests=tuple(turn.knowledge_requests),
-                            answer=turn.answer)
+                            answer=turn.answer, route=_route(turn), reask=turn.reask,
+                            reasks=self._reasks, handoff=turn.handoff,
+                            ack=bool(turn.utterances) and any(
+                                turn.utterances[0].startswith(a) for a in turn.acks))
         if self._state is State.CONFIRM:
             self._read_back = True
         if self._state in TERMINAL:
@@ -799,6 +853,15 @@ class DialogEngine:
     def _say(self, turn: _Turn, text: str) -> None:
         """대사는 턴이 끝날 때 `_result`가 transcript에 옮긴다 (FALLBACK이 바꿀 수 있게)."""
         turn.utterances.append(text)
+
+    def _noted(self, turn: _Turn, phrases: Sequence[str]) -> str:
+        """담은 항목 되받기("메도빅 하나요."). 받아들인 대답으로 적어 둔다 (`TurnResult.ack`)."""
+        return self._ok(turn, templates.items_noted(phrases))
+
+    @staticmethod
+    def _ok(turn: _Turn, text: str) -> str:
+        turn.acks.append(text)
+        return text
 
     def _ask(
         self, turn: _Turn, question: str, *, force: bool = False, again: str | None = None
@@ -828,7 +891,7 @@ class DialogEngine:
         """
         if turn.unhandled or turn.responded:
             return
-        turn.unhandled = True
+        turn.unhandled = turn.lost = True
         self._fail(turn)
 
     def _question_again(self, *, short: bool = False) -> str:
@@ -870,10 +933,16 @@ class DialogEngine:
             turn.failed = self._slot_key()
 
     def _count_failure(self, turn: _Turn) -> None:
-        """실패만 있고 진전이 없는 턴이 같은 슬롯에서 `MAX_FAILURES`번이면 FALLBACK.
+        """실패만 있고 진전이 없는 턴을 센다. 같은 슬롯에서 `MAX_FAILURES`번이면 FALLBACK.
 
-        진전(담기·고치기·주문 끝·질문 답하기)이 있거나 실패가 없는 턴이면 횟수를 지운다.
+        진전(담기·고치기·주문 끝·질문 답하기)이 있거나 실패가 없는 턴이면 슬롯 횟수를 지운다.
         FALLBACK이면 이번 턴에 하려던 재질문은 버리고 넘김 안내로 바꾼다.
+
+        6단계 품질(되묻기 루프 방지). 같은 슬롯 횟수와 통화 전체 횟수(`_reasks`)를 따로 센다:
+        - 같은 슬롯 1번째: 전처럼 되묻는다. 2번째(`HINT_AT_FAILURE`): 질문 앞에 보기를 붙인다
+          (`_choices_hint`). 3번째: 넘긴다(이유 slot_failures)
+        - 통화 전체가 `StoreConfig.max_reasks`번이면 슬롯이 달라도 넘긴다(이유 call_failures).
+          진전이 있어도 지우지 않는다. 말했는데 글 없음(`not_heard`)도 여기에 든다
         """
         progress = (
             turn.accepted or turn.touched or turn.changed or turn.done_ordering or turn.answered
@@ -881,27 +950,95 @@ class DialogEngine:
         if not turn.failed or progress or self._state in TERMINAL:
             self._fail_key, self._fail_count = "", 0
             return
+        self._reasks += 1
+        turn.reask = turn.failed
         if turn.failed == self._fail_key:
             self._fail_count += 1
         else:
             self._fail_key, self._fail_count = turn.failed, 1
         if self._fail_count >= MAX_FAILURES:
-            turn.utterances.clear()
-            self._say(turn, templates.too_many_failures())
-            self._hand_off(turn)
+            self._give_up(turn, "slot_failures")
+        elif self._over_call_limit():
+            self._give_up(turn, "call_failures")
+        elif self._fail_count == HINT_AT_FAILURE and turn.lost:
+            self._say_hint(turn)
 
-    def _hand_off(self, turn: _Turn) -> None:
-        """FALLBACK: 사장님께 메모를 남긴다. 지금까지의 장바구니·시각·대화를 handoff Order로."""
+    def _over_call_limit(self) -> bool:
+        limit = self._config.max_reasks
+        return limit > 0 and self._reasks >= limit
+
+    def _give_up(self, turn: _Turn, reason: HandoffReason) -> None:
+        """더 되묻지 않고 넘긴다. 이번 턴에 하려던 말은 버린다."""
+        turn.utterances.clear()
+        turn.question_at = None
+        self._say(turn, templates.too_many_failures())
+        self._hand_off(turn, reason)
+
+    def _say_hint(self, turn: _Turn) -> None:
+        """두 번째 되묻기: 질문 앞에 보기를 넣는다. 질문이 "?"로 안 끝나면("…한 번 더 말씀해
+        주세요.") 그 뒤에 붙인다."""
+        hint = self._choices_hint(turn)
+        if not hint:
+            return
+        at = turn.question_at
+        if at is None:
+            self._say(turn, hint)
+        elif turn.utterances[at].endswith("?"):
+            turn.utterances.insert(at, hint)
+            turn.question_at = at + 1
+        else:
+            turn.utterances.insert(at + 1, hint)
+
+    def _choices_hint(self, turn: _Turn) -> str:
+        """지금 질문에 붙일 보기·답하는 법. 가게 데이터(메뉴·준비 시간)로 만든다. 없으면 "".
+
+        이미 보기가 든 질문(필수 옵션 "따뜻하게 드릴까요, 차갑게 드릴까요?", 둘 중 고르기)과
+        메뉴 목록을 방금 말한 턴에는 붙이지 않는다.
+        """
+        if turn.menu_listed:
+            return ""
+        if self._cancel_resume is not None:
+            return templates.yes_no_hint()
+        if self._state is State.CONFIRM:
+            return templates.confirm_hint()
+        if self._state is State.ASK_PICKUP:
+            if self._pickup_offer is not None:
+                return templates.yes_no_hint()
+            first = earliest_pickup(turn.now, self._config)
+            close = today_at(turn.now, self._config.close_time)
+            times = [t for t in (first, first + TIME_EXAMPLE_GAP) if t <= close]
+            return templates.time_examples(times) if times else ""
+        if self._state is State.CLARIFY:
+            pending = self._pending
+            if (isinstance(pending, _MenuClarify) and len(pending.candidates) == 1
+                    and not pending.declined):
+                return templates.yes_no_hint()
+            return ""
+        if self._state is State.ORDERING and not self._fixing:
+            names = self._available_names()[:MENU_EXAMPLES]
+            if not names:
+                return ""
+            if self._cart.is_empty():
+                return templates.menu_examples(names)
+            return templates.more_or_done_hint(names[:2])
+        return ""
+
+    def _hand_off(self, turn: _Turn, reason: HandoffReason) -> None:
+        """FALLBACK: 사장님께 메모를 남긴다. 지금까지의 장바구니·시각·대화를 handoff Order로.
+
+        넘긴 이유는 `TurnResult.handoff`로 나가 세션이 턴 기록에 남긴다.
+        """
         self._pending = None
         self._cancel_resume = None
         self._state = State.FALLBACK
         self._say(turn, templates.handoff())
         turn.asked = True
         turn.order_status = "handoff"
+        turn.handoff = reason
 
     @on("want_owner", *_ACTIVE)
     def _on_want_owner(self, turn: _Turn, act: Act) -> None:
-        self._hand_off(turn)
+        self._hand_off(turn, "requested")
 
     # ------------------------------------------------------------ 주문 취소 (티켓 05)
 
@@ -1158,6 +1295,8 @@ class DialogEngine:
             return
         if not self._qty_ok(turn, qty):
             return
+        if self._confirm_big_qty(turn, item, replace(act, qty=qty)):
+            return
         options = self._default_choices(item)
         option_text = act.option_text or self._option_in_name(item, act.menu_text)
         if option_text:
@@ -1201,6 +1340,70 @@ class DialogEngine:
         turn.changed = True
         return False
 
+    # ------------------------------------------------------------ 큰 수량 확인 (6단계 품질)
+    #
+    # 한 줄 수량이 가게 기준(`StoreConfig.confirm_qty_from`) 이상이면 담지 않고 "○○ 12개
+    # 맞으세요?"를 묻는다. 메뉴 되묻기(`_MenuClarify`, 후보 하나)와 같은 틀을 쓴다: 같은 발화의
+    # 나머지 act는 미뤄 두고, "네"면 담고, 정정 중에 열었으면 답 뒤에 다시 복창한다.
+    # - "네"·같은 수를 되풀이 → 그 수량으로 담는다(줄을 고치던 것이면 그 줄을 고친다)
+    # - "아니요" → "그럼 ○○은 몇 개 드릴까요?"(`declined`). 실패로 세지 않는다
+    # - 다른 수("두 개요") → 그 수량으로. 그 수도 크면 다시 확인한다
+    # - "빼 주세요" → 담지 않고 닫는다. 다른 메뉴를 말하면 이 줄은 버리고 그 메뉴를 받는다
+
+    def _confirm_big_qty(self, turn: _Turn, item: MenuItem, act: Act,
+                         line: CartLine | None = None) -> bool:
+        """수량이 크면 확인 질문을 열고 True(담지 않는다). `line`은 수량을 바꾸려던 줄."""
+        limit = self._config.confirm_qty_from
+        qty = act.qty or 0
+        if limit <= 0 or qty < limit or turn.qty_confirmed == (item.id, qty):
+            return False
+        phrase = templates.line_phrase(item.name_ko, qty, templates.counter_for(item.category))
+        before = self._pending
+        self._open_menu_clarify(turn, act, (item,), templates.confirm_qty(phrase))
+        pending = self._pending
+        if isinstance(pending, _MenuClarify) and pending is not before:
+            pending.big_qty = True
+            pending.line = line
+        return True  # 이번 턴에 다른 질문이 먼저 나갔으면 열지 못한다. 그래도 담지는 않는다
+
+    def _big_qty_pending(self, turn: _Turn, act: Act) -> _MenuClarify | None:
+        """앞 턴에 연 큰 수량 확인이고, `act`가 그 메뉴(또는 메뉴 이름 없는 말)를 가리키면 그것."""
+        pending = self._pending
+        if (self._state is not State.CLARIFY or not isinstance(pending, _MenuClarify)
+                or not pending.big_qty or pending.opened_in is turn):
+            return None
+        if _names_menu(act) and not self._names_one_of(pending, act):
+            return None
+        return pending
+
+    @staticmethod
+    def _names_one_of(pending: _MenuClarify, act: Act) -> bool:
+        picked = MenuMatcher(list(pending.candidates), fuzzy_accept_needs_guess=False).match(
+            act.menu_text, act.menu_guess)
+        return picked.decision == "accept"
+
+    def _answer_qty(self, turn: _Turn, pending: _MenuClarify, qty: int) -> None:
+        """큰 수량 확인에 수량으로 답했다. 물어본 수를 되풀이했으면 확인이다."""
+        item = pending.candidates[0]
+        if qty == pending.act.qty and not pending.declined:
+            turn.qty_confirmed = (item.id, qty)
+        self._close_menu_clarify(turn, pending, item, replace(pending.act, qty=qty))
+
+    def _settle_big_qty(self, turn: _Turn, pending: _MenuClarify, act: Act) -> None:
+        """확인이 끝난(또는 새로 받은) 수량을 장바구니에 넣는다. 고치던 줄이 있으면 그 줄을."""
+        item = pending.candidates[0]
+        index = None if pending.line is None else self._cart.index_of(pending.line)
+        if index is None:
+            self._add_to_cart(turn, item, act)
+            return
+        assert act.qty is not None
+        line = self._cart.lines[index]
+        if not self._qty_ok(turn, act.qty) or self._confirm_big_qty(turn, item, act, line):
+            return
+        new = replace(line, qty=act.qty)
+        if self._order_ok(turn, self._cart.replace_at(index, new)):  # 6단계 주문 가드
+            self._replace_line(turn, index, new)
+
     @on("done_ordering", State.ORDERING)
     def _on_done_ordering(self, turn: _Turn, act: Act) -> None:
         turn.done_ordering = True
@@ -1234,6 +1437,12 @@ class DialogEngine:
         if (option := self._option_removal(act)) is not None:
             self._on_option_act(turn, option)  # "샤워 크림 빼 주세요"는 메뉴 빼기가 아니다
             return
+        if (big := self._big_qty_pending(turn, act)) is not None:
+            # 확인하던 큰 수량을 거뒀다. 담지 않고 닫는다(고치던 줄은 그대로 둔다)
+            self._close_menu_clarify(turn, big, None)
+            self._say(turn, self._ok(turn, templates.removed(big.candidates[0].name_ko)))
+            turn.changed = True
+            return
         if not self._leave_option_clarify(turn, act):
             return
         if _names_menu(act):
@@ -1259,7 +1468,7 @@ class DialogEngine:
         if self._focus is not None and any(self._focus.same_kind(g) for g in gone):
             self._focus = None
         if not added_now:  # 이번 턴에 담았다 바로 뺀 것은 따로 말하지 않는다
-            self._say(turn, templates.removed(name))
+            self._say(turn, self._ok(turn, templates.removed(name)))
         turn.changed = True
 
     def _option_removal(self, act: Act) -> Act | None:
@@ -1290,13 +1499,19 @@ class DialogEngine:
         if act.qty <= 0:
             self._on_remove_item(turn, act)
             return
+        if (big := self._big_qty_pending(turn, act)) is not None:
+            self._answer_qty(turn, big, act.qty)  # "○○ 12개 맞으세요?" → "두 개요"
+            return
         if not self._leave_option_clarify(turn, act):
             return
         if not self._qty_ok(turn, act.qty):
             return
         index, item = self._pick_line(act)
         if index is not None:
-            new = replace(self._cart.lines[index], qty=act.qty)
+            line = self._cart.lines[index]
+            if self._confirm_big_qty(turn, line.item, act, line):
+                return
+            new = replace(line, qty=act.qty)
             if self._order_ok(turn, self._cart.replace_at(index, new)):  # 6단계 주문 가드
                 self._replace_line(turn, index, new)
         elif item is not None:  # 아직 안 담은 메뉴 → 그 수량으로 담는다
@@ -1645,6 +1860,7 @@ class DialogEngine:
         if verdict.kind in ("unclear", "before_open", "after_close"):
             self._fail(turn)
         if verdict.kind == "unclear":
+            turn.lost = True
             self._ask(turn, templates.pickup_not_understood())
         elif verdict.kind == "before_open":
             open_at = today_at(turn.now, self._config.open_time)
@@ -1684,7 +1900,8 @@ class DialogEngine:
         assert self._pickup is not None
         self._state = State.CLOSING
         # 답을 못 받은 사장님 질문이 있으면 문자 약속을 붙이고 닫는다 (티켓 06)
-        self._say(turn, templates.closing(self._pickup, owner_pending=self._owner_open is not None))
+        self._say(turn, self._ok(turn, templates.closing(
+            self._pickup, owner_pending=self._owner_open is not None)))
         self._owner_open = None
         turn.order_status = "confirmed"
 
@@ -1763,7 +1980,7 @@ class DialogEngine:
         self._collect_readback(turn)  # 앞서 담은 줄(티켓 03 `touched`)을 지금 모습으로
         turn.touched = []
         if turn.accepted:
-            self._say(turn, templates.items_noted(turn.accepted))
+            self._say(turn, self._noted(turn, turn.accepted))
         if notice:
             self._say(turn, notice)
         self._pending = _MenuClarify(
@@ -1791,7 +2008,9 @@ class DialogEngine:
         self._state = State.ORDERING
         if pending.correcting:  # 복창 뒤 정정에서 연 되묻기. 답을 받으면 다시 복창한다
             turn.done_ordering = turn.correcting = True
-        if item is not None:
+        if item is not None and pending.big_qty:
+            self._settle_big_qty(turn, pending, act or pending.act)
+        elif item is not None:
             self._add_to_cart(turn, item, act or pending.act)
         for deferred in pending.deferred:
             self._dispatch(turn, deferred)
@@ -1803,16 +2022,29 @@ class DialogEngine:
         pending = self._menu_clarify(turn, act)
         if pending is None:
             return
-        if len(pending.candidates) != 1:  # "둘 중 어떤 거요?"에 "네": 실패로 세고 다시 묻는다
+        # "둘 중 어떤 거요?"·"몇 개 드릴까요?"에 "네": 실패로 세고 다시 묻는다
+        if len(pending.candidates) != 1 or pending.declined:
             self._fail(turn)
             self._ask(turn, pending.question)
             return
+        if pending.big_qty and pending.act.qty is not None:
+            turn.qty_confirmed = (pending.candidates[0].id, pending.act.qty)
         self._close_menu_clarify(turn, pending, pending.candidates[0])
 
     @on("no", State.CLARIFY)
     def _on_clarify_no(self, turn: _Turn, act: Act) -> None:
         pending = self._menu_clarify(turn, act)
         if pending is None:
+            return
+        if pending.big_qty:
+            if pending.declined:  # "몇 개 드릴까요?"에 또 "아니요"
+                self._fail(turn)
+            else:  # 수량이 틀렸다. 못 알아들은 것이 아니라 답이다
+                item = pending.candidates[0]
+                pending.declined = True
+                pending.question = templates.ask_qty(
+                    item.name_ko, templates.counter_for(item.category))
+            self._ask(turn, pending.question)
             return
         self._fail(turn)  # 메뉴 슬롯을 못 채웠다. 다음 턴에 메뉴를 말하면 횟수가 지워진다
         self._say(turn, templates.menu_declined(self._available_names()))
@@ -1833,6 +2065,14 @@ class DialogEngine:
             return
         pending = self._menu_clarify(turn, act)
         if pending is None:
+            return
+        if pending.big_qty and (not _names_menu(act) or self._names_one_of(pending, act)):
+            # 큰 수량 확인 중에 그 메뉴를 다시 말했다(NLU가 수량만 담기로 낼 때도 있다).
+            # 수량이 있으면 답, 없으면 다시 묻는다
+            if act.qty is None or act.qty <= 0:
+                self._on_unhandled(turn, act)
+            else:
+                self._answer_qty(turn, pending, act.qty)
             return
         if act.qty is None:
             act = replace(act, qty=pending.act.qty)
@@ -1900,11 +2140,21 @@ class _MenuClarify:
     opened_in: _Turn = field(compare=False, repr=False)  # 되묻기를 연 턴
     deferred: list[Act] = field(default_factory=list)  # 같은 발화에서 질문 뒤에 온 act
     correcting: bool = False  # 복창 뒤 정정 중에 열었다 (티켓 06)
+    # 6단계 품질: 큰 수량 확인("○○ 12개 맞으세요?"). 후보 하나가 그 메뉴, `act.qty`가 물어본 수
+    big_qty: bool = False
+    line: CartLine | None = None  # 수량을 바꾸려던 줄. 없으면 새로 담는다
+    declined: bool = False  # "아니요" 뒤 "몇 개 드릴까요?"를 묻는 중
 
 
 def _store_gist(question: str) -> str:
     """가게 질문의 보충 지식 대상: 띄어쓰기·부호를 뺀 원문 (`menu_info._gist`와 같은 뜻)."""
     return re.sub(r"[\s?!.,~]", "", question)
+
+
+def _route(turn: _Turn) -> Route:
+    if turn.answer is not None:
+        return "answer"
+    return "nlu" if turn.nlu_called else "rule"
 
 
 def _names_menu(act: Act) -> bool:

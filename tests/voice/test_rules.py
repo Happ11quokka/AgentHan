@@ -2,7 +2,7 @@
 
 import pytest
 
-from agenthan.voice.dialog.rules import apply_rules, no_and_done
+from agenthan.voice.dialog.rules import apply_rules, frustrated, no_and_done
 from agenthan.voice.nlu.base import Act
 
 
@@ -46,6 +46,14 @@ def test_cancel_order(text: str) -> None:
         "직원 바꿔 주세요",
         "상담원 연결해 주세요",
         "사장님 좀 바꿔 줄래요?",
+        # 6단계 품질: 사람 요청
+        "사람이랑 얘기할게요",
+        "직원한테 직접 말할래요",
+        "사장님하고 얘기하고 싶어요",
+        "사장님 계세요?",
+        "사장님 지금 안 계세요?",
+        "기계 말고 사람이요",
+        "AI 말고 사람 좀요",
     ],
 )
 def test_want_owner(text: str) -> None:
@@ -68,6 +76,8 @@ def test_repeat_please(text: str) -> None:
         "그거 취소해 주세요",
         "메도빅 하나요",
         "사장님이 직접 만드세요?",  # 질문이지 연결 요청이 아니다
+        "사장님이랑 얘기했는데요",  # 지난 일. 연결 요청이 아니다
+        "사람 많아요?",
         "음",
     ],
 )
@@ -154,3 +164,54 @@ def test_the_engine_can_tell_the_closing_no_rule_from_a_plain_no() -> None:
     assert no_and_done("없어요") is True
     assert no_and_done("아니요") is False
     assert no_and_done("아니요 두 개요") is False
+
+
+# ------------------------------------------------ 짜증 표현 (6단계 품질)
+# act가 아니다. 엔진이 이미 되물은 통화에서만 보고 사장님께 넘긴다. 오탐이 적은 말만 둔다
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "몇 번을 말해요",
+        "아니 몇 번이나 말해야 돼요",
+        "몇 번째 말하는 거예요",
+        "아까 말했잖아요",
+        "메도빅 하나라고 말했잖아요",
+        "방금 말씀드렸잖아요",
+        "왜 이렇게 못 알아들어요",
+        "자꾸 못 알아듣네",
+        "말귀를 못 알아듣네요",
+        "아 답답하네",
+        "진짜 답답해요",
+        "짜증나네",
+        "아 짜증 나",
+        "에이씨",
+        "그냥 끊을게요",
+        "됐어요 그냥 끊을게요",
+        "끊을게요.",
+        "전화 끊을게요",
+    ],
+)
+def test_frustrated(text: str) -> None:
+    assert frustrated(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "됐어요",  # 주문 끝일 수 있다
+        "됐어요 그냥",
+        "아 진짜요?",
+        "괜찮아요",
+        "아니요 그게 다예요",
+        "메도빅 하나요",
+        "몇 시까지 해요?",
+        "몇 번 버스 타요?",
+        "말씀드린 대로 여섯 시요",
+        "포장 끈 끊어지지 않게 해 주세요",
+        "",
+    ],
+)
+def test_not_frustrated(text: str) -> None:
+    assert not frustrated(text)

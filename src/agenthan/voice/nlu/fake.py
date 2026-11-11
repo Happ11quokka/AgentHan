@@ -206,7 +206,9 @@ _BARE_QTY = re.compile(rf"(?:{_QTY_PAT})\s*(?:이요|요|만요|만|으로요|�
 
 def _no_menu_act(text: str, ctx: NluContext) -> list[Act]:
     t = _TRAILING.sub("", text).strip()
-    if ctx.cart_summary and _BARE_QTY.fullmatch(t):  # "두 개요": 방금 다룬 줄의 수량
+    # "두 개요": 방금 다룬 줄의 수량. 되묻는 중이면(6단계 큰 수량 확인 "몇 개 드릴까요?") 담은 것이
+    # 없어도 수량 답이다
+    if (ctx.cart_summary or ctx.state == "clarify") and _BARE_QTY.fullmatch(t):
         return [Act("change_qty", qty=_parse_qty(t))]
     if option := _option_text(t):
         return [Act("set_option", option_text=option)]

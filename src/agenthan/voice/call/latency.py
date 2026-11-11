@@ -30,6 +30,11 @@
     했다. `gate_ms`는 문지기가 첫 소리를 붙잡은 시간, `text`는 덧붙은 말. 새 턴에는 `supersedes`
   - `gate {result, wait_ms}`: 헛 문지기(걸렸지만 원래 답을 말함). result는 empty · backchannel ·
     timeout. 그때 버린 맞장구는 `dropped`에 reason `gate`
+- 6단계 품질 (있을 때만)
+  - `route`(손님 턴): 엔진이 탄 길. rule(NLU 안 부름) · nlu(NLU·HCX 부름) · answer(답변기까지)
+  - `reask {slot, n}`: 못 알아듣고 되물은 턴. `handoff {reason, slot, reasks}`: 사장님께 넘긴 턴
+    (reason: requested · slot_failures · call_failures · frustrated)
+  - `smoke`(턴 0): 스모크 통화(`PHONE_SMOKE_KEY`). `turn_summary`가 뺀다
 - `client`는 그 턴의 `client.metrics` 이벤트 내용을 합친 것(`turn`·`type` 뺌).
   턴 0에는 `call.start`의 값(마이크 실제 설정값 등)도 들어간다
 - 줄은 다음 턴이 시작될 때나 통화가 끝날 때 쓴다.

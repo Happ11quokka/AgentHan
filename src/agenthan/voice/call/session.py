@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hmac
 import logging
 import math
 import time
@@ -112,7 +113,7 @@ from agenthan.voice.call.frames import (
     chunk_pcm,
     pack_audio_frame,
 )
-from agenthan.voice.call.latency import LatencyLog
+from agenthan.voice.call.latency import LatencyLog, TurnRecord
 from agenthan.voice.call.ports import (
     CUSTOMER_FATAL,
     CUSTOMER_RETRY,
@@ -141,6 +142,7 @@ from agenthan.voice.call.turn_end import (
     question_kind,
 )
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
+from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.answerer import Answerer
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
@@ -271,6 +273,15 @@ class SessionSettings:
     # 음성 끼어들기 (티켓 06, `PHONE_VOICE_BARGE_IN`). None이면 꺼짐(반이중 + 버튼). 켜도 브라우저가
     # `call.start.voice_barge_in`(안드로이드 크롬)을 알린 통화만 쓴다
     barge: BargeSettings | None = None
+    # 받아들인 대답("메도빅 두 개요. …"·마무리)의 첫 문장을 고정 문장 "네."로 따로 낸다 (6단계 품질,
+    # `PHONE_ACK_FIRST`). CLOVA Voice 서버 캐시로 그 턴의 TTS 첫 바이트가 약 0.3 → 0.03초가 된다
+    # (서버 실측, `research/s6-quality-latency-gap.md` 1-0). 짧은 조각의 억양을 들어 보기 전이라
+    # 기본 끔
+    ack_first: bool = False
+    # 스모크 통화 표시 (6단계 품질, `PHONE_SMOKE_KEY`). `call.start.smoke`가 이 값과 같으면 그
+    # 통화는 사장님 쪽(통화 카드·자막·질문)과 주문 받는 곳(`OrderSink`)에 알리지 않고, 턴 기록에
+    # `smoke: true`를 남긴다. 비어 있으면 표시를 받지 않는다(아무나 주문을 숨기지 못하게)
+    smoke_key: str = field(default="", repr=False)
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
@@ -480,6 +491,7 @@ class CallSession:
         self._speak_sent_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각
         self._play_started: int | None = None  # 재생 시작 보고로 경계를 옮긴 턴
         self._client_start: dict[str, Any] = {}
+        self.smoke = False  # 스모크 통화로 표시됐다 (`SessionSettings.smoke_key`)
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer = OneShot(self._on_play_timeout)
         self._thinking_timer = OneShot(self._on_thinking)
@@ -634,7 +646,10 @@ class CallSession:
             return
         if kind == "call.start":
             if self._phase == "idle" and not self.done:
-                self._client_start = {k: v for k, v in event.items() if k not in ("type", "turn")}
+                # 스모크 열쇠는 턴 기록에 남기지 않는다
+                self._client_start = {k: v for k, v in event.items()
+                                      if k not in ("type", "turn", "smoke")}
+                self._mark_smoke(event.get("smoke"))
                 barge = self._settings.barge
                 if barge is not None and event.get("voice_barge_in") is True:
                     self._barge = BargeTracker(barge)  # 브라우저가 봇 말 중에도 진짜 소리를 보낸다
@@ -667,6 +682,21 @@ class CallSession:
                 record.client.update({k: v for k, v in event.items() if k not in ("type", "turn")})
         elif kind == "call.end":  # 손님이 끊었다
             self._end("hangup")
+
+    def _mark_smoke(self, sent: Any) -> None:
+        """`call.start.smoke`가 서버 열쇠와 같으면 스모크 통화다. 사장님 쪽을 떼어 낸다.
+
+        엔진을 만들기 전(`_setup`)이라 사장님께 묻기·보충 요청도 같이 꺼진다. 손님 쪽 이벤트
+        (`order` 포함)는 그대로 나가 스모크가 결과를 본다.
+        """
+        key = self._settings.smoke_key
+        if not key or not isinstance(sent, str) or not hmac.compare_digest(
+                sent.encode(), key.encode()):
+            return
+        self.smoke = True
+        self._owner = NullOwnerChannel()
+        self._asks_owner = False
+        self._knowledge = None
 
     async def close(self) -> None:
         self._end("hangup")  # 아직 안 끝났으면 손님 쪽이 먼저 사라진 것이다(소켓 끊김·서버 종료)
@@ -786,6 +816,8 @@ class CallSession:
             ready["voice_barge_in"] = self._barge.mode
         elif self._settings.mic_close == "playback":
             ready["mic_close"] = "playback"  # 브라우저가 실제 재생 시작에 마이크를 닫는다
+        if self.smoke:
+            ready["smoke"] = True  # 스모크가 표시가 먹었는지 본다
         self._emit(ready)
         self._tell_owner(lambda owner: owner.call_started(self.call_id))
 
@@ -1312,6 +1344,8 @@ class CallSession:
         if u is None:  # 인사 턴. 마이크 실제 설정값(`call.start`)을 이 줄의 client에 남긴다
             record = self._log.begin(turn, text="")
             record.client.update(self._client_start)
+            if self.smoke:
+                record.fields["smoke"] = True
             if self._rec is not None:
                 record.fields["recording"] = self._rec_name
             self._emit_state()
@@ -1333,6 +1367,9 @@ class CallSession:
         record = self._log.get(turn)
         if stats is not None and record is not None:
             record.fields["nlu_prefetch"] = stats
+        if record is not None:
+            self._log_quality(record, result, guest=before is not None or (
+                u is not None and not isinstance(u, _BotTurn)))
         self._last = result
         if result.state in TERMINAL:
             self._terminal = True
@@ -1359,11 +1396,15 @@ class CallSession:
         if result.knowledge_requests:
             self._pass_on(turn, result.knowledge_requests)
         if result.order is not None:
-            self._sink.submit(result.order)
+            if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
+                self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
                         "cart": _cart_json(result.cart), "total": result.cart.total()})
+        utterances = result.utterances
+        if self._settings.ack_first and result.ack:
+            utterances = templates.ack_first(utterances)  # 첫 소리를 고정 문장 "네."로
         sentences = [
-            s for text in result.utterances
+            s for text in utterances
             for s in split_sentences(text, self._settings.sentence_limit)
         ]
         audio_ms: int | None = 0
@@ -1392,6 +1433,25 @@ class CallSession:
             # 서버 안전망: 재생 끝 보고가 안 와도 소리 길이 + 여유 뒤에는 듣기로 (리뷰 4번)
             delay = audio_ms / 1000 + self._settings.play_done_grace_s
             self._play_timer.arm(delay, turn)
+
+    @staticmethod
+    def _log_quality(record: TurnRecord, result: TurnResult, *, guest: bool) -> None:
+        """6단계 품질 지표를 턴 기록에 남긴다 (글은 없다).
+
+        - `route`(손님 턴): 엔진이 탄 길 rule · nlu · answer. 경로별 지연 요약
+          (`turn_summary`)이 쓴다
+        - `reask {slot, n}`: 못 알아듣고 되물은 턴. `slot`은 order·option·pickup·confirm·cancel·
+          not_heard, `n`은 통화 전체 누적
+        - `handoff {reason, slot, reasks}`: 사장님께 넘긴 턴. reason은 requested(손님이 사람을
+          찾음) · slot_failures(같은 슬롯 3번) · call_failures(통화 전체 상한) · frustrated(짜증)
+        """
+        if guest:
+            record.fields["route"] = result.route
+        if result.reask:
+            record.fields["reask"] = {"slot": result.reask, "n": result.reasks}
+        if result.handoff:
+            record.fields["handoff"] = {"reason": result.handoff, "slot": result.reask,
+                                        "reasks": result.reasks}
 
     def _start_speaking(self, turn: int) -> None:
         """첫 오디오를 보내기 직전. 여기서부터 "봇 말하는 중"이다 (3단계 티켓 01).
@@ -2284,7 +2344,12 @@ def _rewindable(result: TurnResult) -> bool:
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
-    """대화가 끝난 이유 (`call.ended`). 봇이 먼저 말한 턴이면 그 이유(no_input 등)."""
+    """대화가 끝난 이유 (`call.ended`). 봇이 먼저 말한 턴이면 그 이유(no_input 등).
+
+    봇이 먼저 말한 턴이어도 사장님께 넘겼으면 handoff다(6단계 품질: "잘 못 들었어요"가 통화
+    되묻기 상한에 닿음)."""
+    if result.state is State.FALLBACK:
+        return "handoff"
     if isinstance(u, _BotTurn):
         return u.reason
     if result.state is State.CLOSING:

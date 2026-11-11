@@ -119,6 +119,7 @@ class Call:
         no_owner: bool = False,
         record_dir: Path | None = None,
         ask_owner: bool = True,
+        config: StoreConfig | None = None,
     ) -> None:
         """`knowledge`는 보충 지식 읽기 포트(4단계 티켓 13). `no_owner`면 사장님 쪽 없이 띄운다."""
         self.out = RecordingOutbound()
@@ -130,7 +131,7 @@ class Call:
         self.log_dir = tmp_path / "logs"
         self.session = CallSession(
             store=store_factory(),
-            config=StoreConfig.from_fixture(),
+            config=config or StoreConfig.from_fixture(),
             nlu=nlu,
             stt=self.stt,
             tts=self.tts,

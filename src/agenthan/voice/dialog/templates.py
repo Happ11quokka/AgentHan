@@ -192,6 +192,16 @@ def order_too_expensive(limit: int) -> str:
     return f"죄송해요, 전화로는 한 번에 {won(limit)}까지만 받을 수 있어요."
 
 
+def confirm_qty(phrase: str) -> str:
+    """큰 수량 확인 (6단계 품질). `phrase`는 `line_phrase`로 만든 "메도빅 12개"."""
+    return f"{phrase} 맞으세요?"
+
+
+def ask_qty(menu_name: str, unit: str = "개") -> str:
+    """큰 수량 확인에 "아니요"라고 했을 때. 예: "그럼 메도빅은 몇 개 드릴까요?"."""
+    return f"그럼 {eun_neun(menu_name)} 몇 {unit} 드릴까요?"
+
+
 def which_item() -> str:
     """대상 메뉴를 모르는 옵션·요청. 예: 장바구니가 빈 채로 "디카페인으로요"."""
     return "어떤 메뉴에 해 드릴까요?"
@@ -411,6 +421,56 @@ def too_many_failures() -> str:
 
 def handoff() -> str:
     return "사장님께 메모 남겨 드릴게요."
+
+
+# ---------------------------------------------------------------- 되묻기 루프 방지 (6단계 품질)
+# 같은 질문의 두 번째 되묻기부터 질문 앞에 붙이는 보기·답하는 법. 질문 문장이 아니다(한 턴 한 질문)
+
+
+def menu_examples(names: Sequence[str]) -> str:
+    """주문 질문의 보기. 가게 메뉴에서 뽑은 이름 몇 개."""
+    return f"저희는 {_join(names)} 같은 메뉴가 있어요."
+
+
+def more_or_done_hint(names: Sequence[str]) -> str:
+    """"더 필요하신 거 있으세요?"의 답하는 법. 메뉴 이름 한두 개를 보기로 든다."""
+    like = i_na(names[0]) + f" {names[1]}" if len(names) > 1 else names[0]
+    return f"더 주문하실 게 있으면 {like}처럼 메뉴 이름을, 없으면 없어요라고 말씀해 주세요."
+
+
+def time_examples(times: Sequence[datetime]) -> str:
+    """픽업 시각 질문의 보기. 가게가 지금 받을 수 있는 시각 한두 개."""
+    said = [spoken_time(t) for t in times]
+    like = i_na(said[0]) + f" {said[1]}" if len(said) > 1 else said[0]
+    return f"{like}처럼 시간으로 말씀해 주세요."
+
+
+def yes_no_hint() -> str:
+    return "네 또는 아니요로 말씀해 주세요."
+
+
+def confirm_hint() -> str:
+    """최종 복창의 답하는 법. 복창 앞에 말한다(복창이 그 턴의 마지막 말)."""
+    return "맞으면 네, 고칠 게 있으면 아니요라고 말씀해 주세요."
+
+
+def ack_first(utterances: Sequence[str]) -> list[str]:
+    """받아들인 대답 앞에 고정 문장 "네."를 따로 둔다 (6단계 품질, `PHONE_ACK_FIRST`).
+
+    CLOVA Voice는 같은 문장을 다시 부르면 첫 바이트가 빠르다(서버 캐시). 첫 문장이 매번 바뀌는
+    대답("메도빅 두 개요.")도 첫 소리는 고정 문장으로 나가게 한다. 이미 "네,"로 시작하면 쉼표를
+    마침표로 바꾼다(TTS 문장 나누기는 마침표 뒤에서만 자른다).
+    """
+    if not utterances:
+        return []
+    first = utterances[0]
+    first = "네. " + (first[len("네, "):] if first.startswith("네, ") else first)
+    return [first, *utterances[1:]]
+
+
+def sorry_for_trouble() -> str:
+    """손님이 짜증을 냈을 때. 뒤에 사장님 연결 안내가 온다."""
+    return "불편을 드려 죄송해요."
 
 
 # ---------------------------------------------------------------- 무응답·되묻기 (3단계 티켓 04)
