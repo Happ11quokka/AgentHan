@@ -28,6 +28,7 @@ from agenthan.voice.owner.http import customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
 from agenthan.voice.settings import VoiceSettings
+from agenthan.voice.store_check import ensure_usable
 from agenthan.voice.store_config import StoreConfig
 from agenthan.voice.ws import phone_router, store_clock
 
@@ -41,6 +42,9 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     store = (
         FakeStoreKnowledge.from_fixture(fixture) if fixture else FakeStoreKnowledge.from_fixture()
     )
+    config = StoreConfig.from_fixture(fixture)
+    # 가게 데이터 검사 (5단계 티켓 06): 오류면 여기서 멈추고, 경고는 로그에 남긴다
+    ensure_usable(store.list_menu(), config, log)
     # 확정 주문과 통화 상황(통화 중·넘김·미완료)을 받아 사장님 화면으로 보낸다(주문은 로그 한 줄도
     # 남긴다). 손님 화면의 `order` 이벤트는 그대로
     # 손님 요청·넘김 카드 손님 말은 Papago로 사장님 언어(ru)로 옮긴다. 키가 없으면 원문만 (티켓 03)
@@ -66,7 +70,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     app.include_router(
         phone_router(
             store=store,
-            config=StoreConfig.from_fixture(fixture),
+            config=config,
             order_sink=hub,
             settings=settings,
             owner=hub,

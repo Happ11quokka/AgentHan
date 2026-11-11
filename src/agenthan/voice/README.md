@@ -219,3 +219,5 @@
 - **검증은 코드**: 엔진은 LLM 결과를 그 가게 매처·옵션 목록으로 판정한다(티켓 04의 안전망: 메뉴명 속 옵션 말, 메뉴가 아닌 메뉴 말 버리기, 옵션 대상어 빼기, 짧은 메뉴 말 되묻기). 특정 메뉴 이름은 코드에 없다
 - 범위 밖(가게에 묶인 채 남은 것): 개발용 가짜 NLU(`nlu/fake.py`) 정규식, 사장님 카드 러시아어 용어 사전(`owner/lexicon.py`), "잔"으로 세는 분류(`templates._CUP_CATEGORIES`)
 - 테스트 `test_store_profile.py`·`test_nlu_catalog.py`·`test_hcx_prompt.py`·`test_engine_second_store.py`(쌀국수집 한 통화 끝까지), 골드셋 `test_hcx_gold.py`(가게 메뉴 정보를 넣어 다시 녹화)
+- 복창: 꼭 고를 것의 **기본값**(쌀국수집 "보통")은 손님에게 말하지 않는다(`DialogEngine._unsaid`, `CartLine.phrase(hide)`). 주문서·사장님 카드에는 남는다(티켓 06)
+- 가게 데이터 검사(`store_check.py`, 티켓 06): 오류(꼭 고를 것을 건 메뉴 id 없음·기본값이 선택지에 없음·선택지 둘 미만)면 서버가 뜨지 않고(`StoreDataError`), 경고(꼭 고를 것 값이 옵션·옵션 대상어와 겹침·두 메뉴가 같은 이름·한 메뉴에 같은 옵션 두 번)는 로그. 새 가게를 붙이기 전에 `uv run python -m agenthan.voice.store_check <가게 JSON>`

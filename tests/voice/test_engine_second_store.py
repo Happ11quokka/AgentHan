@@ -105,3 +105,52 @@ def test_another_store_hours_come_from_its_data() -> None:
     r = engine.handle("아홉 시 반에 갈게요", now)
     assert r.state is State.CONFIRM
     assert "9시 반" in " ".join(r.utterances)
+
+
+def test_a_default_choice_the_customer_did_not_pick_is_not_read_back() -> None:
+    """국수 양 "보통"은 기본값이다. 주문서·사장님 카드에는 남기고, 손님에게는 말하지 않는다."""
+    script = {
+        "쌀국수 두 개요": [Act("add_item", menu_text="쌀국수", menu_guess="소고기 쌀국수", qty=2)],
+        "곱빼기로 바꿔 주세요": [Act("set_option", option_text="곱빼기")],
+        "그게 다예요": [Act("done_ordering")],
+        "일곱 시요": [Act("set_pickup_time", time_text="일곱 시")],
+        "네": [Act("yes")],
+    }
+    engine, _ = _engine(script)
+    engine.start(NOW)
+    r = engine.handle("쌀국수 두 개요", NOW)
+    assert _lines(r) == [("p01", 2, ("보통",))]
+    assert r.utterances[0].startswith("소고기 쌀국수 두 개요.")
+    assert "보통" not in " ".join(r.utterances)
+
+    r = engine.handle("곱빼기로 바꿔 주세요", NOW)
+    assert _lines(r) == [("p01", 2, ("곱빼기",))]
+    assert "소고기 쌀국수 곱빼기 두 개" in " ".join(r.utterances)
+
+    engine.handle("그게 다예요", NOW)
+    engine.handle("일곱 시요", NOW)
+    r = engine.handle("네", NOW)
+    assert r.order is not None
+    assert r.order.lines[0].options == ("곱빼기",)
+
+
+def test_the_default_stays_on_the_order_even_though_it_is_not_said() -> None:
+    script = {
+        "반미 하나랑 쌀국수 하나요": [
+            Act("add_item", menu_text="반미", menu_guess="반미", qty=1),
+            Act("add_item", menu_text="쌀국수", menu_guess="소고기 쌀국수", qty=1),
+        ],
+        "그게 다예요": [Act("done_ordering")],
+        "일곱 시요": [Act("set_pickup_time", time_text="일곱 시")],
+        "네": [Act("yes")],
+    }
+    engine, _ = _engine(script)
+    engine.start(NOW)
+    for text in ("반미 하나랑 쌀국수 하나요", "그게 다예요"):
+        engine.handle(text, NOW)
+    r = engine.handle("일곱 시요", NOW)
+    assert r.state is State.CONFIRM
+    assert "보통" not in " ".join(r.utterances)
+    r = engine.handle("네", NOW)
+    assert r.order is not None
+    assert [line.options for line in r.order.lines] == [(), ("보통",)]

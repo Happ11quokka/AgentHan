@@ -88,3 +88,26 @@ def test_a_fixed_store_time_starts_a_store_clock_that_keeps_running(tmp_path) ->
     clock = store_clock(_settings(tmp_path), monotonic=lambda: next(ticks))
     assert clock.now() == NOW
     assert clock.now().isoformat() == "2026-11-08T16:00:07.500000+09:00"
+
+
+def test_the_server_refuses_a_store_with_data_errors_and_logs_warnings(tmp_path, caplog) -> None:
+    """가게 데이터 검사 (5단계 티켓 06): 오류면 뜨지 않고, 경고는 로그."""
+    import pytest
+
+    from agenthan.voice.store_check import StoreDataError
+
+    store = {
+        "store": {"name": "시험 가게"},
+        "menu": [{"id": "m01", "name_ko": "쌀국수", "price": 1000,
+                  "options": [{"name": "곱빼기 변경"}]}],
+        "phone": {"required_options": {"m01": [{"name": "양", "choices": ["보통", "곱빼기"]}]}},
+    }
+    path = tmp_path / "store.json"
+    path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+    create_app(_settings(tmp_path, store_fixture=path))
+    assert "곱빼기" in caplog.text
+
+    store["phone"]["required_options"]["m01"][0]["default"] = "특대"
+    path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(StoreDataError, match="특대"):
+        create_app(_settings(tmp_path, store_fixture=path))

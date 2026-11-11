@@ -532,7 +532,7 @@ class DialogEngine:
             seen.add(index)
             line = self._cart.lines[index]
             was_there = bool(turn.cart_before.indices_for(line.item.id))
-            (changed if was_there else added).append(line.phrase())
+            (changed if was_there else added).append(line.phrase(self._unsaid(line.item)))
         notes = []
         if changed:
             notes.append(templates.changed_to(changed))
@@ -568,7 +568,7 @@ class DialogEngine:
     def _readback(self, *, after_fix: bool) -> str:
         assert self._pickup is not None
         return templates.final_readback(
-            self._cart.summary(),
+            self._cart.summary(self._unsaid),
             self._pickup,
             self._cart.total(),
             requests=self._cart.requests(),
@@ -1096,6 +1096,10 @@ class DialogEngine:
         """그 메뉴의 필수 옵션. 계약 v1 뒤에는 `item.required_options`를 읽는다."""
         return self._config.required_options.get(item.id, ())
 
+    def _unsaid(self, item: MenuItem) -> frozenset[str]:
+        """손님에게 말하지 않을 옵션: 꼭 고를 것의 기본값("보통"). 주문서에는 남는다 (티켓 06)."""
+        return frozenset(g.default for g in self._required_for(item) if g.default)
+
     def _default_choices(self, item: MenuItem) -> tuple[MenuOption, ...]:
         chosen = (g.choice(g.default) for g in self._required_for(item) if g.default)
         return tuple(c for c in chosen if c is not None)
@@ -1242,7 +1246,8 @@ class DialogEngine:
             index = self._cart.index_of(kind)
             if index is not None and index not in seen:
                 seen.add(index)
-                turn.accepted.append(self._cart.lines[index].phrase())
+                line = self._cart.lines[index]
+                turn.accepted.append(line.phrase(self._unsaid(line.item)))
 
     # ------------------------------------------------------------ 픽업 시간
 

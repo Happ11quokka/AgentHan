@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, replace
 
 from agenthan.core.contracts import MenuItem, MenuOption, OrderLine
@@ -33,12 +34,14 @@ class CartLine:
             and self.request == other.request
         )
 
-    def phrase(self) -> str:
+    def phrase(self, hide: Collection[str] = ()) -> str:
+        """손님에게 말할 한 줄. `hide`의 옵션 이름은 말하지 않는다(손님이 안 고른 기본값,
+        5단계 티켓 06). 주문서(`to_order_line`)에는 그대로 남는다."""
         return templates.line_phrase(
             self.item.name_ko,
             self.qty,
             templates.counter_for(self.item.category),
-            [o.name for o in self.options],
+            [o.name for o in self.options if o.name not in hide],
         )
 
     def to_order_line(self) -> OrderLine:
@@ -102,9 +105,9 @@ class Cart:
     def total(self) -> int:
         return sum(line.subtotal() for line in self.lines)
 
-    def summary(self) -> str:
-        """복창용 한 줄. 예: "메도빅 하나, 아메리카노 두 잔"."""
-        return ", ".join(line.phrase() for line in self.lines)
+    def summary(self, hide: Callable[[MenuItem], Collection[str]] | None = None) -> str:
+        """복창용 한 줄. 예: "메도빅 하나, 아메리카노 두 잔". `hide`는 메뉴마다 말하지 않을 옵션."""
+        return ", ".join(line.phrase(hide(line.item) if hide else ()) for line in self.lines)
 
     def requests(self) -> list[tuple[str, str]]:
         """복창용 요청사항. (메뉴 이름, 요청 원문)을 장바구니 순서대로."""
