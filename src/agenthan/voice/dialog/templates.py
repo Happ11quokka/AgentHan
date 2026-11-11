@@ -181,6 +181,16 @@ def qty_too_large(limit: int) -> str:
     return f"죄송해요, 전화로는 한 번에 {limit}개까지 받을 수 있어요."
 
 
+def confirm_qty(phrase: str) -> str:
+    """큰 수량 확인 (6단계 품질). `phrase`는 `line_phrase`로 만든 "메도빅 12개"."""
+    return f"{phrase} 맞으세요?"
+
+
+def ask_qty(menu_name: str, unit: str = "개") -> str:
+    """큰 수량 확인에 "아니요"라고 했을 때. 예: "그럼 메도빅은 몇 개 드릴까요?"."""
+    return f"그럼 {eun_neun(menu_name)} 몇 {unit} 드릴까요?"
+
+
 def which_item() -> str:
     """대상 메뉴를 모르는 옵션·요청. 예: 장바구니가 빈 채로 "디카페인으로요"."""
     return "어떤 메뉴에 해 드릴까요?"
