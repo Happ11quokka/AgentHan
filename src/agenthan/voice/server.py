@@ -39,6 +39,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice import adapters
 from agenthan.voice.gate import CallGate
 from agenthan.voice.housekeeping import INTERVAL_S, Housekeeper
 from agenthan.voice.owner.http import customer_texts_router, owner_router
@@ -79,6 +80,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
     gate = make_gate(settings)
     hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None
+    tts_factory = adapters.tts_factory(settings)  # CLOVA Voice 연결 풀 하나를 모든 통화가 쓴다
     keeper = Housekeeper(log_dir=settings.log_dir, record_dir=settings.record_dir,
                          keep_days=settings.log_keep_days, disk_warn_pct=settings.disk_warn_pct)
 
@@ -100,6 +102,8 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
                 await translator.aclose()
             if hcx is not None:
                 hcx.close()
+            if (close_tts := getattr(tts_factory, "aclose", None)) is not None:
+                await close_tts()
 
     app = FastAPI(title="AgentHan 전화 주문 (개발용)", lifespan=lifespan)
     app.state.gate = gate
@@ -129,6 +133,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
             knowledge=hub.knowledge,  # 사장님 보충 지식: 허브가 쓰고 통화 엔진이 읽는다 (티켓 13)
             gate=gate,
             hcx=hcx,
+            tts_factory=tts_factory,
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))

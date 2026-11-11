@@ -55,6 +55,10 @@ class ClovaSttSettings:
     duration_threshold_ms: int = 10_000
     secure: bool = True  # 테스트의 로컬 가짜 서버만 False
     config_timeout_s: float = 10.0
+    # 첫 연결이 일시 오류(자리 없음 `RESOURCE_EXHAUSTED`·`UNAVAILABLE`·설정 응답 없음)면 잠깐 쉬고
+    # 이만큼 다시 건다 (6단계). 인증·설정 오류는 다시 걸지 않는다
+    connect_retries: int = 1
+    connect_retry_wait_s: float = 0.5
     reconnect_after_s: float = 270.0  # 4분 30초. CLOVA 연결 수명은 5분
     hard_reconnect_after_s: float = 285.0
     # 재연결 때 앞 연결이 epFlag 응답을 기다리는 최대 시간. 5분 제한(300초)보다 먼저 닫히게
@@ -248,7 +252,15 @@ class ClovaSttStream:
         return self._written_bytes // BYTES_PER_MS
 
     async def start(self) -> None:
-        self._conn = await self._open()
+        for attempt in range(self._settings.connect_retries + 1):
+            try:
+                self._conn = await self._open()
+                return
+            except PortError as err:
+                if not err.retry or attempt >= self._settings.connect_retries:
+                    raise
+                log.warning("CLOVA Speech 연결 실패 %s, 한 번 다시 연결", err.code)
+                await asyncio.sleep(self._settings.connect_retry_wait_s)
 
     async def _open(self) -> _Connection:
         conn = _Connection(self._settings, self.audio_ms, self._monotonic())
