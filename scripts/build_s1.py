@@ -2,8 +2,10 @@
 
 새 문장은 만들지 않는다. 출처와 변환 규칙:
 - P2·P3·P4·P5·P6·P7·P8의 뼈대: 기존 시나리오(tests/data/eval/scenario.jsonl) 30건 그대로.
-- P1 단일 작업: flow 한국어 `full`+인자(쓰기 도구) → 요청 + "네". 최종 상태는 정답 도구·인자를
-  더미 저장소에 실제로 실행해 계산한다.
+- P1 단일 작업: flow 한국어 `full`+인자. 쓰기 도구는 요청 + "네"이고, 최종 상태는 정답 도구·인자를
+  더미 저장소에 실제로 실행해 계산한다. 조회 도구는 요청 한 턴이고, 같은 실행 결과에서 답에 들어가야
+  할 사실(금액·건수·서류 등)을 뽑는다(검색 노출 진단은 실시간 검색이라 제외).
+- 기존 시나리오의 끼어드는 조회 질문에도 더미 가게 값으로 답 사실을 붙인다.
 - P2·P3 보충: flow 한국어 여러 턴(`multi:ask_fill|confirm|decline|revise`). 같은 방식으로 계산한다.
 - P6·P8 보충: route 한국어 `ambiguous`·`injection` 한 턴. 저장소가 바뀌면 안 된다.
 - P7 보충: flow 한국어 `unrelated` 한 턴. 저장소가 바뀌면 안 된다.
@@ -25,7 +27,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
-from agenthan.eval.scenario import MISSING, Scenario, changes, resolve
+from agenthan.eval.scenario import MISSING, Scenario, apply_setup, changes, resolve
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES, execute_feature_tool
 
@@ -36,7 +38,7 @@ KOREAN = ("ko", "ko_simple")
 TODAY = "2026-11-10"
 REPEAT = 3
 # §5 target counts. P4·P5 have only the existing scenarios.
-TARGET = {"P1": 16, "P2": 12, "P3": 12, "P4": 7, "P5": 9, "P6": 4, "P7": 8, "P8": 4, "P9": 8}
+TARGET = {"P1": 28, "P2": 12, "P3": 12, "P4": 7, "P5": 9, "P6": 4, "P7": 8, "P8": 4, "P9": 8}
 FAMILY_TYPE = {
     "approval_interject": "P4",
     "photo_interject": "P4",
@@ -177,6 +179,109 @@ def scenario(id_, kind, *, area, source, lang, split, turns, final, writes, neve
     return data
 
 
+# ------------------------------------------------------------------ answer facts
+
+
+def number(n: int) -> list[str]:
+    """116400 → 116400, 11만6400, 11만6천4백 (commas and spaces are ignored when scoring)."""
+    out = [str(n)]
+    if n >= 10000:
+        q, r = divmod(n, 10000)
+        out.append(f"{q}만" if r == 0 else f"{q}만{r}")
+        if r and r % 100 == 0:
+            thousands, hundreds = divmod(r, 1000)
+            out.append(
+                f"{q}만"
+                + (f"{thousands}천" if thousands else "")
+                + (f"{hundreds // 100}백" if hundreds else "")
+            )
+    return out
+
+
+def day(iso: str) -> list[str]:
+    y, m, d = iso.split("-")
+    return [iso, f"{int(m)}월{int(d)}일", f"{int(m)}/{int(d)}"]
+
+
+def count(n: int, unit: str) -> list[str]:
+    korean = {1: "한", 2: "두", 3: "세", 4: "네", 5: "다섯"}
+    units = [unit, "개"] if unit == "건" else [unit]
+    return [f"{n}{u}" for u in units] + [f"{korean[n]}{u}" for u in units if n in korean]
+
+
+NEGATIVE = [
+    "지원하지",
+    "지원되지",
+    "연동되지",
+    "연결되지",
+    "연동이안",
+    "연결이안",
+    "안돼",
+    "안 돼",
+    "불가",
+    "어려",
+]
+
+
+def read_facts(tool: str, args: dict, data: dict | None = None, want: str = "") -> dict | None:
+    """Answer spec from the dummy store's own tool result; None when nothing is checkable."""
+    store = seed_store()
+    if data is not None:
+        store.write(data)
+    result = execute_feature_tool(store, tool, args)
+    if not result.get("ok"):
+        raise ValueError(f"gold read failed: {tool} {args} → {result}")
+    if tool == "get_settlement_summary":
+        record = result["record"]
+        if want == "date":
+            return {"all": [day(record["payout_date"])]}
+        return {
+            "all": [number(record["payout"]) + (number(record["sales"]) if want == "any" else [])]
+        }
+    if tool == "get_statistics":
+        return {"all": [number(result["record"]["place_views"])]}
+    if tool == "list_call_history":
+        records = result["records"]
+        n = len(records)
+        return {"all": [count(n, "통") + [f"{n}건"] + [r["time"][-5:] for r in records]]}
+    if tool == "get_naverpay_signup_guide":
+        return {"all": [[doc.split()[-1]] for doc in result["documents"]]}
+    if tool == "check_pos_compatibility":
+        return {
+            "all": [NEGATIVE if not result["supported"] else ["가능", "돼요", "됩니다", "지원"]]
+        }
+    if tool == "search_help_articles":
+        return {"all": [[r["title"] for r in result["records"]]]}
+    return None
+
+
+def interject_answer(say: str, data: dict) -> dict | None:
+    """Facts for the read questions inside the existing scenarios (computed on their store)."""
+    if "정산" in say:
+        if "언제" in say:
+            return read_facts("get_settlement_summary", {"period": "this_month"}, data, "date")
+        return read_facts("get_settlement_summary", {"period": "this_week"}, data, "any")
+    if "부재중" in say:
+        return read_facts("list_call_history", {"missed_only": True}, data)
+    if "통계" in say and "7일" in say:
+        return read_facts("get_statistics", {"period": "7d"}, data)
+    if "네이버페이" in say and "개인" in say:
+        return read_facts("get_naverpay_signup_guide", {"business_type": "individual"}, data)
+    if "메도빅 가격" in say:
+        return {"all": [number(resolve(data, "menus[name=메도빅].price"))]}
+    if "답글 안 단 리뷰" in say:
+        n = sum(not r["has_owner_reply"] for r in data["reviews"])
+        return {"all": [count(n, "건")]}
+    if "주문 있어요" in say:
+        n = sum(o["status"] == "new" for o in data["orders"])
+        return {"all": [count(n, "건") + [data["orders"][0]["items"].split()[0]]]}
+    if "몇 명" in say and "예약" in say:
+        return {"all": [[f"{resolve(data, 'reservations[resv-2].people')}명"]]}
+    if "아메리카노 가격 얼마로 바꿨" in say:
+        return {"all": [number(4800)]}  # set earlier in the same session (long-session-a)
+    return None
+
+
 # ------------------------------------------------------------------ sources
 
 
@@ -195,6 +300,12 @@ def from_scenarios() -> list[dict]:
             repeat=REPEAT,
         )
         s["tags"] = sorted(set(s.get("tags", [])) | {"s1"})
+        data = apply_setup(seed_store().read(), s.get("setup", {}))
+        for turn in s["turns"]:
+            if turn["act"] == "interject":
+                spec = interject_answer(turn["say"], data)
+                if spec:
+                    turn["answer"] = spec
         Scenario.model_validate(s)
         out.append(s)
     return out
@@ -208,20 +319,23 @@ def p1(flow: list[dict]) -> list[dict]:
         and c["kind"] == "full"
         and "turns" not in c
         and c.get("expected_args")
-        and c["expected_tool"] not in READ_ONLY_TOOLS
     ]
     out = []
     for c in cases:
-        final, writes = final_of(*simulate([(c["expected_tool"], c["expected_args"])]))
-        probe = {
-            "feature": TOOL_FEATURES[c["expected_tool"]],
-            "tool": c["expected_tool"],
-            "args": c["expected_args"],
-        }
-        turns = [
-            {"say": c["text"], "act": "request", "probe": probe},
-            {"say": "네", "act": "approve", "again": {"unless": final, "max": 1}},
-        ]
+        tool, args = c["expected_tool"], c["expected_args"]
+        probe = {"feature": TOOL_FEATURES[tool], "tool": tool, "args": args}
+        if tool in READ_ONLY_TOOLS:
+            spec = read_facts(tool, args)
+            if spec is None:
+                continue
+            final, writes = {}, []
+            turns = [{"say": c["text"], "act": "request", "probe": probe, "answer": spec}]
+        else:
+            final, writes = final_of(*simulate([(tool, args)]))
+            turns = [
+                {"say": c["text"], "act": "request", "probe": probe},
+                {"say": "네", "act": "approve", "again": {"unless": final, "max": 1}},
+            ]
         out.append(
             scenario(
                 f"p1-{c['id']}",
