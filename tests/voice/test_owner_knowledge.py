@@ -150,7 +150,8 @@ def test_the_owner_answer_is_previewed_in_korean_and_saved_as_knowledge() -> Non
     assert (saved["status"], saved["answer_ko"], saved["answer_text"], saved["saved_at"]) == (
         "filled", "달지 않고 고소한 편이에요", "Не сладкий, с орехами", "2026-11-10T17:30:00+09:00")
     # 사장님이 고친 한국어가 그대로 저장소에 (다듬지 않는다)
-    assert store.lookup(TASTE_KEY) == Known(note="달지 않고 고소한 편이에요")
+    assert store.lookup(TASTE_KEY) == Known(note="달지 않고 고소한 편이에요",
+                                             question="아메리카노 어떤 맛이에요?")
 
 
 @pytest.mark.parametrize("translator", [None, FakeTranslator(fail=True)])
@@ -187,7 +188,8 @@ def test_saving_again_replaces_the_note() -> None:
     hub.knowledge_wanted("call-1", TASTE)
     hub.save_knowledge("k1", "고소해요")
     hub.save_knowledge("k1", "산미가 적어요")
-    assert store.lookup(TASTE_KEY) == Known(note="산미가 적어요")
+    assert store.lookup(TASTE_KEY) == Known(note="산미가 적어요",
+                                             question="아메리카노 어떤 맛이에요?")
 
 
 def test_unknown_cards_and_empty_answers_are_refused() -> None:

@@ -130,6 +130,7 @@ from agenthan.voice.call.turn_end import (
     question_kind,
 )
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
+from agenthan.voice.dialog.answerer import Answerer
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
@@ -226,6 +227,8 @@ class SessionSettings:
     # 사장님은 바빠서 바로 답하기 어렵다. 끄면 "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께
     # 전해 둘게요." + 사장님 화면 "손님이 궁금해한 것" 카드(나중에 보충, 티켓 13)
     ask_owner: bool = False
+    # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11). NLU를 "hcx"로 골랐을 때만 만든다
+    answer: bool = True
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
     not_heard_min_ms: int = 500
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
@@ -252,6 +255,16 @@ def make_nlu(choice: NluChoice) -> Nlu:
         except ValueError as err:
             raise PortError(str(err), code="nlu_config", retry=False) from err
     raise PortError(f"모르는 NLU: {choice!r}", code="nlu_config", retry=False)
+
+
+def make_answerer() -> Answerer:
+    """HCX 답변기. 키를 `.env`·환경 변수에서 읽는다 (없으면 `PortError`)."""
+    from agenthan.voice.nlu.hcx_answer import HcxAnswerer
+
+    try:
+        return HcxAnswerer.from_env()
+    except ValueError as err:
+        raise PortError(str(err), code="nlu_config", retry=False) from err
 
 
 @dataclass(frozen=True)
@@ -324,6 +337,7 @@ class CallSession:
         turn_model: TurnModel | None = None,
         turn_executor: Executor | None = None,
         record_dir: Path | None = None,
+        answerer: Answerer | None = None,
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
@@ -336,6 +350,7 @@ class CallSession:
         self._sink = order_sink
         self._owner: OwnerChannel = owner or NullOwnerChannel()  # 사장님 쪽 알림 (4단계 티켓 02)
         # 사장님 쪽이 붙은 통화만 근거 없는 메뉴 질문을 사장님께 묻는다 (4단계 티켓 05)
+        self._answerer = answerer
         self._asks_owner = owner is not None and (settings or SessionSettings()).ask_owner
         # 사장님 보충 지식 읽기 포트 (티켓 13). 사장님 쪽이 붙은 통화만 엔진에 넣는다(보충 요청을
         # 받을 곳이 있어야 "사장님께 전해 둘게요"라고 한다)
@@ -683,13 +698,15 @@ class CallSession:
     async def _setup(self) -> None:
         nlu = self._nlu
         if isinstance(nlu, str):
+            if nlu == "hcx" and self._answerer is None and self._settings.answer:
+                self._answerer = await self._in_thread(make_answerer)
             nlu = await self._in_thread(make_nlu, nlu)  # hcx는 .env를 읽는다
         self._prefetch = PrefetchNlu(nlu, timeout_s=self._settings.prefetch_timeout_s,
                                      clock=self._clock.monotonic)
         # list_menu()가 동기라 엔진 생성도 스레드에서 (verify-web D5 조건 2)
         self._engine = await self._in_thread(
             DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id,
-            ask_owner=self._asks_owner, knowledge=self._knowledge,
+            ask_owner=self._asks_owner, knowledge=self._knowledge, answerer=self._answerer,
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -1208,6 +1225,11 @@ class CallSession:
             self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.owner_question is not None:
             self._open_owner_question(turn, result.owner_question)
+        if result.answer is not None and (record := self._log.get(turn)) is not None:
+            # 답변기 결과(5단계 티켓 11): 종류, 근거, 검사에서 낮춘 까닭
+            record.fields["answer"] = {"kind": result.answer.kind, "menu": result.answer.menu,
+                                       "evidence": result.answer.evidence,
+                                       "reason": result.answer.reason}
         if result.knowledge_requests:
             self._pass_on(turn, result.knowledge_requests)
         if result.order is not None:

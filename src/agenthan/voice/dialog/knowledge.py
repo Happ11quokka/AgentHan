@@ -41,6 +41,7 @@ class Known:
     """보충 지식 하나. 둘 다 있을 수 있다."""
 
     note: str = ""  # 사장님 설명 (한국어, 저장한 글 그대로)
+    question: str = ""  # 그 설명을 부른 손님 질문 원문 (답변기 자료에 같이 준다, 5단계 티켓 11)
     contains: bool | None = None  # 사장님 확인: 그 대상이 들어간다(True)·안 들어간다(False)
 
 
@@ -68,12 +69,30 @@ class KnowledgeStore:
     def lookup(self, key: KnowledgeKey) -> Known | None:
         return self._known.get(key)
 
-    def save_note(self, key: KnowledgeKey, note: str) -> None:
+    def save_note(self, key: KnowledgeKey, note: str, *, question: str = "") -> None:
         """사장님 설명을 저장한다(다시 저장하면 덮어쓴다). 빈 글이면 `ValueError`."""
         note = note.strip()
         if not note:
             raise ValueError("빈 설명은 저장하지 않아요")
-        self._known[key] = replace(self._known.get(key, Known()), note=note)
+        self._known[key] = replace(self._known.get(key, Known()), note=note,
+                                   question=question.strip())
+
+    def notes(self, menu_id: str) -> tuple[str, ...]:
+        """그 메뉴(""이면 가게 전체)에 사장님이 채운 지식을 답변기 자료 줄로 (5단계 티켓 11).
+
+        설명은 손님 질문과 함께("손님 질문 "주차 돼요?"에 사장님 답: 가게 앞에 두 대"), 확인은
+        "견과 들어감"·"견과 안 들어감"으로.
+        """
+        lines = []
+        for key, known in list(self._known.items()):
+            if key.menu_id != menu_id:
+                continue
+            if known.note:
+                asked = f'손님 질문 "{known.question}"에 사장님 답: ' if known.question else ""
+                lines.append(asked + known.note)
+            if known.contains is not None and key.subject:
+                lines.append(f"{key.subject} {'들어감' if known.contains else '안 들어감'}")
+        return tuple(lines)
 
     def save_check(self, key: KnowledgeKey, contains: bool) -> None:
         """사장님 확인(질문 카드 돼요/안 돼요)을 저장한다. 나중 확인이 앞 확인을 덮어쓴다."""

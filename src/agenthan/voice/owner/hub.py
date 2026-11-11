@@ -325,7 +325,7 @@ class OwnerHub:
         if card is None:
             raise UnknownCard(card_id)
         text_ko = text_ko.strip()
-        self.knowledge.save_note(_key(card), text_ko)  # 빈 글이면 ValueError
+        self.knowledge.save_note(_key(card), text_ko, question=card["text"])  # 빈 글이면 ValueError
         return self._put_wanted({**card, "status": "filled", "answer_ko": text_ko,
                                  "answer_text": text.strip(),
                                  "saved_at": self._clock.now().isoformat()})

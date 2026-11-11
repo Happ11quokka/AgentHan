@@ -25,14 +25,26 @@ UTC 등 다른 시간대여도 되고, 시간대가 없는(naive) 값은 이미 
 
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Literal
 
-from agenthan.core.contracts import MenuItem, MenuOption, Order, StoreKnowledge
+from agenthan.core.contracts import MenuItem, MenuOption, Order, Review, StoreKnowledge
 from agenthan.voice.dialog import templates
+from agenthan.voice.dialog.answerer import (
+    FULL_FACTS_MENUS,
+    UNSURE,
+    Answerer,
+    AnswerReply,
+    AnswerRequest,
+    Notes,
+    checked,
+    store_facts,
+)
 from agenthan.voice.dialog.cart import Cart, CartLine
 from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
@@ -46,6 +58,20 @@ from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
 from agenthan.voice.nlu.catalog import menu_catalog
 from agenthan.voice.store_config import RequiredOption, StoreConfig
 from agenthan.voice.timeparse import PickupParse, parse_pickup
+
+log = logging.getLogger(__name__)
+
+# 답변기를 NLU와 같이 돌리는 스레드 (5단계 티켓 11). 프로세스에 하나, 처음 쓸 때 만든다
+_ANSWER_THREADS = 4
+_answer_pool: ThreadPoolExecutor | None = None
+
+
+def _pool() -> ThreadPoolExecutor:
+    global _answer_pool
+    if _answer_pool is None:
+        _answer_pool = ThreadPoolExecutor(_ANSWER_THREADS, thread_name_prefix="phone-answer")
+    return _answer_pool
+
 
 OrderStatus = Literal["draft", "confirmed", "handoff"]
 
@@ -64,6 +90,18 @@ _AFTER_DONE: frozenset[ActType] = frozenset({"set_pickup_time", "set_name", "don
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 # NLU가 놓친 메뉴 한 마디를 매처로 다시 볼 최대 길이(공백·문장부호 뺀 글자). "맥도빅 주세요"(6)까지
 RESCUE_MAX_CHARS = 7
+# 5단계 티켓 11. NLU가 못 알아들은 말을 답변기에 보일 최소 길이와 상태(고르기·확인 중은 뺀다)
+QUESTION_RESCUE_MIN_CHARS = 5
+_RESCUE_STATES = (State.ORDERING, State.ASK_PICKUP, State.CONFIRM)
+REVIEWS_FOR_FACTS = 30  # 답변기 자료에 넣으려고 읽는 최근 후기 수
+RECENT_LINES = 4  # 답변기에 주는 직전 대화 줄 수
+# 답변기가 못 답했을 때도 규칙으로 답하는 종류: 메뉴 필드에 그대로 있는 값
+_FIELD_KINDS = frozenset({"allergen", "allergy", "price"})
+# 질문처럼 들리는 말. 답을 고르는 데는 쓰지 않는다. 이 말이 있으면 NLU를 기다리는 동안 답변기를
+# 미리 불러 둘 뿐이다(틀리면 호출 한 번을 버리거나, 미리 못 불러 조금 늦는다)
+_QUESTION_CUE = re.compile(
+    r"\?|(?<!하)나요|까요|던가|는지|인가|얼마|몇\s|뭐|무슨|어떤|어때|어떻|언제|어디|왜"
+    r"|돼|되나|되죠|될까|있어|있나|있죠|없어|없나|들어가|들어\s*있|달아|매워|맛|많아|커요|작아")
 _SPACES_PUNCT = re.compile(r"[\s.,!?~]+")
 
 
@@ -83,6 +121,8 @@ class TurnResult:
     # 이번 턴의 보충 요청(티켓 13): 답하지 못하고 "사장님께 전해 둘게요"라고 한 메뉴 질문. 세션이
     # 사장님 쪽(`OwnerChannel.knowledge_wanted`)에 넘긴다
     knowledge_requests: tuple[KnowledgeRequest, ...] = ()
+    # 5단계 티켓 11. 이번 턴에 답변기가 낸 결과(검사 뒤). 답변기를 안 불렀으면 None
+    answer: AnswerReply | None = None
 
 
 @dataclass
@@ -116,6 +156,7 @@ class _Turn:
     heard: str = ""
     owner_question: OwnerQuestion | None = None
     knowledge_requests: list[KnowledgeRequest] = field(default_factory=list)  # 티켓 13
+    answer: AnswerReply | None = None  # 5단계 티켓 11. 이번 턴에 답변기가 낸 결과 (로그용)
 
     @property
     def question(self) -> str:
@@ -157,6 +198,7 @@ class DialogEngine:
     def __init__(
         self, store: StoreKnowledge, nlu: Nlu, config: StoreConfig, *, order_id: str,
         ask_owner: bool = False, knowledge: KnowledgeReader | None = None,
+        answerer: Answerer | None = None,
     ) -> None:
         """`ask_owner`면 근거 없는 메뉴 질문을 사장님께 묻는다(4단계 티켓 05). 아니면 1단계처럼
         "그건 제가 정확히 모르겠어요". 사장님 쪽이 붙은 통화 세션만 켠다.
@@ -164,8 +206,20 @@ class DialogEngine:
         `knowledge`(티켓 13)를 주면 필드 근거가 없는 메뉴 질문에 사장님 보충 지식으로 먼저 답하고,
         그것도 없고 사장님께 바로 묻지도 않으면 "사장님께 전해 둘게요" + 보충 요청을 턴 결과에
         싣는다. 없으면 1단계 그대로.
+
+        `answerer`(5단계 티켓 11)를 주면 손님 질문에 가게 자료(메뉴·영업시간·후기·사장님 메모)로
+        답한다. 없으면 예전처럼 메뉴 필드 규칙(`menu_info`)으로만 답한다.
         """
         self._nlu = nlu
+        self._answerer = answerer
+        self._store = store
+        # NLU가 못 알아들은 말을 답변기가 질문으로 본 결과. 그 턴의 질문 처리기가 꺼내 쓴다
+        self._answer_ready: AnswerReply | None = None
+        self._facts_reviews: tuple[Review, ...] | None = None  # 첫 질문 때 한 번 읽는다
+        # NLU와 같이 미리 불러 둔 답변기 (손님 말, 결과). `_consult`가 같은 말이면 꺼내 쓴다
+        self._answer_early: tuple[str, Future[AnswerReply]] | None = None
+        # 마지막으로 질문한 메뉴. 이름 없는 이어 묻기("그럼 많이 달아요?")의 대상이다
+        self._topic: MenuItem | None = None
         self._config = config
         self._order_id = order_id
         self._menu: list[MenuItem] = store.list_menu()  # 통화 시작 때 한 번 (spec §4)
@@ -233,6 +287,7 @@ class DialogEngine:
             self._say(turn, templates.take_your_time())
             return self._result(turn)
         acts = self._parse(text if rest is None else rest)
+        acts = self._question_rescue(turn, text if rest is None else rest, acts)
         if any(a.type != "unknown" for a in acts):
             self._no_input = 0  # 받아들인 말. 못 알아들은 말(unknown)만이면 그대로 둔다
         for act in acts:
@@ -379,9 +434,13 @@ class DialogEngine:
         정정 act가 오면 그 자체로 정정으로 보므로 no가 따로 필요 없다.
         """
         acts = apply_rules(text)
+        self._answer_early = None
         if acts is None:
+            self._start_answer_early(text)
             acts = self._nlu.parse(text, self.nlu_context())
             acts = self._menu_word_rescue(text, acts)
+        if not any(a.type == "add_item" for a in acts):  # 같은 말에서 담으면 붙일 데가 있다
+            acts = [self._baseless_option(a) for a in acts]
         if self._no_means_done(acts):
             # "더 필요하신 거?" → "아니요, 지금 바로 갈게요": 아니요가 답이다 (2단계 리뷰 5번)
             acts = [Act("done_ordering"), *acts[1:]]
@@ -408,6 +467,60 @@ class DialogEngine:
         if self._matcher.match(text, "").decision not in ("accept", "confirm"):
             return acts
         return [Act("add_item", menu_text=text.strip(" .?!"))]
+
+    def _baseless_option(self, act: Act) -> Act:
+        """어느 메뉴에도 없는 옵션 말만 있는 `set_option`, 담은 것이 없을 때의 요청(`set_request`)은
+        못 알아들은 말로 돌린다 (티켓 11).
+
+        실기기에서 NLU가 "추천 좀 해줘"를 옵션으로 내 "어떤 메뉴에 해 드릴까요?"라고 되물었다.
+        메뉴 이름도, 담은 것도, 그 옵션이 있는 메뉴도 없으면 옵션이 아니다. 못 알아들은 말은
+        답변기가 질문인지 한 번 더 본다(`_question_rescue`).
+        """
+        if act.type not in ("set_option", "set_request") or _names_menu(act):
+            return act
+        if self._state is not State.ORDERING or self._pending is not None or self._cart.lines:
+            return act
+        if act.type == "set_request":  # 담은 것이 없으면 요청을 붙일 데가 없다
+            return Act("unknown", free_text=act.free_text)
+        every = [o for item in self._menu
+                 for o in [c for g in self._required_for(item) for c in g.choices]
+                 + list(item.options)]
+        if act.option_text and find_options(every, act.option_text):
+            return act
+        return Act("unknown", free_text=act.free_text or act.option_text)
+
+    def _start_answer_early(self, text: str) -> None:
+        """질문처럼 들리면 NLU와 같이 답변기를 불러 둔다. 질문 턴이 NLU + 답변기(약 2.5초)에서
+        둘 중 긴 쪽(약 1.5초)으로 줄어든다. 메뉴가 많아 자료를 줄여 주는 가게는 메뉴를 알아야
+        해서 미리 부르지 않는다."""
+        if self._answerer is None or self._state not in _ACTIVE:
+            return
+        if len(self._menu) > FULL_FACTS_MENUS or not _QUESTION_CUE.search(text):
+            return
+        # 이름 없는 질문의 대상: 방금 담은 메뉴, 없으면 마지막으로 질문한 메뉴
+        item = self._asked_item(Act("ask_menu_info"))[0] or self._topic
+        request = self._answer_request(text, item, self._transcript[-RECENT_LINES - 1:-1])
+        self._answer_early = (text, _pool().submit(self._answered, request))
+
+    def _question_rescue(self, turn: _Turn, text: str, acts: list[Act]) -> list[Act]:
+        """NLU가 다 unknown으로 낸 말을 답변기에 한 번 보인다 (5단계 티켓 11).
+
+        실기기 통화에서 STT "불린의결과류 들어가"(블린에 견과류 들어가?)를 NLU가 unknown으로 냈다.
+        답변기가 질문으로 보면(답했거나, 질문인데 자료에 없음) 질문 act로 바꾼다. 질문이 아니라고
+        하면 그대로 둔다. 고르기·확인을 기다리는 중(CLARIFY)과 아주 짧은 말은 보내지 않는다.
+        """
+        self._answer_ready = None
+        if self._answerer is None or self._state not in _RESCUE_STATES:
+            return acts
+        if not acts or any(a.type != "unknown" for a in acts):
+            return acts
+        if len(_SPACES_PUNCT.sub("", text)) < QUESTION_RESCUE_MIN_CHARS:
+            return acts
+        reply = self._consult(turn, text, None)
+        if reply.kind == "not_question":
+            return acts
+        self._answer_ready = reply
+        return [Act("ask_other", free_text=text)]
 
     def _no_means_done(self, acts: list[Act]) -> bool:
         """주문 중 "더 필요하신 거?" 바로 뒤, 맨 앞 "아니요" + 장바구니를 안 건드리는 말.
@@ -592,7 +705,8 @@ class DialogEngine:
         readback = self._state is State.CONFIRM and turn.question in self._readbacks()
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
                             readback=readback, owner_question=turn.owner_question,
-                            knowledge_requests=tuple(turn.knowledge_requests))
+                            knowledge_requests=tuple(turn.knowledge_requests),
+                            answer=turn.answer)
         if self._state is State.CONFIRM:
             self._read_back = True
         if self._state in TERMINAL:
@@ -753,25 +867,40 @@ class DialogEngine:
 
     @on("ask_menu_info", *_ACTIVE)
     def _on_ask_menu_info(self, turn: _Turn, act: Act) -> None:
-        """메뉴 필드로만 답한다. 상태는 그대로이고 직전 질문은 `_finish`가 다시 한다."""
+        """메뉴 질문. 답변기가 있으면 가게 자료로, 없거나 못 답하면 메뉴 필드 규칙으로 답한다.
+        상태는 그대로이고 직전 질문은 `_finish`가 다시 한다."""
         turn.answered = True
-        if _names_menu(act):
-            result = self._matcher.match(act.menu_text, act.menu_guess)
-            item = result.item or next(iter(result.candidates), None)
-            if result.decision == "reject" or item is None:
-                self._say(turn, templates.not_on_menu(self._available_names()))
+        item, unlisted = self._asked_item(act)
+        question = act.free_text or act.menu_text or turn.heard
+        if self._answerer is not None:
+            item = item or self._topic
+            reply = self._answer_ready or self._consult(turn, question, item)
+            self._answer_ready = None
+            if reply.kind == "not_question" and item is not None:
+                # NLU는 질문으로 봤다. 미리 부른 답변기는 메뉴를 몰랐을 수 있어 메뉴를 주고 다시
+                reply = self._consult(turn, question, item, fresh=True)
+            item = self._menu_named(reply.menu) or item
+            self._topic = item or self._topic
+            if reply.kind == "answer":
+                self._say(turn, reply.say)
                 return
-        else:  # "글루텐 프리예요?": 방금 다룬 메뉴, 장바구니에 하나뿐이면 그 메뉴
-            focus = self._focus_index()
-            only = self._cart.lines[0] if len(self._cart.lines) == 1 else None
-            line = self._cart.lines[focus] if focus is not None else only
-            if line is None:
-                self._say(turn, templates.dont_know())
+            if item is None:
+                self._cannot_answer(turn, KnowledgeKey("", "other", _store_gist(question)),
+                                    templates.STORE_QUESTION)
                 return
-            item = line.item
-        answer = menu_answer(item, act.free_text or act.menu_text)
+            unlisted = False
+        if unlisted:
+            self._say(turn, templates.not_on_menu(self._available_names()))
+            return
+        if item is None:
+            self._say(turn, templates.dont_know())
+            return
+        answer = menu_answer(item, question)
         key = KnowledgeKey(item.id, answer.kind, answer.subject, answer.yes_no)
-        if answer.text is not None:
+        # 답변기가 못 답한 질문은 틀림없는 필드 답(가격·알레르기 표시)만 규칙으로 한다. 맛·옵션
+        # 규칙은 낱말만 보고 엉뚱한 답을 한 적이 있다("홀케이크면 달아요?" → 옵션 가격)
+        sure = self._answerer is None or answer.kind in _FIELD_KINDS
+        if answer.text is not None and sure:
             self._say(turn, answer.text)
         elif (known := self._known(key, item, answer)) is not None:
             self._say(turn, known)
@@ -779,6 +908,55 @@ class DialogEngine:
             self._open_owner_question(turn, item, answer)
         else:
             self._cannot_answer(turn, key, item.name_ko)
+
+    def _asked_item(self, act: Act) -> tuple[MenuItem | None, bool]:
+        """질문이 가리키는 메뉴와, 이름은 말했는데 메뉴판에 없는지."""
+        if _names_menu(act):
+            result = self._matcher.match(act.menu_text, act.menu_guess)
+            item = result.item or next(iter(result.candidates), None)
+            if result.decision == "reject" or item is None:
+                return None, True
+            return item, False
+        # "글루텐 프리예요?": 방금 다룬 메뉴, 장바구니에 하나뿐이면 그 메뉴
+        focus = self._focus_index()
+        only = self._cart.lines[0] if len(self._cart.lines) == 1 else None
+        line = self._cart.lines[focus] if focus is not None else only
+        return (None if line is None else line.item), False
+
+    def _menu_named(self, name: str) -> MenuItem | None:
+        return next((m for m in self._menu if m.name_ko == name.strip()), None)
+
+    def _consult(self, turn: _Turn, question: str, item: MenuItem | None, *,
+                 fresh: bool = False) -> AnswerReply:
+        """답변기에 묻고 답을 가게 자료에 대어 본다(`answerer.checked`). 실패는 "unsure".
+        같은 말로 미리 불러 둔 것(`_start_answer_early`)이 있으면 그 결과를 쓴다(`fresh`면 새로)."""
+        early, self._answer_early = self._answer_early, None
+        if early is not None and early[0] == question and not fresh:
+            reply = early[1].result()
+        else:
+            reply = self._answered(
+                self._answer_request(question, item, self._transcript[-RECENT_LINES - 1:-1]))
+        turn.answer = reply
+        return reply
+
+    def _answer_request(self, question: str, item: MenuItem | None,
+                        recent: Sequence[str]) -> AnswerRequest:
+        if self._facts_reviews is None:
+            self._facts_reviews = tuple(self._store.recent_reviews(REVIEWS_FOR_FACTS))
+        notes = self._knowledge if isinstance(self._knowledge, Notes) else None
+        facts = store_facts(self._config, self._menu, self._facts_reviews, notes,
+                            focus_id=item.id if item else "")
+        return AnswerRequest(question, facts, focus=item.name_ko if item else "",
+                             recent=tuple(recent))
+
+    def _answered(self, request: AnswerRequest) -> AnswerReply:
+        """답변기 한 번 + 검사. 엔진 상태를 건드리지 않는다(다른 스레드에서 돈다)."""
+        assert self._answerer is not None
+        try:
+            return checked(self._answerer.answer(request), request)
+        except Exception:  # noqa: BLE001  답변기 고장으로 통화가 끊기면 안 된다
+            log.exception("답변기 실패")
+            return UNSURE
 
     def _cannot_answer(self, turn: _Turn, key: KnowledgeKey, menu_name: str, *,
                        before_question: bool = False) -> None:
@@ -836,9 +1014,21 @@ class DialogEngine:
 
     @on("ask_other", *_ACTIVE)
     def _on_ask_other(self, turn: _Turn, act: Act) -> None:
-        """가게 정보 질문 등. 1단계에는 근거 필드가 없으므로 모른다고 한다."""
+        """가게 질문(영업시간·주차·할인 등). 답변기가 없으면 근거가 없으므로 모른다고 한다."""
         turn.answered = True
-        self._say(turn, templates.dont_know())
+        if self._answerer is None:
+            self._say(turn, templates.dont_know())
+            return
+        question = act.free_text or turn.heard
+        reply = self._answer_ready or self._consult(turn, question, None)
+        self._answer_ready = None
+        item = self._menu_named(reply.menu)
+        self._topic = item or self._topic
+        if reply.kind == "answer":
+            self._say(turn, reply.say)
+            return
+        key = KnowledgeKey(item.id if item else "", "other", _store_gist(question))
+        self._cannot_answer(turn, key, item.name_ko if item else templates.STORE_QUESTION)
 
     # ------------------------------------------------------------ ORDERING: 메뉴 담기
 
@@ -1613,6 +1803,11 @@ class _MenuClarify:
     opened_in: _Turn = field(compare=False, repr=False)  # 되묻기를 연 턴
     deferred: list[Act] = field(default_factory=list)  # 같은 발화에서 질문 뒤에 온 act
     correcting: bool = False  # 복창 뒤 정정 중에 열었다 (티켓 06)
+
+
+def _store_gist(question: str) -> str:
+    """가게 질문의 보충 지식 대상: 띄어쓰기·부호를 뺀 원문 (`menu_info._gist`와 같은 뜻)."""
+    return re.sub(r"[\s?!.,~]", "", question)
 
 
 def _names_menu(act: Act) -> bool:
