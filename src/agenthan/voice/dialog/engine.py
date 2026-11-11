@@ -865,11 +865,23 @@ class DialogEngine:
         if not self._qty_ok(turn, qty):
             return
         options = self._default_choices(item)
-        if act.option_text:
-            options = self._resolve_options(turn, item, act.option_text, options)
+        option_text = act.option_text or self._option_in_name(item, act.menu_text)
+        if option_text:
+            options = self._resolve_options(turn, item, option_text, options)
         line = CartLine(item, qty, options)
         self._cart = self._cart.add(item, line.qty, options=options)
         self._touch(turn, line)
+
+    def _option_in_name(self, item: MenuItem, menu_text: str) -> str:
+        """메뉴명 쪽에 붙은 옵션 말("아이스 아메리카노", "아이스아메리카노"). 없으면 "".
+
+        HCX가 "아이스"를 option_text가 아니라 menu_text에 넣는다(5단계 티켓 04, 실기기 통화).
+        그 메뉴가 받는 옵션이 그 말에서 찾아질 때만 옵션 말로 쓴다.
+        """
+        if not menu_text:
+            return ""
+        candidates = [c for g in self._required_for(item) for c in g.choices] + list(item.options)
+        return menu_text if find_options(candidates, menu_text) else ""
 
     def _qty_ok(self, turn: _Turn, qty: int) -> bool:
         """수량 상한(`MAX_QTY`). 넘으면 안내하고 담지 않는다."""
@@ -910,6 +922,9 @@ class DialogEngine:
     @on("remove_item", State.ORDERING, State.CLARIFY)
     def _on_remove_item(self, turn: _Turn, act: Act) -> None:
         """메뉴를 말하면 그 메뉴 줄을 모두, 안 말하면 마지막에 다룬 줄을 뺀다."""
+        if (option := self._option_removal(act)) is not None:
+            self._on_option_act(turn, option)  # "샤워 크림 빼 주세요"는 메뉴 빼기가 아니다
+            return
         if not self._leave_option_clarify(turn, act):
             return
         if _names_menu(act):
@@ -938,6 +953,26 @@ class DialogEngine:
             self._say(turn, templates.removed(name))
         turn.changed = True
 
+    def _option_removal(self, act: Act) -> Act | None:
+        """빼 달라는 것이 메뉴가 아니라 어떤 메뉴의 빼기 옵션 대상어면 그 옵션 act. 아니면 None.
+
+        HCX가 "블린 하나요 샤워 크림 빼주세요"를 remove_item "샤워 크림"으로 냈다(5단계 티켓 04).
+        메뉴로는 못 찾고(`reject`), 가게 메뉴 중 하나의 옵션으로 찾아질 때만 바꾼다.
+        """
+        if not act.menu_text or self._matcher.match(act.menu_text, act.menu_guess).decision \
+                != "reject":
+            return None
+        said = f"{act.menu_text} 빼"
+        if not any(find_options(list(item.options), said) for item in self._menu):
+            return None
+        return Act("set_option", option_text=said)
+
+    def _on_option_act(self, turn: _Turn, act: Act) -> None:
+        if self._state is State.CLARIFY:
+            self._on_option_answer(turn, act)
+        else:
+            self._on_set_option(turn, act)
+
     @on("change_qty", State.ORDERING, State.CLARIFY)
     def _on_change_qty(self, turn: _Turn, act: Act) -> None:
         if act.qty is None:
@@ -962,6 +997,7 @@ class DialogEngine:
 
     @on("set_option", State.ORDERING)
     def _on_set_option(self, turn: _Turn, act: Act) -> None:
+        act = self._option_only(act)
         index, item = self._pick_line(act)
         if index is not None:
             self._apply_option(turn, index, act.option_text)
@@ -979,6 +1015,7 @@ class DialogEngine:
         그 메뉴에 없는 값이거나("미지근하게") 한 묶음 값을 둘 이상 말했으면 실패로 세고 같은
         질문을 다시 한다 (리뷰 C8, C15). 계속 안 맞으면 사장님께 넘긴다.
         """
+        act = self._option_only(act)
         pending = self._pending
         if isinstance(pending, _OptionPending) and not _names_menu(act):
             problem = self._option_answer_problem(pending, act.option_text)
@@ -995,6 +1032,18 @@ class DialogEngine:
         index = self._cart.index_of(pending.line)
         if index is not None:
             self._apply_option(turn, index, act.option_text)
+
+    def _option_only(self, act: Act) -> Act:
+        """옵션 act의 메뉴 말이 메뉴가 아니면("아이스로") 메뉴 말을 버린다 (5단계 티켓 04).
+
+        HCX가 온도 질문에 대한 "아이스로 주세요"를 menu_text "아이스로"로 냈고, 엔진이 그것을
+        메뉴로 찾다가 "그 메뉴는 없어요"라고 했다. 메뉴 말을 버리면 묻던 줄·마지막 줄에 붙는다.
+        """
+        if not act.option_text or not act.menu_text:
+            return act
+        if self._matcher.match(act.menu_text, act.menu_guess).decision != "reject":
+            return act
+        return replace(act, menu_text="", menu_guess="")
 
     @on("set_request", State.ORDERING, State.CLARIFY)
     def _on_set_request(self, turn: _Turn, act: Act) -> None:
