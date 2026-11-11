@@ -182,6 +182,16 @@ def qty_too_large(limit: int) -> str:
     return f"죄송해요, 전화로는 한 번에 {limit}개까지 받을 수 있어요."
 
 
+def order_too_many(limit: int) -> str:
+    """한 통화의 총 수량 상한을 넘는 주문 (6단계 주문 가드). 넘는 만큼은 담지 않는다."""
+    return f"죄송해요, 전화로는 한 번에 모두 합쳐 {limit}개까지만 받을 수 있어요."
+
+
+def order_too_expensive(limit: int) -> str:
+    """한 통화의 총액 상한을 넘는 주문 (6단계 주문 가드)."""
+    return f"죄송해요, 전화로는 한 번에 {won(limit)}까지만 받을 수 있어요."
+
+
 def which_item() -> str:
     """대상 메뉴를 모르는 옵션·요청. 예: 장바구니가 빈 채로 "디카페인으로요"."""
     return "어떤 메뉴에 해 드릴까요?"

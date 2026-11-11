@@ -1086,7 +1086,10 @@ class DialogEngine:
         if option_text:
             options = self._resolve_options(turn, item, option_text, options)
         line = CartLine(item, qty, options)
-        self._cart = self._cart.add(item, line.qty, options=options)
+        added = self._cart.add(item, line.qty, options=options)
+        if not self._order_ok(turn, added):  # 주문 전체 상한 (6단계 주문 가드)
+            return
+        self._cart = added
         self._touch(turn, line)
 
     def _option_in_name(self, item: MenuItem, menu_text: str) -> str:
@@ -1106,6 +1109,18 @@ class DialogEngine:
             return True
         self._fail(turn)
         self._say(turn, templates.qty_too_large(MAX_QTY))
+        turn.changed = True
+        return False
+
+    def _order_ok(self, turn: _Turn, cart: Cart) -> bool:
+        """주문 전체 상한(`StoreConfig.max_order_qty`·`max_order_total`, 6단계 주문 가드).
+        `cart`가 넘으면 안내하고 담지 않는다(한 줄 상한 `_qty_ok`와 같은 방식, 통화는 이어진다)."""
+        over = cart.over_limit(self._config.max_order_qty, self._config.max_order_total)
+        if over is None:
+            return True
+        self._fail(turn)
+        self._say(turn, templates.order_too_many(self._config.max_order_qty) if over == "qty"
+                  else templates.order_too_expensive(self._config.max_order_total))
         turn.changed = True
         return False
 
@@ -1204,7 +1219,9 @@ class DialogEngine:
             return
         index, item = self._pick_line(act)
         if index is not None:
-            self._replace_line(turn, index, replace(self._cart.lines[index], qty=act.qty))
+            new = replace(self._cart.lines[index], qty=act.qty)
+            if self._order_ok(turn, self._cart.replace_at(index, new)):  # 6단계 주문 가드
+                self._replace_line(turn, index, new)
         elif item is not None:  # 아직 안 담은 메뉴 → 그 수량으로 담는다
             self._add_to_cart(turn, item, act)
         elif _names_menu(act):

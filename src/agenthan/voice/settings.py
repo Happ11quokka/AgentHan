@@ -63,6 +63,8 @@
 | `PHONE_OWNER_CALL_CARD_HOURS` | 끝난 통화 카드 보관 시간 | `24` |
 | `PHONE_OWNER_MAX_ORDER_CARDS` | 확정 주문 카드 수 | `200` |
 | `PHONE_OWNER_ORDER_CARD_HOURS` | 확정 주문 카드 보관 시간 | `72` |
+| `PHONE_MAX_ORDER_QTY` | 한 통화의 총 수량 상한. 비면 가게 JSON `phone` 값(기본 100) | 없음 |
+| `PHONE_MAX_ORDER_TOTAL` | 한 통화의 총액 상한(원). 비면 가게 JSON(기본 1,000,000) | 없음 |
 | `PHONE_LOG_KEEP_DAYS` | 손님 말이 든 JSONL·녹음 보관 일수. 지나면 지운다. 0이면 안 지움 | `14` |
 | `PHONE_DISK_WARN_PCT` | 로그 디스크 사용률이 이 값(%)을 넘으면 경고 로그. 0이면 끔 | `80` |
 
@@ -75,7 +77,7 @@ from __future__ import annotations
 import math
 import os
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, get_args
@@ -94,7 +96,7 @@ from agenthan.voice.call.defaults import (
 )
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.gate import parse_networks
-from agenthan.voice.store_config import KST
+from agenthan.voice.store_config import KST, StoreConfig
 
 if TYPE_CHECKING:
     from agenthan.voice.call.session import SessionSettings
@@ -175,6 +177,9 @@ class VoiceSettings:
     owner_call_card_hours: float = 24.0
     owner_max_order_cards: int = 200
     owner_order_card_hours: float = 72.0
+    # ---- 6단계: 주문 가드. None이면 가게 설정(`StoreConfig.max_order_*`)을 그대로 쓴다
+    max_order_qty: int | None = None
+    max_order_total: int | None = None
     # ---- 6단계: 집안일 (`housekeeping.py`)
     log_keep_days: float = 14.0  # 손님 말이 든 JSONL·녹음 보관 기한. 0이면 지우지 않는다
     disk_warn_pct: float = 80.0  # 디스크 사용률 경고 기준(%). 0이면 끈다
@@ -208,6 +213,12 @@ class VoiceSettings:
         from agenthan.voice.call.session import SessionSettings  # 엔진까지 끌어오므로 쓸 때만
 
         return SessionSettings(**{name: getattr(self, name) for name in _SESSION_FIELDS})
+
+    def with_order_limits(self, config: StoreConfig) -> StoreConfig:
+        """서버 설정에 주문 상한이 있으면 가게 설정 위에 덮는다 (6단계 주문 가드)."""
+        changes = {name: value for name in ("max_order_qty", "max_order_total")
+                   if (value := getattr(self, name)) is not None}
+        return replace(config, **changes) if changes else config
 
     def hub_limits(self) -> HubLimits:
         """사장님 허브 카드 상한 (`OwnerHub(limits=...)`)."""
@@ -329,6 +340,10 @@ class VoiceSettings:
                                          get("PHONE_OWNER_MAX_ORDER_CARDS", ""), 200),
             owner_order_card_hours=_limit("PHONE_OWNER_ORDER_CARD_HOURS",
                                           get("PHONE_OWNER_ORDER_CARD_HOURS", ""), 72.0),
+            max_order_qty=(_count("PHONE_MAX_ORDER_QTY", qty, 0)
+                           if (qty := get("PHONE_MAX_ORDER_QTY", "")) else None),
+            max_order_total=(_count("PHONE_MAX_ORDER_TOTAL", total, 0)
+                             if (total := get("PHONE_MAX_ORDER_TOTAL", "")) else None),
             log_keep_days=_limit("PHONE_LOG_KEEP_DAYS", get("PHONE_LOG_KEEP_DAYS", ""), 14.0),
             disk_warn_pct=_limit("PHONE_DISK_WARN_PCT", get("PHONE_DISK_WARN_PCT", ""), 80.0),
             env=env,

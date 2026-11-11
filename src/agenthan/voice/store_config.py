@@ -63,6 +63,11 @@ class StoreConfig:
         default_factory=lambda: _NO_REQUIRED
     )
     demo_phone: str = "010-0000-0000"  # 전화번호는 묻지 않고 미리 채운다 (spec §2)
+    # 주문 가드 (6단계): 한 통화의 총 수량·총액 상한. 넘는 주문은 담지 않고 알린다. 0이면 제한 없음.
+    # 기본은 넉넉하다(한 줄 상한 99개가 그대로 담긴다). 가게 JSON `phone.max_order_qty`·
+    # `max_order_total`이나 서버 설정 `PHONE_MAX_ORDER_QTY`·`PHONE_MAX_ORDER_TOTAL`로 줄인다
+    max_order_qty: int = 100
+    max_order_total: int = 1_000_000
     tz: timezone = KST
 
     @classmethod
@@ -93,6 +98,9 @@ class StoreConfig:
             values["open_time"] = time.fromisoformat(str(phone["open"]))
         if "close" in phone:
             values["close_time"] = time.fromisoformat(str(phone["close"]))
+        for name in ("max_order_qty", "max_order_total"):
+            if name in phone:
+                values[name] = max(0, int(phone[name]))
         if "required_options" in phone:
             values["required_options"] = MappingProxyType({
                 menu_id: tuple(_required(group) for group in groups)

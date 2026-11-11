@@ -139,7 +139,7 @@ def phone_router(
         stt_factory = adapters.stt_factory(settings, boost_words=boost)
     make_stt = stt_factory
     make_tts = tts_factory or adapters.tts_factory(settings)
-    config = replace(config, tz=settings.tz)
+    config = settings.with_order_limits(replace(config, tz=settings.tz))  # 주문 가드 (6단계)
     engine_pool = ThreadPoolExecutor(
         max_workers=settings.max_calls * ENGINE_THREADS_PER_CALL,
         thread_name_prefix=ENGINE_THREAD_PREFIX,
