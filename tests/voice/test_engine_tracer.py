@@ -27,7 +27,8 @@ def engine() -> DialogEngine:
 
 def test_start_greets_with_store_name(engine: DialogEngine) -> None:
     r = engine.start(NOW)
-    assert r.utterances == ["네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?"]
+    assert r.utterances == [
+        "네, 샘플 러시안 베이커리 AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?"]
     assert r.state is State.ORDERING
     assert r.cart.is_empty()
     assert r.order is None
@@ -162,7 +163,8 @@ def test_transcript_records_both_sides(engine: DialogEngine) -> None:
         engine.handle(text, NOW)
     order = engine.handle("네", NOW).order
     assert order is not None
-    assert order.transcript[0] == "AI: 네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?"
+    assert order.transcript[0] == (
+        "AI: 네, 샘플 러시안 베이커리 AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?")
     assert order.transcript[1] == "손님: 메도빅 하나요"
     assert order.transcript[-1] == "AI: 네, 6시 반까지 준비해 둘게요. 감사합니다."
 

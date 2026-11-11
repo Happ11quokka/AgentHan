@@ -60,7 +60,7 @@ SCRIPT = {
 def test_a_whole_order_at_another_store_uses_only_that_store_data() -> None:
     engine, nlu = _engine(SCRIPT)
     first = engine.start(NOW)
-    assert first.utterances[0].startswith("네, 샘플 쌀국수집입니다.")
+    assert first.utterances[0].startswith("네, 샘플 쌀국수집 AI 전화 주문입니다.")
 
     r = engine.handle("쌀국수 두 개 고수 빼 주시고 연유 커피 하나요", NOW)
     # 국수 양은 기본값(보통)이 있어 묻지 않고, 커피 온도는 기본값이 없어 묻는다 (가게 JSON `phone`)

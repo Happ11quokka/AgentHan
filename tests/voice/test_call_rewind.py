@@ -268,7 +268,7 @@ def test_one_utterance_is_rewound_at_most_twice(tmp_path) -> None:
     # 답하고 그 뒤의 말은 전처럼 다음 턴으로 받는다
     stt = FakeSttStream(replies=["메도빅 하나요", "블린도 하나요", "나폴레옹도 하나요",
                                  "그게 다예요"])
-    greeting = ("네, 샘플 러시안 베이커리입니다.", "어떤 걸로 준비해 드릴까요?")
+    greeting = ("네, 샘플 러시안 베이커리 AI 전화 주문입니다.", "어떤 걸로 준비해 드릴까요?")
     tts = FakeTts(delays=lambda text: 0.0 if text in greeting else 0.5)
 
     async def call() -> Call:
@@ -471,7 +471,7 @@ def test_a_turn_that_passed_a_question_on_to_the_owner_is_never_rewound(tmp_path
 def test_speech_during_the_greeting_synthesis_is_not_a_rewind(tmp_path) -> None:
     # 인사(턴 0)와 봇이 먼저 말하는 턴은 손님 말로 연 턴이 아니다
     stt = FakeSttStream(replies=["메도빅 하나요"])
-    greeting = "네, 샘플 러시안 베이커리입니다."
+    greeting = "네, 샘플 러시안 베이커리 AI 전화 주문입니다."
 
     async def call() -> Call:
         async with Call(tmp_path, stt=stt, tts=slow(greeting), settings=on()) as c:

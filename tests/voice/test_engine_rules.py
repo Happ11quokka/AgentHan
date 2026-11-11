@@ -473,7 +473,7 @@ def test_transcript_alternates_customer_and_ai(engine: DialogEngine) -> None:
     order = talk(engine, "네").order
     assert order is not None
     assert order.transcript == [
-        "AI: 네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?",
+        "AI: 네, 샘플 러시안 베이커리 AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?",
         "손님: 메도빅 하나요",
         f"AI: 메도빅 하나요. {MORE_Q}",
         "손님: 그게 다예요",

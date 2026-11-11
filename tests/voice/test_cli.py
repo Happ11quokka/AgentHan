@@ -9,7 +9,7 @@ def test_cli_completes_one_order() -> None:
     code = cli.main(["--now", "2026-11-08T16:00:00+09:00"], stdin=stdin, stdout=stdout)
     out = stdout.getvalue()
     assert code == 0
-    assert "AI: 네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?" in out
+    assert "AI: 네, 샘플 러시안 베이커리 AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?" in out
     assert "모두 7,500원" in out
     assert "status='confirmed'" in out
     assert "pickup_time='2026-11-08T18:30:00+09:00'" in out

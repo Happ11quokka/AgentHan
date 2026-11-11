@@ -105,6 +105,17 @@ class Cart:
     def total(self) -> int:
         return sum(line.subtotal() for line in self.lines)
 
+    def total_qty(self) -> int:
+        return sum(line.qty for line in self.lines)
+
+    def over_limit(self, max_qty: int, max_total: int) -> str | None:
+        """주문 전체 상한(6단계 주문 가드)을 넘었으면 넘은 것("qty"·"total"). 0은 제한 없음."""
+        if 0 < max_qty < self.total_qty():
+            return "qty"
+        if 0 < max_total < self.total():
+            return "total"
+        return None
+
     def summary(self, hide: Callable[[MenuItem], Collection[str]] | None = None) -> str:
         """복창용 한 줄. 예: "메도빅 하나, 아메리카노 두 잔". `hide`는 메뉴마다 말하지 않을 옵션."""
         return ", ".join(line.phrase(hide(line.item) if hide else ()) for line in self.lines)

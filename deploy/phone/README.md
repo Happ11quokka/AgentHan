@@ -8,7 +8,7 @@
 | `compose.yaml` | `app` + `caddy`. Caddy 인증서는 이름 있는 볼륨 `caddy_data`(`/data`) |
 | `Caddyfile` | `{$DOMAIN}` → `app:8000` 리버스 프록시(WS 포함). `ACME_CA`로 스테이징/운영 전환 |
 | `.env.example` | 서버 `deploy/phone/.env` 틀. 이름만 |
-| `deploy.sh` | `up`(배포·재배포) · `rollback [태그]` · `images` · `logs [app\|caddy]` · `ps` |
+| `deploy.sh` | `up`(빌드 → 비우기 → 교체) · `rollback [태그]` · `drain`·`undrain` · `health` · `images` · `logs [app\|caddy]` · `ps` |
 
 ## 1. 사람이 처음 한 번 (동현님 개인 실습 계정)
 
@@ -57,12 +57,64 @@ issuer에 `(STAGING)`이 없어지면 끝. 폰 크롬에서 `https://agenthan.du
 
 ```bash
 git pull && ./deploy/phone/deploy.sh up       # 재배포. 직전 이미지는 prev, 새 이미지는 커밋 태그로 남는다
+./deploy/phone/deploy.sh health               # {"ok":true,"active":통화 수,"draining":false,"version":"커밋",…}
 ./deploy/phone/deploy.sh rollback             # 직전(prev)으로. 더 예전은 images로 태그 보고 rollback <태그>
 ./deploy/phone/deploy.sh logs app             # 앱 로그 (주문·오류). caddy는 logs caddy
 docker compose -f deploy/phone/compose.yaml cp app:/app/logs ./phone-logs   # 통화 지연 JSONL 꺼내기
 ```
 
-키만 바꿨으면 `docker compose -f deploy/phone/compose.yaml up -d app`(빌드 없이 새 env로). **`down -v`는 쓰지 않는다**: `caddy_data`가 지워져 인증서를 다시 받는다.
+키만 바꿨으면 `docker compose -f deploy/phone/compose.yaml up -d app`(빌드 없이 새 env로. 통화 중인 손님은 끊기니 먼저 `deploy.sh drain` 후 `health`의 `active`가 0인지 본다). **`down -v`는 쓰지 않는다**: `caddy_data`가 지워져 인증서를 다시 받고, `phone_logs`의 하루 예산 기록도 사라진다.
+
+`deploy.sh up`이 하는 순서 (6단계):
+
+1. **먼저 빌드** (`compose build app`). 도는 컨테이너는 예전 이미지로 통화를 계속 받는다. 빌드가 2 vCPU를 쓰니 통화가 적은 시간에 한다
+2. **새 통화 받기 중지**: 컨테이너 안 `/app/logs/DRAIN` 파일을 만든다. 새로 거는 손님은 "잠시 점검 중이에요. 1분쯤 뒤에 다시 걸어 주세요"를 본다
+3. **진행 중 통화가 0이 되기를 기다린다** (`/healthz`의 `active`, 최대 `DRAIN_TIMEOUT_S` 기본 600초). 급하면 `DRAIN_TIMEOUT_S=0 ./deploy/phone/deploy.sh up`(바로 교체, 통화 중인 화면에는 "서버 점검으로 통화를 끝낼게요"가 뜬다)
+4. **교체** (`up -d --no-build`) → 점검 표시 지움 → 커밋 태그 → 오래된 태그 정리(`KEEP_IMAGES` 기본 3개 + `latest`·`prev`) → 디스크 사용률 경고(`DISK_WARN_PCT` 기본 80)
+
+중간에 멈추면(Ctrl+C·오류) 점검 표시를 지우고 다시 통화를 받는다. 안 지워졌으면 `./deploy/phone/deploy.sh undrain`. 발표 전날 저녁부터는 배포하지 않는다.
+
+## 4-1. 운영 환경 변수 (6단계)
+
+`deploy/phone/.env`에 적는다. 안 적으면 기본값. 바꾼 뒤에는 `drain` → `active` 0 확인 → `docker compose -f deploy/phone/compose.yaml up -d app`. 전체 목록과 뜻은 `src/agenthan/voice/settings.py` 머리 주석.
+
+| 변수 | 기본 | 서버 권장 | 뜻 |
+|---|---|---|---|
+| `PHONE_ALLOWED_ORIGINS` | compose가 `https://$DOMAIN` | 그대로 | 이 오리진의 화면만 통화를 건다. 터널 등 다른 주소도 쓰면 쉼표로 추가, 끄려면 `*` |
+| `PHONE_TRUSTED_PROXIES` | compose가 `private` | 그대로 | Caddy가 준 `X-Forwarded-For`에서 손님 주소를 읽는다 |
+| `PHONE_IP_MAX_CALLS` | 4 | 4 | 주소 하나의 동시 통화. 발표장 와이파이는 여러 명이 주소 하나를 쓴다 |
+| `PHONE_IP_CALLS_PER_HOUR` | 30 | 30 | 주소 하나가 한 시간에 거는 통화 수 |
+| `PHONE_DAY_MAX_CALLS` | 0(끔) | 300 | 하루 통화 수. 넘으면 "오늘은 전화 주문이 마감됐어요" |
+| `PHONE_DAY_MAX_MINUTES` | 0(끔) | 600 | 하루 통화 분 합계. CLOVA 비용의 진짜 상한 |
+| `PHONE_MAX_CALL_S` | 600 | 300 | 통화 하나의 최대 길이(주문 한 건은 보통 1~2분) |
+| `PHONE_WS_MAX_BYTES` | 65536 | 그대로 | WS 메시지 하나의 최대 크기 |
+| `PHONE_NLU_MAX_TOKENS` | 0(코드 기본 512) | 200 | HCX NLU `maxTokens`. `hcx-*.jsonl`의 `completion` 최댓값 + 여유로 정한다 |
+| `PHONE_HCX_RPM` | 0(끔) | 70 | HCX NLU 분당 요청 상한(테스트 키 QPM 90의 80%). 서비스 앱 키면 360 |
+| `PHONE_HCX_TPM` | 0(끔) | 64000 | 분당 토큰 상한(TPM 80,000의 80%). 서비스 앱 키면 190000 |
+| `PHONE_NLU_FALLBACK` | rules | rules | HCX 실패 턴을 규칙 NLU가 맡는다 |
+| `PHONE_TTS_RETRIES` · `PHONE_TTS_FALLBACK` | 1 · caption | 그대로 | CLOVA Voice 재시도 1회, 그래도 실패한 문장 하나는 무음 + 자막 |
+| `PHONE_LOG_KEEP_DAYS` | 14 | 14 | 손님 말 JSONL·녹음 보관 일수. 화면 안내 문구도 14일이다. 바꾸면 `PhonePage.tsx` 문구도 바꾼다 |
+| `PHONE_DISK_WARN_PCT` | 80 | 80 | 디스크 사용률 경고 로그 기준 |
+| `PHONE_OWNER_MAX_CALL_CARDS` · `PHONE_OWNER_CALL_CARD_HOURS` | 50 · 24 | 그대로 | 사장님 화면의 끝난 통화 카드 상한 |
+| `PHONE_OWNER_MAX_ORDER_CARDS` · `PHONE_OWNER_ORDER_CARD_HOURS` | 200 · 72 | 그대로 | 주문 카드 상한 |
+| `PHONE_MAX_ORDER_QTY` · `PHONE_MAX_ORDER_TOTAL` | 가게 JSON(100 · 1,000,000) | 30 · 300000 | 한 통화 총 수량·총액 상한 |
+
+## 4-2. 비상 대응 (6단계)
+
+| 상황 | 볼 것 | 할 일 |
+|---|---|---|
+| 손님이 "오늘은 마감됐어요"를 본다 | `/healthz?key=…`의 `day`(오늘 통화 수·분), 컨테이너 안 `/app/logs/phone-budget.json` | 하루 예산을 올린다(`.env` `PHONE_DAY_MAX_*`) → `up -d app`. 급하면 `docker compose -f deploy/phone/compose.yaml exec app rm /app/logs/phone-budget.json` 후 `up -d app` |
+| "잠시 점검 중이에요"가 계속 뜬다 | `health`의 `draining: true` | `./deploy/phone/deploy.sh undrain` |
+| "지금 통화가 많아요"·"같은 곳에서 걸려 온 통화가 많아요" | `health`의 `active`, 로그의 `통화 거절 busy_ip` | 발표장 와이파이면 `PHONE_IP_MAX_CALLS`·`PHONE_IP_CALLS_PER_HOUR`를 올리거나 `0`으로 끈다 |
+| 화면이 "서버에 연결하지 못했어요"만 뜬다 | 주소가 `.env`의 `DOMAIN`과 같은지(Origin 검사) | 다른 주소로 열었으면 `PHONE_ALLOWED_ORIGINS=*` 또는 그 주소 추가 → `up -d app` |
+| 봇이 자꾸 엉뚱하게 알아듣는다(HCX 한도) | 로그 `HCX NLU 호출 실패 … http-429`, `/app/logs/hcx-*.jsonl`의 `status`·`fallback` | `PHONE_NLU_MAX_TOKENS`를 줄이고 `PHONE_HCX_RPM`·`_TPM`을 건다. 계속이면 `PHONE_MAX_CALLS`를 낮춘다. 서비스 앱 키 승인 뒤 키 교체 |
+| 봇 목소리가 한 문장씩 빈다 | 로그 `TTS 실패 … 소리 없이 자막만 보냄` | CLOVA Voice 한도·장애. 콘솔 사용량 확인. 연달아 실패하면 통화가 안내 후 끝난다 |
+| 디스크 경고 | 로그 `디스크 사용률 N%`, `df -h`, `docker system df` | `docker builder prune --keep-storage 5GB`, `./deploy/phone/deploy.sh images`로 태그 확인, `PHONE_LOG_KEEP_DAYS` 낮추기, 녹음 끄기 |
+| 장난 통화가 몰린다 | 사장님 화면 미완료 카드, 로그 `통화 거절` | `PHONE_DAY_MAX_*`·`PHONE_IP_CALLS_PER_HOUR`를 낮춘다. 멈추려면 `./deploy/phone/deploy.sh drain` |
+| 새 버전이 이상하다 | `health`의 `version` | `./deploy/phone/deploy.sh rollback` |
+| 사장님 토큰이 샜다 | — | `.env`의 `PHONE_OWNER_KEY`를 새로 만들어 넣고 `up -d app`. Caddy 접속 로그는 `key`를 `REDACTED`로 남긴다(6단계 전 로그에는 남아 있다: `docker compose … logs caddy`가 도는 컨테이너를 다시 만들면 사라진다) |
+
+상태 자세히: `curl -s "https://$DOMAIN/healthz?key=<PHONE_OWNER_KEY>"` → 하루 예산(`day`), 디스크(`disk_pct`), 스레드 수, HCX 분당 사용량. 토큰 없이 부르면 통화 수·점검 여부·버전만 준다.
 
 ## 5. 비상: 도메인·인증서가 막힌 날 (cloudflared Quick Tunnel)
 

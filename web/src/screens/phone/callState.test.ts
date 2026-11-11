@@ -271,6 +271,32 @@ describe('callReducer', () => {
     expect(micLive(s)).toBe(false)
   })
 
+  it('shows a server refusal (busy, daily limit, maintenance) and hides redial when retry is false', () => {
+    // 6단계 문지기: 거절은 busy와 같은 error 이벤트로 온다. 문구는 서버가 준 그대로 보여 준다
+    const s = run(dial, micReady, {
+      type: 'server',
+      event: { type: 'error', turn: 0, code: 'closed_today', message: '오늘은 전화 주문이 마감됐어요. 내일 다시 걸어 주세요.', retry: false },
+    }, { type: 'socket.closed', code: 1000 })
+    expect(s.status).toBe('failed')
+    expect(s.error).toEqual({ message: '오늘은 전화 주문이 마감됐어요. 내일 다시 걸어 주세요.', retry: false })
+  })
+
+  it('tells the caller the server is restarting when the socket closes with 1012 mid-call', () => {
+    const s = run(dial, micReady, ready, { type: 'socket.closed', code: 1012 })
+    expect(s.status).toBe('failed')
+    expect(s.error?.message).toContain('점검')
+    expect(s.error?.retry).toBe(true)
+    // 서버가 먼저 이유를 보냈으면 그 문구를 둔다
+    const told = run(dial, micReady, ready, {
+      type: 'server',
+      event: { type: 'error', turn: 2, code: 'restarting', message: '서버 점검으로 통화를 끝낼게요.', retry: true },
+    }, { type: 'socket.closed', code: 1012 })
+    expect(told.error?.message).toBe('서버 점검으로 통화를 끝낼게요.')
+    // 주문이 끝난 뒤 닫힌 것은 정상 종료
+    const ended: CallAction = { type: 'server', event: { type: 'call.ended', turn: 3, reason: 'confirmed' } }
+    expect(run(dial, micReady, ready, ended, { type: 'socket.closed', code: 1012 }).status).toBe('ended')
+  })
+
   it('treats a socket that closes before call.ready as a failed call', () => {
     const s = run(dial, micReady, { type: 'socket.closed' })
     expect(s.status).toBe('failed')

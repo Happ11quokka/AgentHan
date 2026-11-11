@@ -6,7 +6,10 @@
 키는 설정의 `env`(환경 변수 + `.env`)에서 꺼내 넘긴다. 키가 없으면 통화를 만들 때 `PortError`
 (`*_config`)가 나고, 라우터가 그것을 `error` 이벤트로 낸다.
 
-- TTS(티켓 03): `tts_clova.ClovaVoiceTts`. 통화마다 하나 만들고, 통화가 끝나면 라우터가 `aclose()`
+- TTS(티켓 03): `tts_clova.ClovaVoiceTts`. 통화마다 하나 만들고, 통화가 끝나면 라우터가 `aclose()`.
+  HTTP 연결(`httpx.AsyncClient`, 유휴 60초 유지)은 `ClovaTtsFactory`가 하나만 만들어 모든 통화가
+  같이 쓰고, 서버가 끝날 때 `factory.aclose()`로 닫는다(6단계). 재시도(`PHONE_TTS_RETRIES`)
+  와 무음 폴백(`PHONE_TTS_FALLBACK`)도 여기서 끼운다
 - STT(티켓 02): `stt.clova.ClovaSttStream(ClovaSttSettings.from_env(env))`. 통화마다 하나.
   접속은 세션이 `start()`할 때 한다(여기서는 네트워크를 쓰지 않는다). 라우터가 넘긴 가게 메뉴
   부스팅 단어를 CONFIG에 넣는다(티켓 10)
@@ -65,8 +68,37 @@ def default_grpc_dns(env: Mapping[str, str]) -> None:
 def tts_factory(settings: VoiceSettings) -> TtsFactory:
     if settings.tts == "fake":
         return FakeTts
-    module = _require("PHONE_TTS", CLOVA_TTS)
-    return lambda: _clova_tts(module, settings.env, settings.tts_speaker)
+    return ClovaTtsFactory(_require("PHONE_TTS", CLOVA_TTS), settings)
+
+
+class ClovaTtsFactory:
+    """통화마다 CLOVA Voice TTS를 만든다. HTTP 연결 풀은 하나를 같이 쓴다(처음 쓸 때 만든다)."""
+
+    def __init__(self, module: Any, settings: VoiceSettings) -> None:
+        self._module = module
+        self._settings = settings
+        self._http: Any = None
+
+    def __call__(self) -> Tts:
+        s = self._settings
+        client_id, secret = (s.env.get(k, "").strip() for k in self._module.KEY_ENVS)
+        if not (client_id and secret):
+            keys = ", ".join(self._module.KEY_ENVS)
+            raise PortError(f"CLOVA Voice 키가 없어요 ({keys})", code="tts_config", retry=False)
+        if self._http is None or self._http.is_closed:
+            from agenthan.voice.runtime import shared_tts_http
+
+            self._http = shared_tts_http(s.tts_timeout_s)
+        return self._module.ClovaVoiceTts(
+            client_id, secret, http=self._http, shared=True, retries=s.tts_retries,
+            quiet_fallback=s.tts_fallback,
+            **({"speaker": s.tts_speaker} if s.tts_speaker else {}),
+        )
+
+    async def aclose(self) -> None:
+        http, self._http = self._http, None
+        if http is not None:
+            await http.aclose()
 
 
 def _require(var: str, spec: tuple[str, str, str]) -> Any:
@@ -94,11 +126,3 @@ def _clova_stt(module: Any, env: Mapping[str, str], boost_words: tuple[str, ...]
                                                 boost_words=boost_words,
                                                 boost_weight=boost_weight)
     return module.ClovaSttStream(settings)
-
-
-def _clova_tts(module: Any, env: Mapping[str, str], speaker: str) -> Tts:
-    client_id, secret = (env.get(k, "").strip() for k in module.KEY_ENVS)
-    if not (client_id and secret):
-        keys = ", ".join(module.KEY_ENVS)
-        raise PortError(f"CLOVA Voice 키가 없어요 ({keys})", code="tts_config", retry=False)
-    return module.ClovaVoiceTts(client_id, secret, **({"speaker": speaker} if speaker else {}))

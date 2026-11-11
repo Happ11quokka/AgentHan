@@ -257,12 +257,21 @@ class _Phone:
         await self.until(lambda: self.closed, 3.0)
 
 
+def page_origin(ws_url: str) -> str:
+    """WS 주소 → 그 화면의 오리진. `wss://host/api/phone/ws` → `https://host`."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(ws_url)
+    return f"{'https' if parts.scheme == 'wss' else 'http'}://{parts.netloc}"
+
+
 async def run_call(url: str, clips: list[Clip], *, pace: float = 1.0, gap_s: float = 0.3,
                    no_turn_timeout_s: float = 6.0) -> CallRun:
     """통화 하나를 건다. 녹음을 차례로 손님 말로 보내고, 끝날 때까지의 기록을 돌려준다."""
     from websockets.asyncio.client import connect
 
-    async with connect(url, max_size=None) as ws:
+    # 브라우저처럼 화면 오리진을 붙인다. 서버가 Origin을 검사해도(`PHONE_ALLOWED_ORIGINS`) 걸린다
+    async with connect(url, max_size=None, origin=page_origin(url)) as ws:
         phone = _Phone(ws, clips, pace, gap_s, no_turn_timeout_s)
         tasks = [asyncio.create_task(t) for t in (phone.reader(), phone.writer(), phone.mic())]
         try:

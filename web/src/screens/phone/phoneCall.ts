@@ -261,9 +261,9 @@ export class PhoneCall {
       if (typeof e.data === 'string') this.onServerText(e.data)
       else this.onServerAudio(e.data)
     }
-    ws.onclose = () => {
+    ws.onclose = (e?: CloseEvent) => {
       if (gen !== this.generation) return
-      this.dispatch({ type: 'socket.closed' })
+      this.dispatch({ type: 'socket.closed', code: e?.code })
       this.teardown()
     }
   }

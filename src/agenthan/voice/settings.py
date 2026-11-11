@@ -44,6 +44,34 @@
 | `PHONE_ANSWER_MODEL` | 답변기 모델 (`nlu/hcx_answer.py`가 읽는다) | `HCX-005` |
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
 
+6단계 운영 보강 (문지기 `gate.py`). 숫자 상한은 `0`이면 끈다.
+
+| 변수 | 값 | 기본 |
+|---|---|---|
+| `PHONE_ALLOWED_ORIGINS` | 통화를 걸 수 있는 화면 오리진(쉼표). 비거나 `*`면 검사 안 함 | 없음 |
+| `PHONE_TRUSTED_PROXIES` | 믿는 프록시 CIDR(쉼표)·`private`. `X-Forwarded-For`를 읽는다 | 없음 |
+| `PHONE_IP_MAX_CALLS` | 주소 하나의 동시 통화 상한 (사설·루프백 주소는 안 셈) | `4` |
+| `PHONE_IP_CALLS_PER_HOUR` | 주소 하나가 한 시간에 걸 수 있는 통화 수 | `30` |
+| `PHONE_DAY_MAX_CALLS` | 하루 통화 수 상한. 넘으면 `closed_today` | `0`(끔) |
+| `PHONE_DAY_MAX_MINUTES` | 하루 통화 분 합계 상한 | `0`(끔) |
+| `PHONE_WS_MAX_BYTES` | WS 메시지 하나의 최대 크기(바이트) | `65536` |
+| `PHONE_NLU_MAX_TOKENS` | HCX NLU 요청의 `maxTokens`. 0이면 코드 기본(튜닝 512·기본 1024) | `0` |
+| `PHONE_NLU_TIMEOUT_S` | HCX NLU 요청 하나의 시간 제한(초) | `4.0` |
+| `PHONE_NLU_FALLBACK` | `rules`면 HCX 실패·한도 초과 턴을 규칙 NLU가. `off`면 되묻기 | `rules` |
+| `PHONE_HCX_RPM` | 프로세스 전체 HCX NLU 분당 요청 상한. 반을 넘기면 미리 해석을 건너뜀 | `0`(끔) |
+| `PHONE_HCX_TPM` | 분당 토큰 상한(입력 + `maxTokens`로 센다) | `0`(끔) |
+| `PHONE_TTS_RETRIES` | CLOVA Voice 일시 오류(429·5xx·시간 초과)에 다시 부르는 횟수 | `1` |
+| `PHONE_TTS_FALLBACK` | `caption`이면 실패한 문장 하나는 무음 + 자막. `off`면 종료 | `caption` |
+| `PHONE_TTS_TIMEOUT_S` | CLOVA Voice 요청 하나의 시간 제한(초) | `10.0` |
+| `PHONE_OWNER_MAX_CALL_CARDS` | 사장님 허브가 두는 끝난 통화 카드 수 | `50` |
+| `PHONE_OWNER_CALL_CARD_HOURS` | 끝난 통화 카드 보관 시간 | `24` |
+| `PHONE_OWNER_MAX_ORDER_CARDS` | 확정 주문 카드 수 | `200` |
+| `PHONE_OWNER_ORDER_CARD_HOURS` | 확정 주문 카드 보관 시간 | `72` |
+| `PHONE_MAX_ORDER_QTY` | 한 통화의 총 수량 상한. 비면 가게 JSON `phone` 값(기본 100) | 없음 |
+| `PHONE_MAX_ORDER_TOTAL` | 한 통화의 총액 상한(원). 비면 가게 JSON(기본 1,000,000) | 없음 |
+| `PHONE_LOG_KEEP_DAYS` | 손님 말이 든 JSONL·녹음 보관 일수. 지나면 지운다. 0이면 안 지움 | `14` |
+| `PHONE_DISK_WARN_PCT` | 로그 디스크 사용률이 이 값(%)을 넘으면 경고 로그. 0이면 끔 | `80` |
+
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
 """
@@ -53,7 +81,7 @@ from __future__ import annotations
 import math
 import os
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, get_args
@@ -72,10 +100,12 @@ from agenthan.voice.call.defaults import (
     WAIT_REQUEST_S,
 )
 from agenthan.voice.call.vad import VadSettings
-from agenthan.voice.store_config import KST
+from agenthan.voice.gate import parse_networks
+from agenthan.voice.store_config import KST, StoreConfig
 
 if TYPE_CHECKING:
     from agenthan.voice.call.session import SessionSettings
+    from agenthan.voice.owner.hub import HubLimits
 
 NluName = Literal["fake", "hcx"]
 AdapterName = Literal["fake", "clova"]
@@ -137,6 +167,35 @@ class VoiceSettings:
     owner_wait_s: float = OWNER_WAIT_S
     ask_owner: bool = False  # 통화 중 사장님께 바로 묻기 (5단계 티켓 09). 기본 끔
     answer: bool = True  # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11)
+    # ---- 6단계 운영 보강: 문지기 (`gate.py`). 숫자 상한은 0이면 끈다
+    allowed_origins: tuple[str, ...] = ()  # 비면 Origin을 검사하지 않는다
+    trusted_proxies: tuple[str, ...] = ()  # CIDR 또는 "private". 비면 소켓 상대 주소를 쓴다
+    ip_max_calls: int = 4  # 주소 하나의 동시 통화 (발표장 NAT를 생각해 느슨하게)
+    ip_calls_per_hour: int = 30
+    day_max_calls: int = 0  # 하루 예산. 0이면 세지 않는다
+    day_max_minutes: float = 0.0
+    ws_max_bytes: int = 65_536  # WS 메시지 하나 (OWASP 권고 64KB. 오디오 프레임은 3,200바이트)
+    # ---- 6단계: HCX 한도 대응 (`runtime.py`, `nlu/budget.py`)
+    nlu_max_tokens: int = 0  # 0이면 코드 기본값(정답셋 녹화본과 같은 요청 본문)
+    nlu_timeout_s: float = 4.0  # 1회 재시도까지 해도 엔진 시간 제한(20초) 안에 규칙 NLU로 넘어간다
+    nlu_fallback: bool = True  # HCX 실패·한도 초과 턴은 규칙 NLU가 맡는다
+    hcx_rpm: int = 0  # 분당 요청 상한. 0이면 세지 않는다
+    hcx_tpm: int = 0  # 분당 토큰 상한(입력 + maxTokens)
+    # ---- 6단계: TTS 일시 오류 (`tts_clova.py`, `adapters.py`)
+    tts_retries: int = 1
+    tts_fallback: bool = True  # 실패한 문장 하나는 무음 + 자막으로 넘겨 통화를 잇는다
+    tts_timeout_s: float = 10.0
+    # ---- 6단계: 사장님 허브 카드 상한 (`owner/hub.py` `HubLimits`). 0이면 제한 없음
+    owner_max_call_cards: int = 50
+    owner_call_card_hours: float = 24.0
+    owner_max_order_cards: int = 200
+    owner_order_card_hours: float = 72.0
+    # ---- 6단계: 주문 가드. None이면 가게 설정(`StoreConfig.max_order_*`)을 그대로 쓴다
+    max_order_qty: int | None = None
+    max_order_total: int | None = None
+    # ---- 6단계: 집안일 (`housekeeping.py`)
+    log_keep_days: float = 14.0  # 손님 말이 든 JSONL·녹음 보관 기한. 0이면 지우지 않는다
+    disk_warn_pct: float = 80.0  # 디스크 사용률 경고 기준(%). 0이면 끈다
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -152,12 +211,37 @@ class VoiceSettings:
             )
         if self.now is not None and self.now.tzinfo is None:
             raise SettingsError("PHONE_NOW에 시간대를 붙여 주세요. 예: 2026-11-08T16:00:00+09:00")
+        for origin in self.allowed_origins:
+            if not origin.lower().startswith(("http://", "https://")):
+                raise SettingsError(
+                    "PHONE_ALLOWED_ORIGINS는 https://도메인 모양이어야 해요 (쉼표로 여러 개)")
+        try:
+            parse_networks(self.trusted_proxies)
+        except ValueError as err:
+            raise SettingsError(
+                "PHONE_TRUSTED_PROXIES는 CIDR(예: 172.16.0.0/12) 목록이나 private이어야 해요"
+            ) from err
 
     def session_settings(self) -> SessionSettings:
         """통화 세션 설정. 같은 이름의 값만 옮기고 나머지는 세션 기본값이다 (리뷰 S12)."""
         from agenthan.voice.call.session import SessionSettings  # 엔진까지 끌어오므로 쓸 때만
 
         return SessionSettings(**{name: getattr(self, name) for name in _SESSION_FIELDS})
+
+    def with_order_limits(self, config: StoreConfig) -> StoreConfig:
+        """서버 설정에 주문 상한이 있으면 가게 설정 위에 덮는다 (6단계 주문 가드)."""
+        changes = {name: value for name in ("max_order_qty", "max_order_total")
+                   if (value := getattr(self, name)) is not None}
+        return replace(config, **changes) if changes else config
+
+    def hub_limits(self) -> HubLimits:
+        """사장님 허브 카드 상한 (`OwnerHub(limits=...)`)."""
+        from agenthan.voice.owner.hub import HubLimits
+
+        return HubLimits(max_call_cards=self.owner_max_call_cards,
+                         call_card_hours=self.owner_call_card_hours,
+                         max_order_cards=self.owner_max_order_cards,
+                         order_card_hours=self.owner_order_card_hours)
 
     @classmethod
     def from_env(
@@ -245,6 +329,42 @@ class VoiceSettings:
                                  OWNER_WAIT_S),
             ask_owner=get("PHONE_ASK_OWNER", "off") == "on",
             answer=get("PHONE_ANSWER", "on") == "on",
+            # `*`는 "검사 안 함": compose가 기본값(배포 도메인)을 넣어서 빈 값으로는 못 끈다
+            allowed_origins=tuple(o for o in _names(get("PHONE_ALLOWED_ORIGINS", ""))
+                                  if o != "*"),
+            trusted_proxies=_names(get("PHONE_TRUSTED_PROXIES", "")),
+            ip_max_calls=_count("PHONE_IP_MAX_CALLS", get("PHONE_IP_MAX_CALLS", ""), 4),
+            ip_calls_per_hour=_count("PHONE_IP_CALLS_PER_HOUR",
+                                     get("PHONE_IP_CALLS_PER_HOUR", ""), 30),
+            day_max_calls=_count("PHONE_DAY_MAX_CALLS", get("PHONE_DAY_MAX_CALLS", ""), 0),
+            day_max_minutes=_limit("PHONE_DAY_MAX_MINUTES", get("PHONE_DAY_MAX_MINUTES", ""),
+                                   0.0),
+            ws_max_bytes=int(_number("PHONE_WS_MAX_BYTES", get("PHONE_WS_MAX_BYTES", ""),
+                                     65_536, minimum=4_096)),
+            nlu_max_tokens=_count("PHONE_NLU_MAX_TOKENS", get("PHONE_NLU_MAX_TOKENS", ""), 0),
+            nlu_timeout_s=_number("PHONE_NLU_TIMEOUT_S", get("PHONE_NLU_TIMEOUT_S", ""), 4.0),
+            nlu_fallback=_choice("PHONE_NLU_FALLBACK", get("PHONE_NLU_FALLBACK", "rules"),
+                                 ("rules", "off")) == "rules",
+            hcx_rpm=_count("PHONE_HCX_RPM", get("PHONE_HCX_RPM", ""), 0),
+            hcx_tpm=_count("PHONE_HCX_TPM", get("PHONE_HCX_TPM", ""), 0),
+            tts_retries=_count("PHONE_TTS_RETRIES", get("PHONE_TTS_RETRIES", ""), 1),
+            tts_fallback=_choice("PHONE_TTS_FALLBACK", get("PHONE_TTS_FALLBACK", "caption"),
+                                 ("caption", "off")) == "caption",
+            tts_timeout_s=_number("PHONE_TTS_TIMEOUT_S", get("PHONE_TTS_TIMEOUT_S", ""), 10.0),
+            owner_max_call_cards=_count("PHONE_OWNER_MAX_CALL_CARDS",
+                                        get("PHONE_OWNER_MAX_CALL_CARDS", ""), 50),
+            owner_call_card_hours=_limit("PHONE_OWNER_CALL_CARD_HOURS",
+                                         get("PHONE_OWNER_CALL_CARD_HOURS", ""), 24.0),
+            owner_max_order_cards=_count("PHONE_OWNER_MAX_ORDER_CARDS",
+                                         get("PHONE_OWNER_MAX_ORDER_CARDS", ""), 200),
+            owner_order_card_hours=_limit("PHONE_OWNER_ORDER_CARD_HOURS",
+                                          get("PHONE_OWNER_ORDER_CARD_HOURS", ""), 72.0),
+            max_order_qty=(_count("PHONE_MAX_ORDER_QTY", qty, 0)
+                           if (qty := get("PHONE_MAX_ORDER_QTY", "")) else None),
+            max_order_total=(_count("PHONE_MAX_ORDER_TOTAL", total, 0)
+                             if (total := get("PHONE_MAX_ORDER_TOTAL", "")) else None),
+            log_keep_days=_limit("PHONE_LOG_KEEP_DAYS", get("PHONE_LOG_KEEP_DAYS", ""), 14.0),
+            disk_warn_pct=_limit("PHONE_DISK_WARN_PCT", get("PHONE_DISK_WARN_PCT", ""), 80.0),
             env=env,
         )
 
@@ -303,6 +423,11 @@ def _check(name: str, value: str, allowed: tuple[str, ...]) -> None:
         raise SettingsError(f"{name}은(는) {' · '.join(allowed)} 중 하나여야 해요: {value!r}")
 
 
+def _choice(name: str, value: str, allowed: tuple[str, ...]) -> str:
+    _check(name, value, allowed)
+    return value
+
+
 def _number(name: str, value: str, default: float, *, minimum: float = 0.0,
             allow_zero: bool = False) -> float:
     """양수(`minimum`이 있으면 그 이상)만 받는다. nan·inf·0은 틀린 값이다 (리뷰 13번).
@@ -320,6 +445,31 @@ def _number(name: str, value: str, default: float, *, minimum: float = 0.0,
         least = "0 이상의" if allow_zero else (f"{minimum:g} 이상" if minimum else "0보다 큰")
         raise SettingsError(f"{name}는 {least} 숫자여야 해요: {value!r}")
     return number
+
+
+def _limit(name: str, value: str, default: float) -> float:
+    """0 이상인 수. 0은 "상한 없음(끔)"이다."""
+    if not value:
+        return float(default)
+    try:
+        number = float(value)
+    except ValueError:
+        number = math.nan
+    if not (math.isfinite(number) and number >= 0):
+        raise SettingsError(f"{name}는 0 이상 숫자여야 해요 (0이면 끔): {value!r}")
+    return number
+
+
+def _count(name: str, value: str, default: int) -> int:
+    """0 이상인 정수. 0은 "상한 없음(끔)"이다."""
+    number = _limit(name, value, default)
+    if number != int(number):
+        raise SettingsError(f"{name}는 0 이상 정수여야 해요 (0이면 끔): {value!r}")
+    return int(number)
+
+
+def _names(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
 def _fraction(name: str, value: str, default: float) -> float:

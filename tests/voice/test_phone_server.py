@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 from fastapi.testclient import TestClient
@@ -32,7 +33,7 @@ def test_dev_server_greets_with_the_sample_store_without_any_key(tmp_path) -> No
             event = json.loads(message["text"])
             if event["type"] == "bot.say":
                 break
-    assert event["text"] == "네, 샘플 러시안 베이커리입니다."
+    assert event["text"] == "네, 샘플 러시안 베이커리 AI 전화 주문입니다."
 
 
 def test_dev_server_serves_the_web_build_and_falls_back_to_index_for_screens(tmp_path) -> None:
@@ -111,3 +112,19 @@ def test_the_server_refuses_a_store_with_data_errors_and_logs_warnings(tmp_path,
     path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(StoreDataError, match="특대"):
         create_app(_settings(tmp_path, store_fixture=path))
+
+
+def test_the_server_runs_with_a_small_message_limit_and_no_access_log(monkeypatch) -> None:
+    # 6단계: WS 메시지 64KB(uvicorn 기본 16MB), 접속 로그 끔(사장님 토큰이 쿼리에 실려 남는다)
+    import uvicorn
+
+    from agenthan.voice import server
+
+    seen: dict = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw, app=app))
+    monkeypatch.setenv("PHONE_WS_MAX_BYTES", "32768")
+    monkeypatch.chdir(Path(__file__).parent)  # 저장소 루트의 .env를 읽지 않게
+    server.main(["--port", "8123"])
+    assert seen["ws_max_size"] == 32_768
+    assert seen["access_log"] is False
+    assert (seen["port"], seen["factory"]) == (8123, True)

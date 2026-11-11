@@ -142,7 +142,7 @@ export type CallAction =
   | { type: 'interrupt' }
   | { type: 'audio.state'; state: string }
   | { type: 'link.slow'; slow: boolean }
-  | { type: 'socket.closed' }
+  | { type: 'socket.closed'; code?: number }
   | { type: 'hangup' }
   /** 문자 스트림(`/api/phone/calls/{id}/sms`)으로 온 문자. 통화가 끝난 뒤에도 받는다 (티켓 07) */
   | { type: 'texts'; texts: CustomerText[] }
@@ -178,6 +178,9 @@ const MIC_MESSAGES: Record<MicFailure, string> = {
 }
 
 const CLOSED_EARLY = '서버에 연결하지 못했어요. 잠시 후 다시 걸어 주세요.'
+/** 서버가 다시 뜨는 중에 끊겼다(WS 닫힘 코드 1012 서비스 재시작·1001 떠남, 6단계) */
+const CLOSED_RESTART = '서버 점검으로 통화가 끊겼어요. 1분쯤 뒤에 다시 걸어 주세요.'
+const RESTART_CODES = [1001, 1012]
 
 export function callReducer(state: CallState, action: CallAction): CallState {
   switch (action.type) {
@@ -210,12 +213,21 @@ export function callReducer(state: CallState, action: CallAction): CallState {
     }
     case 'link.slow':
       return action.slow === state.slowLink ? state : { ...state, slowLink: action.slow }
-    case 'socket.closed':
-      if (state.status === 'live') return { ...state, status: 'ended', botTalking: false }
+    case 'socket.closed': {
+      const restart = action.code !== undefined && RESTART_CODES.includes(action.code)
+      if (state.status === 'live') {
+        // 주문이 끝난 뒤(call.ended)에 닫힌 것은 정상 종료다. 그 전에 서버가 내려가면 이유를 보여 준다
+        if (restart && state.endReason === null) {
+          return { ...state, status: 'failed', botTalking: false, error: { message: CLOSED_RESTART, retry: true } }
+        }
+        return { ...state, status: 'ended', botTalking: false }
+      }
       if (state.status === 'starting') {
-        return { ...state, status: 'failed', error: { message: CLOSED_EARLY, retry: true } }
+        const message = restart ? CLOSED_RESTART : CLOSED_EARLY
+        return { ...state, status: 'failed', error: { message, retry: true } }
       }
       return state
+    }
     case 'hangup':
       if (state.status === 'starting' || state.status === 'live') {
         return { ...state, status: 'ended', botTalking: false }

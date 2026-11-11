@@ -3,7 +3,10 @@
 계약은 `docs/sdk.md` §3을 따른다.
 - `POST {CLOVA}/v3/chat-completions/{model}`, Bearer 인증, 요청마다 `X-NCP-CLOVASTUDIO-REQUEST-ID`
 - HTTP 상태와 본문의 `status.code == "20000"`을 각각 검사한다
-- 429·5xx는 최대 두 번 재시도한다. 초 단위 `Retry-After`가 10초를 넘으면 바로 오류다
+- 429·5xx는 최대 두 번 재시도한다. 초 단위 `Retry-After`가 10초를 넘으면 바로 오류다.
+  통화 서버(`voice/runtime.py`)는 `max_retries=1`, `backoff_s`를 짧게 줘서 한 번만 다시 부른다
+  (손님이 기다리는 중이다, 6단계)
+- `observe(상태, 헤더)`를 주면 응답마다 부른다(남은 한도 헤더 기록용)
 - 네트워크 예외는 그 호출을 끝낸다
 
 키는 오류 메시지·repr·로그에 남기지 않는다. 서버가 준 쿠키는 요청마다 비운다.
@@ -55,12 +58,22 @@ class ClovaClient:
         http: httpx.Client | None = None,
         timeout: float = 10.0,
         sleep: Callable[[float], None] = time.sleep,
+        max_retries: int = _MAX_RETRIES,
+        backoff_s: float | None = None,
+        observe: Callable[[int, Mapping[str, str]], None] | None = None,
     ) -> None:
+        """`backoff_s`를 주면 재시도 전에 그만큼만 쉰다(`Retry-After`가 더 짧으면 그 값)."""
         if not api_key or api_key.startswith("Bearer "):
             raise ValueError(f"{KEY_ENV}에 'Bearer ' 없이 키 원문을 넣어 주세요.")
         self._key = api_key
         self._http = http or httpx.Client(timeout=httpx.Timeout(timeout, connect=5.0))
         self._sleep = sleep
+        self._max_retries = max_retries
+        self._backoff_s = backoff_s
+        self._observe = observe
+
+    def close(self) -> None:
+        self._http.close()
 
     def __repr__(self) -> str:
         return "ClovaClient(api_key=***)"
@@ -89,7 +102,7 @@ class ClovaClient:
             "Accept": "application/json",
             "X-NCP-CLOVASTUDIO-REQUEST-ID": request_id,
         }
-        for attempt in range(_MAX_RETRIES + 1):
+        for attempt in range(self._max_retries + 1):
             # CLOVA가 주는 세션 쿠키(JSESSIONID·XSRF)는 쓸 데가 없다. 다음 요청에 돌려보내면
             # 로그·녹화본에 남으니 매번 비운다.
             self._http.cookies.clear()
@@ -98,10 +111,14 @@ class ClovaClient:
             except httpx.HTTPError:
                 raise ClovaError("CLOVA 연결 오류", code="network", request_id=request_id) from None
             status = response.status_code
+            if self._observe is not None:
+                self._observe(status, response.headers)
             if status == 429 or 500 <= status < 600:
                 after = response.headers.get("Retry-After", "")
                 wait = float(after) if after.isdecimal() else float(2**attempt)
-                if attempt < _MAX_RETRIES and wait <= _MAX_WAIT:
+                if self._backoff_s is not None and wait <= _MAX_WAIT:
+                    wait = min(wait, self._backoff_s) if after.isdecimal() else self._backoff_s
+                if attempt < self._max_retries and wait <= _MAX_WAIT:
                     self._sleep(wait)
                     continue
             body = _json_or_none(response)

@@ -48,7 +48,7 @@ def _full_call(tmp_path, **kw) -> Call:
 def test_one_call_from_greeting_to_confirmed_order(tmp_path) -> None:
     c = _full_call(tmp_path)
     says = [e["text"] for e in c.out.of("bot.say")]
-    assert says[0] == "네, 샘플 러시안 베이커리입니다."
+    assert says[0] == "네, 샘플 러시안 베이커리 AI 전화 주문입니다."
     assert "메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요." in says
     assert [e["text"] for e in c.out.of("stt.final")] == ORDER_SCRIPT
     (order_event,) = c.out.of("order")
@@ -192,7 +192,8 @@ def test_turn_numbers_increase_and_every_message_has_a_turn(tmp_path) -> None:
 
 
 def test_tts_sentences_go_out_in_order_even_if_synthesis_finishes_out_of_order(tmp_path) -> None:
-    tts = FakeTts(bytes(CHUNK_BYTES * 2 + 100), delays={"네, 샘플 러시안 베이커리입니다.": 0.1})
+    tts = FakeTts(bytes(CHUNK_BYTES * 2 + 100),
+                  delays={"네, 샘플 러시안 베이커리 AI 전화 주문입니다.": 0.1})
 
     async def call() -> Call:
         async with Call(tmp_path, tts=tts) as c:
@@ -213,7 +214,7 @@ def test_tts_sentences_go_out_in_order_even_if_synthesis_finishes_out_of_order(t
         ("audio", 1, 100, True), ("bot.audio.end", 1),
     ]
     assert [e["text"] for e in c.out.of("bot.say", 0)] == [
-        "네, 샘플 러시안 베이커리입니다.", "어떤 걸로 준비해 드릴까요?"
+        "네, 샘플 러시안 베이커리 AI 전화 주문입니다.", "어떤 걸로 준비해 드릴까요?"
     ]
 
 

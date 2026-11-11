@@ -10,6 +10,15 @@ SSE는 `/api/owner/stream?key=…` (`owner/http.py`).
 Papago 키가 있으면 시작 때 연결을 한 번 데우고(최대 `PHONE_TRANSLATE_TIMEOUT_S`초, 실패해도 뜬다)
 끝날 때 닫는다(티켓 12).
 
+6단계 운영 보강:
+- `GET /healthz`: `{"ok", "active"(통화 수), "draining", "version", "engines"}`. Docker 상태 검사와
+  `deploy.sh`의 "통화 0개까지 기다리기"가 본다. 사장님 토큰(`?key=`)을 주면 하루 예산·디스크·
+  스레드 수·HCX 분당 사용량도 준다
+- SIGTERM: 통화 중인 화면에 "서버 점검으로 통화를 끝낼게요"를 먼저 보내고(`SHUTDOWN_NOTICE_S`)
+  uvicorn 종료로 넘긴다. uvicorn은 열린 WS를 기다리지 않고 1012로 닫으므로, 통화를 살리려면
+  `deploy.sh up`처럼 먼저 비운다(`logs/DRAIN` 파일 → 새 통화 거절 → 통화 0개 → 교체)
+- 접속 로그 끔, WS 메시지 64KB, 종료 제한 시간 8초
+
 11/17 통합 때 `app/`은 이 파일을 쓰지 않고 허브·`ws.phone_router(...)`·`owner_router(...)`를
 조립한다.
 """
@@ -17,22 +26,36 @@ Papago 키가 있으면 시작 때 연결을 한 번 데우고(최대 `PHONE_TRA
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
+import secrets
+import signal
+import threading
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from importlib import metadata
+from typing import Any
 
 from fastapi import FastAPI
 
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice import adapters
+from agenthan.voice.gate import CallGate
+from agenthan.voice.housekeeping import INTERVAL_S, Housekeeper
 from agenthan.voice.owner.http import customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
+from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_check import ensure_usable
 from agenthan.voice.store_config import StoreConfig
-from agenthan.voice.ws import phone_router, store_clock
+from agenthan.voice.ws import make_gate, phone_router, store_clock
 
 log = logging.getLogger(__name__)
+
+VERSION_ENV = "PHONE_VERSION"  # 이미지 빌드가 커밋 해시를 넣는다 (`deploy.sh up`)
+SHUTDOWN_NOTICE_S = 1.0  # SIGTERM 뒤 종료 안내가 화면에 닿게 기다리는 시간
+SHUTDOWN_LIMIT_S = 8  # uvicorn이 남은 작업을 기다리는 상한 (compose `stop_grace_period` 15초 안)
 
 
 def create_app(settings: VoiceSettings | None = None) -> FastAPI:
@@ -53,20 +76,53 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     if translator is None:
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
     hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
-                   question_wait_s=settings.owner_wait_s)
+                   question_wait_s=settings.owner_wait_s, limits=settings.hub_limits())
+    # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
+    gate = make_gate(settings)
+    hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None
+    tts_factory = adapters.tts_factory(settings)  # CLOVA Voice 연결 풀 하나를 모든 통화가 쓴다
+    keeper = Housekeeper(log_dir=settings.log_dir, record_dir=settings.record_dir,
+                         keep_days=settings.log_keep_days, disk_warn_pct=settings.disk_warn_pct)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # 통화 첫 카드가 새 연결 비용(실측 P50 1.06초)을 내지 않게 시작 때 한 번 보낸다 (티켓 12)
         if translator is not None and await translator.warm():
             log.info("Papago 연결을 데움")
+        # 보관 기한이 지난 손님 말 기록·녹음을 지우고 디스크를 본다. 시작 때 한 번은 기다린다
+        await asyncio.to_thread(keeper.run_once)
+        chores = asyncio.create_task(_later(keeper))
+        _notice_on_sigterm(gate)
         try:
             yield
         finally:
+            chores.cancel()
+            await asyncio.gather(chores, return_exceptions=True)
             if translator is not None:
                 await translator.aclose()
+            if hcx is not None:
+                hcx.close()
+            if (close_tts := getattr(tts_factory, "aclose", None)) is not None:
+                await close_tts()
 
     app = FastAPI(title="AgentHan 전화 주문 (개발용)", lifespan=lifespan)
+    app.state.gate = gate
+    version = settings.env.get(VERSION_ENV, "").strip() or _package_version()
+
+    @app.get("/healthz")
+    async def healthz(key: str = "") -> dict[str, Any]:
+        state = gate.snapshot()
+        body: dict[str, Any] = {
+            "ok": True, "active": state["active"], "draining": state["draining"],
+            "version": version,
+            "engines": {"nlu": settings.nlu, "stt": settings.stt, "tts": settings.tts},
+        }
+        if settings.owner_key and secrets.compare_digest(key, settings.owner_key):
+            body |= {"day": state["day"], "threads": threading.active_count(),
+                     "hcx": (hcx.ready() | hcx.budget.used()) if hcx is not None else None,
+                     **keeper.status()}
+        return body
+
     app.include_router(
         phone_router(
             store=store,
@@ -75,6 +131,9 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
             settings=settings,
             owner=hub,
             knowledge=hub.knowledge,  # 사장님 보충 지식: 허브가 쓰고 통화 엔진이 읽는다 (티켓 13)
+            gate=gate,
+            hcx=hcx,
+            tts_factory=tts_factory,
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))
@@ -91,6 +150,55 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     return app
 
 
+def _package_version() -> str:
+    try:
+        return metadata.version("agenthan")
+    except metadata.PackageNotFoundError:
+        return "dev"
+
+
+def _in_main_thread() -> bool:
+    return threading.current_thread() is threading.main_thread()
+
+
+def _notice_on_sigterm(gate: CallGate) -> None:
+    """SIGTERM이 오면 통화 중인 손님에게 먼저 알리고, 잠깐 뒤 원래 처리기(uvicorn 종료)를 부른다.
+
+    uvicorn이 건 처리기 위에 덧씌운다(서버 lifespan 시작 때라 uvicorn 처리기가 이미 있다).
+    신호 처리기는 메인 스레드에서만 걸 수 있다. 다른 스레드(테스트 클라이언트)면 아무것도 안 한다.
+    """
+    if not _in_main_thread():
+        return
+    previous = signal.getsignal(signal.SIGTERM)
+    if not callable(previous):
+        return
+    loop = asyncio.get_running_loop()
+    seen = False
+
+    async def notice_then_stop(sig: int) -> None:
+        try:
+            await gate.farewell()
+            await asyncio.sleep(SHUTDOWN_NOTICE_S)  # 안내가 화면에 닿을 시간
+        finally:
+            previous(sig, None)
+
+    def on_sigterm(sig: int, frame: Any) -> None:
+        nonlocal seen
+        if seen:  # 두 번째 신호는 기다리지 않는다
+            previous(sig, frame)
+            return
+        seen = True
+        log.info("SIGTERM: 통화 중인 손님에게 알리고 내려감")
+        loop.call_soon_threadsafe(lambda: loop.create_task(notice_then_stop(sig)))
+
+    signal.signal(signal.SIGTERM, on_sigterm)
+
+
+async def _later(keeper: Housekeeper) -> None:
+    await asyncio.sleep(INTERVAL_S)
+    await keeper.run_forever()
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     import uvicorn
 
@@ -100,8 +208,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--reload", action="store_true", help="코드가 바뀌면 다시 띄운다")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    settings = VoiceSettings.from_env()
+    # 접속 로그는 끈다: 사장님 토큰이 쿼리(`?key=`)로 와서 줄마다 남는다. 접속 기록은 Caddy가
+    # 토큰을 가리고 남긴다(6단계). WS 메시지는 64KB까지(uvicorn 기본은 16MB)
     uvicorn.run("agenthan.voice.server:create_app", factory=True, host=args.host,
-                port=args.port, reload=args.reload)
+                port=args.port, reload=args.reload, ws_max_size=settings.ws_max_bytes,
+                access_log=False, timeout_graceful_shutdown=SHUTDOWN_LIMIT_S)
 
 
 if __name__ == "__main__":

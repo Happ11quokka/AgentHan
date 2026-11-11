@@ -22,12 +22,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, get_args
 
 from agenthan.voice.matching import similarity
-from agenthan.voice.nlu.base import Act, ActType, NluContext
+from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
+from agenthan.voice.nlu.budget import RateBudget, UsageLog
 from agenthan.voice.nlu.clova import ClovaClient, ClovaError, load_api_key
 
 log = logging.getLogger(__name__)
@@ -360,6 +362,10 @@ def _unknown(text: str) -> list[Act]:
     return [Act("unknown", free_text=text)]
 
 
+TUNED_MAX_TOKENS = 512  # 튜닝 모델 요청의 기본 `maxTokens` (정답셋 녹화본이 이 값이다)
+BASE_MAX_TOKENS = 1024  # FC 문서 권장값
+
+
 class HcxNlu:
     """`Nlu` 구현. 호출이 실패하거나 응답을 못 읽으면 `[Act("unknown")]`을 돌려준다.
 
@@ -380,14 +386,30 @@ class HcxNlu:
         tool_choice: str | Mapping[str, Any] = "auto",
         temperature: float = 0.1,
         task_id: str = "",
+        max_tokens: int | None = None,
+        fallback: Nlu | None = None,
+        budget: RateBudget | None = None,
+        usage: UsageLog | None = None,
     ) -> None:
-        """`task_id`가 있으면 그 튜닝 모델을 짧은 지시문(`tuned_system`)으로 부른다(티켓 08)."""
+        """`task_id`가 있으면 그 튜닝 모델을 짧은 지시문(`tuned_system`)으로 부른다(티켓 08).
+
+        6단계 운영 보강(모두 안 주면 전과 같다):
+        - `max_tokens`: 요청의 `maxTokens`. None이면 튜닝 512 · 기본 1024(정답셋 녹화본의 값)
+        - `fallback`: 호출 실패(429·5xx·네트워크)나 분당 한도 초과 때 그 턴을 맡는 NLU(규칙).
+          없으면 `unknown`
+        - `budget`: 프로세스 전체 분당 버킷. 넘으면 HCX를 부르지 않는다
+        - `usage`: 호출마다 사용량을 남기는 JSONL
+        """
         self._client = client
         self._task_id = task_id
         self._model = model
         self._tools = tools
         self._tool_choice = tool_choice
         self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._fallback = fallback
+        self._budget = budget
+        self._usage = usage
 
     @classmethod
     def from_env(cls, env_file: Path | None = Path(".env"), **kwargs: Any) -> HcxNlu:
@@ -398,16 +420,28 @@ class HcxNlu:
         kwargs.setdefault("task_id", load_api_key(env_file, name=TASK_ENV))
         return cls(ClovaClient(key), **kwargs)
 
+    @property
+    def max_tokens(self) -> int:
+        return self._max_tokens or (TUNED_MAX_TOKENS if self._task_id else BASE_MAX_TOKENS)
+
     def payload(self, text: str, ctx: NluContext, *, tools: bool | None = None) -> dict[str, Any]:
         if self._task_id:  # 튜닝 모델은 도구를 못 쓴다
-            return {"messages": build_tuned_messages(text, ctx), "maxTokens": 512,
+            return {"messages": build_tuned_messages(text, ctx), "maxTokens": self.max_tokens,
                     "temperature": self._temperature}
         payload: dict[str, Any] = {"messages": build_messages(text, ctx)}
         if self._tools if tools is None else tools:
             payload |= {"tools": [PARSE_TURN_TOOL], "toolChoice": self._tool_choice}
-        return payload | {"maxTokens": 1024, "temperature": self._temperature}  # FC 문서 권장값
+        return payload | {"maxTokens": self.max_tokens, "temperature": self._temperature}
+
+    def prefetch_allowed(self) -> bool:
+        """미리 해석(`PrefetchNlu`)이 묻는다. 분당 한도가 빡빡하면 버려질 호출은 건너뛴다."""
+        return self._budget is None or self._budget.roomy()
 
     def parse(self, text: str, ctx: NluContext) -> list[Act]:
+        if self._budget is not None and not self._budget.take(self.max_tokens):
+            log.warning("HCX 분당 한도에 닿아 이 턴은 HCX를 부르지 않음")
+            return self._failed(text, ctx, "over_budget", None)
+        started = time.monotonic()
         for tools in (True, False) if self._tools and not self._task_id else (False,):
             try:
                 payload = self.payload(text, ctx, tools=tools)
@@ -417,7 +451,29 @@ class HcxNlu:
                 log.warning("HCX NLU 호출 실패: %s (code=%s, tools=%s)", err, err.code, tools)
                 if err.code == _TOOL_CALL_FAILED:
                     continue
-                return _unknown(text)
+                return self._failed(text, ctx, err.code or "error", started)
+            usage = result.get("usage")
+            if self._budget is not None and isinstance(usage, Mapping):
+                prompt = usage.get("promptTokens")
+                if isinstance(prompt, int):
+                    self._budget.settle(prompt_tokens=prompt, max_tokens=self.max_tokens)
+            if self._usage is not None:
+                self._usage.record("nlu", "ok", usage=usage, max_tokens=self.max_tokens,
+                                   ms=_ms(started))
             return acts_from_result(result, text, ctx)
-        return _unknown(text)
+        return self._failed(text, ctx, _TOOL_CALL_FAILED, started)
 
+    def _failed(self, text: str, ctx: NluContext, status: str,
+                started: float | None) -> list[Act]:
+        """HCX를 못 썼다: 규칙 NLU가 있으면 그 턴만 맡기고, 없으면 `unknown`(엔진이 되묻는다)."""
+        if self._usage is not None:
+            self._usage.record("nlu", status, max_tokens=self.max_tokens,
+                               ms=_ms(started) if started is not None else None,
+                               fallback=self._fallback is not None)
+        if self._fallback is None:
+            return _unknown(text)
+        return self._fallback.parse(text, ctx)
+
+
+def _ms(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)
