@@ -531,3 +531,37 @@ def test_plain_no_at_readback_still_asks_what_to_fix(engine: DialogEngine) -> No
     to_confirm(engine, "메도빅 하나요")
     r = talk(engine, "아니요")
     assert (r.state, r.utterances) == (State.ORDERING, ["어떤 걸 고쳐 드릴까요?"])
+
+
+@pytest.mark.parametrize(
+    ("before", "question"),
+    [
+        (["메도비 하나요"], "혹시 메도빅 말씀하신 거 맞으세요?"),  # 메뉴 확인
+        (["메도빅 하나요", "그게 다예요", "4시 5분이요"],
+         "준비에 15분 정도 걸려요. 4시 15분 괜찮으세요?"),  # 시각 제안
+        (["메도빅 하나요", "취소할게요"], "주문 취소할까요?"),  # 취소 확인
+    ],
+    ids=["menu_confirm", "pickup_offer", "cancel_question"],
+)
+def test_no_with_a_closing_phrase_to_a_yes_no_question_is_still_read_by_the_nlu(
+    before: list[str], question: str,
+) -> None:
+    # 예/아니요를 묻는 중에는 "아니요"가 답이고 뒷말("괜찮아요"·"됐어요")은 군말일 수 있다.
+    # 규칙이 [no, done_ordering]으로 못 박지 않고 전처럼 NLU가 읽는다
+    nlu = CountingNlu()
+    engine = make_engine(nlu=nlu)
+    assert talk(engine, *before).utterances[-1] == question
+    asked = len(nlu.calls)
+    talk(engine, "아니요 괜찮아요")
+    assert nlu.calls[asked:] == ["아니요 괜찮아요"]
+
+
+def test_no_with_a_closing_phrase_after_being_asked_what_to_fix_reads_back_again(
+    engine: DialogEngine,
+) -> None:
+    # 복창에 "아니요" → "어떤 걸 고쳐 드릴까요?" → "아니요 됐어요": 고칠 것이 없다. 다시 복창한다
+    readback = to_confirm(engine, "메도빅 하나요").utterances[-1]
+    talk(engine, "아니요")
+    r = talk(engine, "아니요 됐어요")
+    assert r.state is State.CONFIRM and r.readback
+    assert r.utterances[-1].endswith(readback.removeprefix("주문 확인할게요. "))

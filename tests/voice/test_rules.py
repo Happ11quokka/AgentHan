@@ -2,7 +2,7 @@
 
 import pytest
 
-from agenthan.voice.dialog.rules import apply_rules
+from agenthan.voice.dialog.rules import apply_rules, no_and_done
 from agenthan.voice.nlu.base import Act
 
 
@@ -132,6 +132,8 @@ def test_no_with_a_closing_phrase_skips_nlu(text: str) -> None:
         "아니요 그게",  # 덜 끝난 말
         "아니요 그게 다 얼마예요",
         "아니요 메도빅은 됐어요",  # 메뉴 빼기일 수 있다
+        "아니요 돼요",  # "그거면" 없이는 무엇이 된다는 말인지 모른다
+        "아니요 다 돼요",
         "아니요 견과류 없어요",
         "견과류 없어요",
         "그게 다예요",  # 머리말 없는 끝 표현은 전처럼 NLU (다른 질문의 답일 수 있다)
@@ -144,3 +146,11 @@ def test_no_with_a_closing_phrase_skips_nlu(text: str) -> None:
 )
 def test_no_with_other_content_still_goes_to_nlu(text: str) -> None:
     assert apply_rules(text) is None
+
+
+def test_the_engine_can_tell_the_closing_no_rule_from_a_plain_no() -> None:
+    # 엔진은 예/아니요를 묻는 중(메뉴 확인·시각 제안·취소 확인)에는 이 규칙을 쓰지 않는다
+    assert no_and_done("아니요, 그게 다예요.") is True
+    assert no_and_done("없어요") is True
+    assert no_and_done("아니요") is False
+    assert no_and_done("아니요 두 개요") is False

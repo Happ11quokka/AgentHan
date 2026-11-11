@@ -51,7 +51,7 @@ from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
 from agenthan.voice.dialog.options import find_options
 from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion
 from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
-from agenthan.voice.dialog.rules import apply_rules, retracted, wait_request_rest
+from agenthan.voice.dialog.rules import apply_rules, no_and_done, retracted, wait_request_rest
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
@@ -500,6 +500,8 @@ class DialogEngine:
         정정 act가 오면 그 자체로 정정으로 보므로 no가 따로 필요 없다.
         """
         acts = apply_rules(text)
+        if acts is not None and no_and_done(text) and not self._takes_no_and_done():
+            acts = None  # 예/아니요를 묻는 중이다. "아니요"가 답일 수 있어 전처럼 NLU가 읽는다
         self._answer_early = None
         if acts is None:
             self._start_answer_early(text)
@@ -517,6 +519,18 @@ class DialogEngine:
                     break  # "혹시 메도빅 맞으세요?" → "네, 두 개요": 네가 답이다 (리뷰 C9)
                 acts = acts[1:]
         return acts
+
+    def _takes_no_and_done(self) -> bool:
+        """"아니요 + 끝 표현" 규칙([no, done_ordering], 6단계 티켓 02)을 지금 써도 되나.
+
+        주문 받는 중과 복창 중에만 쓴다. 주문 중 "더 필요하신 거?" 뒤면 주문 끝이고
+        (`_no_means_done`), "어떤 걸 고쳐 드릴까요?" 뒤면 고칠 것이 없으니 다시 복창한다.
+        복창 중이면 앞의 no를 떼고 done_ordering만 남아 확정도 확정 거부도 아니다(못 알아들었다고
+        하고 복창을 다시 한다).
+        메뉴 확인("맞으세요?")·시각 제안("괜찮으세요?")·취소 확인("취소할까요?")을 기다리는 중에는
+        "아니요"가 그 질문의 답이고 "괜찮아요"·"됐어요"는 군말일 수 있다. 규칙으로 못 박지 않는다.
+        """
+        return self._cancel_resume is None and self._state in (State.ORDERING, State.CONFIRM)
 
     def _menu_word_rescue(self, text: str, acts: list[Act]) -> list[Act]:
         """NLU가 다 unknown으로 낸 짧은 말이 메뉴와 비슷하면 그 메뉴 주문으로 본다 (5단계 티켓 04).

@@ -11,7 +11,8 @@
   만드세요?"는 질문이다
 - "아니요 + 끝 표현"("아니요, 그게 다예요"·"아뇨 됐어요")과 "없어요"는 [no, done_ordering]이다
   (6단계 티켓 02). 발화 전체가 그 꼴일 때만 건다. 머리말 없는 "그게 다예요"·"괜찮아요"는 다른
-  질문의 답일 수 있어 NLU가 읽는다
+  질문의 답일 수 있어 NLU가 읽는다. 엔진은 예/아니요를 묻는 중(메뉴 확인·시각 제안·취소 확인)에는
+  이 규칙을 쓰지 않는다(`no_and_done`, 그때는 "아니요"가 답이고 뒷말은 군말일 수 있다)
 """
 
 from __future__ import annotations
@@ -41,10 +42,13 @@ _NONE_LEFT = (
     r"(?:(?:더\s*는?\s*)?(?:필요\s*(?:한\s*(?:거|건|것)\s*(?:은|는)?\s*)?)?"
     r"(?:없어요|없어|없습니다))"
 )
+_THIS = r"(?:그게|그거|이게|이거|그걸로|이걸로|그거면|이거면)"
 _THATS_ALL = (
-    r"(?:(?:이제\s*)?(?:그게|그거|이게|이거|그걸로|이걸로|그거면|이거면|그럼|이제)?\s*"
+    rf"(?:(?:(?:이제|그럼)\s*)?(?:{_THIS}\s*)?"
     r"(?:(?:다|전부|끝)\s*(?:예요|에요|이에요|이예요|이요|요|입니다|야|이야)|답니다"
-    r"|(?:다\s*)?(?:됐어요|됬어요|됐습니다|됐어|돼요|되요|됩니다)))"
+    r"|(?:다\s*)?(?:됐어요|됬어요|됐습니다|됐어))"
+    # "그거면 돼요"는 가리키는 말이 있을 때만. 맨 "돼요"는 무엇이 된다는 말인지 모른다
+    rf"|(?:(?:이제|그럼)\s*)?{_THIS}\s*(?:돼요|되요|됩니다))"
 )
 _CLOSE_TAIL = rf"(?:{_THATS_ALL}|{_NONE_LEFT}|괜찮아요|괜찮습니다|괜찮아)"
 _NO_AND_DONE = re.compile(
@@ -138,6 +142,15 @@ def yes_or_no(text: str) -> str | None:
     if _NO.fullmatch(t):
         return "no"
     return None
+
+
+def no_and_done(text: str) -> bool:
+    """`apply_rules`가 "아니요 + 끝 표현" 규칙으로 [no, done_ordering]을 내는 말인가.
+
+    엔진이 이 규칙을 쓸지 대화 상태로 정할 때 본다(`DialogEngine._parse`).
+    """
+    t = _TRAILING.sub("", text.strip())
+    return bool(t) and not _NO.fullmatch(t) and bool(_NO_AND_DONE.fullmatch(t))
 
 
 def apply_rules(text: str) -> list[Act] | None:
