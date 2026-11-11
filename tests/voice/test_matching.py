@@ -347,3 +347,10 @@ def test_a_guess_alone_does_not_rescue_an_unrelated_word(matcher: MenuMatcher) -
     assert matcher.match("짜장면", "나폴레옹").decision == "reject"
     assert matcher.match("나", "나폴레옹").decision == "reject"
     assert matcher.match("나폴", "없는메뉴").decision == "reject"
+
+
+def test_a_cut_off_word_may_be_misheard_a_little(matcher: MenuMatcher) -> None:
+    # 같은 녹음을 다시 걸자 STT가 "마폴 내용도"로 적었다. 앞부분 소리가 비슷하면 확인 질문으로
+    result = matcher.match("마폴", "나폴레옹")
+    assert (result.decision, result.item.name_ko) == ("confirm", "나폴레옹")
+    assert matcher.match("나라", "나폴레옹").decision == "reject"

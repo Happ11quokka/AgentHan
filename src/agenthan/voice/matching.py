@@ -34,6 +34,8 @@ ACCEPT_AT = 0.85  # 이 점수 이상이고 2등과 MARGIN 이상 차이 나면 
 # 되물어야 하는 가장 낮은 기존 예("꿀케익" 0.72)는 확인 구간에 남는다
 REJECT_BELOW = 0.7  # 이 점수 미만이면 없는 메뉴
 MARGIN = 0.1  # 1·2등 차이가 이보다 작으면 둘 중 하나를 묻는다
+# 잘린 글과 이름 앞부분의 자모 유사도 문턱 (마폴↔나폴 0.83은 넘고 블루↔블린 0.77은 못 넘는다)
+CUT_OFF_SIMILARITY = 0.8
 MIN_CUT_OFF_CHARS = 2  # 잘린 메뉴 말로 볼 최소 글자 수 (`MenuMatcher._cut_off`)
 GUESS_BONUS = 0.1  # menu_guess가 같은 메뉴를 가리킬 때 더하는 점수
 
@@ -167,8 +169,8 @@ class MenuMatcher:
 
         실기기 STT "나폴 내용도 하나요" → 글 "나폴", 추정 "나폴레옹" (6단계).
 
-        추정값이 메뉴 하나의 이름·별칭과 정확히 같고, 말한 글(두 글자 이상)이 그 이름의 앞부분일
-        때만이다. 신호가 약해서 수락하지 않고 확인 질문으로만 쓴다.
+        추정값이 메뉴 하나의 이름·별칭과 정확히 같고, 말한 글(두 글자 이상)이 그 이름의 앞부분과
+        소리가 비슷할 때만이다(같은 통화를 다시 걸자 STT가 "마폴"로 적었다: 자모 유사도 0.83). 신호가 약해서 수락하지 않고 확인 질문으로만 쓴다.
         """
         guessed = set(query_forms(guess)) if guess else set()
         forms = [q for q in query_forms(text) if len(q) >= MIN_CUT_OFF_CHARS]
@@ -177,7 +179,8 @@ class MenuMatcher:
         found = [
             item for item in self._menu
             if (names := self._names[item.id] & guessed)
-            and any(n.startswith(q) and len(q) < len(n) for n in names for q in forms)
+            and any(len(q) < len(n) and similarity(q, n[:len(q)]) >= CUT_OFF_SIMILARITY
+                    for n in names for q in forms)
         ]
         return found[0] if len(found) == 1 else None
 
