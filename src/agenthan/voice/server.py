@@ -27,10 +27,11 @@ from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.owner.http import customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
+from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_check import ensure_usable
 from agenthan.voice.store_config import StoreConfig
-from agenthan.voice.ws import phone_router, store_clock
+from agenthan.voice.ws import make_gate, phone_router, store_clock
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +55,9 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
     hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
                    question_wait_s=settings.owner_wait_s)
+    # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
+    gate = make_gate(settings)
+    hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -65,6 +69,8 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
         finally:
             if translator is not None:
                 await translator.aclose()
+            if hcx is not None:
+                hcx.close()
 
     app = FastAPI(title="AgentHan 전화 주문 (개발용)", lifespan=lifespan)
     app.include_router(
@@ -75,6 +81,8 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
             settings=settings,
             owner=hub,
             knowledge=hub.knowledge,  # 사장님 보충 지식: 허브가 쓰고 통화 엔진이 읽는다 (티켓 13)
+            gate=gate,
+            hcx=hcx,
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))

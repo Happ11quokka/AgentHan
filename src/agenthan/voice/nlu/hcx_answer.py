@@ -15,18 +15,21 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from agenthan.voice.dialog.answerer import UNSURE, AnswerKind, AnswerReply, AnswerRequest
+from agenthan.voice.nlu.budget import UsageLog
 from agenthan.voice.nlu.clova import ClovaClient, ClovaError, load_api_key
 
 log = logging.getLogger(__name__)
 
 MODEL = "HCX-005"
 MODEL_ENV = "PHONE_ANSWER_MODEL"
+MAX_TOKENS = 256
 TIMEOUT_S = 4.0  # 전화에서 이보다 오래 기다리게 하지 않는다
 
 SYSTEM = """\
@@ -125,11 +128,14 @@ def parse_reply(content: str) -> AnswerReply:
 
 class HcxAnswerer:
     def __init__(
-        self, client: ClovaClient, *, model: str = MODEL, temperature: float = 0.1
+        self, client: ClovaClient, *, model: str = MODEL, temperature: float = 0.1,
+        usage: UsageLog | None = None,
     ) -> None:
+        """`usage`를 주면 호출마다 사용량을 JSONL에 남긴다(6단계)."""
         self._client = client
         self._model = model
         self._temperature = temperature
+        self._usage = usage
 
     @classmethod
     def from_env(cls, env_file: Path | None = Path(".env"), **kwargs: Any) -> HcxAnswerer:
@@ -143,17 +149,25 @@ class HcxAnswerer:
         return cls(ClovaClient(key, http=http), **kwargs)
 
     def payload(self, request: AnswerRequest) -> dict[str, Any]:
-        return {"messages": build_messages(request), "maxTokens": 256,
+        return {"messages": build_messages(request), "maxTokens": MAX_TOKENS,
                 "temperature": self._temperature}
 
     def answer(self, request: AnswerRequest) -> AnswerReply:
+        started = time.monotonic()
         try:
             result = self._client.chat(self._model, self.payload(request))
         except ClovaError as err:
             log.warning("HCX 답변기 호출 실패: %s (code=%s)", err, err.code)
+            self._record(err.code or "error", None, started)
             return UNSURE
+        self._record("ok", result.get("usage"), started)
         message = result.get("message")
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str):
             return AnswerReply("unsure", reason="bad_format")
         return parse_reply(content)
+
+    def _record(self, status: str, usage: Any, started: float) -> None:
+        if self._usage is not None:
+            self._usage.record("answer", status, usage=usage, max_tokens=MAX_TOKENS,
+                               ms=round((time.monotonic() - started) * 1000))

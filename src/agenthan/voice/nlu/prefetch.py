@@ -9,6 +9,8 @@
 - 미리 부른 호출에도 시간 제한(`timeout_s`, 미리 부른 때부터)이 있다. 넘으면 버리고 새로 부른다
 - 아직 시작도 못 한 미리 부르기(풀이 꽉 참)는 취소하고 새로 부른다. 그래서 엔진 스레드가 같은 풀의
   대기열에 있는 일을 기다리며 막히지 않는다
+- 안쪽 NLU에 `prefetch_allowed()`가 있고 False면(HCX 분당 한도가 빡빡함, 6단계) 미리 부르지 않는다.
+  엔진이 확정 뒤에 부르는 호출은 그대로다. 기록에 `skipped`(건너뛴 수)가 붙는다
 - 요청 본문은 엔진이 부를 때와 같다(같은 `parse(text, ctx)`). HCX 녹화본을 다시 만들 필요가 없다
 
 기록(`take_stats`, 엔진 턴마다 한 번): `prefetched` 미리 부른 수, `used` 적중했나,
@@ -54,6 +56,11 @@ class PrefetchNlu:
         self._stats = _blank()
 
     def prefetch(self, text: str, ctx: NluContext, submit: Submit) -> None:
+        allowed = getattr(self._inner, "prefetch_allowed", None)
+        if allowed is not None and not allowed():
+            with self._lock:
+                self._stats["skipped"] = self._stats.get("skipped", 0) + 1
+            return
         with self._lock:
             old = self._slot
             if old is not None and (old.text, old.ctx) == (text, ctx):
@@ -114,4 +121,4 @@ class PrefetchNlu:
         """지난 `take_stats` 뒤의 기록. 미리 부른 적이 없으면 None."""
         with self._lock:
             stats, self._stats = self._stats, _blank()
-        return stats if stats["prefetched"] or stats["discarded"] else None
+        return stats if stats["prefetched"] or stats["discarded"] or stats.get("skipped") else None

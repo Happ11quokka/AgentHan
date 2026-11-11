@@ -51,6 +51,11 @@
 | `PHONE_DAY_MAX_CALLS` | 하루 통화 수 상한. 넘으면 `closed_today` | `0`(끔) |
 | `PHONE_DAY_MAX_MINUTES` | 하루 통화 분 합계 상한 | `0`(끔) |
 | `PHONE_WS_MAX_BYTES` | WS 메시지 하나의 최대 크기(바이트) | `65536` |
+| `PHONE_NLU_MAX_TOKENS` | HCX NLU 요청의 `maxTokens`. 0이면 코드 기본(튜닝 512·기본 1024) | `0` |
+| `PHONE_NLU_TIMEOUT_S` | HCX NLU 요청 하나의 시간 제한(초) | `4.0` |
+| `PHONE_NLU_FALLBACK` | `rules`면 HCX 실패·한도 초과 턴을 규칙 NLU가. `off`면 되묻기 | `rules` |
+| `PHONE_HCX_RPM` | 프로세스 전체 HCX NLU 분당 요청 상한. 반을 넘기면 미리 해석을 건너뜀 | `0`(끔) |
+| `PHONE_HCX_TPM` | 분당 토큰 상한(입력 + `maxTokens`로 센다) | `0`(끔) |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -145,6 +150,12 @@ class VoiceSettings:
     day_max_calls: int = 0  # 하루 예산. 0이면 세지 않는다
     day_max_minutes: float = 0.0
     ws_max_bytes: int = 65_536  # WS 메시지 하나 (OWASP 권고 64KB. 오디오 프레임은 3,200바이트)
+    # ---- 6단계: HCX 한도 대응 (`runtime.py`, `nlu/budget.py`)
+    nlu_max_tokens: int = 0  # 0이면 코드 기본값(정답셋 녹화본과 같은 요청 본문)
+    nlu_timeout_s: float = 4.0  # 1회 재시도까지 해도 엔진 시간 제한(20초) 안에 규칙 NLU로 넘어간다
+    nlu_fallback: bool = True  # HCX 실패·한도 초과 턴은 규칙 NLU가 맡는다
+    hcx_rpm: int = 0  # 분당 요청 상한. 0이면 세지 않는다
+    hcx_tpm: int = 0  # 분당 토큰 상한(입력 + maxTokens)
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -267,6 +278,12 @@ class VoiceSettings:
                                    0.0),
             ws_max_bytes=int(_number("PHONE_WS_MAX_BYTES", get("PHONE_WS_MAX_BYTES", ""),
                                      65_536, minimum=4_096)),
+            nlu_max_tokens=_count("PHONE_NLU_MAX_TOKENS", get("PHONE_NLU_MAX_TOKENS", ""), 0),
+            nlu_timeout_s=_number("PHONE_NLU_TIMEOUT_S", get("PHONE_NLU_TIMEOUT_S", ""), 4.0),
+            nlu_fallback=_choice("PHONE_NLU_FALLBACK", get("PHONE_NLU_FALLBACK", "rules"),
+                                 ("rules", "off")) == "rules",
+            hcx_rpm=_count("PHONE_HCX_RPM", get("PHONE_HCX_RPM", ""), 0),
+            hcx_tpm=_count("PHONE_HCX_TPM", get("PHONE_HCX_TPM", ""), 0),
             env=env,
         )
 
@@ -316,6 +333,11 @@ def read_env_file(path: Path | None) -> dict[str, str]:
 def _check(name: str, value: str, allowed: tuple[str, ...]) -> None:
     if value not in allowed:
         raise SettingsError(f"{name}은(는) {' · '.join(allowed)} 중 하나여야 해요: {value!r}")
+
+
+def _choice(name: str, value: str, allowed: tuple[str, ...]) -> str:
+    _check(name, value, allowed)
+    return value
 
 
 def _number(name: str, value: str, default: float, *, minimum: float = 0.0) -> float:

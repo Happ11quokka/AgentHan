@@ -19,6 +19,10 @@
   루프 기본 풀은 2 vCPU에서 6개뿐이고 DNS 조회(`getaddrinfo`) 등과 같이 쓴다. 시간을 넘긴
   엔진 스레드는 취소되지 않고 남으므로 통화당 2개(`ENGINE_THREADS_PER_CALL`)를 잡는다
 
+- HCX(`PHONE_NLU=hcx`)의 NLU·답변기는 프로세스에 하나를 만들어 모든 통화가 같이 쓴다
+  (`runtime.HcxRuntime`: 연결 풀 하나, 분당 버킷, 사용량 기록, 규칙 NLU 폴백, 6단계). 만들지
+  못하면(키 없음) 전처럼 세션이 `"hcx"`로 직접 만들다가 `nlu_config` 오류를 낸다
+
 가게 지식·설정·`OrderSink`는 만드는 쪽이 넣는다. 여기에는 가짜 기본값이 없다.
 `owner`(`OwnerChannel`, 사장님 허브)를 주면 통화마다 시작·장바구니·말·끝을 알린다(없으면 안 알림).
 """
@@ -55,6 +59,7 @@ from agenthan.voice.call.ports import (
 from agenthan.voice.call.session import CallSession, turn_pool
 from agenthan.voice.dialog.knowledge import KnowledgeReader
 from agenthan.voice.gate import BUDGET_FILE, DRAIN_FILE, CallGate, GateSettings, client_ip
+from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smart_turn import load_turn_model
 from agenthan.voice.store_config import StoreConfig
@@ -108,6 +113,7 @@ def phone_router(
     owner: OwnerChannel | None = None,
     knowledge: KnowledgeReader | None = None,
     gate: CallGate | None = None,
+    hcx: HcxRuntime | None = None,
 ) -> APIRouter:
     """`settings.stt`·`tts`가 `clova`인데 어댑터가 없으면 여기서 `AdapterMissing`.
 
@@ -116,6 +122,7 @@ def phone_router(
     `knowledge`는 사장님 보충 지식 읽기 포트(4단계 티켓 13, 보통 `OwnerHub.knowledge`). `owner`가
     있는 통화만 쓴다.
     `gate`를 주면(서버가 `/healthz`와 같이 쓸 때) 그 문지기를, 없으면 설정으로 하나 만든다.
+    `hcx`도 같다(서버가 끝날 때 닫으려고 넘긴다). `PHONE_NLU=hcx`일 때만 쓴다.
     """
     if stt_factory is None:
         # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
@@ -138,6 +145,21 @@ def phone_router(
     if gate is None:
         gate = make_gate(settings)
     door = gate
+    if hcx is None and settings.nlu == "hcx":
+        hcx = HcxRuntime(settings)
+    shared_hcx = hcx if settings.nlu == "hcx" else None
+
+    async def _engines() -> tuple[Any, Any]:
+        """이 통화가 쓸 (NLU, 답변기). 공유 HCX를 못 만들면 설정 이름을 그대로 넘긴다."""
+        if shared_hcx is None:
+            return settings.nlu, None
+        loop = asyncio.get_running_loop()
+        try:  # 처음 한 번은 연결 풀을 만든다(TLS 설정 읽기). 루프를 막지 않게 엔진 풀에서
+            nlu = await loop.run_in_executor(engine_pool, shared_hcx.nlu)
+            return nlu, await loop.run_in_executor(engine_pool, shared_hcx.answerer)
+        except Exception as err:
+            log.warning("공유 HCX를 만들지 못함: %s", type(err).__name__)
+            return settings.nlu, None
 
     @router.websocket(WS_PATH)
     async def phone_ws(ws: WebSocket) -> None:
@@ -168,10 +190,12 @@ def phone_router(
             await _aclose(tts)
             await _refuse(ws, err)
             return
+        nlu, answerer = await _engines()
         session = CallSession(
             store=store,
             config=config,
-            nlu=settings.nlu,
+            nlu=nlu,
+            answerer=answerer,
             stt=stt,
             tts=tts,
             clock=store_clock(settings),
