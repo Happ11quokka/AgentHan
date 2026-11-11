@@ -44,7 +44,7 @@
 
 | 변수 | 값 | 기본 |
 |---|---|---|
-| `PHONE_ALLOWED_ORIGINS` | 통화를 걸 수 있는 화면 오리진(쉼표). 비면 검사 안 함 | 없음 |
+| `PHONE_ALLOWED_ORIGINS` | 통화를 걸 수 있는 화면 오리진(쉼표). 비거나 `*`면 검사 안 함 | 없음 |
 | `PHONE_TRUSTED_PROXIES` | 믿는 프록시 CIDR(쉼표)·`private`. `X-Forwarded-For`를 읽는다 | 없음 |
 | `PHONE_IP_MAX_CALLS` | 주소 하나의 동시 통화 상한 (사설·루프백 주소는 안 셈) | `4` |
 | `PHONE_IP_CALLS_PER_HOUR` | 주소 하나가 한 시간에 걸 수 있는 통화 수 | `30` |
@@ -273,7 +273,9 @@ class VoiceSettings:
                                  OWNER_WAIT_S),
             ask_owner=get("PHONE_ASK_OWNER", "off") == "on",
             answer=get("PHONE_ANSWER", "on") == "on",
-            allowed_origins=_names(get("PHONE_ALLOWED_ORIGINS", "")),
+            # `*`는 "검사 안 함": compose가 기본값(배포 도메인)을 넣어서 빈 값으로는 못 끈다
+            allowed_origins=tuple(o for o in _names(get("PHONE_ALLOWED_ORIGINS", ""))
+                                  if o != "*"),
             trusted_proxies=_names(get("PHONE_TRUSTED_PROXIES", "")),
             ip_max_calls=_count("PHONE_IP_MAX_CALLS", get("PHONE_IP_MAX_CALLS", ""), 4),
             ip_calls_per_hour=_count("PHONE_IP_CALLS_PER_HOUR",

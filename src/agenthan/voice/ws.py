@@ -58,7 +58,14 @@ from agenthan.voice.call.ports import (
 )
 from agenthan.voice.call.session import CallSession, turn_pool
 from agenthan.voice.dialog.knowledge import KnowledgeReader
-from agenthan.voice.gate import BUDGET_FILE, DRAIN_FILE, CallGate, GateSettings, client_ip
+from agenthan.voice.gate import (
+    BUDGET_FILE,
+    DRAIN_FILE,
+    CallGate,
+    GateSettings,
+    Refusal,
+    client_ip,
+)
 from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smart_turn import load_turn_model
@@ -176,6 +183,7 @@ def phone_router(
                                         retry=refusal.retry, customer=refusal.message),
                           quiet=True)
             return
+        admission.notify = lambda notice: _tell(ws, notice)  # 서버가 내려갈 때 (`gate.farewell`)
         try:
             await _serve(ws)
         finally:
@@ -317,6 +325,17 @@ async def _refuse(ws: WebSocket, err: Exception, *, quiet: bool = False) -> None
     except Exception:
         log.info("error 이벤트를 보내지 못함", exc_info=True)
     await _close(ws)
+
+
+async def _tell(ws: WebSocket, notice: Refusal) -> None:
+    """통화 중인 화면에 `error` 한 번(서버 종료 안내). 소켓은 닫지 않는다: 곧 서버가 1012로 닫는다.
+
+    세션의 송신 작업과 따로 보내지만 메시지 하나는 프레임 하나로 통째로 나가서 섞이지 않는다.
+    """
+    if ws.application_state == WebSocketState.CONNECTED:
+        await ws.send_text(json.dumps(
+            {"type": "error", "turn": 0, "code": notice.code, "message": notice.message,
+             "retry": notice.retry}, ensure_ascii=False))
 
 
 async def _aclose(tts: Tts | None) -> None:

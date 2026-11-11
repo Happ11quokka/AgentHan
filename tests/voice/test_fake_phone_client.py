@@ -155,3 +155,11 @@ def test_mic_sends_zeros_while_the_bot_is_speaking() -> None:
     loud = sum(1 for frame in stt.pcm if rms(frame) > 1_000)
     assert 6 <= loud < 20, loud  # 처음 말 600ms는 가고, 봇이 말하는 동안의 톤 4초는 대부분 안 간다
     assert run.clips[0].muted_ms >= 2_000
+
+
+def test_the_fake_phone_sends_the_page_origin_like_a_browser() -> None:
+    # 6단계: 서버가 Origin을 검사해도 가짜 휴대폰으로 배포 서버를 시험할 수 있다
+    from agenthan.voice.fake_phone.client import page_origin
+
+    assert page_origin("wss://shop.example/api/phone/ws") == "https://shop.example"
+    assert page_origin("ws://127.0.0.1:8000/api/phone/ws") == "http://127.0.0.1:8000"

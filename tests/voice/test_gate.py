@@ -281,6 +281,12 @@ def test_gate_settings_come_from_the_environment() -> None:
     assert settings.ws_max_bytes == 32_768
 
 
+def test_a_star_switches_the_origin_check_off() -> None:
+    # compose가 배포 도메인을 기본값으로 넣는다. 터널 같은 비상 주소로 열 때 끄는 값
+    assert VoiceSettings.from_env({"PHONE_ALLOWED_ORIGINS": "*"},
+                                  env_file=None).allowed_origins == ()
+
+
 def test_gate_defaults_are_loose_and_the_daily_budget_is_off() -> None:
     settings = VoiceSettings.from_env({}, env_file=None)
     assert settings.allowed_origins == () and settings.trusted_proxies == ()

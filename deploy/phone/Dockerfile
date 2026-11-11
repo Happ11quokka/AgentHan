@@ -69,7 +69,12 @@ ENV PHONE_TZ=Asia/Seoul \
     ORT_DISABLE_TELEMETRY=1 \
     GRPC_DNS_RESOLVER=native
 
+# 어느 커밋의 이미지인지 (/healthz의 version). `deploy.sh up`이 넣는다. 키가 아니다
+ARG GIT_SHA=dev
+ENV PHONE_VERSION=$GIT_SHA
+
 EXPOSE 8000
+# 상태 검사는 /healthz (통화 수·점검 중·버전, 6단계). 점검(drain) 중에도 200이다
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=2)"]
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
 CMD ["python", "-m", "agenthan.voice.server", "--host", "0.0.0.0", "--port", "8000"]

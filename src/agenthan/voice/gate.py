@@ -15,6 +15,10 @@
    비용 상한. 가게 시간대의 날짜로 세고, 로그 폴더의 `phone-budget.json`에 적어 프로세스가 다시
    떠도 남는다. 둘 다 0(기본)이면 세지 않고 파일도 만들지 않는다
 
+서버가 내려갈 때(`farewell`, SIGTERM): 새 통화를 그만 받고, 통화 중인 화면마다 `error`
+(`restarting`, "서버 점검으로 통화를 끝낼게요…")를 한 번 보낸다. 라우터가 통화마다 보내는 함수를
+`Admission.notify`에 걸어 둔다. uvicorn은 그 뒤에 열린 WS를 1012로 닫는다.
+
 거절은 `Refusal`(코드·화면 문구·다시 걸면 되나)로 돌려주고, 라우터가 `busy`와 같은 `error`
 이벤트로 보낸 뒤 소켓을 닫는다. 화면은 그 문구를 그대로 보여 준다.
 
@@ -25,13 +29,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import logging
 import os
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -77,6 +82,8 @@ class Admission:
     started: float
     refusal: Refusal | None = None
     released: bool = False
+    # 이 통화 화면에 `error` 이벤트를 보내는 함수 (라우터가 건다). 서버가 내려갈 때 쓴다
+    notify: Callable[[Refusal], Awaitable[None]] | None = None
 
 
 def normalize_origin(origin: str) -> str:
@@ -147,6 +154,7 @@ class CallGate:
         self._drain_file = drain_file
         self._draining = False
         self.active = 0
+        self._live: list[Admission] = []
         self._by_ip: dict[str, int] = {}
         self._starts: dict[str, deque[float]] = {}
         self._day = ""
@@ -180,6 +188,23 @@ class CallGate:
         except OSError:
             log.warning("점검 표시 파일을 지우지 못함: %s", self._drain_file, exc_info=True)
 
+    async def farewell(self, timeout_s: float = 1.0) -> int:
+        """서버가 내려간다: 새 통화를 막고 통화 중인 화면에 알린다. 알린 통화 수를 돌려준다."""
+        self.drain()
+        notice = Refusal("restarting", MSG_RESTART)
+        told = 0
+        for admission in list(self._live):
+            if admission.notify is None:
+                continue
+            try:
+                await asyncio.wait_for(admission.notify(notice), timeout_s)
+                told += 1
+            except Exception:  # 이미 끊긴 손님
+                log.info("종료 안내를 보내지 못함", exc_info=True)
+        if told:
+            log.info("서버 종료 안내를 통화 %d개에 보냄", told)
+        return told
+
     # ------------------------------------------------------------ 받기·돌려주기
 
     def admit(self, ip: str) -> Admission:
@@ -196,13 +221,17 @@ class CallGate:
             self._roll_day()
             self._calls += 1
             self._save()
-        return Admission(ip, now)
+        admission = Admission(ip, now)
+        self._live.append(admission)
+        return admission
 
     def release(self, admission: Admission) -> None:
         if admission.released:
             return
         admission.released = True
         self.active = max(0, self.active - 1)
+        if admission in self._live:
+            self._live.remove(admission)
         ip = admission.ip
         if ip in self._by_ip:
             self._by_ip[ip] -= 1
