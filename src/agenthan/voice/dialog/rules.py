@@ -81,6 +81,23 @@ def wait_request_rest(text: str) -> str | None:
     return rest
 
 
+# 하던 말을 거두는 혼잣말("한 여섯 시… 아 아니다"). 앞에 내용이 있을 때만 본다
+_RETRACTION = re.compile(r"(?:아\s*)?아니다$|아\s+아니(?:야|에요|예요)?$")
+
+
+def retracted(text: str) -> bool:
+    """내용을 말하다가 "아 아니다"로 거둔 말이다 (5단계 티켓 11, 실기기 통화).
+
+    "아니다"만 있거나 앞이 예/아니요·필러뿐이면 그냥 "아니요"다(규칙·NLU가 본다).
+    """
+    t = " ".join(PUNCT.sub(" ", text).split())
+    found = _RETRACTION.search(t)
+    if found is None:
+        return False
+    rest = t[: found.start()].strip()
+    return bool(rest) and yes_or_no(rest) is None and not all(_no_content(w) for w in rest.split())
+
+
 def _no_content(word: str) -> bool:
     return word in FILLERS or word in ("잠깐", "잠시") or yes_or_no(word) is not None
 

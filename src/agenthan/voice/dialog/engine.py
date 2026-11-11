@@ -51,7 +51,7 @@ from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
 from agenthan.voice.dialog.options import find_options
 from agenthan.voice.dialog.owner_question import OwnerAnswer, OwnerQuestion
 from agenthan.voice.dialog.pickup import PickupVerdict, judge_pickup, today_at
-from agenthan.voice.dialog.rules import apply_rules, wait_request_rest
+from agenthan.voice.dialog.rules import apply_rules, retracted, wait_request_rest
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
@@ -93,6 +93,7 @@ RESCUE_MAX_CHARS = 7
 # 5단계 티켓 11. NLU가 못 알아들은 말을 답변기에 보일 최소 길이와 상태(고르기·확인 중은 뺀다)
 QUESTION_RESCUE_MIN_CHARS = 5
 _RESCUE_STATES = (State.ORDERING, State.ASK_PICKUP, State.CONFIRM)
+_RETRACT_STATES = (State.ORDERING, State.ASK_PICKUP)  # 말하다 거둔 말을 기다림으로 받는 상태
 REVIEWS_FOR_FACTS = 30  # 답변기 자료에 넣으려고 읽는 최근 후기 수
 RECENT_LINES = 4  # 답변기에 주는 직전 대화 줄 수
 # 답변기가 못 답했을 때도 규칙으로 답하는 종류: 메뉴 필드에 그대로 있는 값
@@ -282,7 +283,9 @@ class DialogEngine:
         self._transcript.append(f"손님: {text}")
         turn.heard = text
         rest = wait_request_rest(text) if wait_request else None
-        if rest == "":
+        if rest == "" or (rest is None and self._state in _RETRACT_STATES and retracted(text)):
+            # "잠깐만요", 또는 말하다 거둔 말("한 여섯 시… 아 아니다"). 못 알아들었다고 하지 않고
+            # 기다린다. 복창 중의 "아니다"는 고쳐 달라는 말이라 평소처럼 본다
             self._no_input = 0
             self._say(turn, templates.take_your_time())
             return self._result(turn)
