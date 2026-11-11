@@ -56,7 +56,7 @@ def feature_embedding_text(feature: dict) -> str:
     return "\n".join(
         [feature["name_ko"], feature["summary_ko"]]
         + feature["keywords_ko"]
-        + feature["keywords_en"]
+        + feature.get("keywords_en", [])  # Korean-only catalog; review entries still carry English
     )
 
 
@@ -68,7 +68,7 @@ def _keyword_score(text: str, feature: dict) -> tuple[float, list[str]]:
     normalized = _normalize(text)
     compact = re.sub(r"[^\w]", "", normalized)
     matched = []
-    for term in dict.fromkeys(feature["keywords_ko"] + feature["keywords_en"]):
+    for term in dict.fromkeys(feature["keywords_ko"] + feature.get("keywords_en", [])):
         normalized_term = _normalize(term)
         if re.search(r"[가-힣]", normalized_term):
             # Korean particles stay attached; spacing and punctuation may vary.

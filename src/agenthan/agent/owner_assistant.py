@@ -2,7 +2,7 @@
 
 Feature matching picks one feature per request:
 - menu → upsert_menu (agenthan tool)
-- review_reply, ai_review → agenthan.agent.review (ReviewToolbox + run_turn) via review_delegate
+- review → agenthan.agent.review (ReviewToolbox + run_turn) via review_delegate
 - statistics → report_explainer (R1 facts + rule-based insights, no tools)
 - other features → that feature's one dummy tool (agenthan.tools.feature_tools)
 Only the matched feature's tool is exposed to the model. Write tools run on a copy of

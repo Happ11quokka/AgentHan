@@ -22,7 +22,7 @@
         (그 기능의 짧은 절차·예시와, 예약·주문·톡톡이면 코드가 좁힌 대상 후보만 함께 준다)
         ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
         ├ 메뉴판·음식 사진          → ask_photo(): 사진 분류 → 초안 → 사장님 승인 → 저장
-        ├ review_reply, ai_review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
+        ├ review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
         ├ statistics (A-3, R2)    → R1 facts → 해석 규칙 → 도구 없는 HCX-005 문장화/템플릿
         └ 그 밖의 14개 기능          → 그 기능 도구 하나 (tools/feature_tools.py)
      ④ 쓰기 도구(메뉴 포함 10개)는 저장소 사본에 미리 실행 → "네"에만 실제 저장, "취소"는 버림.

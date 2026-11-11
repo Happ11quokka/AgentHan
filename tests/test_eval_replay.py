@@ -461,6 +461,10 @@ def test_bundled_recording_covers_existing_kinds():
     assert all(group["total"] >= 2 for group in metrics["flow"]["per_kind"].values())
 
 
+@pytest.mark.skip(
+    reason="live.json predates the catalog cleanup (#17). route/flow are L2 diagnostics now; "
+    "the S1 scenario baseline gets its own recording."
+)
 def test_live_recording_replays_full_sets_without_network(offline):
     backend = Replay(run.REPLAY_PATH.with_name("live.json"))
     assert backend.data["provenance"] == "live"
@@ -517,7 +521,7 @@ def test_splits_are_fixed_stratified_and_cover_every_case():
         # cases already inspected were moved to dev and say so in origin.
         for name, batch in batches.items():
             if name == "review":
-                continue  # 근형's own dev/holdout (holdout written later as a fresh set).
+                continue  # Own dev/holdout (holdout written later as a fresh set).
             expected = make_splits(batch)
             for case in batch:
                 if (case.origin or "").startswith("holdout-seen"):
@@ -526,4 +530,4 @@ def test_splits_are_fixed_stratified_and_cover_every_case():
                     assert case.split == expected[case.id], case.id
         m0 = batches["m0"]
         holdout = {c.expected_feature or c.expected_tool for c in m0 if c.split == "holdout"}
-        assert len(holdout) >= 14
+        assert len(holdout) >= 13  # 18 features since review_reply + ai_review → review

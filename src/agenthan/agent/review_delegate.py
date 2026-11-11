@@ -1,4 +1,4 @@
-"""Delegate review features (review_reply, ai_review) to agenthan.agent.review.
+"""Delegate the review feature (review) to agenthan.agent.review.
 
 OwnerAssistant matches the feature; this module wraps agenthan.agent.review.agent.run_turn so the
 owner assistant only sees handle(utterance, session) -> {"text", "blocks"}.
@@ -26,7 +26,7 @@ from agenthan.tools.review_adapters import (
     DummyStoreReviewRepo,
 )
 
-REVIEW_FEATURES = frozenset({"review_reply", "ai_review"})
+REVIEW_FEATURES = frozenset({"review"})
 
 _VI = re.compile(r"[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]", re.I)
 

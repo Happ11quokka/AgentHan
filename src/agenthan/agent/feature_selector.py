@@ -192,7 +192,7 @@ def select(
 
 
 def read_choice(content: str, ids: list[str]) -> str | None:
-    """The allowed ID written first in a text answer (e.g. 'ai_review: AI 리뷰 관리 …')."""
+    """The allowed ID written first in a text answer (e.g. 'review: 리뷰 확인·분석·답글 …')."""
     found = [
         (m.start(), choice)
         for choice in [*ids, NONE, CLARIFY]
