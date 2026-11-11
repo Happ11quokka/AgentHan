@@ -31,7 +31,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from agenthan.core.contracts import MenuItem, MenuOption, Order, Review, StoreKnowledge
 from agenthan.voice.dialog import templates
@@ -176,6 +176,47 @@ class _OptionPending:
     line: CartLine  # 종류만 본다 (`Cart.index_of`)
     group: RequiredOption
     then_advance: bool = False  # 손님이 이미 주문을 끝냈으면 답을 받은 뒤 바로 다음 단계로
+
+
+# 스냅숏 분류표 (6단계 티켓 02 "앞 턴 되감기"). 엔진의 모든 필드가 여기 있어야 한다
+# (`tests/voice/test_engine_snapshot.py`가 `vars(engine)`과 맞춰 본다). 필드를 더하면 종류를 적는다.
+# - fixed: 통화 동안 안 바뀐다(포트·설정·메뉴). 스냅숏에 넣지 않는다
+# - value: 불변 값(문자열·수·frozen dataclass·`Cart`)이나 통째로 바꿔 끼우는 참조. 참조만 든다
+# - copy: 제자리에서 고치는 그릇(`_transcript` list, `_MenuClarify.deferred`). 사본을 든다
+# - cache: 처음 쓸 때 한 번 읽는 값. 되돌려도 다시 읽으면 같아서 그대로 둔다
+SnapshotKind = Literal["fixed", "value", "copy", "cache"]
+SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
+    "_nlu": "fixed", "_answerer": "fixed", "_store": "fixed", "_config": "fixed",
+    "_order_id": "fixed", "_menu": "fixed", "_matcher": "fixed", "_catalog": "fixed",
+    "_ask_owner": "fixed", "_knowledge": "fixed",
+    "_facts_reviews": "cache",
+    # `_answer_early`는 (손님 말, 이미 낸 답변기 Future)다. 되감은 뒤에는 합친 말이라 글이 달라
+    # 안 쓰인다(`_consult`가 글로 맞춰 보고, `_parse`가 턴마다 지운다). 턴 전 값으로 돌려 둔다
+    "_answer_ready": "value", "_answer_early": "value", "_topic": "value",
+    "_state": "value", "_cart": "value", "_pickup": "value", "_pickup_offer": "value",
+    "_pickup_offer_question": "value", "_pickup_text": "value", "_last_question": "value",
+    "_again": "value", "_focus": "value", "_fixing": "value", "_cancel_resume": "value",
+    "_fail_key": "value", "_fail_count": "value", "_no_input": "value",
+    "_owner_open": "value", "_owner_asked": "value", "_read_back": "value",
+    "_owner_timed_out": "value", "_owner_seen_said": "value",
+    "_transcript": "copy", "_pending": "copy",
+}
+
+
+@dataclass(frozen=True)
+class EngineSnapshot:
+    """`DialogEngine.snapshot()`이 뜬 턴 전 상태. 속은 엔진만 본다."""
+
+    values: dict[str, Any] = field(repr=False)
+
+
+def _copied(name: str, value: Any) -> Any:
+    """`copy` 필드의 사본. 스냅숏을 뜰 때와 되돌릴 때 둘 다 쓴다(같은 그릇을 나눠 들지 않게)."""
+    if name == "_transcript":
+        return list(value)
+    if isinstance(value, _MenuClarify):  # `_OptionPending`은 frozen이라 그대로
+        return replace(value, deferred=list(value.deferred))
+    return value
 
 
 Handler = Callable[["DialogEngine", _Turn, Act], None]
@@ -407,6 +448,28 @@ class DialogEngine:
         self._owner_seen_said = True
         self._say(turn, templates.owner_seen())
         return self._result(turn)
+
+    def snapshot(self) -> EngineSnapshot:
+        """지금 대화 상태를 떠 둔다 (6단계 티켓 02 "앞 턴 되감기").
+
+        세션이 손님 턴을 `handle`에 넘기기 직전에 부른다. 봇 답의 첫 소리 전에 손님이 말을
+        이으면("아니요 … 그게 다예요") `restore`로 이 상태로 돌아가 합친 말을 다시 처리한다.
+        엔진이 쉬는 동안(다른 스레드에서 `handle`이 돌지 않을 때)에만 부른다.
+        """
+        return EngineSnapshot({
+            name: _copied(name, getattr(self, name)) if kind == "copy" else getattr(self, name)
+            for name, kind in SNAPSHOT_FIELDS.items() if kind in ("value", "copy")
+        })
+
+    def restore(self, snap: EngineSnapshot) -> None:
+        """`snapshot()` 때로 되돌린다. 그 뒤의 `handle`·봇 턴이 없던 일이 된다.
+
+        엔진 밖으로 나간 것(세션이 보낸 주문·사장님 질문·보충 요청)은 되돌리지 못한다. 그래서
+        세션은 그런 턴을 되감지 않는다. 엔진이 쉬는 동안에만 부른다.
+        """
+        for name, value in snap.values.items():
+            kind = SNAPSHOT_FIELDS[name]
+            setattr(self, name, _copied(name, value) if kind == "copy" else value)
 
     def nlu_context(self) -> NluContext:
         """다음 `handle`이 NLU에 넘길 문맥 (3단계 티켓 02 미리 해석의 키, 끝말 규칙의 대화 상태).
