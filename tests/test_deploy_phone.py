@@ -83,3 +83,12 @@ def test_the_model_licence_notice_ships_with_the_image() -> None:
     notice = _text("NOTICE-smart-turn.txt")
     assert "BSD 2-Clause License" in notice and "Daily" in notice
     assert "COPY deploy/phone/NOTICE-smart-turn.txt" in _text("Dockerfile")
+
+
+def test_caddy_hides_the_owner_token_in_the_access_log() -> None:
+    # 6단계: 사장님 토큰은 쿼리 `?key=`로 온다. 접속 로그에 그대로 남기지 않는다
+    caddyfile = _text("Caddyfile")
+    assert re.search(r"log \{\s+format filter \{\s+request>uri query \{\s+replace key REDACTED",
+                     caddyfile)
+    assert "Referrer-Policy no-referrer" in caddyfile
+    assert not re.search(r"^\tlog$", caddyfile, re.M), "가리지 않는 기본 log를 남기지 않는다"

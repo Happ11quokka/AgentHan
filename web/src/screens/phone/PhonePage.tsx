@@ -179,6 +179,12 @@ export default function PhonePage() {
         )}
       </div>
 
+      {/* AI 응대·개인정보 안내 한 줄 (6단계). 보관 기한은 서버 `PHONE_LOG_KEEP_DAYS` 기본값과 같다 */}
+      <p className="phone-notice">
+        이 전화는 <strong>AI가 받아요</strong>. 말씀은 주문 처리를 위해 네이버클라우드(CLOVA)에서 글로 바뀌고,
+        기록은 14일 뒤 지워요. 체험용이라 실제 결제는 없어요. 이름·전화번호 같은 개인정보는 말하지 말아 주세요.
+      </p>
+
       {state.mic && (
         <details className="phone-mic">
           <summary>마이크 설정값</summary>

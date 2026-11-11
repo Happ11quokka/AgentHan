@@ -249,3 +249,11 @@
 .phone-mic dd {
   margin: 0;
 }
+
+/* AI 응대·개인정보 안내 한 줄 (6단계) */
+.phone-notice {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--phone-muted);
+}

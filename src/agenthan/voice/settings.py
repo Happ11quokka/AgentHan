@@ -56,6 +56,8 @@
 | `PHONE_NLU_FALLBACK` | `rules`면 HCX 실패·한도 초과 턴을 규칙 NLU가. `off`면 되묻기 | `rules` |
 | `PHONE_HCX_RPM` | 프로세스 전체 HCX NLU 분당 요청 상한. 반을 넘기면 미리 해석을 건너뜀 | `0`(끔) |
 | `PHONE_HCX_TPM` | 분당 토큰 상한(입력 + `maxTokens`로 센다) | `0`(끔) |
+| `PHONE_LOG_KEEP_DAYS` | 손님 말이 든 JSONL·녹음 보관 일수. 지나면 지운다. 0이면 안 지움 | `14` |
+| `PHONE_DISK_WARN_PCT` | 로그 디스크 사용률이 이 값(%)을 넘으면 경고 로그. 0이면 끔 | `80` |
 
 키(`CLOVA_SPEECH_SECRET_KEY` 등)는 여기서 해석하지 않고 `env`에 담아 어댑터에 넘긴다.
 `repr`에 값이 나오지 않는다.
@@ -156,6 +158,9 @@ class VoiceSettings:
     nlu_fallback: bool = True  # HCX 실패·한도 초과 턴은 규칙 NLU가 맡는다
     hcx_rpm: int = 0  # 분당 요청 상한. 0이면 세지 않는다
     hcx_tpm: int = 0  # 분당 토큰 상한(입력 + maxTokens)
+    # ---- 6단계: 집안일 (`housekeeping.py`)
+    log_keep_days: float = 14.0  # 손님 말이 든 JSONL·녹음 보관 기한. 0이면 지우지 않는다
+    disk_warn_pct: float = 80.0  # 디스크 사용률 경고 기준(%). 0이면 끈다
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -284,6 +289,8 @@ class VoiceSettings:
                                  ("rules", "off")) == "rules",
             hcx_rpm=_count("PHONE_HCX_RPM", get("PHONE_HCX_RPM", ""), 0),
             hcx_tpm=_count("PHONE_HCX_TPM", get("PHONE_HCX_TPM", ""), 0),
+            log_keep_days=_limit("PHONE_LOG_KEEP_DAYS", get("PHONE_LOG_KEEP_DAYS", ""), 14.0),
+            disk_warn_pct=_limit("PHONE_DISK_WARN_PCT", get("PHONE_DISK_WARN_PCT", ""), 80.0),
             env=env,
         )
 

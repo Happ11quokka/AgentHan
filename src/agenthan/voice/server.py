@@ -17,6 +17,7 @@ Papago 키가 있으면 시작 때 연결을 한 번 데우고(최대 `PHONE_TRA
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -24,6 +25,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.housekeeping import INTERVAL_S, Housekeeper
 from agenthan.voice.owner.http import customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
@@ -58,15 +60,22 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
     gate = make_gate(settings)
     hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None
+    keeper = Housekeeper(log_dir=settings.log_dir, record_dir=settings.record_dir,
+                         keep_days=settings.log_keep_days, disk_warn_pct=settings.disk_warn_pct)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # 통화 첫 카드가 새 연결 비용(실측 P50 1.06초)을 내지 않게 시작 때 한 번 보낸다 (티켓 12)
         if translator is not None and await translator.warm():
             log.info("Papago 연결을 데움")
+        # 보관 기한이 지난 손님 말 기록·녹음을 지우고 디스크를 본다. 시작 때 한 번은 기다린다
+        await asyncio.to_thread(keeper.run_once)
+        chores = asyncio.create_task(_later(keeper))
         try:
             yield
         finally:
+            chores.cancel()
+            await asyncio.gather(chores, return_exceptions=True)
             if translator is not None:
                 await translator.aclose()
             if hcx is not None:
@@ -97,6 +106,11 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     log.info("통화 설정: NLU=%s STT=%s TTS=%s 시각=%s",
              settings.nlu, settings.stt, settings.tts, settings.now or "지금")
     return app
+
+
+async def _later(keeper: Housekeeper) -> None:
+    await asyncio.sleep(INTERVAL_S)
+    await keeper.run_forever()
 
 
 def main(argv: Sequence[str] | None = None) -> None:
