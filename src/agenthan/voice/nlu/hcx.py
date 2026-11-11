@@ -71,7 +71,7 @@ PARSE_TURN_TOOL: dict[str, Any] = {
                             "qty": {"type": "integer", "description": "수량. 말 안 했으면 생략"},
                             "option_text": {
                                 "type": "string",
-                                "description": "옵션 말 그대로 (아이스, 샷 추가, 사워크림 빼)",
+                                "description": "옵션 말 그대로 (차가운, 치즈 추가, 어묵 빼)",
                             },
                             "time_text": {"type": "string", "description": "시각 표현 그대로"},
                             "free_text": {"type": "string", "description": "요청사항·질문 원문"},
@@ -86,7 +86,7 @@ PARSE_TURN_TOOL: dict[str, Any] = {
 }
 
 _INTRO = (
-    "너는 빵집 전화 주문의 발화 분석기다. 손님 발화 하나를 읽고 parse_turn 함수를 딱 한 번 "
+    "너는 가게 전화 주문의 발화 분석기다. 손님 발화 하나를 읽고 parse_turn 함수를 딱 한 번 "
     "호출한다. 다른 함수는 없다. act 종류는 함수 이름이 아니라 acts 안의 type 값이다. "
     "대답 문장은 쓰지 않는다."
 )
@@ -95,7 +95,7 @@ _GUIDE = """act 종류:
 - add_item: 메뉴 주문. 메뉴마다 하나씩
 - remove_item: 장바구니의 메뉴 빼기
 - change_qty: 이미 담긴 메뉴의 수량 바꾸기. 새 수량은 qty
-- set_option: 담긴 메뉴의 옵션 정하기 (온도, 샷 추가, 사워크림 빼기)
+- set_option: 담긴 메뉴의 옵션 정하기 (꼭 고를 것, 추가, 빼기)
 - set_pickup_time: 찾으러 오는 시각
 - set_request: 옵션이 아닌 요청사항 (따로 담기, 포크·초 넣기, 잘라 주기)
 - done_ordering: 주문을 다 했다는 말
@@ -113,7 +113,15 @@ _GUIDE = """act 종류:
 - 메뉴 이름 없이 수량만 말하면 change_qty이고 menu_text는 비운다
 - 옵션과 시각은 따로 뗀다. 메뉴와 시각을 같이 말하면 add_item과 set_pickup_time 두 개다
 - 주문을 다 했다는 말과 시각을 같이 말하면 done_ordering과 set_pickup_time 두 개다
-- 담긴 메뉴에서 재료를 빼 달라는 말(사워크림 빼)은 remove_item이 아니라 set_option이다
+- 메뉴의 옵션과 꼭 고를 것은 아래 메뉴 목록에 있다. 손님이 옵션을 말하면 option_text로 뗀다
+- 옵션 말이 메뉴 이름에 붙어 있어도(아이스유자차) option_text로 뗀다
+- 메뉴를 시키면서 재료를 빼 달라고 하면 그 메뉴 add_item 하나에 option_text로 넣는다
+- 담긴 메뉴에서 재료를 빼 달라는 말은 set_option이다
+- 옵션을 말하면서 메뉴 이름도 말했으면 menu_text에 쓴다. 메뉴를 말하지 않았으면 비운다
+- 옵션을 말하면서 메뉴 이름도 말했으면 menu_text에 쓴다. 메뉴를 말하지 않았으면 비운다
+- remove_item은 담긴 메뉴를 통째로 뺄 때만 쓴다
+- 발화는 전화 음성을 받아 적은 글이라 메뉴 이름이 비슷한 소리로 틀려 있을 수 있다
+- 소리가 비슷하면 그 메뉴로 보고 unknown으로 두지 않는다. menu_guess에 메뉴 목록의 이름을 쓴다
 - "따로", "포장", "잘라"처럼 담는 방법을 말하면 set_request다
 - time_text는 시각 표현을 고치지 말고 손님 말 그대로 쓴다"""
 
@@ -122,23 +130,39 @@ def _item(name: str, guess: str, qty: int, **extra: str) -> dict[str, Any]:
     return {"type": "add_item", "menu_text": name, "menu_guess": guess, "qty": qty, **extra}
 
 
-# (장바구니, 발화, acts). 골드셋(tests/voice/nlu_gold.json)과 겹치지 않는 문장만 쓴다.
+# 예시는 가상의 예시 가게로 쓴다(5단계 티켓 05). 실제 가게 메뉴를 쓰면 프롬프트가 그 가게에 묶이고,
+# 다른 가게에서는 예시 메뉴가 메뉴 목록에 없는 말이 된다. 실제 메뉴는 문맥(`menu_catalog`)에서 온다.
+EXAMPLE_STORE = (
+    "떡볶이 | 옵션: 치즈 추가, 어묵 빼기",
+    "김밥 | 다른 이름: 꼬마김밥",
+    "유자차 | 꼭 고를 것 온도: 따뜻하게/차갑게",
+)
 _EXAMPLES: tuple[tuple[str, str, list[dict[str, Any]]], ...] = (
-    ("", "나폴레옹 두 개 주세요", [_item("나폴레옹", "나폴레옹", 2)]),
-    ("", "허니케익 하나랑 차가운 아메리카노 한 잔이요", [
-        _item("허니케익", "메도빅", 1),
-        _item("아메리카노", "아메리카노", 1, option_text="차가운"),
+    ("", "떡볶이 두 개 주세요", [_item("떡볶이", "떡볶이", 2)]),
+    ("", "떡뽀끼 하나랑 차가운 유자차 한 잔이요", [
+        _item("떡뽀끼", "떡볶이", 1),
+        _item("유자차", "유자차", 1, option_text="차가운"),
     ]),
-    ("", "블린 하나 주시고 다섯 시에 갈게요", [
-        _item("블린", "블린", 1),
+    ("", "아이스유자차 두 잔이요", [_item("유자차", "유자차", 2, option_text="아이스")]),
+    ("", "떡볶이 하나요, 어묵은 빼 주세요", [_item("떡볶이", "떡볶이", 1, option_text="어묵 빼")]),
+    ("떡볶이 하나", "떡볶이에 치즈 추가해 주세요", [
+        {"type": "set_option", "menu_text": "떡볶이", "menu_guess": "떡볶이",
+         "option_text": "치즈 추가"},
+    ]),
+    ("", "꼬마김밥 하나 주시고 다섯 시에 갈게요", [
+        _item("꼬마김밥", "김밥", 1),
         {"type": "set_pickup_time", "time_text": "다섯 시"},
     ]),
-    ("블린 하나", "블린 네 개로 해 주세요", [
-        {"type": "change_qty", "menu_text": "블린", "menu_guess": "블린", "qty": 4},
+    ("김밥 하나", "김밥 네 개로 해 주세요", [
+        {"type": "change_qty", "menu_text": "김밥", "menu_guess": "김밥", "qty": 4},
     ]),
-    ("메도빅 하나", "메도빅은 잘라서 주세요", [
-        {"type": "set_request", "menu_text": "메도빅", "menu_guess": "메도빅",
-         "free_text": "잘라서 주세요"},
+    ("떡볶이 하나", "떡볶이는 따로 담아 주세요", [
+        {"type": "set_request", "menu_text": "떡볶이", "menu_guess": "떡볶이",
+         "free_text": "따로 담아 주세요"},
+    ]),
+    ("", "똑뽀끼는 많이 매워요?", [
+        {"type": "ask_menu_info", "menu_text": "똑뽀끼", "menu_guess": "떡볶이",
+         "free_text": "똑뽀끼는 많이 매워요?"},
     ]),
     ("", "피자 한 판 주세요", [_item("피자", "", 1)]),
     ("", "됐어요 그거면 돼요", [{"type": "done_ordering"}]),
@@ -148,7 +172,11 @@ _EXAMPLES: tuple[tuple[str, str, list[dict[str, Any]]], ...] = (
 
 
 def _example_lines() -> str:
-    lines = ["예시 (발화 → parse_turn 인자):"]
+    lines = [
+        "예시 (설명용 가상 가게다. 이 가게 메뉴를 실제 주문에 쓰지 않는다):",
+        *(f"  예시 가게 메뉴: {line}" for line in EXAMPLE_STORE),
+        "발화 → parse_turn 인자:",
+    ]
     for cart, said, acts in _EXAMPLES:
         args = json.dumps({"acts": acts}, ensure_ascii=False, separators=(",", ":"))
         lines.append(f"- {f'(장바구니: {cart}) ' if cart else ''}\"{said}\" → {args}")
@@ -160,9 +188,15 @@ _SYSTEM = "\n\n".join((_INTRO, _GUIDE, _example_lines()))
 
 def build_messages(text: str, ctx: NluContext) -> list[dict[str, str]]:
     """시스템(메뉴명·장바구니·직전 질문) + 손님 발화 하나 (D4). 대화 기록은 넣지 않는다."""
+    if ctx.menu_catalog:
+        menu = "메뉴 목록 (이름 | 다른 이름 | 꼭 고를 것 | 옵션):\n" + "\n".join(
+            f"- {line}" for line in ctx.menu_catalog
+        )
+    else:
+        menu = f"메뉴 목록: {', '.join(ctx.menu_names) or '없음'}"
     system = (
         f"{_SYSTEM}\n\n"
-        f"메뉴 목록: {', '.join(ctx.menu_names) or '없음'}\n"
+        f"{menu}\n"
         f"장바구니: {ctx.cart_summary or '비어 있음'}\n"
         f"직전 질문: {ctx.last_question or '없음'}"
     )

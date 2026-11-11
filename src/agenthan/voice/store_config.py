@@ -1,6 +1,19 @@
 """계약(`StoreKnowledge`)에 없는 가게 정보 (spec D13).
 
 준비 시간, 영업시간, 필수 옵션 표, 데모 발신번호. 가게 이름은 fixture의 `store.name`에서 읽는다.
+
+가게마다 다른 값은 코드가 아니라 가게 JSON의 `phone` 묶음에 둔다(5단계 티켓 05). 모두 생략 가능.
+
+    "phone": {
+      "prep_minutes": 15, "open": "10:00", "close": "21:00",
+      "required_options": {
+        "<메뉴 id>": [{"name": "온도", "default": "",
+                       "choices": ["따뜻하게", {"name": "차갑게", "extra_price": 0}]}]
+      }
+    }
+
+`required_options`는 손님이 꼭 하나 골라야 하는 것(음료 온도, 국수 양 등). `default`가 있으면
+묻지 않고 그 값으로 담는다. 없는 메뉴는 묻지 않는다.
 """
 
 from __future__ import annotations
@@ -33,9 +46,7 @@ class RequiredOption:
         return next((c for c in self.choices if c.name == name), None)
 
 
-_DEFAULT_REQUIRED: Mapping[str, tuple[RequiredOption, ...]] = MappingProxyType(
-    {"m03": (RequiredOption("온도", (MenuOption("따뜻하게"), MenuOption("차갑게"))),)}
-)
+_NO_REQUIRED: Mapping[str, tuple[RequiredOption, ...]] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -49,7 +60,7 @@ class StoreConfig:
     pickup_step_minutes: int = 5  # 제안 시각을 이 단위로 올린다. 17:10 + 15분 → 17:25
     # 메뉴 id → 필수 옵션들. 엔진이 비어 있는 것을 하나씩 묻는다.
     required_options: Mapping[str, tuple[RequiredOption, ...]] = field(
-        default_factory=lambda: _DEFAULT_REQUIRED
+        default_factory=lambda: _NO_REQUIRED
     )
     demo_phone: str = "010-0000-0000"  # 전화번호는 묻지 않고 미리 채운다 (spec §2)
     tz: timezone = KST
@@ -66,4 +77,38 @@ class StoreConfig:
 
             path = SAMPLE_STORE
         raw = json.loads(path.read_text(encoding="utf-8"))
-        return cls(store_name=raw["store"]["name"])
+        return cls.from_store_json(raw)
+
+    @classmethod
+    def from_store_json(cls, raw: Mapping[str, object]) -> StoreConfig:
+        """가게 JSON(`store`·`phone` 묶음) → 설정. `phone`에 없는 값은 기본값."""
+        store = raw["store"]
+        phone = raw.get("phone") or {}
+        if not isinstance(store, Mapping) or not isinstance(phone, Mapping):
+            raise ValueError("가게 JSON의 store·phone은 객체여야 해요")
+        values: dict[str, object] = {"store_name": store["name"]}
+        if "prep_minutes" in phone:
+            values["prep_minutes"] = int(phone["prep_minutes"])
+        if "open" in phone:
+            values["open_time"] = time.fromisoformat(str(phone["open"]))
+        if "close" in phone:
+            values["close_time"] = time.fromisoformat(str(phone["close"]))
+        if "required_options" in phone:
+            values["required_options"] = MappingProxyType({
+                menu_id: tuple(_required(group) for group in groups)
+                for menu_id, groups in dict(phone["required_options"]).items()
+            })
+        return cls(**values)  # type: ignore[arg-type]
+
+
+def _required(group: Mapping[str, object]) -> RequiredOption:
+    choices = tuple(_choice(c) for c in group["choices"])  # type: ignore[union-attr]
+    return RequiredOption(str(group["name"]), choices, str(group.get("default", "")))
+
+
+def _choice(raw: object) -> MenuOption:
+    if isinstance(raw, str):
+        return MenuOption(raw)
+    if isinstance(raw, Mapping):
+        return MenuOption(str(raw["name"]), extra_price=int(raw.get("extra_price", 0)))
+    raise ValueError(f"꼭 고를 것의 값은 이름이나 {{name, extra_price}}여야 해요: {raw!r}")

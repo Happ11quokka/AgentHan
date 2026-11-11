@@ -208,3 +208,14 @@
 - 통화마다 `<PHONE_LOG_DIR>/stt-YYYYMMDD.jsonl`에 한 줄: CLOVA가 돌려준 결과 원본(받은 세션 시각·글·STT 오디오 구간·epd·epFlag 응답 여부·신뢰도), 보낸 epFlag(세션 시각·STT 오디오 시각), 손님 프레임 도착 간격(`frames.late`·`max_gap_ms`·`max_behind_ms`). 녹음과 상관없이 늘 쓴다(글이 들어 있으니 턴 기록과 같은 취급)
 - 세션 시각 ↔ STT 오디오 시각: `stt_origin_ms` + STT 시각 (프레임이 제때 왔을 때)
 - 테스트 `test_call_debuglog.py`
+
+## 5단계: 가게 범용화 (티켓 05)
+
+가게마다 코드를 고치지 않는다. 가게 차이는 데이터로만 낸다.
+
+- **메뉴·옵션·다른 이름**: 계약 `MenuItem`(`StoreKnowledge.list_menu`) 그대로
+- **전화 주문 설정**: 가게 JSON의 `phone` 묶음(`StoreConfig.from_store_json`). 준비 시간, 영업시간, 메뉴별 꼭 고를 것(`required_options`, 기본값이 있으면 묻지 않음). 모두 생략 가능(없으면 꼭 고를 것 없음). 예: `fixtures/sample_store.json`, 두 번째 더미 가게 `fixtures/phone/sample_pho_store.json`
+- **해석은 LLM**: 엔진이 가게 데이터로 메뉴마다 한 줄(`nlu/catalog.py` `menu_catalog`: 이름 | 다른 이름 | 꼭 고를 것 | 옵션)을 만들어 `NluContext.menu_catalog`로 넘기고, HCX 프롬프트는 그것을 "메뉴 목록"으로 받는다. 프롬프트의 고정 부분(규칙·예시)에는 업종 말과 실제 가게 메뉴가 없다. 예시는 가상의 예시 가게(`hcx.EXAMPLE_STORE`, 분식집)로 쓴다(`test_hcx_prompt.py`가 지킨다)
+- **검증은 코드**: 엔진은 LLM 결과를 그 가게 매처·옵션 목록으로 판정한다(티켓 04의 안전망: 메뉴명 속 옵션 말, 메뉴가 아닌 메뉴 말 버리기, 옵션 대상어 빼기, 짧은 메뉴 말 되묻기). 특정 메뉴 이름은 코드에 없다
+- 범위 밖(가게에 묶인 채 남은 것): 개발용 가짜 NLU(`nlu/fake.py`) 정규식, 사장님 카드 러시아어 용어 사전(`owner/lexicon.py`), "잔"으로 세는 분류(`templates._CUP_CATEGORIES`)
+- 테스트 `test_store_profile.py`·`test_nlu_catalog.py`·`test_hcx_prompt.py`·`test_engine_second_store.py`(쌀국수집 한 통화 끝까지), 골드셋 `test_hcx_gold.py`(가게 메뉴 정보를 넣어 다시 녹화)

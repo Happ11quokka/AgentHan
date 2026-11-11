@@ -45,6 +45,9 @@ class NluContext:
     cart_summary: str
     last_question: str
     state: str
+    # 메뉴마다 한 줄: 이름 · 다른 이름 · 꼭 고를 것 · 옵션 (`nlu.catalog`, 5단계 티켓 05).
+    # 비면 NLU는 `menu_names`만 본다
+    menu_catalog: tuple[str, ...] = ()
 
 
 class Nlu(Protocol):

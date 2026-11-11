@@ -43,6 +43,7 @@ from agenthan.voice.dialog.rules import apply_rules, wait_request_rest
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.matching import MenuMatcher
 from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
+from agenthan.voice.nlu.catalog import menu_catalog
 from agenthan.voice.store_config import RequiredOption, StoreConfig
 from agenthan.voice.timeparse import PickupParse, parse_pickup
 
@@ -169,6 +170,8 @@ class DialogEngine:
         self._order_id = order_id
         self._menu: list[MenuItem] = store.list_menu()  # 통화 시작 때 한 번 (spec §4)
         self._matcher = MenuMatcher(self._menu)
+        # NLU에 줄 가게 메뉴 정보. 통화 동안 메뉴가 안 바뀌므로 한 번 (5단계 티켓 05)
+        self._catalog = menu_catalog(self._menu, config.required_options)
         self._state = State.GREETING
         self._cart = Cart()
         self._pickup: datetime | None = None
@@ -359,6 +362,7 @@ class DialogEngine:
             cart_summary=self._cart.summary(),
             last_question=self._last_question,
             state=self._state.value,
+            menu_catalog=self._catalog,
         )
 
     def _local(self, now: datetime) -> datetime:

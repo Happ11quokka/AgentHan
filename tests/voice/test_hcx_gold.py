@@ -18,9 +18,12 @@ from typing import Any
 
 import pytest
 
+from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.nlu.base import Act, NluContext
+from agenthan.voice.nlu.catalog import menu_catalog
 from agenthan.voice.nlu.clova import ClovaClient, load_api_key
 from agenthan.voice.nlu.hcx import HcxNlu
+from agenthan.voice.store_config import StoreConfig
 
 GOLD = Path(__file__).with_name("nlu_gold.json")
 CASSETTES = Path(__file__).with_name("cassettes")
@@ -67,13 +70,19 @@ def load_gold() -> dict[str, Any]:
 
 
 def context(item: dict[str, Any], menu_names: list[str]) -> NluContext:
+    """엔진이 넘기는 것과 같은 문맥: 메뉴 이름 + 가게 메뉴 정보(5단계 티켓 05)."""
     ctx = item.get("ctx", {})
     return NluContext(
         menu_names=tuple(menu_names),
         cart_summary=ctx.get("cart_summary", ""),
         last_question=ctx.get("last_question", ""),
         state=ctx.get("state", "ORDERING"),
+        menu_catalog=CATALOG,
     )
+
+
+CATALOG = menu_catalog(FakeStoreKnowledge.from_fixture().list_menu(),
+                       StoreConfig.from_fixture().required_options)
 
 
 def act_types(acts: list[Act]) -> list[str]:
