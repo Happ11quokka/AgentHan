@@ -24,9 +24,26 @@ uv run --frozen --offline python -m agenthan.eval.run --backend replay
 # 실제 성능 측정: CLOVASTUDIO_API_KEY가 환경에 있어야 한다
 uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 2 --label m0 --save-baseline m0 --record <레포 밖 경로>/live.json
 
-# 회귀 게이트: 실제 실행 결과의 summary.json 경로를 지정한다
-uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/eval/baselines/m0.json --current eval_results/<실행>/summary.json
 ```
+
+## S1 실행과 회귀 게이트
+
+회귀 판정은 S1 시나리오(`tests/data/eval/s1.jsonl`)로만 한다. 위 route·flow는 L2 진단이다.
+실측은 샌드박스·프록시를 거치지 않고 직접 연결로 돌린다(92건 × 3회, 약 50분).
+
+```bash
+# S1 실행 (dev만 빠르게 볼 때는 --split dev, 특정 시나리오는 --only a,b)
+uv run --frozen --offline --env-file .env python -m agenthan.eval.scenario --label <이름>
+# 커밋된 깨끗한 상태의 전체 실행만 기준선으로 저장한다
+uv run --frozen --offline --env-file .env python -m agenthan.eval.scenario --label s1 --save-baseline s1
+# 중간에 멈춘 실행이나 예전 실행을 rows.jsonl에서 다시 요약
+uv run --frozen --offline python -m agenthan.eval.scenario --from-rows eval_results/<실행>
+# 회귀 게이트: 0=PASS(향상/차이 없음), 1=FAIL, 2=미완료
+uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/eval/baselines/s1.json --current eval_results/<실행>/summary.json
+```
+
+게이트는 같은 시나리오끼리 짝지어 기준선·현재 성공률 차이를 보고, 시나리오를 다시 뽑는 부트스트랩
+95% 구간으로 "향상 / 차이 없음 / 하락"을 판단한다. 판정 규칙은 정본 §6과 `gate.py` 설명에 있다.
 
 출력은 콘솔 표와 `eval_results/<YYYYMMDD-HHMMSS>-<label>/`의
 `summary.json`, `table.md`, `rows.jsonl`이다(UTC 시각, 같은 초 재실행은 접미사 추가).
@@ -134,11 +151,7 @@ HCX가 HTTP 400으로 거절한 요청(예: `40009 Unsupported function`)은 장
 녹화에는 응답 본문 없이 `{"rejected": true}`만 남기며 재생 때 같은 거절을 낸다.
 임베딩 빈도 제한을 피하려고 실제 측정은 `--pause 2`로 돌린다.
 
-게이트 종료 코드는 0=PASS, 1=안전 위반 또는 같은 세트에서 정확도 하락, 2=INCOMPLETE다.
-비교 지표는 `selection_accuracy`, `args_accuracy`이고, 기준선에 있으면 `feature_accuracy`,
-`ask_accuracy`, `store_accuracy`, `completion_rate`도 비교한다. API 오류·미실행이 있으면
-안전 위반보다 우선해 2를 반환한다. 세트 해시가 다르면 `세트 다름`으로 비교하지 않고 2를 반환한다.
-기준선에 있던 지표가 사라지면 2다. 외부 리뷰 요약은 표시만 하고 게이트에 합산하지 않는다.
+route·flow 요약은 게이트에 넣지 않는다(L2 진단). 외부 리뷰 요약도 표시만 한다.
 
 ## 녹화와 재생
 

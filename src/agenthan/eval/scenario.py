@@ -39,7 +39,7 @@ from agenthan.core.llm import ClovaV3Error
 from agenthan.eval.flow import Probe
 from agenthan.eval.metrics import _percentile
 from agenthan.eval.replay import EMBED_MODEL, Live, canonical
-from agenthan.eval.run import ROOT, _git, display_path, sha256
+from agenthan.eval.run import BASELINES, ROOT, _git, display_path, sha256
 from agenthan.tools.dummy_store import DummyStore
 
 SCENARIOS = ROOT / "tests/data/eval/s1.jsonl"  # S1 regression baseline (docs/eval-baseline.md)
@@ -439,6 +439,10 @@ def _rate(values: list[bool]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def _unsafe(run: dict) -> bool:
+    return bool(run["unapproved_write_turns"] or run["out_of_scope_writes"] or run["never_hits"])
+
+
 def summarize(runs: list[dict]) -> dict:
     done = [r for r in runs if r["complete"]]
     turns = [t for r in runs for t in r["turns"]]
@@ -514,6 +518,24 @@ def summarize(runs: list[dict]) -> dict:
         "per_scenario": {
             sid: f"{sum(r['goal'] for r in rs)}/{len(rs)}" for sid, rs in by_id.items()
         },
+        # Counts only (no words or replies): what the gate compares scenario by scenario.
+        "per_scenario_detail": {
+            sid: {
+                "type": rs[0].get("type"),
+                "split": rs[0].get("split"),
+                "runs": len(rs),
+                "complete": sum(r["complete"] for r in rs),
+                "goal": sum(r["goal"] for r in rs),
+                "unsafe": sum(_unsafe(r) for r in rs),
+                "fabricated": sum(
+                    any(t["missing"] and t.get("proposals") for t in r["turns"]) for r in rs
+                ),
+                "answer_failed": sum(
+                    any(t.get("answer_ok") is False for t in r["turns"]) for r in rs
+                ),
+            }
+            for sid, rs in by_id.items()
+        },
     }
 
 
@@ -572,9 +594,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=CHAT_MODEL)
     parser.add_argument("--label", default="scenario")
     parser.add_argument("--out-dir", type=Path, default=ROOT / "eval_results")
+    parser.add_argument(
+        "--save-baseline", metavar="NAME", help="also copy summary.json to baselines/NAME.json"
+    )
+    parser.add_argument(
+        "--from-rows",
+        type=Path,
+        metavar="DIR",
+        help="re-summarize an existing run directory (rows.jsonl) without calling the API",
+    )
     args = parser.parse_args(argv)
     if not re.fullmatch(r"[\w-]+", args.label):
         parser.error("label must contain only letters, numbers, underscores, or hyphens")
+    if args.save_baseline and not re.fullmatch(r"[\w-]+", args.save_baseline):
+        parser.error("baseline name must contain only letters, numbers, underscores, or hyphens")
+    if args.from_rows:
+        return _resummarize(args.from_rows, args.save_baseline)
     scenarios = load_scenarios(args.cases)
     if args.only:
         wanted = set(args.only.split(","))
@@ -627,6 +662,10 @@ def main(argv: list[str] | None = None) -> int:
         },
         "results": summarize(runs),
     }
+    return _write(directory, summary, args.save_baseline)
+
+
+def _write(directory: Path, summary: dict, baseline: str | None) -> int:
     summary["status"] = "INCOMPLETE" if summary["results"]["incomplete_runs"] else "COMPLETE"
     payload = json.dumps(summary, ensure_ascii=False, indent=2) + "\n"
     (directory / "summary.json").write_text(payload, encoding="utf-8")
@@ -634,7 +673,30 @@ def main(argv: list[str] | None = None) -> int:
     (directory / "table.md").write_text(table, encoding="utf-8")
     print(table)
     print(f"{summary['status']}: {directory / 'summary.json'}")
+    if baseline:
+        if summary["status"] != "COMPLETE" or summary["conditions"].get("git_dirty"):
+            print("기준선 저장 안 함: 미완료 실행이거나 커밋 안 된 변경이 있음")
+            return 2
+        BASELINES.mkdir(parents=True, exist_ok=True)
+        (BASELINES / f"{baseline}.json").write_text(payload, encoding="utf-8")
+        print(f"기준선 저장: {display_path(BASELINES / f'{baseline}.json')}")
     return 2 if summary["status"] == "INCOMPLETE" else 0
+
+
+def _resummarize(directory: Path, baseline: str | None) -> int:
+    """Rebuild summary.json/table.md from rows.jsonl, keeping the recorded conditions."""
+    runs = [
+        json.loads(line)
+        for line in (directory / "rows.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    old = directory / "summary.json"
+    conditions = json.loads(old.read_text(encoding="utf-8"))["conditions"] if old.exists() else {}
+    if not conditions:
+        print("summary.json이 없어 실행 조건을 알 수 없음")
+        return 2
+    summary = {"version": 1, "conditions": conditions, "results": summarize(runs)}
+    return _write(directory, summary, baseline)
 
 
 if __name__ == "__main__":
