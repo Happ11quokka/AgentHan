@@ -92,3 +92,24 @@ def test_interrupted_bot_audio_after_the_cut_is_not_in_the_recording(tmp_path) -
     sent = sum(len(f.pcm) for f in c.out.frames if f.turn == 1) // 32
     assert sent >= 3_000, "끊기 전에 턴 1 소리를 여러 문장 보냈다"
     assert len(right) < (start + sent) * 16, "끊은 뒤의 봇 소리는 지운다"
+
+
+def test_numbers_are_spoken_as_words_but_captions_keep_digits(tmp_path) -> None:
+    """5단계 티켓 10: TTS에는 말로("여섯 시 반", "칠천오백 원"), 자막(`bot.say`)은 숫자 그대로."""
+    tts = FakeTts()
+    stt = FakeSttStream(replies=ORDER_SCRIPT)
+
+    async def go() -> Call:
+        async with Call(tmp_path, stt=stt, tts=tts) as c:
+            await c.start()
+            for turn in (1, 2, 3, 4):
+                await c.turn(turn)
+            await asyncio.wait_for(c.session.wait_done(), 3)
+            return c
+
+    c = asyncio.run(go())
+    said = " ".join(e["text"] for e in c.out.of("bot.say"))
+    assert "6시 반" in said and "7,500원" in said
+    spoken = " ".join(tts.calls)
+    assert "여섯 시 반" in spoken and "칠천오백 원" in spoken
+    assert not any(ch.isdigit() for ch in spoken)

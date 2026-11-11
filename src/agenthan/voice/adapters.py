@@ -66,7 +66,7 @@ def tts_factory(settings: VoiceSettings) -> TtsFactory:
     if settings.tts == "fake":
         return FakeTts
     module = _require("PHONE_TTS", CLOVA_TTS)
-    return lambda: _clova_tts(module, settings.env)
+    return lambda: _clova_tts(module, settings.env, settings.tts_speaker)
 
 
 def _require(var: str, spec: tuple[str, str, str]) -> Any:
@@ -96,9 +96,9 @@ def _clova_stt(module: Any, env: Mapping[str, str], boost_words: tuple[str, ...]
     return module.ClovaSttStream(settings)
 
 
-def _clova_tts(module: Any, env: Mapping[str, str]) -> Tts:
+def _clova_tts(module: Any, env: Mapping[str, str], speaker: str) -> Tts:
     client_id, secret = (env.get(k, "").strip() for k in module.KEY_ENVS)
     if not (client_id and secret):
         keys = ", ".join(module.KEY_ENVS)
         raise PortError(f"CLOVA Voice 키가 없어요 ({keys})", code="tts_config", retry=False)
-    return module.ClovaVoiceTts(client_id, secret)
+    return module.ClovaVoiceTts(client_id, secret, **({"speaker": speaker} if speaker else {}))

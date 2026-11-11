@@ -21,7 +21,9 @@ from agenthan.voice.call.ports import PortError
 from agenthan.voice.settings import read_env_file
 
 TTS_URL = "https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts"
-SPEAKER = "nara_call"
+# 화자. 2026-11-11 동현님이 8명을 들어 보고 대성 Pro로 골랐다(5단계 티켓 10). 이전 nara_call
+# `PHONE_TTS_SPEAKER`로 바꾼다
+SPEAKER = "vdaeseong"
 SAMPLE_RATE = 16000
 KEY_ENVS = ("CLOVA_VOICE_CLIENT_ID", "CLOVA_VOICE_CLIENT_SECRET")
 # 실측 첫 바이트: 120자 0.72초, 205자 한 문장도 합성됨. 세션 문장은 150자 이하라 넉넉하다

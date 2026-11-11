@@ -335,3 +335,11 @@ def test_asking_the_owner_during_a_call_is_off_unless_turned_on() -> None:
     assert off.ask_owner is False and off.session_settings().ask_owner is False
     on = VoiceSettings.from_env({"PHONE_ASK_OWNER": "on"}, env_file=None)
     assert on.session_settings().ask_owner is True
+
+
+def test_tts_speaker_defaults_to_the_adapter_and_can_be_changed() -> None:
+    """5단계 티켓 10: 기본 대성 Pro(어댑터), `PHONE_TTS_SPEAKER`로 바꾼다."""
+    env = {"PHONE_TTS": "clova", "CLOVA_VOICE_CLIENT_ID": "i", "CLOVA_VOICE_CLIENT_SECRET": "s"}
+    assert tts_factory(VoiceSettings.from_env(env, env_file=None))()._speaker == "vdaeseong"
+    env["PHONE_TTS_SPEAKER"] = "nara_call"
+    assert tts_factory(VoiceSettings.from_env(env, env_file=None))()._speaker == "nara_call"

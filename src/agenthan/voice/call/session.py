@@ -144,6 +144,7 @@ from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.nlu.base import Nlu
 from agenthan.voice.nlu.prefetch import PrefetchNlu
 from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.tts_text import to_spoken
 
 log = logging.getLogger(__name__)
 
@@ -1311,7 +1312,7 @@ class CallSession:
                 if seq == 0:
                     self._log.mark(turn, "tts_start")
                 try:
-                    pcm = await self._tts.synth(text)
+                    pcm = await self._tts.synth(to_spoken(text))  # 숫자는 말로 (티켓 10)
                 except PortError:
                     raise
                 except Exception as err:

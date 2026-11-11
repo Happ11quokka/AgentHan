@@ -45,7 +45,7 @@ def tts_with(handler) -> ClovaVoiceTts:
     return ClovaVoiceTts(ID, SECRET, http=http)
 
 
-def test_synth_posts_form_with_nara_call_wav_16k_and_returns_pcm_only() -> None:
+def test_synth_posts_form_with_the_default_speaker_wav_16k_and_returns_pcm_only() -> None:
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -63,7 +63,7 @@ def test_synth_posts_form_with_nara_call_wav_16k_and_returns_pcm_only() -> None:
     assert req.headers["Content-Type"] == "application/x-www-form-urlencoded"
     form = {k: v[0] for k, v in parse_qs(req.content.decode()).items()}
     assert form == {
-        "speaker": "nara_call",
+        "speaker": "vdaeseong",
         "text": "네, 주문 받았어요.",
         "format": "wav",
         "sampling-rate": "16000",

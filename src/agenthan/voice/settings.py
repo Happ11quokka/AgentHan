@@ -8,6 +8,7 @@
 | `PHONE_TZ` | 가게 시간대 (IANA 이름) | `Asia/Seoul` |
 | `PHONE_LOG_DIR` | 턴별 지연 JSONL 폴더 (gitignore) | `logs` |
 | `PHONE_NLU_TASK_ID` | HCX 튜닝 모델 작업 id(`PHONE_NLU=hcx`일 때). 비면 기본 프롬프트 | 없음 |
+| `PHONE_TTS_SPEAKER` | CLOVA Voice 화자 (예: `vdaeseong`, `nara_call`) | `vdaeseong` |
 | `PHONE_STT_BOOST_WEIGHT` | CLOVA 키워드 부스팅 가중치. 0이면 끔(3에서 문장 잘림) | `0` |
 | `PHONE_RECORD_DIR` | 통화 녹음 폴더(디버그용). 통화마다 WAV 하나. 발표 때는 비운다 | 없음(꺼짐) |
 | `PHONE_NOW` | 가게 시작 시각(ISO 8601, 시간대 포함). 그 뒤 실제 시간만큼 감. 시연용 | 없음(지금) |
@@ -91,6 +92,7 @@ class VoiceSettings:
     log_dir: Path | None = Path("logs")
     record_dir: Path | None = None  # 통화 녹음 (5단계 티켓 01). None이면 꺼짐
     stt_boost_weight: float = 0.0  # CLOVA 키워드 부스팅 (5단계 티켓 07). 0이면 끔
+    tts_speaker: str = ""  # CLOVA Voice 화자. 비면 어댑터 기본(대성 Pro, 5단계 티켓 10)
     now: datetime | None = None
     fake_replies: tuple[str, ...] = DEFAULT_FAKE_REPLIES
     store_fixture: Path | None = None  # None이면 샘플 가게
@@ -187,6 +189,7 @@ class VoiceSettings:
             tz=_zone(get("PHONE_TZ", "Asia/Seoul")),
             log_dir=Path(log_dir),
             record_dir=Path(rec) if (rec := get("PHONE_RECORD_DIR", "")) else None,
+            tts_speaker=get("PHONE_TTS_SPEAKER", ""),
             stt_boost_weight=_number("PHONE_STT_BOOST_WEIGHT", get("PHONE_STT_BOOST_WEIGHT", ""),
                                      0.0),
             now=fixed_now,
