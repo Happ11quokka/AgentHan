@@ -124,3 +124,37 @@ def test_removing_an_option_word_with_an_empty_cart_asks_which_menu() -> None:
     r = _engine({said: [Act("remove_item", menu_text="샤워 크림", qty=1)]}).handle(said, NOW)
     assert not any("주문하신 것 중에" in u for u in r.utterances)
     assert r.cart.is_empty()
+
+
+def test_a_bare_misheard_menu_name_that_nlu_gave_up_on_is_confirmed() -> None:
+    """STT "맥도빅" 한 마디를 HCX가 unknown으로 냈다. 짧은 말이 메뉴와 비슷하면 되묻는다."""
+    engine = _engine({"맥도빅": [Act("unknown", free_text="맥도빅")]})
+    r = engine.handle("맥도빅", NOW)
+    assert r.state is State.CLARIFY
+    assert r.utterances == ["혹시 메도빅 말씀하신 거 맞으세요?"]
+    r = engine.handle("네", NOW)
+    assert _lines(r) == [("m01", 1, ())]
+
+
+def test_a_long_sentence_nlu_gave_up_on_is_not_guessed_as_a_menu() -> None:
+    said = "아니 블리크림에 빼달라고"
+    r = _engine({said: [Act("unknown", free_text=said)]}).handle(said, NOW)
+    assert r.cart.is_empty()
+    assert r.state is not State.CLARIFY
+
+
+def test_saying_the_option_that_is_already_set_still_gets_an_answer() -> None:
+    """이미 차갑게인 아메리카노에 "아이스로 주세요": 말없이 넘어가지 않는다."""
+    first = "아메리카노 차갑게 하나요"
+    again = "아이스로 주세요"
+    engine = _engine({
+        first: [Act("add_item", menu_text="아메리카노", menu_guess="아메리카노", qty=1,
+                    option_text="차갑게")],
+        again: [Act("set_option", menu_text="아이스로", menu_guess="아메리카노",
+                    option_text="아이스")],
+    })
+    engine.handle(first, NOW)
+    r = engine.handle(again, NOW)
+    assert _lines(r) == [("m03", 1, ("차갑게",))]
+    assert r.utterances, "봇이 아무 말도 안 하면 손님은 끊긴 줄 안다"
+    assert "차갑게" in r.utterances[0]

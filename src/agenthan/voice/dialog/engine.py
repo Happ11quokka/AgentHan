@@ -61,6 +61,9 @@ _ACTIVE = (State.ORDERING, State.CLARIFY, State.ASK_PICKUP, State.CONFIRM)
 # "더 필요하신 거?"에 "아니요, ~"의 뒷말이 이것뿐이면 "아니요"는 주문 끝이다 (`_no_means_done`)
 _AFTER_DONE: frozenset[ActType] = frozenset({"set_pickup_time", "set_name", "done_ordering"})
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
+# NLU가 놓친 메뉴 한 마디를 매처로 다시 볼 최대 길이(공백·문장부호 뺀 글자). "맥도빅 주세요"(6)까지
+RESCUE_MAX_CHARS = 7
+_SPACES_PUNCT = re.compile(r"[\s.,!?~]+")
 
 
 @dataclass(frozen=True)
@@ -374,6 +377,7 @@ class DialogEngine:
         acts = apply_rules(text)
         if acts is None:
             acts = self._nlu.parse(text, self.nlu_context())
+            acts = self._menu_word_rescue(text, acts)
         if self._no_means_done(acts):
             # "더 필요하신 거?" → "아니요, 지금 바로 갈게요": 아니요가 답이다 (2단계 리뷰 5번)
             acts = [Act("done_ordering"), *acts[1:]]
@@ -384,6 +388,22 @@ class DialogEngine:
                     break  # "혹시 메도빅 맞으세요?" → "네, 두 개요": 네가 답이다 (리뷰 C9)
                 acts = acts[1:]
         return acts
+
+    def _menu_word_rescue(self, text: str, acts: list[Act]) -> list[Act]:
+        """NLU가 다 unknown으로 낸 짧은 말이 메뉴와 비슷하면 그 메뉴 주문으로 본다 (5단계 티켓 04).
+
+        실기기 통화에서 STT "맥도빅" 한 마디를 HCX가 unknown으로 냈다. 매처가 수락·되묻기로 보는
+        짧은 말(`RESCUE_MAX_CHARS` 이하)만 바꾼다. 긴 문장은 다른 말이 섞여 메뉴로 짐작하지 않는다.
+        되묻기 판정이면 엔진이 "혹시 ○○ 말씀하신 거 맞으세요?"로 묻는다.
+        """
+        if self._state is not State.ORDERING or any(a.type != "unknown" for a in acts):
+            return acts
+        compact = _SPACES_PUNCT.sub("", text)
+        if not compact or len(compact) > RESCUE_MAX_CHARS:
+            return acts
+        if self._matcher.match(text, "").decision not in ("accept", "confirm"):
+            return acts
+        return [Act("add_item", menu_text=text.strip(" .?!"))]
 
     def _no_means_done(self, acts: list[Act]) -> bool:
         """주문 중 "더 필요하신 거?" 바로 뒤, 맨 앞 "아니요" + 장바구니를 안 건드리는 말.
@@ -1160,7 +1180,8 @@ class DialogEngine:
         line = self._cart.lines[index]
         options = self._resolve_options(turn, line.item, text, line.options)
         if options == line.options:
-            self._focus = line
+            self._touch(turn, line)  # 이미 그 옵션이다. 말없이 넘어가지 않게 되받는다 (티켓 04)
+            turn.changed = True
             return
         self._replace_line(turn, index, replace(line, options=options))
 
