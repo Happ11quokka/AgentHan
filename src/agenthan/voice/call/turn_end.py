@@ -9,13 +9,14 @@ import re
 from dataclasses import dataclass, replace
 from typing import Literal
 
-from agenthan.voice.call.defaults import CONT_WAIT_S, MODEL_HIGH, MODEL_LOW
+from agenthan.voice.call.defaults import CONT_WAIT_S, MODEL_HIGH, MODEL_LOW, MORE_NO_WAIT_S
 from agenthan.voice.dialog.rules import BACKCHANNELS, FILLERS, PUNCT, WAIT_REQUEST, yes_or_no
 from agenthan.voice.hangul import BLANK, decompose
 
 Label = Literal["end", "continue", "wait_request"]
-# 직전 질문 종류 (Raux & Eskenazi 2008): 확인(예/아니요) · 닫힌(고르기·시각) · 열린
-QuestionKind = Literal["confirm", "closed", "open"]
+# 직전 질문 종류 (Raux & Eskenazi 2008): 확인(예/아니요) · 닫힌(고르기·시각) · 열린 ·
+# 추가 주문("더 필요하신 거 있으세요?", 6단계 티켓 02)
+QuestionKind = Literal["confirm", "closed", "open", "more"]
 
 # 연결어미 단서의 단어 예외 (검증 노트 "규칙 단서 반례"). 끝 토큰이 이 말이면 이어짐 단서가 아니다
 _NOT_GO = frozenset({"뭐라고", "최고", "창고", "재고", "참고", "광고", "사고", "망고"})
@@ -58,15 +59,23 @@ class TurnEndVerdict:
 # 엔진 템플릿(`dialog/templates.py`)의 질문 끝. 예/아니요로 답하는 질문
 _CONFIRM_TAILS = ("맞으세요?", "괜찮으세요?", "거죠?", "할까요?", "어떠세요?")
 _CLOSED_TAILS = ("드릴까요?", "오세요?", "어떤 거요?")
+# 추가 주문 질문("더 필요하신 거 있으세요?"). 주문 받는 중(ORDERING)일 때만 본다
+_MORE_TAILS = ("있으세요?", "없으세요?")
 
 
 def question_kind(last_question: str, state: str) -> QuestionKind:
-    """엔진의 직전 질문과 상태 → 질문 종류. 복창(CONFIRM)은 늘 확인 질문이다."""
+    """엔진의 직전 질문과 상태 → 질문 종류. 복창(CONFIRM)은 늘 확인 질문이다.
+
+    추가 주문 질문(`more`)은 답 "아니요" 뒤에 덧붙임("그게 다예요")이 잦아 따로 둔다. 그 밖의
+    판정은 열린 질문과 같다.
+    """
     q = last_question.strip()
     if state == "confirm" or q.endswith(_CONFIRM_TAILS):
         return "confirm"
     if q.endswith(_CLOSED_TAILS):
         return "closed"
+    if state == "ordering" and q.endswith(_MORE_TAILS):
+        return "more"
     return "open"
 
 
@@ -115,6 +124,7 @@ def classify_turn_end(
     question_kind: str,
     menu_names: tuple[str, ...],
     cont_wait_s: float = CONT_WAIT_S,
+    more_no_wait_s: float = MORE_NO_WAIT_S,
 ) -> TurnEndVerdict:
     """확정 글 하나가 끝난 말인가.
 
@@ -122,10 +132,18 @@ def classify_turn_end(
     메뉴 이름, 이어짐 상한. 규칙의 목표는 이어짐의 정밀도다. 틀려서 이어짐이면 최대 상한만큼
     늦고, 틀려서 끝남이면 말을 자른다. 그래서 기본은 끝남이고 이어짐은 글에 단서가 보일 때만 건다.
     `state`는 지금 규칙에서 질문 종류를 거쳐서만 쓴다(상태별 대기 표를 넣을 자리).
+
+    추가 주문 질문(`more`) 뒤 맨 "아니요"는 `more_no_wait_s`만큼만 이어짐이다(6단계 티켓 02).
+    "아니요"는 완결된 답이지만 손님이 쉬었다가 "그게 다예요"를 덧붙이면 그 말이 다음 턴으로
+    밀렸다. 턴 모델은 짧은 "아니요"를 끝으로 보므로 확실한 판정(`firm`)으로 둔다. 0이면 끈다.
+    맨 "네"는 건드리지 않는다: 엔진이 "어떤 걸로 드릴까요?"로 받는다. 확인 질문 뒤 "네"·"아니요"는
+    지금처럼 바로 끝이다.
     """
     tokens = _tokens(text)
     if not tokens:
         return TurnEndVerdict("end", "empty")
+    if question_kind == "more" and more_no_wait_s > 0 and yes_or_no(text) == "no":
+        return TurnEndVerdict("continue", "no_after_more", firm=True, wait_s=more_no_wait_s)
     verdict = _judge(text, tokens, question_kind, menu_names)
     if verdict.label == "continue":
         verdict = replace(verdict, wait_s=cont_wait_s)

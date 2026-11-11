@@ -76,6 +76,19 @@ def test_continuation_wait_defaults_to_two_seconds_and_can_be_changed() -> None:
     assert s.cont_wait_s == 1.5
 
 
+def test_the_wait_after_a_bare_no_defaults_to_1_2_seconds_and_zero_turns_it_off() -> None:
+    # 6단계 티켓 02: "더 필요하신 거 있으세요?" 뒤 맨 "아니요"는 말 끝부터 이만큼만 기다린다
+    assert VoiceSettings.from_env({}, env_file=None).more_no_wait_s == 1.2
+    s = VoiceSettings.from_env({"PHONE_MORE_NO_WAIT_S": "0.8"}, env_file=None)
+    assert s.more_no_wait_s == 0.8
+    assert s.session_settings().more_no_wait_s == 0.8
+    off = VoiceSettings.from_env({"PHONE_MORE_NO_WAIT_S": "0"}, env_file=None)
+    assert off.more_no_wait_s == 0.0
+    for wrong in ("-1", "nan", "잠깐"):
+        with pytest.raises(SettingsError, match="PHONE_MORE_NO_WAIT_S"):
+            VoiceSettings.from_env({"PHONE_MORE_NO_WAIT_S": wrong}, env_file=None)
+
+
 def test_no_input_waits_default_to_six_and_fifteen_seconds_and_can_be_changed() -> None:
     # 3단계 티켓 04: 재생 끝부터 6초 무응답이면 되묻고, "잠깐만요" 뒤에는 15초 (grilling Q6)
     default = VoiceSettings.from_env({}, env_file=None)

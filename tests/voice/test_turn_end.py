@@ -211,7 +211,11 @@ def test_short_yes_words_are_both_a_yes_and_a_backchannel(word: str) -> None:
         ("아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?", "clarify", "closed"),
         ("몇 시쯤 오세요?", "ask_pickup", "closed"),
         ("메도빅이랑 나폴레옹 중에 어떤 거요?", "clarify", "closed"),
-        ("메도빅 하나요. 더 필요하신 거 있으세요?", "ordering", "open"),
+        ("메도빅 하나요. 더 필요하신 거 있으세요?", "ordering", "more"),
+        ("더 필요하신 거 없으세요?", "ordering", "more"),
+        # 주문 받는 중이 아니면 추가 주문 질문이 아니다 (평가 도구는 상태 없이 부른다)
+        ("더 필요하신 거 있으세요?", "", "open"),
+        ("어떤 걸로 드릴까요?", "ordering", "closed"),
         ("", "ordering", "open"),
     ],
 )
@@ -289,3 +293,48 @@ def test_a_final_ending_without_an_order_ends_but_the_model_can_hold_it(text: st
     decision = combined(text, 0.1)
     assert (decision.label, decision.path) == ("continue", "model")
     assert combined(text, 0.5).label == "end"  # 가운데 점수면 규칙대로 끝
+
+
+# ------------------------------------------------ 추가 주문 질문 뒤 맨 "아니요" (6단계 티켓 02)
+
+
+@pytest.mark.parametrize("text", ["아니요", "아뇨", "아니요.", "아니요 아니요"])
+def test_a_bare_no_after_the_anything_else_question_waits_briefly(text: str) -> None:
+    # "더 필요하신 거 있으세요?" → "아니요 … 그게 다예요": 완결된 답이지만 덧붙임이 잦다.
+    # 말 끝부터 짧게만 기다린다. 턴 모델은 짧은 "아니요"를 끝으로 보므로 모델보다 앞선다
+    verdict = judge(text, kind="more")
+    assert (verdict.label, verdict.firm, verdict.reason) == ("continue", True, "no_after_more")
+    assert verdict.wait_s == 1.2
+    decision = combine_turn_end(verdict, 0.95)
+    assert (decision.label, decision.path, decision.wait_s) == ("continue", "rule", 1.2)
+
+
+def test_the_brief_wait_after_a_bare_no_is_tunable_and_zero_turns_it_off() -> None:
+    def tuned(wait: float):
+        return classify_turn_end("아니요", state="ordering", question_kind="more",
+                                 menu_names=MENU, more_no_wait_s=wait)
+
+    assert tuned(0.8).wait_s == 0.8
+    off = tuned(0.0)
+    assert (off.label, off.reason, off.firm, off.wait_s) == ("end", "final_ending", False, 0.0)
+
+
+@pytest.mark.parametrize("text", ["네", "예", "네 네"])
+def test_a_bare_yes_after_the_anything_else_question_is_left_as_it_was(text: str) -> None:
+    # 엔진이 맨 "네"에 "어떤 걸로 드릴까요?"로 받는다. 기다리지 않는다
+    assert judge(text, kind="more") == judge(text, kind="open")
+    assert judge(text, kind="more").label == "end"
+
+
+@pytest.mark.parametrize("text", ["아니요 그게 다예요", "아니요 블린도 하나요", "그게 다예요"])
+def test_a_no_with_more_words_after_the_anything_else_question_is_judged_as_before(
+    text: str,
+) -> None:
+    assert judge(text, kind="more") == judge(text, kind="open")
+
+
+def test_a_bare_no_after_other_questions_does_not_wait() -> None:
+    assert judge("아니요", kind="open").label == "end"
+    assert judge("아니요", kind="closed").label == "end"
+    confirm = judge("아니요", kind="confirm", state="confirm")
+    assert (confirm.label, confirm.firm, confirm.reason) == ("end", True, "yes_no_after_confirm")

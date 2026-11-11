@@ -330,3 +330,94 @@ def test_a_prefetch_slower_than_its_time_limit_is_called_again(tmp_path) -> None
     assert nlu.calls == ["메도빅 두 개랑", "메도빅 두 개랑"]
     prefetch = records(c)[1]["nlu_prefetch"]
     assert (prefetch["used"], prefetch["miss"], prefetch["discarded"]) == (False, "timeout", 1)
+
+
+# ------------------------------------------------ 추가 주문 질문 뒤 맨 "아니요" (6단계 티켓 02)
+
+
+def test_a_bare_no_after_anything_else_merges_with_what_follows_shortly(tmp_path) -> None:
+    # "더 필요하신 거 있으세요?" → "아니요" (쉼) "그게 다예요". 전에는 "아니요"가 바로 턴이 됐다
+    stt = FakeSttStream(replies=["메도빅 하나요", "아니요", "그게 다예요"])
+    nlu = CountingNlu()
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, nlu=nlu, settings=settings(more_no_wait_s=0.6)) as c:
+            await c.start()
+            await c.turn(1)
+            await c.say()
+            await asyncio.sleep(0.3)  # 짧은 대기 안에 덧붙인다
+            assert c.out.of("stt.final", 2) == []
+            await c.say()
+            await c.out.wait_for("bot.done", turn=2)
+            return c
+
+    c = run(call())
+    (final,) = c.out.of("stt.final", 2)
+    assert (final["text"], final["fragments"]) == ("아니요 그게 다예요", 2)
+    assert c.out.of("state")[-1]["dialog"] == "ask_pickup"
+    assert nlu.calls == ["메도빅 하나요"]  # 합친 말은 규칙이 읽는다
+    turn2 = next(r for r in records(c) if r["turn"] == 2)
+    assert turn2["turn_end_steps"][0]["reason"] == "no_after_more"
+    assert turn2["turn_end_steps"][0]["wait_s"] == 0.6
+
+
+def test_a_bare_no_after_anything_else_goes_on_alone_after_the_short_wait(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요", "아니요"])
+
+    async def call() -> tuple[Call, float]:
+        async with Call(tmp_path, stt=stt, settings=settings(more_no_wait_s=0.4,
+                                                             cont_wait_s=2.0)) as c:
+            await c.start()
+            await c.turn(1)
+            await c.feed(tone(800))
+            spoke = time.monotonic()
+            await c.feed(silence(1_200))
+            await c.out.wait_for("stt.final", turn=2)
+            waited = time.monotonic() - spoke
+            await c.out.wait_for("bot.done", turn=2)
+            return c, waited
+
+    c, waited = run(call())
+    assert 0.35 <= waited < 0.9  # 이어짐 상한(2초)이 아니라 짧은 대기
+    turn2 = next(r for r in records(c) if r["turn"] == 2)
+    assert (turn2["text"], turn2["turn_end"]["reason"]) == ("아니요", "cap:no_after_more")
+    assert c.out.of("state")[-1]["dialog"] == "ask_pickup"
+
+
+def test_the_short_wait_after_a_bare_no_can_be_turned_off(tmp_path) -> None:
+    stt = FakeSttStream(replies=["메도빅 하나요", "아니요"])
+
+    async def call() -> tuple[Call, float]:
+        async with Call(tmp_path, stt=stt, settings=settings(more_no_wait_s=0.0,
+                                                             cont_wait_s=2.0)) as c:
+            await c.start()
+            await c.turn(1)
+            began = time.monotonic()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=2)
+            return c, time.monotonic() - began
+
+    c, waited = run(call())
+    assert waited < 0.3
+    turn2 = next(r for r in records(c) if r["turn"] == 2)
+    assert turn2["turn_end"]["reason"] == "final_ending"
+
+
+def test_a_bare_yes_after_anything_else_is_answered_at_once(tmp_path) -> None:
+    # 맨 "네"는 엔진이 "어떤 걸로 드릴까요?"로 받는다. 기다리지 않는다
+    stt = FakeSttStream(replies=["메도빅 하나요", "네"])
+
+    async def call() -> tuple[Call, float]:
+        async with Call(tmp_path, stt=stt, settings=settings(cont_wait_s=2.0)) as c:
+            await c.start()
+            await c.turn(1)
+            began = time.monotonic()
+            await c.say()
+            await c.out.wait_for("stt.final", turn=2)
+            waited = time.monotonic() - began
+            await c.out.wait_for("bot.done", turn=2)
+            return c, waited
+
+    c, waited = run(call())
+    assert waited < 0.3
+    assert [e["text"] for e in c.out.of("bot.say", 2)] == ["어떤 걸로 드릴까요?"]

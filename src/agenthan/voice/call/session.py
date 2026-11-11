@@ -87,6 +87,7 @@ from agenthan.voice.call.defaults import (
     CONT_WAIT_S,
     MODEL_HIGH,
     MODEL_LOW,
+    MORE_NO_WAIT_S,
     NO_INPUT_S,
     NO_INPUT_SLACK_S,
     NO_INPUT_SPEECH_MAX_S,
@@ -194,6 +195,9 @@ class SessionSettings:
     # 말 끝 판정 (3단계 티켓 02). 이어짐이면 마지막 말 끝(마지막 유성 프레임 도착)부터 이만큼까지
     # 기다린다. 말이 다시 시작되면 다음 말 끝부터 다시 센다 (grilling Q3, `PHONE_CONT_WAIT_S`)
     cont_wait_s: float = CONT_WAIT_S
+    # 추가 주문 질문("더 필요하신 거 있으세요?") 뒤 맨 "아니요"를 말 끝부터 이만큼만 이어짐으로
+    # 기다린다. 덧붙인 "그게 다예요"와 한 턴이 된다 (6단계 티켓 02, `PHONE_MORE_NO_WAIT_S`, 0은 끔)
+    more_no_wait_s: float = MORE_NO_WAIT_S
     # 이어짐 대기 전체 상한(대기 중 마지막 글부터, 리뷰 P3). 글 없는 배경 소리가 "말하는 중"을
     # 안 풀어도 여기서 넘긴다. 글이 계속 들어오는 긴 주문은 쪼개지 않는다
     cont_max_s: float = 8.0
@@ -990,6 +994,7 @@ class CallSession:
         verdict = classify_turn_end(
             text, state=ctx.state, question_kind=question_kind(ctx.last_question, ctx.state),
             menu_names=ctx.menu_names, cont_wait_s=self._settings.cont_wait_s,
+            more_no_wait_s=self._settings.more_no_wait_s,
         )
         settings = self._settings
         score, self._model_info = self._take_score()  # 없으면(꺼짐·늦음·실패) 규칙만

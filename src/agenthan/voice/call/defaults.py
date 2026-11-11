@@ -8,6 +8,10 @@ from __future__ import annotations
 # 이어짐 상한(초): 이어질 모양이면 마지막 말 끝부터 이만큼까지 기다린다 (grilling Q3,
 # `PHONE_CONT_WAIT_S`)
 CONT_WAIT_S = 2.0
+# 추가 주문 질문("더 필요하신 거 있으세요?") 뒤 맨 "아니요"는 말 끝부터 이만큼만 이어짐으로
+# 기다린다 (6단계 티켓 02, `PHONE_MORE_NO_WAIT_S`). 0이면 끔. STT 글이 말 끝 + 0.8~1.0초에 오므로
+# 실제로 더 기다리는 것은 약 0.2~0.4초다 (`research/s6-turn-split.md` 차선 1)
+MORE_NO_WAIT_S = 1.2
 # 턴 모델(Smart Turn) 끝남 확률 대역. LOW 이하면 이어짐 쪽, HIGH 이상이면 끝남 쪽, 그 사이는
 # 끝말 규칙 (`PHONE_TURN_LOW`·`PHONE_TURN_HIGH`)
 MODEL_LOW = 0.3
