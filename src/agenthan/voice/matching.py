@@ -34,6 +34,7 @@ ACCEPT_AT = 0.85  # 이 점수 이상이고 2등과 MARGIN 이상 차이 나면 
 # 되물어야 하는 가장 낮은 기존 예("꿀케익" 0.72)는 확인 구간에 남는다
 REJECT_BELOW = 0.7  # 이 점수 미만이면 없는 메뉴
 MARGIN = 0.1  # 1·2등 차이가 이보다 작으면 둘 중 하나를 묻는다
+MIN_CUT_OFF_CHARS = 2  # 잘린 메뉴 말로 볼 최소 글자 수 (`MenuMatcher._cut_off`)
 GUESS_BONUS = 0.1  # menu_guess가 같은 메뉴를 가리킬 때 더하는 점수
 
 # ---------------------------------------------------------------- 정규화
@@ -147,7 +148,11 @@ class MenuMatcher:
     def match(self, menu_text: str, menu_guess: str = "") -> MatchResult:
         ranked = self._rank(menu_text or menu_guess, menu_guess)
         if not ranked or ranked[0][0] < self._reject_below:
-            return MatchResult("reject", score=ranked[0][0] if ranked else 0.0)
+            score = ranked[0][0] if ranked else 0.0
+            cut = self._cut_off(menu_text, menu_guess)
+            if cut is not None:  # 받지는 않고 "혹시 ○○ 말씀하신 거 맞으세요?"로 묻는다
+                return self._single("confirm", cut, score)
+            return MatchResult("reject", score=score)
 
         top, item, corroborated = ranked[0]
         close = [m for s, m, _ in ranked[1:2] if s >= self._reject_below and top - s < self._margin]
@@ -156,6 +161,25 @@ class MenuMatcher:
         if top >= self._accept_at and (corroborated or not self._fuzzy_accept_needs_guess):
             return self._single("accept", item, top)
         return self._single("confirm", item, top)
+
+    def _cut_off(self, text: str, guess: str) -> MenuItem | None:
+        """NLU가 메뉴 말을 앞부분만 잘라 낸 경우의 메뉴.
+
+        실기기 STT "나폴 내용도 하나요" → 글 "나폴", 추정 "나폴레옹" (6단계).
+
+        추정값이 메뉴 하나의 이름·별칭과 정확히 같고, 말한 글(두 글자 이상)이 그 이름의 앞부분일
+        때만이다. 신호가 약해서 수락하지 않고 확인 질문으로만 쓴다.
+        """
+        guessed = set(query_forms(guess)) if guess else set()
+        forms = [q for q in query_forms(text) if len(q) >= MIN_CUT_OFF_CHARS]
+        if not guessed or not forms:
+            return None
+        found = [
+            item for item in self._menu
+            if (names := self._names[item.id] & guessed)
+            and any(n.startswith(q) and len(q) < len(n) for n in names for q in forms)
+        ]
+        return found[0] if len(found) == 1 else None
 
     def _rank(self, text: str, guess: str) -> list[tuple[float, MenuItem, bool]]:
         """(점수, 메뉴, 신호가 둘인지) 목록. 점수 높은 순, 같은 점수는 메뉴 순서."""

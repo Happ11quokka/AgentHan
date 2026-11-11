@@ -327,3 +327,23 @@ def test_unrelated_word_is_never_accepted_even_with_a_menu_guess(
     # 무관 단어 + 엉뚱한 NLU 추정이어도 확인 없이 받지 않는다
     assert matcher.match("맥도날드", menu_guess=guess).decision != "accept"
     assert matcher.match("블루베리", menu_guess=guess).decision != "accept"
+
+
+# ---- NLU가 메뉴 말을 앞부분만 잘라 낸 경우 (6단계, 실기기 STT "나폴 내용도 하나요") ----
+
+
+def test_a_cut_off_menu_word_whose_guess_names_the_menu_is_confirmed(matcher: MenuMatcher) -> None:
+    # HCX: menu_text="나폴", menu_guess="나폴레옹". 전에는 reject("그 메뉴는 없어요")였다
+    result = matcher.match("나폴", "나폴레옹")
+    assert (result.decision, result.item.name_ko) == ("confirm", "나폴레옹")
+
+
+def test_a_cut_off_word_without_a_guess_is_still_rejected(matcher: MenuMatcher) -> None:
+    assert matcher.match("나폴").decision == "reject"
+
+
+def test_a_guess_alone_does_not_rescue_an_unrelated_word(matcher: MenuMatcher) -> None:
+    # 추정값만으로는 받지 않는다: 말한 글이 그 메뉴 이름의 앞부분(두 글자 이상)이어야 한다
+    assert matcher.match("짜장면", "나폴레옹").decision == "reject"
+    assert matcher.match("나", "나폴레옹").decision == "reject"
+    assert matcher.match("나폴", "없는메뉴").decision == "reject"

@@ -556,6 +556,7 @@ class DialogEngine:
                 turn.nlu_called = True
             acts = self._nlu.parse(text, self.nlu_context())
             acts = self._menu_word_rescue(text, acts)
+            acts = self._pickup_with_done(text, acts, turn)
         if not any(a.type == "add_item" for a in acts):  # 같은 말에서 담으면 붙일 데가 있다
             acts = [self._baseless_option(a) for a in acts]
         if self._no_means_done(acts):
@@ -568,6 +569,21 @@ class DialogEngine:
                     break  # "혹시 메도빅 맞으세요?" → "네, 두 개요": 네가 답이다 (리뷰 C9)
                 acts = acts[1:]
         return acts
+
+    def _pickup_with_done(self, text: str, acts: list[Act],
+                          turn: _Turn | None) -> list[Act]:
+        """주문 끝과 같이 말한 시각을 NLU가 빠뜨렸으면 채운다 (6단계, 실기기 대본 C4).
+
+        "아니요 지금 바로 갈게요"를 HCX가 done_ordering 하나로만 내서 "몇 시쯤 오세요?"를 다시
+        물었다. 주문 받는 중에 주문 끝만 있고 시각 act가 없을 때, 그 말이 픽업 시각으로 읽히면
+        (`parse_pickup`, 시각 답을 읽는 그 파서) 시각 act를 덧붙인다. 최종 복창이 한 번 더 확인한다.
+        """
+        if (turn is None or self._state is not State.ORDERING
+                or [a.type for a in acts] != ["done_ordering"]):
+            return acts
+        if parse_pickup(text, turn.now).time is None:
+            return acts
+        return [*acts, Act("set_pickup_time", time_text=text)]
 
     def _takes_no_and_done(self) -> bool:
         """"아니요 + 끝 표현" 규칙([no, done_ordering], 6단계 티켓 02)을 지금 써도 되나.
