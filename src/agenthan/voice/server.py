@@ -76,7 +76,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     if translator is None:
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
     hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
-                   question_wait_s=settings.owner_wait_s)
+                   question_wait_s=settings.owner_wait_s, limits=settings.hub_limits())
     # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
     gate = make_gate(settings)
     hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None

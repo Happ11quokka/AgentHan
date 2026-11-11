@@ -59,6 +59,10 @@
 | `PHONE_TTS_RETRIES` | CLOVA Voice 일시 오류(429·5xx·시간 초과)에 다시 부르는 횟수 | `1` |
 | `PHONE_TTS_FALLBACK` | `caption`이면 실패한 문장 하나는 무음 + 자막. `off`면 종료 | `caption` |
 | `PHONE_TTS_TIMEOUT_S` | CLOVA Voice 요청 하나의 시간 제한(초) | `10.0` |
+| `PHONE_OWNER_MAX_CALL_CARDS` | 사장님 허브가 두는 끝난 통화 카드 수 | `50` |
+| `PHONE_OWNER_CALL_CARD_HOURS` | 끝난 통화 카드 보관 시간 | `24` |
+| `PHONE_OWNER_MAX_ORDER_CARDS` | 확정 주문 카드 수 | `200` |
+| `PHONE_OWNER_ORDER_CARD_HOURS` | 확정 주문 카드 보관 시간 | `72` |
 | `PHONE_LOG_KEEP_DAYS` | 손님 말이 든 JSONL·녹음 보관 일수. 지나면 지운다. 0이면 안 지움 | `14` |
 | `PHONE_DISK_WARN_PCT` | 로그 디스크 사용률이 이 값(%)을 넘으면 경고 로그. 0이면 끔 | `80` |
 
@@ -94,6 +98,7 @@ from agenthan.voice.store_config import KST
 
 if TYPE_CHECKING:
     from agenthan.voice.call.session import SessionSettings
+    from agenthan.voice.owner.hub import HubLimits
 
 NluName = Literal["fake", "hcx"]
 AdapterName = Literal["fake", "clova"]
@@ -165,6 +170,11 @@ class VoiceSettings:
     tts_retries: int = 1
     tts_fallback: bool = True  # 실패한 문장 하나는 무음 + 자막으로 넘겨 통화를 잇는다
     tts_timeout_s: float = 10.0
+    # ---- 6단계: 사장님 허브 카드 상한 (`owner/hub.py` `HubLimits`). 0이면 제한 없음
+    owner_max_call_cards: int = 50
+    owner_call_card_hours: float = 24.0
+    owner_max_order_cards: int = 200
+    owner_order_card_hours: float = 72.0
     # ---- 6단계: 집안일 (`housekeeping.py`)
     log_keep_days: float = 14.0  # 손님 말이 든 JSONL·녹음 보관 기한. 0이면 지우지 않는다
     disk_warn_pct: float = 80.0  # 디스크 사용률 경고 기준(%). 0이면 끈다
@@ -198,6 +208,15 @@ class VoiceSettings:
         from agenthan.voice.call.session import SessionSettings  # 엔진까지 끌어오므로 쓸 때만
 
         return SessionSettings(**{name: getattr(self, name) for name in _SESSION_FIELDS})
+
+    def hub_limits(self) -> HubLimits:
+        """사장님 허브 카드 상한 (`OwnerHub(limits=...)`)."""
+        from agenthan.voice.owner.hub import HubLimits
+
+        return HubLimits(max_call_cards=self.owner_max_call_cards,
+                         call_card_hours=self.owner_call_card_hours,
+                         max_order_cards=self.owner_max_order_cards,
+                         order_card_hours=self.owner_order_card_hours)
 
     @classmethod
     def from_env(
@@ -302,6 +321,14 @@ class VoiceSettings:
             tts_fallback=_choice("PHONE_TTS_FALLBACK", get("PHONE_TTS_FALLBACK", "caption"),
                                  ("caption", "off")) == "caption",
             tts_timeout_s=_number("PHONE_TTS_TIMEOUT_S", get("PHONE_TTS_TIMEOUT_S", ""), 10.0),
+            owner_max_call_cards=_count("PHONE_OWNER_MAX_CALL_CARDS",
+                                        get("PHONE_OWNER_MAX_CALL_CARDS", ""), 50),
+            owner_call_card_hours=_limit("PHONE_OWNER_CALL_CARD_HOURS",
+                                         get("PHONE_OWNER_CALL_CARD_HOURS", ""), 24.0),
+            owner_max_order_cards=_count("PHONE_OWNER_MAX_ORDER_CARDS",
+                                         get("PHONE_OWNER_MAX_ORDER_CARDS", ""), 200),
+            owner_order_card_hours=_limit("PHONE_OWNER_ORDER_CARD_HOURS",
+                                          get("PHONE_OWNER_ORDER_CARD_HOURS", ""), 72.0),
             log_keep_days=_limit("PHONE_LOG_KEEP_DAYS", get("PHONE_LOG_KEEP_DAYS", ""), 14.0),
             disk_warn_pct=_limit("PHONE_DISK_WARN_PCT", get("PHONE_DISK_WARN_PCT", ""), 80.0),
             env=env,

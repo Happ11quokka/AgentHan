@@ -47,6 +47,10 @@
   이벤트마다 늘어나는 번호(`id`)를 단다. 재연결 때 이어 받기 버퍼는 없다(늘 snapshot부터)
 - `submit`·통화 알림은 이벤트 루프에서 불리면 바로 처리한다(구독자 큐에 `put_nowait`만, 막히지
   않음). 다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다
+- 상한(`HubLimits`, 6단계): 끝난 통화 카드(미완료·넘김·닫음·주문됨)는 최근 50개·24시간, 확정 주문
+  카드는 최근 200개·72시간만 둔다(0이면 제한 없음). 통화가 시작·끝나거나 주문이 올 때 오래된
+  것부터 지운다. 화면에 떠 있던 통화 카드는 `closed`로 한 번 보내 화면에서도 빠지게 한다. 통화 중
+  카드는 건드리지 않는다. 카드가 다 지워진 통화의 문자·질문 카드도 같이 지운다
 - 구독자 큐는 크기 제한이 없다. SSE를 안 읽는 동안에도 통화 쪽이 막히지 않게 (V1 판정 6)
 
 카드의 한국어 메뉴명·단가·받은 시각은 주문에 담긴 값(`OrderLine.name`·`unit_price`,
@@ -134,6 +138,16 @@ _UNANSWERED = frozenset({"open", "timeout"})
 _LATE = frozenset({"timeout", "call_ended"})
 
 
+@dataclass(frozen=True)
+class HubLimits:
+    """메모리에 두는 카드 상한 (6단계). 0이면 그 제한을 끈다."""
+
+    max_call_cards: int = 50  # 끝난 통화 카드 수
+    call_card_hours: float = 24.0  # 끝난 통화 카드 보관 시간 (걸려 온 때부터)
+    max_order_cards: int = 200  # 확정 주문 카드 수
+    order_card_hours: float = 72.0  # 확정 주문 카드 보관 시간 (받은 때부터). 통화 카드보다 길게
+
+
 class OwnerHub:
     """`OrderSink`·`OwnerChannel` 구현 + 사장님 화면 구독. 이벤트 루프 하나에 묶여 쓴다."""
 
@@ -146,8 +160,10 @@ class OwnerHub:
         translator: Translator | None = None,
         owner_lang: str = "ru",
         knowledge: KnowledgeStore | None = None,
+        limits: HubLimits | None = None,
     ) -> None:
         self._store = store
+        self._limits = limits or HubLimits()
         # 보충 지식 저장소(티켓 13). 허브가 쓰고, 통화 엔진이 읽는다(`phone_router(knowledge=...)`)
         self.knowledge = knowledge if knowledge is not None else KnowledgeStore()
         self._wanted: dict[str, dict[str, Any]] = {}  # 카드 id → "손님이 궁금해한 것" 카드
@@ -392,6 +408,7 @@ class OwnerHub:
         call = self._calls.get(order.id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered"})  # 화면은 통화 카드를 빼고 주문 카드만
+        self._prune()
 
     def _owner_check(self, call_id: str) -> bool:
         """그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다 → 주문 카드 "사장님 확인 필요"."""
@@ -523,6 +540,45 @@ class OwnerHub:
             elif self._unsaid(question):  # 제시간 답을 통화가 말하지 못했다 (리뷰 C1)
                 self._text_late_answer(question_id)
             self._said.discard(question_id)
+        self._prune()
+
+    # --- 상한 (6단계): 오래된 카드부터 지운다 ---------------------------------------------
+
+    def stats(self) -> dict[str, int]:
+        """메모리에 든 카드 수 (상태 확인용)."""
+        return {"calls": len(self._calls), "orders": len(self._orders),
+                "questions": len(self._questions), "texts": len(self._customer_sms)}
+
+    def _prune(self) -> None:
+        limits, now = self._limits, self._clock.now()
+        dropped: set[str] = set()
+        done = [c for c in self._calls.values() if c["status"] != "live"]
+        for card in _over(done, "started_at", limits.max_call_cards, limits.call_card_hours, now):
+            del self._calls[card["id"]]
+            dropped.add(card["id"])
+            if card["status"] not in _OFF_SCREEN:  # 화면에 떠 있던 카드: 화면에서도 뺀다
+                self._publish("call.update", {**card, "status": "closed"})
+        orders = list(self._orders.values())
+        for card in _over(orders, "received_at", limits.max_order_cards,
+                          limits.order_card_hours, now):
+            del self._orders[card["id"]]
+            dropped.add(card["id"])
+            twin = self._calls.get(card["id"])
+            if twin is not None and twin["status"] == "ordered":  # 화면에 없는 짝 통화 카드
+                del self._calls[card["id"]]
+        # 통화 카드도 주문 카드도 안 남은 통화의 문자·질문을 같이 지운다
+        gone = {call_id for call_id in dropped
+                if call_id not in self._calls and call_id not in self._orders}
+        if not gone:
+            return
+        for call_id in gone:
+            self._customer_sms.pop(call_id, None)
+        for question_id in [q["id"] for q in self._questions.values() if q["call_id"] in gone]:
+            del self._questions[question_id]
+            self._asked.pop(question_id, None)
+            self._replies.pop(question_id, None)
+            self._said.discard(question_id)
+            self._passed_on.discard(question_id)
 
     def _unsaid(self, question: dict[str, Any]) -> bool:
         """받은 버튼 답을 통화도 문자도 손님에게 전하지 않았다."""
@@ -870,6 +926,28 @@ class _Captions:
     def add(self, who: str, text: str) -> None:
         self._count += 1
         self.lines.append((self._count, who, text))
+
+
+def _over(cards: list[dict[str, Any]], stamp: str, max_count: int, max_hours: float,
+          now: datetime) -> list[dict[str, Any]]:
+    """상한을 넘은 카드(오래된 것부터). `cards`는 온 순서다."""
+    old: list[dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
+    for card in cards:
+        (old if max_hours > 0 and _hours_since(card[stamp], now) > max_hours else kept).append(card)
+    if 0 < max_count < len(kept):
+        old += kept[: len(kept) - max_count]
+    return old
+
+
+def _hours_since(iso: str, now: datetime) -> float:
+    try:
+        then = datetime.fromisoformat(iso)
+        if then.tzinfo is None:
+            then = then.replace(tzinfo=now.tzinfo)
+        return (now - then).total_seconds() / 3_600
+    except (ValueError, TypeError):
+        return 0.0  # 시각을 못 읽는 카드는 시간으로 지우지 않는다(수 상한이 지운다)
 
 
 def _key(card: dict[str, Any]) -> KnowledgeKey:
