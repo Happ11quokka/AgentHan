@@ -40,7 +40,9 @@ from agenthan.eval.replay import EMBED_MODEL, Live, canonical
 from agenthan.eval.run import ROOT, _git, display_path, sha256
 from agenthan.tools.dummy_store import DummyStore
 
-SCENARIOS = ROOT / "tests/data/eval/scenario.jsonl"
+SCENARIOS = ROOT / "tests/data/eval/s1.jsonl"  # S1 regression baseline (docs/eval-baseline.md)
+# Problem types of the S1 baseline (docs/eval-baseline.md §5).
+ProblemType = Literal["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"]
 OwnerAct = Literal[
     "request",  # asks for a new task
     "provide",  # gives a value for the task in progress
@@ -70,6 +72,8 @@ class ScenarioTurn(BaseModel):
     missing: bool = False  # a required value is still missing after this turn
     again: Again | None = None
     check: dict[str, Any] | None = None  # store assertions right after this turn
+    # Internal-structure answer (feature/tool/args) for L2 diagnostics only; never scored here.
+    probe: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def consistent(self):
@@ -91,6 +95,10 @@ class ScenarioExpect(BaseModel):
 class Scenario(BaseModel):
     id: str
     family: str
+    type: ProblemType | None = None
+    area: str | None = None  # catalog feature id, "none" (out of scope) or "multi"
+    source: str | None = None  # original case id (flow:…, route:…, goldset:…, scenario:…)
+    lang: Literal["ko", "ko_simple"] = "ko"  # Korean only (docs/eval-baseline.md §0)
     split: Literal["dev", "sealed"] = "dev"
     tags: list[str] = Field(default_factory=list)
     repeat: int = Field(default=3, ge=1)
@@ -394,6 +402,8 @@ def run_scenario(
     return {
         "id": scenario.id,
         "family": scenario.family,
+        "type": scenario.type,
+        "area": scenario.area,
         "split": scenario.split,
         "tags": scenario.tags,
         "complete": complete,
@@ -473,6 +483,13 @@ def summarize(runs: list[dict]) -> dict:
             }
             for f in families
         },
+        "per_type": {
+            t: {
+                "runs": sum(r.get("type") == t for r in runs),
+                "goal_rate": _rate([r["goal"] for r in done if r.get("type") == t]),
+            }
+            for t in sorted({r.get("type") for r in runs if r.get("type")})
+        },
         "per_scenario": {
             sid: f"{sum(r['goal'] for r in rs)}/{len(rs)}" for sid, rs in by_id.items()
         },
@@ -505,6 +522,10 @@ def render_table(summary: dict) -> str:
         lines.append(
             f"| {family} | {row['runs']} | {pct(row['goal_rate'])} | {pct(row['pass_all_rate'])} |"
         )
+    if s.get("per_type"):
+        lines += ["", "| 유형 | 실행 | 목표 달성 |", "| --- | --- | --- |"]
+        for kind, row in s["per_type"].items():
+            lines.append(f"| {kind} | {row['runs']} | {pct(row['goal_rate'])} |")
     lines += ["", "시나리오별 성공: " + ", ".join(f"{k} {v}" for k, v in s["per_scenario"].items())]
     return "\n".join(lines) + "\n"
 

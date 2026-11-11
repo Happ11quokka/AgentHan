@@ -172,3 +172,47 @@ def test_owner_assistant_subject_counts_previews_not_executions():
     assert s.proposals() == [{"tool": "update_business_info", "arguments": PHONE}]
     s.say("네")
     assert s.proposals() == []
+
+
+def test_s1_composition_language_and_coverage():
+    """S1 (docs/eval-baseline.md §5): 80 Korean scenarios in the agreed type ratio."""
+    import subprocess
+    import sys
+    from collections import Counter
+
+    from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES
+
+    s1 = sc.load_scenarios(sc.SCENARIOS)
+    assert sc.SCENARIOS.name == "s1.jsonl"
+    counts = Counter(s.type for s in s1)
+    assert counts == {
+        "P1": 16,
+        "P2": 12,
+        "P3": 12,
+        "P4": 7,
+        "P5": 9,
+        "P6": 4,
+        "P7": 8,
+        "P8": 4,
+        "P9": 8,
+    }
+    assert {s.lang for s in s1} <= {"ko", "ko_simple"}
+    assert all(s.source and s.area and s.repeat == 3 for s in s1)
+    # Every write tool appears at least twice in P1–P3.
+    areas = Counter(s.area for s in s1 if s.type in ("P1", "P2", "P3"))
+    for tool, feature in TOOL_FEATURES.items():
+        if tool not in READ_ONLY_TOOLS:
+            assert areas[feature] >= 2, feature
+    # Scenarios that never approve may not allow any write.
+    for s in s1:
+        if not any(t.act == "approve" for t in s.turns):
+            assert s.expect.writes == [], s.id
+    # The file is exactly what the build script produces from the sources.
+    root = sc.ROOT
+    done = subprocess.run(
+        [sys.executable, str(root / "scripts/build_s1.py"), "--check"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
