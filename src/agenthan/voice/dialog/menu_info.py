@@ -64,7 +64,7 @@ _NOT_NAMED = frozenset({
 })
 _PARTICLE = re.compile(r"(?:이|가|은|는|도|를|을)$")
 _DESCRIBE = re.compile(
-    r"달아|달까|단가|달달|단맛|맛|어떤|뭐예요|뭐에요|뭔가요|뭐가\s*들어|무슨|어때|설명|재료"
+    r"달아|달까|단가|달달|단맛|단\s*거|맛|어떤|뭐예요|뭐에요|뭔가요|뭐가\s*들어|무슨|어때|설명|재료"
     r"|부드러|촉촉|바삭|느끼|매워|매운|짜요|짜나|시어|셔요"
 )
 
@@ -95,6 +95,16 @@ def answer_menu_question(item: MenuItem, question: str) -> str:
     return menu_answer(item, question).text or templates.dont_know()
 
 
+def _without_menu_names(item: MenuItem, question: str) -> str:
+    """질문에서 그 메뉴 이름·다른 이름을 뺀다(띄어쓰기 무시). 옵션 찾기가 메뉴 이름("꿀 케이크")을
+    비슷한 소리의 옵션("홀케이크 변경")으로 잡지 않게 (5단계 티켓 10, 실기기 통화)."""
+    text = question
+    for name in sorted((item.name_ko, *item.aliases), key=len, reverse=True):
+        pattern = r"\s*".join(map(re.escape, name.replace(" ", "")))
+        text = re.sub(pattern, " ", text)
+    return text
+
+
 def menu_answer(item: MenuItem, question: str) -> MenuAnswer:
     """메뉴 필드에 근거가 있는 답과 질문 종류. 근거가 없으면 `text`가 None(4단계 티켓 05·06).
 
@@ -112,7 +122,7 @@ def menu_answer(item: MenuItem, question: str) -> MenuAnswer:
         return MenuAnswer("allergy", templates.allergen_list(item.name_ko, item.allergens))
     if _PRICE.search(question):
         return MenuAnswer("price", templates.menu_price(item.name_ko, item.price))
-    if found := find_options(item.options, question):
+    if found := find_options(item.options, _without_menu_names(item, question)):
         option = found[0]
         if not option.available:
             return MenuAnswer("option", templates.option_unavailable(option.name))

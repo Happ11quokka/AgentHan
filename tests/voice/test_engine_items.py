@@ -270,10 +270,12 @@ def test_option_targets_last_item(engine: DialogEngine) -> None:
     assert r.utterances == [f"블린 사워크림 빼고 하나요. {MORE_Q}"]
 
 
-def test_option_with_empty_cart_asks_for_menu(engine: DialogEngine) -> None:
+def test_option_with_empty_cart_orders_the_only_menu_that_has_it(engine: DialogEngine) -> None:
+    """디카페인은 아메리카노에만 있다(5단계 티켓 10). 여러 메뉴에 있으면 어떤 메뉴인지 묻는다
+    (`test_engine_device_fixes.test_an_option_several_menus_have_still_asks_which_menu`)."""
     r = talk(engine, "디카페인으로요")
-    assert r.cart.is_empty()
-    assert r.utterances == ["어떤 메뉴에 해 드릴까요?"]
+    assert lines(r) == [("m03", 1, ("디카페인 변경",))]
+    assert r.utterances[0] == "아메리카노 디카페인으로 한 잔이요."
 
 
 def test_option_extra_price_in_total(engine: DialogEngine) -> None:

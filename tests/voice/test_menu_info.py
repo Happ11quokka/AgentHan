@@ -130,3 +130,18 @@ def test_the_answer_names_what_owner_knowledge_would_be_about(
 def test_a_named_ingredient_in_the_description_is_still_not_inferred() -> None:
     # 블린 설명에 "사워크림"이 있어도 들어가는지는 필드로 답하지 않는다(1단계와 같음)
     assert answer_menu_question(item("m04"), "블린에 사워크림 들어가요?") == DONT_KNOW
+
+
+def test_the_menu_s_own_other_name_is_not_mistaken_for_an_option() -> None:
+    """2026-11-11 실기기: "꿀 케이크"(메도빅 다른 이름)를 옵션 "홀케이크 변경"으로 잘못 봐서
+    단맛 질문에 옵션 안내로 답했다(5단계 티켓 10). 질문의 메뉴 이름은 옵션 찾기에서 뺀다."""
+    medovik = FakeStoreKnowledge.from_fixture().list_menu()[0]
+    answer = menu_answer(medovik, "어꿀 케이크 많이 단 거지.")
+    assert answer.kind == "taste"
+    assert answer.text is not None and "꿀" in answer.text
+
+
+def test_a_real_option_question_still_finds_the_option() -> None:
+    medovik = FakeStoreKnowledge.from_fixture().list_menu()[0]
+    answer = menu_answer(medovik, "꿀케이크 홀케이크로 돼요?")
+    assert answer.kind == "option"

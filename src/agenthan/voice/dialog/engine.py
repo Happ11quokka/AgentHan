@@ -1029,8 +1029,22 @@ class DialogEngine:
             self._add_to_cart(turn, item, act)
         elif _names_menu(act):
             self._on_add_item(turn, act)
+        elif (only := self._only_menu_with(act.option_text)) is not None:
+            self._add_to_cart(turn, only, act)  # 그 옵션이 있는 메뉴가 하나뿐 (티켓 10)
         else:
             self._ask(turn, templates.which_item())
+
+    def _only_menu_with(self, option_text: str) -> MenuItem | None:
+        """이 옵션 말을 받는 메뉴가 가게에 하나뿐이면 그 메뉴. 아니면 None.
+
+        담은 메뉴도 마지막에 다룬 메뉴도 없을 때 "홀케이크로 줘"를 메도빅으로 담는다(실기기 통화).
+        """
+        if not option_text:
+            return None
+        hits = [item for item in self._menu if not item.sold_out and find_options(
+            [c for g in self._required_for(item) for c in g.choices] + list(item.options),
+            option_text)]
+        return hits[0] if len(hits) == 1 else None
 
     @on("set_option", State.CLARIFY)
     def _on_option_answer(self, turn: _Turn, act: Act) -> None:

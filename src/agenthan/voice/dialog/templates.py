@@ -219,12 +219,12 @@ def final_readback(
 ) -> str:
     """최종 복창. 장바구니 객체에서 만든다 (D6).
 
-    `requests`는 (메뉴 이름, 요청 원문). 정정한 뒤 다시 복창할 때는 앞에 "그럼"을 붙인다.
+    `requests`는 (메뉴 이름, 요청 원문). 정정한 뒤 다시 복창할 때는 "그럼 다시 확인할게요."로
+    연다(5단계 티켓 10: "주문 확인할게요. …에 찾으러 오시고, 모두 ○원이에요. 맞으세요?").
     """
     head = "그럼 다시 확인할게요." if after_fix else "주문 확인할게요."
-    parts = [head, 
-        f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, 모두 "
-        f"{won(total)}이에요."]
+    body = f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, 모두 {won(total)}이에요."
+    parts = [head, body]
     parts += [f"{name}에 {request}라고 적어 뒀어요." for name, request in requests]
     return " ".join([*parts, "맞으세요?"])
 
