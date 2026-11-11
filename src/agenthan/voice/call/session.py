@@ -38,6 +38,13 @@
   버리고 바로 listening. `state.interruptible`이 버튼을 받는지 알린다(복창·마무리·사장님 연결 막음)
   speaking에 들어갈 때 붙잡아 둔 조각은 다음 턴으로 넘기고 "말 끝" 표시를 지운다
 
+첫 소리 문지기 + 앞 턴 되감기 (6단계 티켓 02, `turn_rewind`, 기본 꺼짐): 손님 턴을 넘긴 뒤
+(thinking) 봇 답의 첫 소리 전에 손님이 내용 있는 말을 이으면, 그 답을 버리고 엔진을 턴 전
+스냅숏으로 되돌린 뒤 앞 말 + 뒷말을 한 턴으로 다시 판정한다(`_wait_gate`, `_take_back`).
+빈 글·맞장구뿐이면 원래 답을 말한다. 주문 확정·통화 끝·사장님 질문·보충 요청·복창 턴은
+되감지 않는다(`_rewindable`). 켜면 사장님 쪽 알림(손님 말·장바구니·봇 말)은 그 턴의 첫 소리 때
+보낸다(버린 답이 사장님 화면에 남지 않게).
+
 조각 붙잡기: 끝 후보 결과가 왔는데 그 끝 뒤에 새 말 구간이 시작됐으면 다음 결과와 합친다.
 epFlag 응답이 아닌 결과(gap 등)는 무음 감지가 아직 말하는 중이거나 epFlag 응답을 기다리는
 중이어도 붙잡는다(티켓 10, `_continues_after`). 그때 턴은 epFlag 응답으로 넘어간다.
@@ -129,13 +136,14 @@ from agenthan.voice.call.turn_end import (
     TurnDecision,
     classify_turn_end,
     combine_turn_end,
+    has_content,
     is_backchannel,
     question_kind,
 )
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog.answerer import Answerer
 from agenthan.voice.dialog.cart import Cart
-from agenthan.voice.dialog.engine import DialogEngine, TurnResult
+from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.owner_question import (
     OwnerNote,
@@ -162,6 +170,9 @@ TURN_AUDIO_BYTES = 8_000 * BYTES_PER_MS
 # 2 vCPU 서버라 2개(연구 노트 Q11-3). 엔진 풀은 HCX를 기다리는 스레드로 찰 수 있어 따로 둔다
 TURN_THREADS = 2
 TURN_THREAD_PREFIX = "phone-turn"
+# 손님 말 하나를 되감아 합치는 최대 횟수 (6단계 티켓 02). 손님이 쉬어 가며 길게 말하면 되감을
+# 때마다 엔진(HCX)을 한 번 더 부른다. 이만큼 되감은 말은 더 되감지 않고 전처럼 다음 턴으로 둔다
+MAX_REWINDS = 2
 _turn_pool: ThreadPoolExecutor | None = None
 
 
@@ -240,6 +251,14 @@ class SessionSettings:
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
     # 응답보다 늦게 낼 수 있다(티켓 10 조각 붙잡기 시험). 그 글이 오면 되묻지 않는다
     not_heard_wait_s: float = 1.0
+    # 첫 소리 문지기 + 앞 턴 되감기 (6단계 티켓 02 추천안, `PHONE_TURN_REWIND`). 기본 끔.
+    # 켜면 손님 턴을 넘긴 뒤 봇 답의 첫 소리 전에 손님이 말을 이었을 때("아니요 … 그게 다예요")
+    # 그 답을 버리고 엔진을 턴 전으로 되돌려 합친 말로 다시 처리한다. 평소 턴의 지연은 0이다.
+    # 실기기에서 `turn_summary`의 `rewind`·`gate` 지표를 보고 켠다
+    turn_rewind: bool = False
+    # 문지기 상한(`PHONE_GATE_MAX_S`). 첫 소리 전에 말 구간이 시작됐는데 이만큼 지나도록 글이 없으면
+    # (끊기지 않는 배경 소리) 원래 답을 말한다. 글이 들어오는 중이면 `hold_cap_s`만큼 더 기다린다
+    gate_max_s: float = 3.0
     # 반이중에서 마이크를 닫는 때 (6단계 티켓 02 차선 2, `PHONE_MIC_CLOSE`).
     # - playback: 브라우저가 실제 재생을 시작할 때 0 프레임으로 바꾼다(`call.ready.mic_close`).
     #   서버도 그 턴 첫 문장의 `playback.started`를 받은 오디오 시각을 반이중 경계로 쓴다
@@ -300,6 +319,7 @@ class _Utterance:
     queued: bool = False
     wait_request: bool = False  # 끝말 규칙이 기다림 요청("잠깐만요")으로 봤다 (티켓 04)
     start_ms: int | None = None  # 첫 조각을 말하기 시작한 오디오 시각 (복창 앞 "네" 거르기, P1)
+    rewinds: int = 0  # 이 말을 되감아 합친 횟수 (6단계 티켓 02, `MAX_REWINDS`)
 
     @staticmethod
     def merge(items: list[_Utterance]) -> _Utterance:
@@ -316,6 +336,7 @@ class _Utterance:
             utterances=sum(u.utterances for u in items),
             queued=last.queued,
             start_ms=items[0].start_ms,
+            rewinds=max(u.rewinds for u in items),
         )
 
 
@@ -329,6 +350,27 @@ class _BotTurn:
 
 class _EngineTimeout(Exception):
     pass
+
+
+class _Rewound(Exception):
+    """첫 소리 직전에 문지기가 되감기로 판정했다. `_speak`가 올리고 `_run_turn`이 받는다."""
+
+
+@dataclass
+class _Gate:
+    """첫 소리 문지기 (6단계 티켓 02). 되감을 수 있는 손님 턴 하나가 thinking인 동안만 있다.
+
+    손님 턴을 넘길 때(`_dispatch`) 만들고, 첫 소리를 보내거나 되감거나 되감지 않는 턴으로
+    밝혀지면 없앤다.
+    """
+
+    turn: int
+    since: float | None = None  # 문지기가 걸린 때: 새 말 구간 시작·늦은 글 도착. None이면 안 걸림
+    cue_ms: int | None = None  # 생각 중 효과음 신호를 보낸 오디오 시각. 그 뒤 시작한 소리는 안 본다
+    wait_from: float | None = None  # 첫 소리를 붙잡기 시작한 때 (대기 시간 기록)
+    # 첫 소리 때까지 미뤄 둔 사장님 쪽 알림. 손님 말(`heard`)은 통화가 그 전에 끝나도 보낸다
+    heard: list[Callable[[OwnerChannel], None]] = field(default_factory=list)
+    owner_due: list[Callable[[OwnerChannel], None]] = field(default_factory=list)
 
 
 class CallSession:
@@ -411,6 +453,11 @@ class CallSession:
         self._hold_timer = Deadline(self._on_hold_timer)
         self._score_timer = OneShot(self._release_held_reply)  # 말 끝에서 점수 기다리기 (C5)
         self._pending: list[_Utterance] = []
+        # 첫 소리 문지기 (6단계 티켓 02). `turn_rewind`가 꺼져 있으면 늘 None
+        self._gate: _Gate | None = None
+        self._gate_wake = asyncio.Event()  # 문지기가 다시 볼 일이 생겼다 (글·빈 응답·타이머·끝)
+        self._gate_timer = OneShot(self._gate_wake.set)
+        self._superseded: int | None = None  # 되감은 턴. 다음 손님 턴 기록과 서로 가리킨다
         # 판정 중 국면 (티켓 02). 국면 값은 listening 그대로 두고(화면은 듣는 중) 이것으로 가른다
         self._cont: _Utterance | None = None  # 이어짐 판정으로 기다리는 말
         self._cont_decision: TurnDecision | None = None
@@ -502,6 +549,7 @@ class CallSession:
         started = self._vad.in_speech and not was_speaking
         if started:
             self._speech_from = now
+            self._arm_gate(now, self._vad.segment_starts[-1])  # 그 말 구간이 시작한 오디오 시각
         if self._ring is not None:
             self._keep_turn_audio(pcm, started=started)
         if self._vad.last_voiced:
@@ -791,7 +839,10 @@ class CallSession:
             self._log_dropped(r)  # 반이중: 봇 소리가 나간 뒤에 한 말의 결과는 버린다
             return
         self._hold_timer.cancel()
+        if self._gate is not None:
+            self._gate_wake.set()  # 빈 응답이면 문지기를 풀고, 글이면 아래에서 건다
         if r.text.strip():
+            self._arm_gate(self._clock.monotonic(), r.start_ms)  # 늦게 온 뒷조각도 건다
             self._parts.append(r)
             if self._held is not None:
                 self._hold_text_at = self._clock.monotonic()  # 말이 이어진다. 상한을 다시 센다
@@ -978,6 +1029,7 @@ class CallSession:
                 self._decide(utterance)
         else:
             self._pending.append(utterance)
+            self._gate_wake.set()
 
     def _clear_hold(self) -> None:
         """붙잡아 둔 조각·시간 제한을 모두 지운다."""
@@ -1183,8 +1235,14 @@ class CallSession:
         self._turn += 1
         turn = self._turn
         self._phase = "thinking"
-        self._flush_before(turn)
         fields: dict[str, Any] = {}
+        if self._superseded is not None:  # 되감은 턴과 이 턴이 서로를 가리킨다
+            old = self._log.get(self._superseded)
+            if old is not None and "superseded" in old.fields:
+                old.fields["superseded"]["by_turn"] = turn
+            fields["supersedes"], self._superseded = self._superseded, None
+        self._flush_before(turn)
+        self._open_gate(turn, u)
         if u.queued:
             fields["queued"] = True
         if self._barge is not None:  # 이 말을 듣는 동안의 RMS (티켓 06 실기기 시험)
@@ -1212,7 +1270,7 @@ class CallSession:
         self._emit({"type": "stt.final", "turn": turn, "text": u.text, "epd_type": u.epd_type,
                     "fragments": u.fragments, "end_by": u.end_by})
         text = u.text
-        self._tell_owner(lambda owner: owner.customer_said(self.call_id, text))
+        self._note_owner(lambda owner: owner.customer_said(self.call_id, text), heard=True)
         self._emit_state()
         # 모아 둔 말은 말 끝이 봇 재생 전이라, 재생이 끝나 넘긴 지금부터 센다
         ref = None if u.queued else (u.speech_end or u.button)
@@ -1232,6 +1290,12 @@ class CallSession:
     def _on_thinking(self, turn: int) -> None:
         if self.done or turn != self._turn or self._phase != "thinking":
             return
+        gate = self._gate
+        if gate is not None and gate.since is not None and (
+                self._vad.in_speech or self._parts or self._ep_waiting()):
+            return  # 손님이 말을 잇는 중이다. 그 위에 효과음을 틀지 않는다 (문지기가 붙잡는 중)
+        if gate is not None:
+            gate.cue_ms = self._vad.offset_ms  # 이 뒤에 시작한 소리는 문지기를 걸지 않는다
         self._log.mark(turn, "thinking")
         self._emit({"type": "bot.thinking", "turn": turn})
 
@@ -1248,6 +1312,7 @@ class CallSession:
             self._emit_state()
         now = self._clock.now()
         self._log.mark(turn, "engine_start")
+        before: _TurnStart | None = None
         if u is None:
             result = await self._call_engine(lambda: engine.start(now))
         elif isinstance(u, _BotTurn):
@@ -1255,6 +1320,8 @@ class CallSession:
             result = await self._call_engine(lambda: act(engine, now))
         else:
             text, wait = u.text, u.wait_request
+            # 되감을 수 있게 턴 전 상태를 떠 둔다 (엔진은 지금 쉬고 있다)
+            before = self._before_turn(turn, engine, u)
             result = await self._call_engine(lambda: engine.handle(text, now, wait_request=wait))
         self._log.mark(turn, "engine_end")
         stats = self._prefetch.take_stats() if self._prefetch is not None else None
@@ -1265,11 +1332,18 @@ class CallSession:
         if result.state in TERMINAL:
             self._terminal = True
             self._end_reason = _end_reason(result, u)
+        if before is not None and not _rewindable(result):
+            self._close_gate(turn)  # 되감지 않는 턴: 문지기 없이 전처럼. 미뤄 둔 알림을 보낸다
+            before = None
+        if before is not None and self._gate_verdict(block=False) == "rewind":
+            # 엔진이 도는 사이에 뒷말이 이미 다 왔다. 버릴 답은 합성하지도 않는다
+            self._take_back(turn, before)
+            return
         lines = result.cart.to_order_lines()
-        self._tell_owner(lambda owner: owner.cart_changed(self.call_id, lines))
+        self._note_owner(lambda owner: owner.cart_changed(self.call_id, lines))
         if result.utterances:
             said = " ".join(result.utterances)
-            self._tell_owner(lambda owner: owner.bot_said(self.call_id, said))
+            self._note_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.owner_question is not None:
             self._open_owner_question(turn, result.owner_question)
         if result.answer is not None and (record := self._log.get(turn)) is not None:
@@ -1291,7 +1365,14 @@ class CallSession:
         if sentences:
             self._last_seq[turn] = len(sentences) - 1
             self._spoken = SpokenTurn(turn, sentences, readback=result.readback)
-            audio_ms = await self._speak_until_cut(turn, sentences)  # 첫 소리를 보낼 때 speaking
+            try:
+                # 첫 소리를 보낼 때 speaking
+                audio_ms = await self._speak_until_cut(turn, sentences)
+            except _Rewound:
+                assert before is not None
+                self._take_back(turn, before)
+                return
+        self._close_gate(turn)  # 말할 문장이 없던 턴도 여기서 사장님 알림을 보낸다
         if self._turn == turn:  # 끊긴 뒤 벌써 다음 턴이 열렸으면 그 턴의 효과음 타이머다
             self._thinking_timer.cancel()  # 말할 문장이 없던 턴
         done: dict[str, Any] = {"type": "bot.done", "turn": turn, "sentences": len(sentences)}
@@ -1317,6 +1398,7 @@ class CallSession:
         """
         self._phase = "speaking"
         self._thinking_timer.cancel()
+        self._close_gate(turn)  # 여기서부터는 되감지 않는다. 미뤄 둔 사장님 알림을 보낸다
         self._speak_from_ms = self._speak_sent_ms = self._vad.offset_ms
         if self._spoken is not None and self._spoken.turn == turn:
             self._spoken.from_ms = self._speak_from_ms
@@ -1333,6 +1415,204 @@ class CallSession:
         if self._barge is not None:
             self._open_window(turn)
         self._emit_state()
+
+    # ------------------------------------------------------------ 첫 소리 문지기 + 앞 턴 되감기
+    # 6단계 티켓 02 (`research/s6-turn-split.md` 1절). `turn_rewind`가 켜진 통화만.
+    #
+    # 손님 턴을 넘긴 뒤(thinking)에도 브라우저 마이크는 열려 있다(첫 소리 때 닫는다). 그 사이
+    # 손님이 덧붙인 말("아니요" … "그게 다예요")은 전에는 `_pending`으로 가서 봇이 "아니요"에
+    # 답한 뒤 다음 턴이 됐다. 엔진이 상태 기계라 이미 다음 질문으로 넘어간 뒤여서 뒷말에 엉뚱한
+    # 답이 나왔다. 그래서:
+    # 1. 걸기: thinking 중 새 말 구간이 시작되거나(무음 감지) 늦은 글이 오면 문지기를 건다
+    #    (`_arm_gate`). 아무것도 끊지 않는다. 엔진·TTS는 그대로 돈다
+    # 2. 기다리기: 첫 문장 TTS를 받아 첫 소리를 보내기 직전(`_wait_gate`)에 문지기가 걸려 있으면
+    #    그 말의 결과를 기다린다. 걸려 있지 않으면 바로 지나간다(평소 턴의 지연 0)
+    # 3. 풀기: 내용 있는 글이 `_pending`에 들어왔으면 되감는다(`_take_back`): 남은 TTS를 취소하고,
+    #    엔진을 턴 전 스냅숏으로 되돌리고, 앞 말 + 뒷말을 합쳐 `_decide`부터 다시 탄다(새 턴 번호).
+    #    빈 글·맞장구·필러뿐이거나 상한(`gate_max_s`)이 지나면 원래 답을 말한다
+    # 4. 되감지 않는 턴(`_rewindable`): 주문이 나갔거나 통화가 끝나거나 사장님 질문·보충 요청을
+    #    보냈거나 최종 복창인 턴. 밖으로 나간 것은 되돌릴 수 없고, 복창은 그 턴의 말이 확정 기준이다
+    #
+    # 생각 중 효과음 (노트 위험 3): 말 끝 + 1.5초에 브라우저가 효과음을 낸다. 이때 마이크가 열려
+    # 있어 아이폰 에코 제거가 덜 지우면 그 소리가 말 구간으로 잡혀 문지기가 헛걸리고(빈 글로 풀릴
+    # 때까지 첫 소리가 늦는다), STT가 글을 지어내면 헛 되감기가 된다. 아이폰에서 효과음이 마이크에
+    # 얼마나 새는지 잰 적이 없어서, **효과음 신호(`bot.thinking`)를 보낸 오디오 시각 뒤에 시작한
+    # 소리는 문지기를 걸지 않고 되감기 근거로도 쓰지 않는다**(`_Gate.cue_ms`). 그런 말은 전처럼
+    # 다음 턴이 된다. 그래서 문지기가 덮는 창은 "턴을 넘긴 때 ~ min(첫 소리, 말 끝 + 1.5초)"다.
+    # 규칙 경로(첫 소리가 말 끝 + 1.0~1.5초)는 거의 다 덮고, HCX 경로는 앞쪽만 덮는다. 반대로
+    # 효과음 전에 손님이 다시 말하기 시작했으면 그 위에 효과음을 틀지 않는다(`_on_thinking`).
+    # 실기기에서 효과음 때 `listen_rms`가 무음 감지 임계값 아래로 확인되면 이 제한을 풀 수 있다
+
+    def _open_gate(self, turn: int, u: _Utterance) -> None:
+        """손님 턴을 넘길 때. 되감기가 켜져 있으면 이 턴의 문지기를 만든다."""
+        self._gate_timer.cancel()
+        self._gate = None
+        if not self._settings.turn_rewind or u.rewinds >= MAX_REWINDS:
+            return
+        self._gate = _Gate(turn)
+        if self._vad.in_speech:
+            # 넘기는 순간 이미 새 말 구간이 열려 있다(붙잡기가 놓친 이어 말하기, 노트 0-3).
+            # 오래된 구간(끊기지 않는 배경 소리)은 시작 시각이 옛날이라 상한에 바로 풀린다
+            self._gate.since = self._speech_from or self._clock.monotonic()
+
+    def _arm_gate(self, now: float, start_ms: int) -> None:
+        """문지기를 건다: thinking 중 새 말 구간이 시작됐거나 손님 글이 왔다.
+
+        효과음 신호를 보낸 뒤에 시작한 소리는 걸지 않는다(위 설명).
+        """
+        gate = self._gate
+        if gate is None or gate.since is not None or self._phase != "thinking":
+            return
+        if gate.cue_ms is not None and start_ms >= gate.cue_ms:
+            return
+        gate.since = now
+
+    def _gate_content(self) -> list[_Utterance]:
+        """첫 소리 전에 들어와 모아 둔 말 가운데 되감을 근거가 되는 것(내용 있는 말)."""
+        gate = self._gate
+        assert gate is not None
+        return [u for u in self._pending if has_content(u.text)
+                and (gate.cue_ms is None or u.start_ms is None or u.start_ms < gate.cue_ms)]
+
+    def _gate_verdict(self, *, block: bool) -> Literal["go", "wait", "rewind"]:
+        """문지기 판정. go: 원래 답을 말한다 · wait: 그 말의 결과를 더 기다린다 · rewind: 되감는다.
+
+        `block`이 거짓이면(엔진 직후, TTS 전) 기다릴 일을 상한까지 끌고 가지 않고 wait로 둔다.
+        """
+        gate = self._gate
+        if gate is None or self.done or gate.turn != self._turn or self._phase != "thinking":
+            return "go"
+        if gate.since is None:
+            return "rewind" if self._gate_content() else "go"
+        now = self._clock.monotonic()
+        text_seen = bool(self._parts) or bool(self._gate_content())
+        busy = (bool(self._parts) or self._held is not None or self._vad.in_speech
+                or self._ep_waiting())
+        if busy:
+            # 글이 들어오는 중이면 진짜 말이다. 조각 붙잡기 상한만큼 더 기다린다
+            limit = gate.since + self._settings.gate_max_s + (
+                self._settings.hold_cap_s if text_seen else 0.0)
+            if now < limit or not block:
+                return "wait"
+            if self._parts:  # 상한: 붙잡던 조각을 손님 말 하나로 묶어 판정한다
+                self._release(self._held or self._parts[-1], "gate")
+        return "rewind" if self._gate_content() else "go"
+
+    async def _wait_gate(self, turn: int) -> None:
+        """첫 소리를 보내기 직전. 문지기가 걸려 있으면 푸는 판정이 날 때까지 기다린다.
+
+        되감기면 `_Rewound`를 올린다(`_speak`의 finally가 남은 TTS를 취소한다). 원래 답을 말하게
+        되면 그냥 돌아온다. 걸려 있지 않은 턴은 기다리지 않는다.
+        """
+        gate = self._gate
+        if gate is None or gate.turn != turn:
+            return
+        while (verdict := self._gate_verdict(block=True)) == "wait":
+            if gate.wait_from is None:
+                gate.wait_from = self._clock.monotonic()
+            self._gate_wake.clear()
+            self._gate_timer.arm(POLL_S)
+            await self._gate_wake.wait()
+        self._gate_timer.cancel()
+        if verdict == "rewind":
+            raise _Rewound
+        if gate.since is not None and not self.done:
+            self._release_gate(turn, gate)
+
+    def _gate_wait_ms(self, gate: _Gate) -> int:
+        """문지기가 첫 소리를 붙잡은 시간(ms). 붙잡기 전에 풀렸으면 0."""
+        if gate.wait_from is None:
+            return 0
+        return round((self._clock.monotonic() - gate.wait_from) * 1000)
+
+    def _release_gate(self, turn: int, gate: _Gate) -> None:
+        """헛 문지기: 걸렸지만 되감을 말이 없었다. 원래 답을 말한다.
+
+        그 사이 들어온 맞장구·필러("음", "네")는 다음 턴으로 넘기지 않고 기록만 남긴다
+        (`dropped`, reason `gate`). 전에는 그 말이 다음 턴이 돼 엔진이 한 번 더 답했다.
+        """
+        dropped = [u for u in self._pending if not has_content(u.text)]
+        self._pending = [u for u in self._pending if has_content(u.text)]
+        waited = self._clock.monotonic() - gate.since if gate.since is not None else 0.0
+        if dropped:
+            result = "backchannel"
+        elif waited >= self._settings.gate_max_s:
+            result = "timeout"
+        else:
+            result = "empty"
+        record = self._log.get(turn)
+        if record is None:
+            return
+        record.fields["gate"] = {"result": result, "wait_ms": self._gate_wait_ms(gate)}
+        for u in dropped:
+            record.fields.setdefault("dropped", []).append({
+                "text": u.text, "start_ms": u.start_ms, "reason": "gate",
+                "backchannel": is_backchannel(u.text),
+            })
+
+    def _before_turn(self, turn: int, engine: DialogEngine, u: _Utterance) -> _TurnStart | None:
+        """손님 턴을 엔진에 넘기기 직전의 상태. 문지기가 없는 턴(꺼짐·되감기 횟수 초과)이면 None."""
+        gate = self._gate
+        if gate is None or gate.turn != turn:
+            return None
+        return _TurnStart(u, engine.snapshot(), self._last, self._spoken)
+
+    def _take_back(self, turn: int, before: _TurnStart) -> None:
+        """앞 턴 되감기. 이 턴의 답을 버리고, 엔진을 턴 전으로 되돌리고, 뒷말과 합쳐 다시 판정한다.
+
+        엔진 스레드가 끝난 뒤, 첫 소리를 보내기 전에만 부른다. 이 턴에서 밖으로 나간 것은 손님
+        화면의 `stt.final` 하나뿐이다(`turn.superseded`로 거둔다). 봇 소리·자막·사장님 알림은
+        아직 안 나갔다. 합친 말이 또 이어짐이면 지금 이어짐 대기를 그대로 탄다.
+        """
+        gate, engine = self._gate, self._engine
+        assert gate is not None and engine is not None
+        u = before.said
+        self._gate_timer.cancel()
+        self._thinking_timer.cancel()
+        engine.restore(before.engine)
+        self._last, self._spoken = before.last, before.spoken
+        self._last_seq.pop(turn, None)
+        self._wait_requested = False
+        added = self._gate_content()
+        pending, self._pending = self._pending, []
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["superseded"] = {
+                "gate_ms": self._gate_wait_ms(gate),
+                "text": " ".join(a.text for a in added),
+            }
+        self._superseded = turn
+        self._gate = None  # 미뤄 둔 사장님 알림(반쪽 손님 말·버린 봇 답)은 보내지 않는다
+        self._emit({"type": "turn.superseded", "turn": turn})  # 손님 화면이 그 자막을 거둔다
+        self._phase = "listening"
+        self._emit_state()
+        merged = _Utterance.merge([u, *pending])
+        self._decide(replace(merged, rewinds=u.rewinds + 1, wait_request=False))
+
+    def _close_gate(self, turn: int) -> None:
+        """그 턴의 문지기를 없앤다: 첫 소리를 보낸다·되감지 않는 턴이다·말 없이 턴이 끝났다.
+
+        미뤄 둔 사장님 알림을 차례로 보낸다. 다른 턴의 문지기(끊긴 뒤 벌써 열린 다음 턴)는 둔다.
+        """
+        gate = self._gate
+        if gate is None or gate.turn != turn:
+            return
+        self._gate = None
+        self._gate_timer.cancel()
+        for note in (*gate.heard, *gate.owner_due):
+            self._tell_owner(note)
+
+    def _note_owner(self, note: Callable[[OwnerChannel], None], *, heard: bool = False) -> None:
+        """사장님 쪽 알림. 되감을 수 있는 턴이면 첫 소리 때까지 미룬다(되감으면 보내지 않는다).
+
+        되감기가 꺼져 있으면 문지기가 없어서 전처럼 바로 보낸다. `heard`는 손님이 한 말이다.
+        첫 소리 전에 통화가 끝나도(`_end`) 사장님 화면에 남긴다. 봇 말·장바구니는 남기지 않는다
+        """
+        gate = self._gate
+        if gate is not None and gate.turn == self._turn:
+            (gate.heard if heard else gate.owner_due).append(note)
+        else:
+            self._tell_owner(note)
 
     def _in_thread(
         self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any
@@ -1402,6 +1682,7 @@ class CallSession:
                     record = self._log.get(turn)
                     if record is not None:
                         record.fields["tts_trim_ms"] = trimmed_ms
+                    await self._wait_gate(turn)  # 손님이 말을 잇는 중이면 여기서 붙잡는다
                     self._start_speaking(turn)
                 audio_bytes += len(pcm)
                 if self._spoken is not None and self._spoken.turn == turn:
@@ -1814,6 +2095,12 @@ class CallSession:
         self._cont_timer.cancel()
         self._play_timer.cancel()
         self._score_timer.cancel()
+        self._gate_timer.cancel()
+        self._gate_wake.set()  # 첫 소리를 붙잡던 문지기를 푼다
+        gate, self._gate = self._gate, None
+        if gate is not None:  # 첫 소리 전에 끝났다. 손님이 한 말만 사장님 화면에 남긴다
+            for note in gate.heard:
+                self._tell_owner(note)
         self._owner_timer.cancel()
         self._owner_retry.cancel()
         # 통화 뒤 사장님 답은 버린다. 늦은 답·말하지 못한 답의 문자는 허브 몫 (티켓 07, 리뷰 C1)
@@ -1967,6 +2254,28 @@ class CallSession:
             note(self._owner)
         except Exception:
             log.exception("사장님 쪽 알림 실패 (%s)", self.call_id)
+
+
+@dataclass(frozen=True)
+class _TurnStart:
+    """손님 턴을 엔진에 넘기기 직전의 상태 (되감기용)."""
+
+    said: _Utterance  # 이 턴을 연 손님 말
+    engine: EngineSnapshot
+    last: TurnResult | None
+    spoken: SpokenTurn | None
+
+
+def _rewindable(result: TurnResult) -> bool:
+    """이 턴을 되감아도 되나 (6단계 티켓 02).
+
+    밖으로 나간 것이 있으면 안 된다: 주문(`order`), 통화 끝(TERMINAL), 사장님 질문 카드, 보충 요청.
+    최종 복창 턴도 뺀다. 복창은 그 턴의 말이 확정 기준이라, 합성 중에 한 말은 전처럼 복창을 다
+    들려준 뒤 다음 턴으로 본다(금액 전 "네" 거르기·정정 받기, 3단계 리뷰 P1)
+    """
+    return (result.order is None and result.state not in TERMINAL
+            and result.owner_question is None and not result.knowledge_requests
+            and not result.readback)
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:

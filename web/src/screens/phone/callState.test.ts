@@ -159,6 +159,27 @@ describe('callReducer', () => {
     expect(micLive(s)).toBe(false)
   })
 
+  it('takes back the caption of a turn the server rewound (turn.superseded)', () => {
+    // 6단계 티켓 02: "아니요" 뒤에 "그게 다예요"를 덧붙이면 서버가 앞 턴을 되감고 합친 말로 새 턴을 연다
+    const final = (turn: number, text: string): CallAction => ({
+      type: 'server',
+      event: { type: 'stt.final', turn, text, epd_type: 'endPoint', fragments: 1, end_by: 'vad' },
+    })
+    const s = run(
+      dial,
+      micReady,
+      ready,
+      { type: 'server', event: { type: 'bot.say', turn: 1, seq: 0, text: '더 필요하신 거 있으세요?' } },
+      final(2, '아니요'),
+      { type: 'server', event: { type: 'turn.superseded', turn: 2 } },
+      final(3, '아니요 그게 다예요'),
+    )
+    expect(s.captions).toEqual([
+      { who: 'bot', turn: 1, text: '더 필요하신 거 있으세요?' },
+      { who: 'guest', turn: 3, text: '아니요 그게 다예요' },
+    ])
+  })
+
   it('shows guest and bot captions in order', () => {
     const s = run(
       dial,

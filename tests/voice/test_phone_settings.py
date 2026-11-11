@@ -100,6 +100,21 @@ def test_the_mic_closes_at_playback_start_by_default_and_can_go_back_to_the_stat
         VoiceSettings.from_env({"PHONE_MIC_CLOSE": "never"}, env_file=None)
 
 
+def test_turn_rewind_is_off_by_default_and_turned_on_by_name() -> None:
+    # 6단계 티켓 02 추천안. 실기기 확인 전이라 기본은 꺼짐
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert default.turn_rewind is False
+    assert default.session_settings().turn_rewind is False
+    assert default.session_settings().gate_max_s == 3.0
+    s = VoiceSettings.from_env({"PHONE_TURN_REWIND": "on", "PHONE_GATE_MAX_S": "2"},
+                               env_file=None)
+    assert s.session_settings().turn_rewind is True
+    assert s.session_settings().gate_max_s == 2.0
+    for name, wrong in (("PHONE_TURN_REWIND", "true"), ("PHONE_GATE_MAX_S", "0")):
+        with pytest.raises(SettingsError, match=name):
+            VoiceSettings.from_env({name: wrong}, env_file=None)
+
+
 def test_no_input_waits_default_to_six_and_fifteen_seconds_and_can_be_changed() -> None:
     # 3단계 티켓 04: 재생 끝부터 6초 무응답이면 되묻고, "잠깐만요" 뒤에는 15초 (grilling Q6)
     default = VoiceSettings.from_env({}, env_file=None)

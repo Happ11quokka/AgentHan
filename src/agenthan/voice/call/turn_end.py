@@ -158,6 +158,15 @@ def is_backchannel(text: str) -> bool:
     return bool(tokens) and all(t in BACKCHANNELS for t in tokens)
 
 
+def has_content(text: str) -> bool:
+    """맞장구·필러만이 아닌, 내용이 있는 말인가 (6단계 티켓 02 첫 소리 문지기).
+
+    봇 답의 첫 소리 전에 들어온 말이 이것이면 앞 턴을 되감아 합친다. "음"·"네"뿐이면 원래 답을
+    그대로 말한다. 빈 글은 내용이 없다.
+    """
+    return any(t not in BACKCHANNELS and t not in FILLERS for t in _tokens(text))
+
+
 def _judge(
     text: str, tokens: list[str], question_kind: str, menu_names: tuple[str, ...]
 ) -> TurnEndVerdict:

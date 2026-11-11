@@ -50,6 +50,11 @@ export type ServerEvent =
       cart: CartLine[]
       total: number
     }
+  /**
+   * 서버가 이 손님 턴을 되감았다(6단계 티켓 02): 봇 답의 첫 소리 전에 손님이 말을 이어서, 앞 말과
+   * 합친 새 턴이 곧 온다. 이 턴의 `stt.final` 자막을 거둔다. 봇 소리·자막은 나간 적이 없다
+   */
+  | { type: 'turn.superseded'; turn: number }
   | { type: 'bot.say'; turn: number; seq: number; text: string }
   | { type: 'bot.audio.end'; turn: number; seq: number }
   | { type: 'bot.done'; turn: number; sentences: number; interrupted?: boolean }
@@ -255,6 +260,8 @@ function onServer(state: CallState, event: ServerEvent): CallState {
     }
     case 'stt.final':
       return { ...state, captions: [...state.captions, { who: 'guest', turn: event.turn, text: event.text }] }
+    case 'turn.superseded':
+      return { ...state, captions: state.captions.filter((c) => !(c.who === 'guest' && c.turn === event.turn)) }
     case 'bot.say':
       return { ...state, captions: [...state.captions, { who: 'bot', turn: event.turn, text: event.text }] }
     case 'order':
