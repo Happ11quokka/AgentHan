@@ -13,6 +13,7 @@ from dataclasses import replace
 from call_harness import Call
 
 from agenthan.voice.call.fakes import FakeSttStream
+from agenthan.voice.call.session import SessionSettings
 from agenthan.voice.store_config import StoreConfig
 
 GIVE_UP = "죄송해요, 제가 잘 못 알아듣고 있어요. 사장님께 메모 남겨 드릴게요."
@@ -99,3 +100,44 @@ def test_not_heard_at_the_call_limit_hands_off_and_ends_the_call(tmp_path) -> No
     assert lines[2]["end_reason"] == "handoff"
     (order,) = c.sink.orders
     assert order.status == "handoff"
+
+
+# ------------------------------------------------ 스모크 통화 표시
+
+
+def order_call(tmp_path, *, key: str, sent: object) -> Call:
+    stt = FakeSttStream(replies=["메도빅 하나요", "아니요 그게 다예요", "6시 반이요", "네"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, settings=SessionSettings(smoke_key=key)) as c:
+            await c.start(smoke=sent)
+            for turn in (1, 2, 3, 4):
+                await c.turn(turn)
+            await c.session.wait_done()
+            return c
+
+    return run(call())
+
+
+def test_a_call_started_with_the_smoke_key_stays_off_the_owner_side(tmp_path) -> None:
+    c = order_call(tmp_path, key="s3cret", sent="s3cret")
+    assert c.session.smoke
+    assert c.out.of("call.ready")[0]["smoke"] is True
+    # 손님 쪽(스모크)은 주문서를 받는다. 사장님 쪽·주문 집계에는 안 간다
+    assert c.out.of("order")[0]["order"]["status"] == "confirmed"
+    assert c.sink.orders == []
+    assert c.owner.notes == []
+    lines = records(c)
+    assert lines[0]["smoke"] is True
+    assert "s3cret" not in (c.log_dir / "phone-20261108.jsonl").read_text()
+
+
+def test_a_wrong_or_missing_key_is_an_ordinary_call(tmp_path) -> None:
+    for key, sent in (("s3cret", "guess"), ("s3cret", True), ("", ""), ("", "anything")):
+        c = order_call(tmp_path / f"{key}-{sent}", key=key, sent=sent)
+        assert not c.session.smoke
+        assert "smoke" not in c.out.of("call.ready")[0]
+        assert len(c.sink.orders) == 1
+        assert c.owner.notes
+        line = records(c)[0]
+        assert "smoke" not in line and "smoke" not in line["client"]

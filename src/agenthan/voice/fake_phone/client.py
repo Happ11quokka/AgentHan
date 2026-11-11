@@ -65,8 +65,9 @@ class CallRun:
 
 class _Phone:
     def __init__(self, ws: Any, clips: list[Clip], pace: float, gap_s: float,
-                 no_turn_timeout_s: float) -> None:
+                 no_turn_timeout_s: float, start: dict[str, Any] | None = None) -> None:
         self.ws = ws
+        self.start = start or {}  # `call.start`에 덧붙일 값 (스모크 표시 등). 기록에는 안 남긴다
         self.clips = clips
         self.pace = pace
         self.gap_s = gap_s
@@ -229,7 +230,9 @@ class _Phone:
                 and self.now() - self.listening_since >= self.gap_s * self.pace)
 
     async def script(self) -> None:
-        self.send_event(type="call.start", turn=0, mic={"fake_phone": True}, ua="fake_phone")
+        start = {"type": "call.start", "turn": 0, "mic": {"fake_phone": True}, "ua": "fake_phone"}
+        self.run.sent.append({**start, "t": self.ms()})
+        self.out.put_nowait(json.dumps({**start, **self.start}, ensure_ascii=False))
         long_wait = 60.0  # 인사·대답 기다리기 (HCX 최악 + TTS)
         if not await self.until(lambda: self.ready, long_wait):
             return
@@ -258,12 +261,15 @@ class _Phone:
 
 
 async def run_call(url: str, clips: list[Clip], *, pace: float = 1.0, gap_s: float = 0.3,
-                   no_turn_timeout_s: float = 6.0) -> CallRun:
-    """통화 하나를 건다. 녹음을 차례로 손님 말로 보내고, 끝날 때까지의 기록을 돌려준다."""
+                   no_turn_timeout_s: float = 6.0,
+                   start: dict[str, Any] | None = None) -> CallRun:
+    """통화 하나를 건다. 녹음을 차례로 손님 말로 보내고, 끝날 때까지의 기록을 돌려준다.
+
+    `start`는 `call.start`에 덧붙일 값이다(스모크 표시). 보낸 기록(`sent`)에는 남기지 않는다."""
     from websockets.asyncio.client import connect
 
     async with connect(url, max_size=None) as ws:
-        phone = _Phone(ws, clips, pace, gap_s, no_turn_timeout_s)
+        phone = _Phone(ws, clips, pace, gap_s, no_turn_timeout_s, start)
         tasks = [asyncio.create_task(t) for t in (phone.reader(), phone.writer(), phone.mic())]
         try:
             await phone.script()

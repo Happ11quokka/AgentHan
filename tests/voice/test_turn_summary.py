@@ -203,3 +203,17 @@ def test_old_logs_have_empty_route_and_stage_summaries() -> None:
     assert s["stages"] == {}
     assert s["reask"] == {"turns": 0, "per_guest_turn": 0.0, "by_slot": {}}
     assert s["handoff"] == {}
+
+
+def test_smoke_calls_are_left_out_unless_asked_for() -> None:
+    lines = [
+        _turn("c1", 0),
+        _turn("c1", 1, 1_000, end_by="vad"),
+        _turn("smoke1", 0, smoke=True),
+        _turn("smoke1", 1, 9_000, end_by="vad"),
+    ]
+    s = summarize(lines)
+    assert (s["calls"], s["guest_turns"], s["smoke_calls"]) == (1, 1, 1)
+    assert s["voice"]["p50_ms"] == 1_000
+    with_smoke = summarize(lines, include_smoke=True)
+    assert (with_smoke["calls"], with_smoke["guest_turns"]) == (2, 2)

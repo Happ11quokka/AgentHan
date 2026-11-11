@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hmac
 import logging
 import math
 import time
@@ -277,6 +278,10 @@ class SessionSettings:
     # (서버 실측, `research/s6-quality-latency-gap.md` 1-0). 짧은 조각의 억양을 들어 보기 전이라
     # 기본 끔
     ack_first: bool = False
+    # 스모크 통화 표시 (6단계 품질, `PHONE_SMOKE_KEY`). `call.start.smoke`가 이 값과 같으면 그
+    # 통화는 사장님 쪽(통화 카드·자막·질문)과 주문 받는 곳(`OrderSink`)에 알리지 않고, 턴 기록에
+    # `smoke: true`를 남긴다. 비어 있으면 표시를 받지 않는다(아무나 주문을 숨기지 못하게)
+    smoke_key: str = field(default="", repr=False)
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
@@ -486,6 +491,7 @@ class CallSession:
         self._speak_sent_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각
         self._play_started: int | None = None  # 재생 시작 보고로 경계를 옮긴 턴
         self._client_start: dict[str, Any] = {}
+        self.smoke = False  # 스모크 통화로 표시됐다 (`SessionSettings.smoke_key`)
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer = OneShot(self._on_play_timeout)
         self._thinking_timer = OneShot(self._on_thinking)
@@ -640,7 +646,10 @@ class CallSession:
             return
         if kind == "call.start":
             if self._phase == "idle" and not self.done:
-                self._client_start = {k: v for k, v in event.items() if k not in ("type", "turn")}
+                # 스모크 열쇠는 턴 기록에 남기지 않는다
+                self._client_start = {k: v for k, v in event.items()
+                                      if k not in ("type", "turn", "smoke")}
+                self._mark_smoke(event.get("smoke"))
                 barge = self._settings.barge
                 if barge is not None and event.get("voice_barge_in") is True:
                     self._barge = BargeTracker(barge)  # 브라우저가 봇 말 중에도 진짜 소리를 보낸다
@@ -673,6 +682,21 @@ class CallSession:
                 record.client.update({k: v for k, v in event.items() if k not in ("type", "turn")})
         elif kind == "call.end":  # 손님이 끊었다
             self._end("hangup")
+
+    def _mark_smoke(self, sent: Any) -> None:
+        """`call.start.smoke`가 서버 열쇠와 같으면 스모크 통화다. 사장님 쪽을 떼어 낸다.
+
+        엔진을 만들기 전(`_setup`)이라 사장님께 묻기·보충 요청도 같이 꺼진다. 손님 쪽 이벤트
+        (`order` 포함)는 그대로 나가 스모크가 결과를 본다.
+        """
+        key = self._settings.smoke_key
+        if not key or not isinstance(sent, str) or not hmac.compare_digest(
+                sent.encode(), key.encode()):
+            return
+        self.smoke = True
+        self._owner = NullOwnerChannel()
+        self._asks_owner = False
+        self._knowledge = None
 
     async def close(self) -> None:
         self._end("hangup")  # 아직 안 끝났으면 손님 쪽이 먼저 사라진 것이다(소켓 끊김·서버 종료)
@@ -792,6 +816,8 @@ class CallSession:
             ready["voice_barge_in"] = self._barge.mode
         elif self._settings.mic_close == "playback":
             ready["mic_close"] = "playback"  # 브라우저가 실제 재생 시작에 마이크를 닫는다
+        if self.smoke:
+            ready["smoke"] = True  # 스모크가 표시가 먹었는지 본다
         self._emit(ready)
         self._tell_owner(lambda owner: owner.call_started(self.call_id))
 
@@ -1313,6 +1339,8 @@ class CallSession:
         if u is None:  # 인사 턴. 마이크 실제 설정값(`call.start`)을 이 줄의 client에 남긴다
             record = self._log.begin(turn, text="")
             record.client.update(self._client_start)
+            if self.smoke:
+                record.fields["smoke"] = True
             if self._rec is not None:
                 record.fields["recording"] = self._rec_name
             self._emit_state()
@@ -1363,7 +1391,8 @@ class CallSession:
         if result.knowledge_requests:
             self._pass_on(turn, result.knowledge_requests)
         if result.order is not None:
-            self._sink.submit(result.order)
+            if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
+                self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
                         "cart": _cart_json(result.cart), "total": result.cart.total()})
         utterances = result.utterances

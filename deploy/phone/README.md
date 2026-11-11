@@ -80,6 +80,23 @@ docker run --rm --network agenthan-phone_default cloudflare/cloudflared:latest t
 - 앱이 뜰 때 체크섬을 다시 확인한다. `deploy.sh logs app`에 `말 끝 판정: 끝말 규칙 + Smart Turn`이 나오면 켜진 것이다. 파일이 없거나 틀리면 경고를 남기고 `끝말 규칙만`으로 뜬다(통화는 막지 않는다)
 - 끄기: 문제가 있으면 `deploy/phone/.env`에 `PHONE_TURN_MODEL=off`를 적고 `docker compose -f deploy/phone/compose.yaml up -d app`(빌드 없이). 끝말 규칙만으로 돈다. 모델 경로 `PHONE_TURN_MODEL_PATH`는 이미지에 들어 있으니 적지 않는다
 
+## 7. 배포 직후 스모크 (6단계 품질)
+
+배포(`deploy.sh up`)가 끝나고 `app`이 Up이면 **컨테이너 안에서** 한 번 돌린다. 서버와 같은 환경 변수·가게 데이터를 읽는다.
+
+```bash
+docker compose -f deploy/phone/compose.yaml exec app python -m agenthan.voice.smoke
+echo $?    # 0 통과 · 1 실패 · 2 설정 오류(키 없음 등)
+```
+
+- 마지막 줄이 한 줄 요약이다: `SMOKE PASS s1 9/9 (flaky 0, nlu=hcx, calls 20) s2 1/1 (flaky 0, voice p50 1500ms p90 2100ms n=4) 85.0s`. 그 위는 결과 JSON(실패한 대본·통화는 `problems`와 대화가 들어 있다). 파일로도 남기려면 `--json /app/logs/smoke.json`(`phone_logs` 볼륨)
+- **S1**: 가게 데이터로 만든 대본 9개(한 품목·두 품목·수량 정정·빼기·꼭 고를 것·큰 수량 확인·"지금 바로"·취소·사장님 연결)를 실제 NLU(`PHONE_NLU`)로 엔진에 넣고 최종 주문서를 본다. HCX 약 20번, 호출 사이 0.7초 이상(분당 86번 이하, 테스트 키 한도 분당 90). 약 30~40초
+- **S2**: 가짜 휴대폰이 `ws://127.0.0.1:8000/api/phone/ws`에 통화 1건을 건다. 손님 말 4마디를 CLOVA Voice로 그때그때 합성해(봇과 다른 화자 `PHONE_SMOKE_SPEAKER`, 기본 `nara`. 파일로 남기지 않는다) 실제 속도로 올린다 → CLOVA Speech → HCX 2번 → CLOVA Voice. 주문 확정과 말 끝 → 첫 소리(P50·P90)를 낸다. 약 40~60초. 픽업은 "지금 바로 갈게요"라서, **영업시간 밖이면 주문 대신 사장님 연결 통화 1건**으로 음성 경로만 본다(결과 `note`)
+- 실패한 대본·통화는 한 번 다시 돌린다. 그때 통과하면 `flaky`로 표시하고 통과로 센다(같은 것이 배포 두 번 연속 flaky면 결함으로 본다)
+- 선택: `--skip-s2`(엔진·NLU만) · `--skip-s1` · `--calls 2`(+ 사장님 연결 통화) · `--calls 3`(+ 두 품목 주문) · `--max-voice-p50-ms 2500`(중앙값이 넘으면 실패. 기본은 숫자만 낸다) · `--nlu fake`(키 없이 엔진만, 로컬 확인용)
+- **사장님 화면에 안 섞이게**: `deploy/phone/.env`에 `PHONE_SMOKE_KEY=<아무 긴 값>`을 넣고 `app`을 다시 띄운다. 스모크가 같은 값을 `call.start`에 실어 보내고, 서버는 그 통화를 사장님 화면(통화 카드·자막)·주문 받는 곳에 알리지 않고 턴 기록에 `smoke: true`를 남긴다(`turn_summary`가 뺀다). 결과 JSON `s2.marked`가 `true`인지 본다. 값이 없으면 스모크 통화가 보통 통화처럼 사장님 화면에 뜬다
+- 서버가 가짜 모드(`PHONE_STT=fake`)면 S2는 사인파를 보내고 서버 대본(`PHONE_FAKE_STT_REPLIES`)대로 간다
+
 ## 키 규칙
 
 - 키는 `deploy/phone/.env`(서버, `chmod 600`)에만. compose가 실행할 때 `app`에 환경 변수로 넣는다. Caddy에는 안 준다

@@ -33,6 +33,8 @@
     tts_first: 첫 문장 TTS 첫 바이트 · send_to_play: 첫 조각 보냄 → 브라우저 재생 보고.
     그 구간의 두 시각이 다 있는 턴만 센다(`n`)
   - `reask`: 못 알아듣고 되물은 턴 수, 손님 턴당 비율, 슬롯별 수. `handoff`: 넘긴 이유별 통화 수
+  - 스모크 통화(턴 0에 `smoke: true`, `python -m agenthan.voice.smoke`가 건 통화)는 빼고 센다.
+    뺀 통화 수는 `smoke_calls`. 같이 보려면 `--include-smoke`
 
 백분위는 선형 보간(numpy 기본과 같음)이다. 값이 적으면 p99는 사실상 최대값이다.
 """
@@ -166,8 +168,11 @@ def _reask(lines: list[dict[str, Any]], guest_turns: int) -> dict[str, Any]:
     }
 
 
-def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
+def summarize(lines: Iterable[dict[str, Any]], *, include_smoke: bool = False) -> dict[str, Any]:
     lines = list(lines)
+    smoke = {line["call"] for line in lines if line.get("smoke")}
+    if not include_smoke:
+        lines = [line for line in lines if line["call"] not in smoke]
     calls = sorted({line["call"] for line in lines})
     guest = [line for line in lines if "end_by" in line]  # 손님 말로 연 턴
     voiced = [line for line in guest if "end_to_voice_ms" in line]
@@ -183,6 +188,7 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
     thinking = [line["end_to_thinking_ms"] for line in guest if "end_to_thinking_ms" in line]
     return {
         "calls": len(calls),
+        "smoke_calls": len(smoke),
         "guest_turns": len(guest),
         "voice": spread([line["end_to_voice_ms"] for line in voiced]),
         "slow_over_ms": SLOW_OVER_MS,
@@ -220,8 +226,10 @@ def read_lines(paths: Iterable[Path]) -> list[dict[str, Any]]:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="통화 턴 기록 요약 (숫자만)")
     parser.add_argument("jsonl", nargs="+", type=Path)
+    parser.add_argument("--include-smoke", action="store_true", help="스모크 통화도 같이 센다")
     args = parser.parse_args(argv)
-    print(json.dumps(summarize(read_lines(args.jsonl)), ensure_ascii=False, indent=2))
+    summary = summarize(read_lines(args.jsonl), include_smoke=args.include_smoke)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
