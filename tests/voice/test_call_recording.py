@@ -68,7 +68,7 @@ def test_every_turn_line_keeps_what_the_bot_said(tmp_path) -> None:
     lines = _lines(c)
     said = [e["text"] for e in c.out.of("bot.say")]
     assert [s for r in lines for s in r.get("bot", [])] == said
-    assert lines[0]["bot"][0] == "네, 샘플 러시안 베이커리입니다."
+    assert lines[0]["bot"][0] == "네, 샘플 러시안 베이커리 AI 전화 주문입니다."
     assert "메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요." in lines[3]["bot"]
 
 

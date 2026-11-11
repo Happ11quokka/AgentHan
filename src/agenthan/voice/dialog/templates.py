@@ -118,7 +118,8 @@ def i_na(word: str) -> str:
 # ---------------------------------------------------------------- 대사
 
 def greeting(store_name: str) -> str:
-    return f"네, {store_name}입니다. 어떤 걸로 준비해 드릴까요?"
+    """첫마디에 AI가 받는다고 알린다(AI 기본법 제31조 사전 고지, 6단계). 길어지지 않게 한 낱말만."""
+    return f"네, {store_name} AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?"
 
 
 def ask_order() -> str:

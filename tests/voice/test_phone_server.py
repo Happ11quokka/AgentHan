@@ -33,7 +33,7 @@ def test_dev_server_greets_with_the_sample_store_without_any_key(tmp_path) -> No
             event = json.loads(message["text"])
             if event["type"] == "bot.say":
                 break
-    assert event["text"] == "네, 샘플 러시안 베이커리입니다."
+    assert event["text"] == "네, 샘플 러시안 베이커리 AI 전화 주문입니다."
 
 
 def test_dev_server_serves_the_web_build_and_falls_back_to_index_for_screens(tmp_path) -> None:

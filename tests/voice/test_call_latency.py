@@ -16,7 +16,7 @@ from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import SttResult
 from agenthan.voice.call.session import SessionSettings
 
-GREETING = "네, 샘플 러시안 베이커리입니다."
+GREETING = "네, 샘플 러시안 베이커리 AI 전화 주문입니다."
 
 
 def run(coro):

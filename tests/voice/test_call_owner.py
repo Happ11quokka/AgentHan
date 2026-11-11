@@ -41,7 +41,8 @@ def test_the_owner_hears_the_call_start_the_cart_and_a_confirmed_end(tmp_path) -
     owner = run(call()).owner
     assert owner.notes[0] == ("started", "test-call")
     assert owner.customer_lines == ORDER_SCRIPT
-    assert owner.bot_lines[0] == "네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?"
+    assert owner.bot_lines[0] == (
+        "네, 샘플 러시안 베이커리 AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?")
     assert owner.carts[0] == ()
     assert owner.carts[-1] == (MEDOVIK,)
     assert owner.ended == ["confirmed"]

@@ -185,7 +185,7 @@ def test_bot_audio_goes_out_as_binary_frames_with_an_8_byte_header(tmp_path) -> 
         phone.send(type="call.start", turn=0)
         done = phone.until("bot.done", 0)
 
-    assert done["sentences"] == 2  # "네, 샘플 러시안 베이커리입니다." + 주문 안내
+    assert done["sentences"] == 2  # "네, 샘플 러시안 베이커리 AI 전화 주문입니다." + 주문 안내
     for seq in range(done["sentences"]):
         say_at = phone.received.index(phone.of("bot.say", 0)[seq])
         end_at = phone.received.index(phone.of("bot.audio.end", 0)[seq])

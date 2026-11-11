@@ -172,7 +172,7 @@ def test_timeouts_and_network_errors_are_retryable_port_errors(exc, code: str) -
 
 def test_session_with_clova_tts_sends_each_sentence_pcm_in_order_two_at_a_time(tmp_path) -> None:
     """분할·동시 2개·순서·200ms 재분할은 세션 몫. 어댑터와 붙여도 그대로인지 본다."""
-    first, second = "네, 샘플 러시안 베이커리입니다.", "어떤 걸로 준비해 드릴까요?"
+    first, second = "네, 샘플 러시안 베이커리 AI 전화 주문입니다.", "어떤 걸로 준비해 드릴까요?"
     pcm = {first: b"\x01\x00" * 7000, second: b"\x02\x00" * 3000}
     active = peak = 0
 
