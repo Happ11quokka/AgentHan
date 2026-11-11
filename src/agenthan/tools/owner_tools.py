@@ -5,7 +5,7 @@ import json
 from agenthan.agent.place_matcher import get_feature
 from agenthan.tools.dummy_store import DummyStore, normalize, valid_price
 
-# Review features (review_reply, ai_review) are delegated to agenthan.agent.review.ReviewToolbox.
+# The review feature (review) is delegated to agenthan.agent.review.ReviewToolbox.
 TOOL_NAMES = {"menu": "upsert_menu"}
 
 

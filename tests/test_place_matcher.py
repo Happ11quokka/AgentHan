@@ -17,7 +17,7 @@ from agenthan.agent import place_matcher as matcher
 from agenthan.core import embedding as clova
 
 CASES_PATH = Path(__file__).parent / "data" / "eval" / "route.jsonl"
-SUPPORTED = {"menu", "review_reply"}
+SUPPORTED = {"menu"}
 FEATURE_IDS = {
     "business_info",
     "menu",
@@ -30,8 +30,7 @@ FEATURE_IDS = {
     "search_diagnosis",
     "coupon",
     "new_opening",
-    "review_reply",
-    "ai_review",
+    "review",
     "naverpay_signup",
     "onsite_payment",
     "settlement",
@@ -79,13 +78,14 @@ def test_catalog():
     }
     for feature in features:
         assert re.fullmatch(r"[a-z]+(?:_[a-z]+)*", feature["id"])
-        for field in ("name_ko", "name_en", "summary_ko"):
+        for field in ("name_ko", "summary_ko"):
             assert isinstance(feature[field], str) and feature[field].strip()
         assert feature["stage"] in stages
         assert type(feature["input_supported"]) is bool
-        for field in ("keywords_ko", "keywords_en"):
-            assert isinstance(feature[field], list) and feature[field]
-            assert all(isinstance(term, str) and term.strip() for term in feature[field])
+        assert isinstance(feature["keywords_ko"], list) and feature["keywords_ko"]
+        assert all(isinstance(term, str) and term.strip() for term in feature["keywords_ko"])
+        # Korean-only core (docs/eval-baseline.md §0).
+        assert "name_en" not in feature and "keywords_en" not in feature
         if feature["input_supported"]:
             fields = feature["input_fields"]
             assert fields and len({f["id"] for f in fields}) == len(fields)
@@ -98,8 +98,12 @@ def test_catalog():
         "description",
         "photo",
     }
-    assert matcher.get_feature("review_reply")["input_fields"]
     assert matcher.get_feature("unknown") is None
+    names = [f["name_ko"] for f in features]
+    assert len(set(names)) == len(names)
+    # A keyword shared by two features pulls both toward the same request.
+    owners = Counter(term for f in features for term in set(f["keywords_ko"]))
+    assert [term for term, n in owners.items() if n > 1] == []
     features[0]["name_ko"] = "mutated"
     assert matcher.get_feature(features[0]["id"])["name_ko"] != "mutated"
 
@@ -189,9 +193,9 @@ def test_empty_input_never_embeds(text):
 def test_top_k_and_normalization():
     assert matcher.match_features("메뉴와 사진", top_k=0) == []
     assert matcher.match_features("메뉴", top_k=-1) == []
-    assert len(matcher.match_features("사진", top_k=1)) == 1
+    assert len(matcher.match_features("가게 사진이랑 음식 사진", top_k=1)) == 1
     assert matcher.match_features("영 업 시 간을 바꿔요")[0].feature_id == "business_hours"
-    assert matcher.match_features("ＭＥＮＵ prices")[0].feature_id == "menu"
+    assert matcher.match_features("ＰＯＳ 연동")[0].feature_id == "place_plus"
     assert matcher.match_features("chair airport repair") == []  # no substring hit for AI
 
 
@@ -199,7 +203,7 @@ def test_top_k_and_normalization():
     ("text", "feature_id", "term"),
     [
         ("QR로 결제하고 싶어요", "onsite_payment", "QR"),
-        ("AI가 답글 써줘요", "ai_review", "AI"),
+        ("AI가 답글 써줘요", "review", "AI"),
         ("POS를 연결해요", "place_plus", "POS"),
         ("place+를 연결해요", "place_plus", "place+"),
     ],
@@ -213,7 +217,8 @@ def test_ascii_keywords_with_korean_particles(text, feature_id, term):
 
 
 def test_missing_key_and_keyword_recall():
-    data = [row for row in cases() if row["expected"] is not None]
+    # Korean only (docs/eval-baseline.md §0): the catalog has no English keywords.
+    data = [row for row in cases() if row["expected"] is not None and row["lang"] != "en"]
     misses = []
     for row in data:
         matches = matcher.match_features(row["text"])
@@ -294,7 +299,7 @@ def test_build_index_is_atomic_and_uses_catalog(fake_index, monkeypatch):
     monkeypatch.setattr(matcher, "embed_text", embed)
     matcher.build_index()
     assert texts == [matcher.feature_embedding_text(f) for f in matcher.load_features()]
-    assert len(matcher._load_index(matcher.load_features())) == 19
+    assert len(matcher._load_index(matcher.load_features())) == len(FEATURE_IDS)
     original = matcher.INDEX_PATH.read_bytes()
 
     def fail(_):

@@ -50,8 +50,8 @@ def test_candidates_are_top5_without_threshold_and_keep_pending(index):
     ids, ranked = fs.candidates("아무 말", lambda _: index["menu"])
     assert len(ids) == fs.TOP_K and ids[0] == "menu"
     assert len(ranked) == len(matcher.load_features())
-    ids, _ = fs.candidates("아무 말", lambda _: index["menu"], keep="learning_support")
-    assert ids[0] == "learning_support" and len(ids) == fs.TOP_K
+    ids, _ = fs.candidates("아무 말", lambda _: index["menu"], keep="talktalk")
+    assert ids[0] == "talktalk" and len(ids) == fs.TOP_K
 
 
 def test_select_sends_candidates_as_enum_and_reads_choice(index):
@@ -82,9 +82,9 @@ def test_unusable_answers_fall_back(reply):
 
 def test_rejection_retries_once_as_text_answer():
     # DASH rejects the forced call (40009) at random; the retry has no tools and reads the ID.
-    select = Select(ClovaRequestRejected("400"), {"role": "assistant", "content": "ai_review: AI"})
-    choice = fs.select("리뷰 요약", ["review_reply", "ai_review"], select_chat=select)
-    assert choice == fs.Selection("ai_review", "feature", ("review_reply", "ai_review"))
+    select = Select(ClovaRequestRejected("400"), {"role": "assistant", "content": "review: 리뷰"})
+    choice = fs.select("리뷰 요약", ["statistics", "review"], select_chat=select)
+    assert choice == fs.Selection("review", "feature", ("statistics", "review"))
     (first, first_tools), (retry, retry_tools) = select.requests
     assert first_tools and retry_tools == []
     assert "항상 select_feature만 호출한다" in first[0]["content"]
@@ -186,7 +186,7 @@ def test_pending_question_is_context_and_candidate(tmp_path, index):
     assistant = owner.OwnerAssistant(
         tmp_path / "store.json",
         chat=main,
-        embed=lambda _: index["learning_support"],
+        embed=lambda _: index["statistics"],  # menu is outside its top 5
         select_chat=select,
     )
     assistant.ask("메뉴 등록")

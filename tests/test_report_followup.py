@@ -128,9 +128,7 @@ def test_keyword_edit_routes_to_feature_not_search(tmp_path, monkeypatch, questi
 
 
 def test_review_question_routes_to_review_not_followup(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        owner_assistant.feature_selector, "select", lambda *a, **k: pick("review_reply")
-    )
+    monkeypatch.setattr(owner_assistant.feature_selector, "select", lambda *a, **k: pick("review"))
     follow = Mock(side_effect=AssertionError("통계 후속 질문 호출 금지"))
     monkeypatch.setattr(owner_assistant.report_explainer, "follow_up", follow)
     assistant = OwnerAssistant(tmp_path / "store.json", chat=offline)
@@ -138,5 +136,5 @@ def test_review_question_routes_to_review_not_followup(tmp_path, monkeypatch):
     assistant._delegate_review = Mock(return_value="리뷰 위임")
     question = "누가 리뷰 남겼는지 보여줘"
     assert assistant.ask(question) == "리뷰 위임"
-    assistant._delegate_review.assert_called_once_with("review_reply", question)
+    assistant._delegate_review.assert_called_once_with("review", question)
     follow.assert_not_called()

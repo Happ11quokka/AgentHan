@@ -79,14 +79,14 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     path = tmp_path / "store.json"
     seed = SEED_PATH.read_bytes()
     hcx = SilentHCX()
-    review = lambda _: mock_index["review_reply"]  # noqa: E731
+    review = lambda _: mock_index["review"]  # noqa: E731
     assistant = owner.OwnerAssistant(path, chat=NoChat(), embed=review, review_session=factory(hcx))
     out = assistant.ask("답글 안 단 리뷰 있어?")
     assert out.startswith("답글 안 단 리뷰는 2건")  # seed: r02 and r03 have no reply
     assert "**답글 안 단 리뷰**" in out and assistant.pending_feature is None
     out = assistant.ask("안 좋은 리뷰에 답글 써줘")
     assert out.startswith("초안을 만들었어요") and "**답글 초안**" in out
-    assert assistant.pending_feature == "review_reply"  # waiting for confirm/edit
+    assert assistant.pending_feature == "review"  # waiting for confirm/edit
     assert next(iter(assistant.review.toolbox.drafts)) == "r03"  # the portion-size review
     # Follow-ups without a feature keyword stay in the review flow.
     other = lambda _: [0.0] * 1023 + [1.0]  # noqa: E731

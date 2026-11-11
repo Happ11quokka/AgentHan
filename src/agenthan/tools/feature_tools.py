@@ -1,6 +1,6 @@
 """Tools for the catalog features handled by agenthan (menu + 16 features).
 
-Review features (review_reply, ai_review) are delegated to agenthan.agent.review.
+The review feature (review) is delegated to agenthan.agent.review.
 
 Every tool works only on the local dummy store or on fixed dummy reference data.
 Nothing is sent to Naver. Invalid arguments never reach storage.
@@ -479,7 +479,7 @@ _TOOL_LIST = [
 ]
 TOOLS = {t.feature_id: t for t in _TOOL_LIST}
 # Handled by agenthan.agent.review (ReviewToolbox + run_turn), not by a tool in this module.
-DELEGATED_FEATURES = frozenset({"review_reply", "ai_review"})
+DELEGATED_FEATURES = frozenset({"review"})
 # Every other catalog feature has exactly one tool name.
 TOOL_FEATURES = {**{v: k for k, v in TOOL_NAMES.items()}, **{t.name: k for k, t in TOOLS.items()}}
 # Tools that only read. Every other tool writes the store and needs the owner's approval.

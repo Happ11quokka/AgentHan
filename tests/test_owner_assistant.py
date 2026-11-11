@@ -90,7 +90,7 @@ def test_schemas_follow_catalog():
             assert field["name_ko"] in schema["properties"][field["id"]]["description"]
     assert tool_schema("menu")["function"]["parameters"]["required"] == ["name", "price"]
     with pytest.raises(ValueError):
-        tool_schema("review_reply")  # delegated to agenthan.agent.review
+        tool_schema("review")  # delegated to agenthan.agent.review
 
 
 def test_missing_price_then_followup_saves(tmp_path, mock_index):
@@ -232,9 +232,7 @@ def test_unknown_tool_and_optional_fields_do_not_write(tmp_path):
     path = tmp_path / "store.json"
     store = DummyStore(path)
     assert execute_tool(store, "menu", "send_reply", {})["error"] == "tool_not_allowed"
-    assert (
-        execute_tool(store, "review_reply", "save_review_reply", {})["error"] == "tool_not_allowed"
-    )
+    assert execute_tool(store, "review", "save_review_reply", {})["error"] == "tool_not_allowed"
     for extra in ({"photo": "photo.png"}, {"description": "설명"}, {"unknown": "value"}):
         assert (
             execute_tool(
