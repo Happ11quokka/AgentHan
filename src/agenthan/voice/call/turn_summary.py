@@ -14,6 +14,15 @@
   P50·P90·P99. 세션 `hold_max_s`를 이 p99로 정한다(Pipecat `ttfs_p99`)
 - `prefetch`: 미리 해석(이어짐 대기 중 NLU 선호출, 티켓 02 `nlu_prefetch`). 미리 부른 턴 수,
   적중 수·적중률, 부른 호출 수, 부르고 안 쓴 호출 수, 안 쓴 이유별 수, 엔진이 결과를 기다린 ms
+- 6단계 티켓 02 (늦은 조각 턴 쪼개짐)
+  - `rewind`: 되감은 턴 수(`superseded`), 되감은 턴을 뺀 손님 말 수, 되감기 전에 문지기가 첫
+    소리를 붙잡은 ms(`gate_ms`). `PHONE_TURN_REWIND=on`일 때만 생긴다
+  - `gate`: 헛 문지기(걸렸지만 되감지 않고 원래 답을 말한 턴) 수, 이유별 수(empty: 빈 글 ·
+    backchannel: 맞장구·필러 · timeout: 상한), 첫 소리를 붙잡은 ms
+  - `mic_open_extra`: 첫 소리 송신 → 재생 시작 보고 사이에 마이크를 더 열어 둔 ms
+    (`PHONE_MIC_CLOSE=playback`으로 얻는 시간)
+  - `more_no`: "더 필요하신 거?" 뒤 맨 "아니요"를 짧게 기다린 턴. alone: 뒷말 없이 넘어감(그만큼
+    늦어진 턴) · merged: 뒷말과 한 턴이 됨
 
 백분위는 선형 보간(numpy 기본과 같음)이다. 값이 적으면 p99는 사실상 최대값이다.
 """
@@ -63,6 +72,41 @@ def _prefetch(guest: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _dicts(lines: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    return [line[key] for line in lines if isinstance(line.get(key), dict)]
+
+
+def _ms(items: list[dict[str, Any]], key: str) -> list[int]:
+    return [item[key] for item in items if isinstance(item.get(key), int)]
+
+
+def _late_fragments(guest: list[dict[str, Any]]) -> dict[str, Any]:
+    """6단계 티켓 02 지표: 되감기·문지기·마이크 닫는 때·맨 "아니요" 대기."""
+    superseded = _dicts(guest, "superseded")
+    gates = _dicts(guest, "gate")
+    ends = _dicts(guest, "turn_end")
+    steps = [step for line in guest for step in line.get("turn_end_steps", [])
+             if isinstance(step, dict)]
+    return {
+        "rewind": {
+            "superseded_turns": len(superseded),
+            "guest_turns_net": len(guest) - len(superseded),
+            "gate_wait": spread(_ms(superseded, "gate_ms")),
+        },
+        "gate": {
+            "false_gates": len(gates),
+            "by_result": dict(sorted(Counter(g["result"] for g in gates if "result" in g).items())),
+            "wait": spread(_ms(gates, "wait_ms")),
+        },
+        "mic_open_extra": spread([line["mic_open_extra_ms"] for line in guest
+                                  if isinstance(line.get("mic_open_extra_ms"), int)]),
+        "more_no": {
+            "alone": sum(1 for e in ends if e.get("reason") == "cap:no_after_more"),
+            "merged": sum(1 for s in steps if s.get("reason") == "no_after_more"),
+        },
+    }
+
+
 def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
     lines = list(lines)
     calls = sorted({line["call"] for line in lines})
@@ -97,6 +141,7 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "bot_turns": sum(1 for line in lines if "bot_turn" in line),
         "stt_wait": spread(stt_wait, (0.5, 0.9, 0.99)),
         "prefetch": _prefetch(guest),
+        **_late_fragments(guest),
     }
 
 

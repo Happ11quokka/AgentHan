@@ -73,6 +73,48 @@ def test_the_prefetch_hit_rate_and_discarded_calls_are_summarized() -> None:
     assert summarize(LINES)["prefetch"]["turns"] == 0
 
 
+def test_rewinds_gates_and_the_later_mic_close_are_summarized() -> None:
+    # 6단계 티켓 02: 되감은 턴 수, 문지기가 첫 소리를 붙잡은 시간, 헛 문지기 수, 마이크를 더 연 시간
+    lines = [
+        _turn("c1", 1, 1_000, end_by="vad", mic_open_extra_ms=120),
+        _turn("c1", 2, end_by="vad", superseded={"by_turn": 3, "gate_ms": 400, "text": "비밀 글"}),
+        _turn("c1", 3, 1_300, end_by="vad", supersedes=2, mic_open_extra_ms=200),
+        _turn("c1", 4, 1_500, end_by="vad", gate={"result": "empty", "wait_ms": 700}),
+        _turn("c1", 5, 1_100, end_by="vad", gate={"result": "backchannel", "wait_ms": 0}),
+        _turn("c1", 6, end_by="vad", superseded={"by_turn": 7, "gate_ms": 0, "text": "비밀 글"}),
+        _turn("c1", 7, 1_200, end_by="vad", supersedes=6, queued=True),
+        _turn("c1", 8, 900, end_by="vad",
+              turn_end={"label": "end", "path": "cap", "reason": "cap:no_after_more"}),
+        _turn("c1", 9, 950, end_by="vad", turn_end={"label": "end", "path": "rule"},
+              turn_end_steps=[{"label": "continue", "reason": "no_after_more"}]),
+    ]
+    s = summarize(lines)
+    assert s["rewind"] == {
+        "superseded_turns": 2,
+        # 되감은 턴은 손님 말 하나를 두 번 센 것이다. 뺀 값이 손님이 실제로 한 말 수다
+        "guest_turns_net": 7,
+        "gate_wait": {"n": 2, "p50_ms": 200, "p90_ms": 360},
+    }
+    assert s["gate"] == {
+        "false_gates": 2,
+        "by_result": {"backchannel": 1, "empty": 1},
+        "wait": {"n": 2, "p50_ms": 350, "p90_ms": 630},
+    }
+    assert s["mic_open_extra"] == {"n": 2, "p50_ms": 160, "p90_ms": 192}
+    # "더 필요하신 거?" 뒤 맨 "아니요"를 짧게 기다린 턴: 혼자 넘어감 · 뒷말과 합쳐짐
+    assert s["more_no"] == {"alone": 1, "merged": 1}
+    assert s["voice"]["n"] == 7  # 되감은 턴은 목소리가 없어서 말 끝 → 첫 목소리에 안 들어간다
+
+
+def test_old_logs_without_the_new_fields_summarize_to_zero() -> None:
+    s = summarize(LINES)
+    assert s["rewind"] == {"superseded_turns": 0, "guest_turns_net": 6,
+                           "gate_wait": {"n": 0, "p50_ms": None, "p90_ms": None}}
+    assert s["gate"]["false_gates"] == 0
+    assert s["mic_open_extra"]["n"] == 0
+    assert s["more_no"] == {"alone": 0, "merged": 0}
+
+
 def test_the_command_prints_numbers_without_any_transcript(tmp_path, capsys) -> None:
     path = tmp_path / "phone-20261108.jsonl"
     path.write_text("".join(json.dumps(line, ensure_ascii=False) + "\n" for line in LINES),

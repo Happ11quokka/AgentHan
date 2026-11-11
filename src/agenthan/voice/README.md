@@ -64,7 +64,7 @@
 
 - 흐름: 조각 붙잡기가 손님 말 하나를 만들면 세션이 끝말 규칙으로 판정한다. **끝남**·**기다림 요청**이면 바로 엔진으로, **이어짐**이면 판정 중 국면에서 마지막 말 끝(마지막 유성 프레임 도착) + 2.0초(`cont_wait_s`, `PHONE_CONT_WAIT_S`)까지 기다린다. 그 안에 다시 말하면 합쳐서 처음부터 다시 판정하고, 말하는 중이면 그 말 끝부터 다시 센다. 대기 전체 상한은 대기 중 마지막으로 글이 들어온 때부터 8초(`cont_max_s`, 리뷰 P3)다. 글이 계속 들어오는 긴 주문은 쪼개지 않고, 글 없는 배경 소리가 "말하는 중"을 붙잡을 때만 상한에서 넘긴다. 국면 값은 화면에 `listening` 그대로 나간다
 - 이어짐 마감은 조각 붙잡기(`hold_max_s`)와 다른 타이머라 붙잡기가 마감을 덮어쓰지 않는다. 대기 중 "말 끝" 버튼은 기다린 말로 바로 끝낸다
-- 끝말 규칙(`classify_turn_end`, 순수 함수): 글·대화 상태·직전 질문 종류(`question_kind`: 확인/닫힌/열린)·메뉴 이름 → 라벨·근거·`firm`(확실함)·`filler_only`·`backchannel`
+- 끝말 규칙(`classify_turn_end`, 순수 함수): 글·대화 상태·직전 질문 종류(`question_kind`: 확인/닫힌/열린/추가 주문(`more`, 6단계))·메뉴 이름 → 라벨·근거·`firm`(확실함)·`filler_only`·`backchannel`
   - 이어짐: 끝 토큰이 연결어미(-랑·-고·-아서/-어서·-면, 단어 예외 목록), 접속사(그리고·또·근데·그럼…), 필러(음·어·저기…, 띄어쓰기로 봄), 단위 없는 수(두·세·"2"), 메뉴 이름 앞부분("나폴")
   - 끝남(확실): 확인 질문 뒤 예/아니요(`dialog/rules.yes_or_no`와 같은 목록), 끝 마침표, 종결어미 -요·-다·-까·-죠. 애매(-고요·-이고요·-는데)는 끝남이지만 확실하지 않다(턴 모델이 가를 자리)
   - 기다림 요청: 말 끝의 잠깐만(요)·잠시만(요). 엔진에 `wait_request=True`로 넘긴다(응답 문장·15초 대기는 아래 티켓 04)
@@ -133,7 +133,7 @@
 
 ## 3단계: 음성 끼어들기 (`call/barge.py`, 티켓 06)
 
-- 스위치 `PHONE_VOICE_BARGE_IN`: `off`(기본) · `shadow` · `on`. 꺼져 있으면 2단계·티켓 05와 똑같다(반이중 + 말 끊기 버튼, `call.ready`에 새 필드도 없다). 실기기 시험 전에는 켜지 않는다
+- 스위치 `PHONE_VOICE_BARGE_IN`: `off`(기본) · `shadow` · `on`. 꺼져 있으면 2단계·티켓 05와 똑같다(반이중 + 말 끊기 버튼, `call.ready`에 `voice_barge_in` 필드도 없다). 실기기 시험 전에는 켜지 않는다
 - 켜도 브라우저가 `call.start.voice_barge_in: true`를 보낸 통화만 쓴다. 웹 `bargeIn.ts`가 안드로이드 크롬이고 마이크에 에코 제거가 걸렸을 때만 참으로 보낸다(삼성 인터넷·웨일·엣지·인앱 WebView·아이폰·데스크톱은 거짓). 서버가 켜면 `call.ready.voice_barge_in`(`on`·`shadow`)을 보내고, 그 통화의 브라우저는 봇이 말하는 동안에도 진짜 마이크 소리를 보낸다
 - `shadow`: 판정과 기록만 하고 줄이기·멈춤을 보내지 않는다. 봇 말 중에 한 말은 반이중처럼 버린다(손님 경험은 그대로, 시험 T1~T3용)
 - 판정(서버, 시각은 모두 오디오 시각): 봇 말 중 `PHONE_BARGE_THRESHOLD`(RMS 1,500) 이상 소리가 0.25초(`PHONE_BARGE_DUCK_MS`) 이어지면 `bot.duck`, 1.0초(`PHONE_BARGE_STOP_MS`, 1,000 아래로는 못 둔다. 한국어 맞장구가 최대 2.4초) 이어지거나 맞장구가 아닌 STT 글이 오면 `bot.stop`. 맞장구·빈 글·에코 글이거나 소리가 끝나고 2초 안에 글이 없으면 `bot.unduck`. 끼어들기를 정리한 뒤 1초는 다시 줄이지 않는다. 헛 끼어들기마다 그 통화의 멈춤 문턱을 0.25초씩 올린다(2.5초까지)
@@ -146,6 +146,37 @@
 - 실기기 시험용 웹 선택: 주소 뒤 `?mic_first=1`(재생 컨텍스트를 마이크 허용 뒤에 만듦, T4), `?agc=0`(자동 음량 끔, T5). `call.start.ctx_order`에 남는다
 - 테스트: `tests/voice/test_call_barge_in.py`(세션), `test_barge_summary.py`, 웹 `bargeIn.test.ts`·`callState.test.ts`·`phoneCall.test.ts`
 
+## 6단계: 늦은 조각 턴 쪼개짐 (티켓 02, "아니요, 그게 다예요")
+
+실기기 통화에서 "아니요, 그게 다예요"가 세 턴이 됐다. 손님이 "아니요" 뒤에 쉬면 턴이 넘어가고, 덧붙인 "그게 다예요"는 다음 턴이 돼 봇이 한 칸씩 밀린 답을 했다. 근거와 시간표는 `.scratch/phone-order/research/s6-turn-split.md`. 네 가지를 넣었다.
+
+| 무엇 | 기본 | 스위치 | 하는 일 |
+|---|---|---|---|
+| 규칙 (`dialog/rules.py`) | 켬 | 없음 | "아니요/아뇨 + 끝 표현"(그게 다예요·그게 다요·그게 끝이에요·됐어요·없어요·괜찮아요, STT 표기 흔들림 포함)과 "없어요"를 NLU 없이 `[no, done_ordering]`으로 읽는다. 합친 말이 HCX(약 1초)를 안 탄다 |
+| 맨 "아니요" 짧은 대기 (`call/turn_end.py`) | 켬, 1.2초 | `PHONE_MORE_NO_WAIT_S` (0이면 끔) | 추가 주문 질문("더 필요하신 거 있으세요?") 뒤 맨 "아니요"는 말 끝부터 1.2초까지만 이어짐으로 기다린다. 그 안에 덧붙이면 한 턴 |
+| 마이크 닫는 때 (`call/session.py`, 웹) | 실제 재생 시작 | `PHONE_MIC_CLOSE=playback\|state` | 브라우저가 `state: speaking`이 아니라 봇 소리가 실제로 재생되기 시작할 때 0 프레임으로 바꾼다. 서버 반이중 경계도 같은 때 |
+| 첫 소리 문지기 + 앞 턴 되감기 (`call/session.py`, `dialog/engine.py`) | **끔** | `PHONE_TURN_REWIND=on`, `PHONE_GATE_MAX_S`(3.0) | 봇 답의 첫 소리 전에 손님이 말을 이으면 그 답을 버리고 엔진을 턴 전으로 되돌려 합친 말로 다시 처리한다 |
+
+- **규칙**: 발화 전체가 그 꼴일 때만 건다. "아니요 아메리카노도 하나요"처럼 내용 있는 뒷말, 머리말 없는 "그게 다예요"·"괜찮아요"(다른 질문의 답일 수 있다)는 전처럼 NLU로 간다. 낸 act가 NLU와 같은 모양이라 상태별 뜻은 엔진이 그대로 정한다: "더 필요하신 거?" 뒤면 주문 끝, 복창("…맞으세요?") 중이면 확정도 확정 거부도 아니다("죄송해요, 제가 잘 못 알아들었어요" + 복창 다시). 맨 "아니요"는 전처럼 확정 거부("어떤 걸 고쳐 드릴까요?")
+- **맨 "아니요" 짧은 대기**: 직전 질문 종류에 `more`(주문 받는 중 + 끝말 "있으세요?"·"없으세요?")를 뒀다. STT 글이 말 끝 + 0.8~1.0초에 오므로 실제로 더 기다리는 것은 약 0.2~0.4초다. 턴 모델(Smart Turn)은 짧은 "아니요"를 끝으로 보므로 이 판정은 모델보다 앞선다(`firm`). 맨 "네"는 건드리지 않는다(엔진이 "어떤 걸로 드릴까요?"로 받는다). 확인 질문 뒤 "네"·"아니요"는 전처럼 바로 끝이다. 턴 기록: 근거 `no_after_more`(뒷말과 합쳐짐) · `cap:no_after_more`(혼자 넘어감)
+- **마이크 닫는 때**: 서버가 첫 오디오를 보낸 때부터 스피커로 소리가 나갈 때까지(망 지연 + 재생 예약 50ms)는 마이크에 봇 소리가 없다. 그 사이 시작한 손님 말을 버리지 않는다
+  - 서버는 `call.ready`에 `mic_close: "playback"`을 싣는다(음성 끼어들기 통화와 `state`일 때는 없음). 브라우저는 이 값이 있을 때만 새 방식으로 닫는다(낡은 서버와 맞물려도 전처럼 동작)
+  - 브라우저: 그 턴 첫 조각의 **재생 예약 시각**에 닫는다. 재생 시작 타이머가 늦어도(바쁜 메인 스레드·뒤로 간 탭) 마이크 프레임을 올릴 때마다 오디오 시계(`AudioContext.currentTime`)로 다시 봐서, 예약 시각에 닿은 뒤의 프레임은 0이다. 스피커는 예약 시각보다 `outputLatency`만큼 더 늦게 소리를 내므로 봇 소리가 나간 뒤의 구간은 열려 있지 않다. 말 끊기 버튼도 소리가 난 뒤부터 보인다
+  - 서버: 그 턴 첫 문장의 `playback.started`를 받은 오디오 시각으로 반이중 경계를 옮긴다(뒤로만, 첫 소리 송신 + `play_start_cap_ms` 2초까지). 보고가 없으면 전처럼 첫 소리를 보낸 때다. 복창 앞 "네" 거르기도 같은 경계를 쓴다. 턴 기록 `mic_open_extra_ms`가 더 열어 둔 시간이다
+  - 실기기에서 봇 목소리가 손님 말로 잡히면(턴 기록의 `stt.final`에 봇 문장) `PHONE_MIC_CLOSE=state`로 돌린다
+- **첫 소리 문지기 + 앞 턴 되감기** (`PHONE_TURN_REWIND=on`일 때만. 꺼져 있으면 전과 똑같다)
+  - 걸기: 손님 턴을 넘긴 뒤(thinking) 무음 감지가 새 말 구간을 보거나 늦은 STT 글이 오면 문지기를 건다. 아무것도 끊지 않는다. 엔진·TTS는 그대로 돈다
+  - 기다리기: 첫 소리를 보내기 직전에 문지기가 걸려 있으면 그 말의 결과를 기다린다. 걸려 있지 않은 턴은 바로 지나간다(평소 턴의 지연 0)
+  - 풀기: 내용 있는 글이 왔으면 되감는다. 남은 TTS를 취소하고, 엔진을 턴 전 스냅숏으로 되돌리고(`DialogEngine.snapshot()`/`restore()`), 앞 말 + 뒷말을 합쳐 말 끝 판정부터 다시 탄다(새 턴 번호). 빈 글(기침)·맞장구·필러뿐이면 원래 답을 말한다(헛 문지기. 그 맞장구는 다음 턴으로 넘기지 않고 `dropped`에 `gate`로 남긴다). 글 없는 소리는 `PHONE_GATE_MAX_S`(3초)까지만 기다린다
+  - 되감지 않는 턴: 주문이 나간 턴, 통화가 끝나는 턴, 사장님 질문·보충 요청을 보낸 턴, 최종 복창 턴, 인사·봇이 먼저 말하는 턴. 한 말은 두 번까지만 되감는다(`MAX_REWINDS`). 첫 소리가 나간 뒤 시작한 말은 전처럼 버린다
+  - 생각 중 효과음: 효과음 신호(`bot.thinking`, 말 끝 + 1.5초)를 보낸 뒤에 시작한 소리는 문지기를 걸지 않고 되감기 근거로도 쓰지 않는다(효과음이 열린 마이크로 새 문지기가 헛걸리는 것을 막는다. 아이폰에서 새는 크기를 잰 적이 없다). 그래서 덮는 창은 "턴을 넘긴 때 ~ min(첫 소리, 말 끝 + 1.5초)"다. 효과음 전에 손님이 다시 말하기 시작했으면 그 위에 효과음을 틀지 않는다
+  - 밖으로 나가는 것: 되감은 턴에는 `turn.superseded {turn}`을 보낸다(손님 화면이 그 턴의 자막을 거둔다. `bot.say`·오디오·`bot.done`은 없다). 사장님 쪽 알림(손님 말·장바구니·봇 말)은 그 턴의 첫 소리 때 보낸다. 버린 답과 반쪽 손님 말이 사장님 화면에 남지 않게 하려는 것이라, 켜면 사장님 자막이 엔진 + TTS 시간만큼 늦게 뜬다
+  - 엔진 스냅숏: `dialog/engine.py`의 `SNAPSHOT_FIELDS`가 엔진 필드마다 되돌리는 법(fixed·value·copy·cache)을 적는다. **엔진에 필드를 더하면 여기에도 적어야 한다**(`tests/voice/test_engine_snapshot.py`가 `vars(engine)`과 맞춰 본다)
+  - 턴 기록: 되감은 턴 `superseded {by_turn, gate_ms, text}`, 새 턴 `supersedes`, 헛 문지기 `gate {result: empty|backchannel|timeout, wait_ms}`
+- 지표: `uv run python -m agenthan.voice.call.turn_summary logs/phone-YYYYMMDD.jsonl`의 `rewind`(되감은 턴 수·문지기 대기)·`gate`(헛 문지기 수·이유·대기)·`mic_open_extra`·`more_no`·`queued_turns`
+- 켜기 전에 실기기로 볼 것: 아이폰 사파리에서 "아니요, 그게 다예요"를 쉼을 바꿔 가며 말해 한 턴이 되는지, 봇 목소리가 손님 말로 잡히지 않는지(`PHONE_MIC_CLOSE`), 효과음이 `empty`·헛 문지기를 늘리지 않는지
+- 테스트: `tests/voice/test_rules.py`·`test_engine_rules.py`(규칙), `test_turn_end.py`·`test_call_turn_end.py`(짧은 대기), `test_call_mic_close.py`(마이크 닫는 때), `test_engine_snapshot.py`·`test_call_rewind.py`(되감기), `web/src/screens/phone/callState.test.ts`·`phoneCall.test.ts`
+
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
 - 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`
@@ -155,7 +186,7 @@
 - 설정: 환경 변수 → `.env`(지금 폴더). 변수 표는 `settings.py` 머리 주석
   - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
   - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시작 시각, 시연용. 그 뒤 실제 시간만큼 간다. 멈춘 시계면 질문 카드 마감이 화면 카운트다운과 어긋난다, 리뷰 C2), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
-  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초), 사장님 질문 답 대기 `PHONE_OWNER_WAIT_S`(20초, 4단계). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
+  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초), 사장님 질문 답 대기 `PHONE_OWNER_WAIT_S`(20초, 4단계). 늦은 조각(6단계): `PHONE_MORE_NO_WAIT_S`(1.2초, 0이면 끔)·`PHONE_MIC_CLOSE`(playback|state)·`PHONE_TURN_REWIND`(off|on, 기본 off)·`PHONE_GATE_MAX_S`(3초). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
   - 엔진 스레드: 라우터 하나가 엔진 전용 스레드 풀(`phone-engine-*`, `PHONE_MAX_CALLS` × 2개)을 갖고 NLU 만들기·엔진 생성·턴을 거기서 돌린다. 루프 기본 풀(2 vCPU에서 6개)은 DNS 조회 등과 같이 쓰고, 시간을 넘긴 엔진 스레드는 취소되지 않고 남기 때문이다(티켓 09)
   - 배포(NCP + Caddy + DuckDNS): 저장소 루트 `deploy/phone/README.md`
   - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)

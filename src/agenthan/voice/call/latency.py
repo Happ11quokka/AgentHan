@@ -24,6 +24,12 @@
   no_input (`call.ended` 이벤트와 같다)
 - `bot`(5단계 티켓 01): 그 턴에 봇이 실제로 말한 문장들(`bot.say` 순서, 끊긴 뒤 문장은 없음).
   `recording`(턴 0, 녹음을 켰을 때만): 녹음 폴더 안 WAV 경로. 녹음 시간축이 `marks`와 같다
+- 6단계 티켓 02 (있을 때만)
+  - `mic_open_extra_ms`: 첫 소리 송신 → 재생 시작 보고 사이에 마이크를 더 열어 둔 시간
+  - `superseded {by_turn, gate_ms, text}`: 되감은 턴. 봇 답을 버리고 `by_turn`이 합친 말로 다시
+    했다. `gate_ms`는 문지기가 첫 소리를 붙잡은 시간, `text`는 덧붙은 말. 새 턴에는 `supersedes`
+  - `gate {result, wait_ms}`: 헛 문지기(걸렸지만 원래 답을 말함). result는 empty · backchannel ·
+    timeout. 그때 버린 맞장구는 `dropped`에 reason `gate`
 - `client`는 그 턴의 `client.metrics` 이벤트 내용을 합친 것(`turn`·`type` 뺌).
   턴 0에는 `call.start`의 값(마이크 실제 설정값 등)도 들어간다
 - 줄은 다음 턴이 시작될 때나 통화가 끝날 때 쓴다.
