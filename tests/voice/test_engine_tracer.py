@@ -27,7 +27,7 @@ def engine() -> DialogEngine:
 
 def test_start_greets_with_store_name(engine: DialogEngine) -> None:
     r = engine.start(NOW)
-    assert r.utterances == ["네, 샘플 러시안 베이커리입니다. 주문 도와드릴게요."]
+    assert r.utterances == ["네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?"]
     assert r.state is State.ORDERING
     assert r.cart.is_empty()
     assert r.order is None
@@ -53,13 +53,13 @@ def test_single_item_order_end_to_end(engine: DialogEngine) -> None:
     readback = r.utterances[0]
     assert "메도빅 하나" in readback
     assert "6시 반" in readback
-    assert "총 7,500원" in readback
+    assert "모두 7,500원" in readback
     assert readback.endswith("맞으세요?")
     assert r.order is None
 
     r = engine.handle("네", NOW)
     assert r.state is State.CLOSING
-    assert r.utterances == ["6시 반에 준비해 둘게요. 감사합니다."]
+    assert r.utterances == ["네, 6시 반까지 준비해 둘게요. 감사합니다."]
     order = r.order
     assert order is not None
     assert order.id == "o-test"
@@ -127,7 +127,7 @@ def test_done_ordering_with_pickup_already_given_goes_to_confirm(engine: DialogE
     engine.handle("6시에 갈게요", NOW)
     r = engine.handle("그게 다예요", NOW)
     assert r.state is State.CONFIRM
-    assert "6시 픽업" in r.utterances[0]
+    assert "6시에 찾으러" in r.utterances[0]
 
 
 def test_unknown_menu_lists_menu_and_stays_ordering(engine: DialogEngine) -> None:
@@ -153,7 +153,7 @@ def test_unintelligible_turn_reasks_last_question(engine: DialogEngine) -> None:
     engine.handle("그게 다예요", NOW)
     r = engine.handle("음", NOW)
     assert r.state is State.ASK_PICKUP
-    assert r.utterances == ["죄송해요, 잘 못 알아들었어요.", "몇 시쯤 오세요?"]
+    assert r.utterances == ["죄송해요, 제가 잘 못 알아들었어요.", "몇 시쯤 오세요?"]
 
 
 def test_transcript_records_both_sides(engine: DialogEngine) -> None:
@@ -162,9 +162,9 @@ def test_transcript_records_both_sides(engine: DialogEngine) -> None:
         engine.handle(text, NOW)
     order = engine.handle("네", NOW).order
     assert order is not None
-    assert order.transcript[0] == "AI: 네, 샘플 러시안 베이커리입니다. 주문 도와드릴게요."
+    assert order.transcript[0] == "AI: 네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?"
     assert order.transcript[1] == "손님: 메도빅 하나요"
-    assert order.transcript[-1] == "AI: 6시 반에 준비해 둘게요. 감사합니다."
+    assert order.transcript[-1] == "AI: 네, 6시 반까지 준비해 둘게요. 감사합니다."
 
 
 def test_handle_before_start_raises(engine: DialogEngine) -> None:

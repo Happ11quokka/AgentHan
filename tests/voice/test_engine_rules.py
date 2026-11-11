@@ -17,7 +17,7 @@ NOW = datetime(2026, 11, 8, 16, 0, tzinfo=KST)
 TEMP_Q = "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"
 MORE_Q = "더 필요하신 거 있으세요?"
 ORDER_Q = "어떤 걸로 드릴까요?"
-SORRY = "죄송해요, 잘 못 알아들었어요."
+SORRY = "죄송해요, 제가 잘 못 알아들었어요."
 HANDOFF = "사장님께 메모 남겨 드릴게요."
 MEDOVIK_DESC = "메도빅은 꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크예요."
 
@@ -103,14 +103,17 @@ def test_no_with_content_goes_to_nlu() -> None:
 
 def test_correction_reads_back_changed_item_then_full_readback(engine: DialogEngine) -> None:
     r = to_confirm(engine, "메도빅 하나요")
-    assert r.utterances == ["메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"]
+    assert r.utterances == [
+        "주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. "
+        "맞으세요?"]
 
     r = talk(engine, "아니요, 두 개요")
     assert r.state is State.CONFIRM
     assert r.order is None
     assert r.utterances == [
-        "메도빅 두 개로 바꿨어요.",
-        "그럼 메도빅 두 개, 6시 반 픽업, 총 15,000원이에요. 맞으세요?",
+        "메도빅 두 개로 바꿔 드렸어요.",
+        "그럼 다시 확인할게요. 메도빅 두 개, 6시 반에 찾으러 오시고, 모두 15,000원이에요. "
+        "맞으세요?",
     ]
 
     r = talk(engine, "네")
@@ -125,8 +128,9 @@ def test_correction_names_menu_among_several(engine: DialogEngine) -> None:
     r = talk(engine, "아니요, 아메리카노 두 잔이요")
     assert lines(r) == [("m01", 1), ("m03", 2)]
     assert r.utterances == [
-        "아메리카노 차갑게 두 잔으로 바꿨어요.",
-        "그럼 메도빅 하나, 아메리카노 차갑게 두 잔, 6시 반 픽업, 총 16,500원이에요. 맞으세요?",
+        "아이스 아메리카노 두 잔으로 바꿔 드렸어요.",
+        "그럼 다시 확인할게요. 메도빅 하나, 아이스 아메리카노 두 잔, 6시 반에 찾으러 오시고, "
+        "모두 16,500원이에요. 맞으세요?",
     ]
 
 
@@ -135,8 +139,8 @@ def test_correction_remove_item(engine: DialogEngine) -> None:
     r = talk(engine, "블린 빼 주세요")
     assert lines(r) == [("m01", 1)]
     assert r.utterances == [
-        "블린 뺐어요.",
-        "그럼 메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?",
+        "블린은 빼 드렸어요.",
+        "그럼 다시 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?",
     ]
 
 
@@ -144,7 +148,7 @@ def test_correction_removing_everything_goes_back_to_ordering(engine: DialogEngi
     to_confirm(engine, "메도빅 하나요")
     r = talk(engine, "메도빅 빼 주세요")
     assert r.state is State.ORDERING
-    assert r.utterances == ["메도빅 뺐어요.", ORDER_Q]
+    assert r.utterances == ["메도빅은 빼 드렸어요.", ORDER_Q]
 
 
 def test_correction_adding_menu_with_required_option(engine: DialogEngine) -> None:
@@ -155,7 +159,8 @@ def test_correction_adding_menu_with_required_option(engine: DialogEngine) -> No
     r = talk(engine, "따뜻하게요")
     assert r.state is State.CONFIRM
     assert r.utterances[-1] == (
-        "메도빅 하나, 아메리카노 따뜻하게 한 잔, 6시 반 픽업, 총 12,000원이에요. 맞으세요?"
+        "주문 확인할게요. 메도빅 하나, 따뜻한 아메리카노 한 잔, 6시 반에 찾으러 오시고, 모두 "
+        "12,000원이에요. 맞으세요?"
     )
 
 
@@ -164,8 +169,8 @@ def test_correction_pickup_time(engine: DialogEngine) -> None:
     r = talk(engine, "아니요, 7시요")
     assert r.state is State.CONFIRM
     assert r.utterances == [
-        "픽업 시간 7시로 바꿨어요.",
-        "그럼 메도빅 하나, 7시 픽업, 총 7,500원이에요. 맞으세요?",
+        "찾으러 오시는 시간은 7시로 바꿔 드렸어요.",
+        "그럼 다시 확인할게요. 메도빅 하나, 7시에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?",
     ]
     order = talk(engine, "네").order
     assert order is not None
@@ -179,7 +184,7 @@ def test_correction_pickup_too_early_offers_time(engine: DialogEngine) -> None:
     assert r.utterances == ["준비에 15분 정도 걸려요. 4시 15분 괜찮으세요?"]
     r = talk(engine, "네")
     assert r.state is State.CONFIRM
-    assert "4시 15분 픽업" in r.utterances[-1]
+    assert "4시 15분에 찾으러" in r.utterances[-1]
 
 
 def test_plain_no_then_fix_reads_back_again(engine: DialogEngine) -> None:
@@ -190,8 +195,9 @@ def test_plain_no_then_fix_reads_back_again(engine: DialogEngine) -> None:
     r = talk(engine, "두 개로 해 주세요")
     assert r.state is State.CONFIRM
     assert r.utterances == [
-        "메도빅 두 개로 바꿨어요.",
-        "그럼 메도빅 두 개, 6시 반 픽업, 총 15,000원이에요. 맞으세요?",
+        "메도빅 두 개로 바꿔 드렸어요.",
+        "그럼 다시 확인할게요. 메도빅 두 개, 6시 반에 찾으러 오시고, 모두 15,000원이에요. "
+        "맞으세요?",
     ]
 
 
@@ -201,8 +207,8 @@ def test_plain_no_then_new_time(engine: DialogEngine) -> None:
     r = talk(engine, "7시로 해 주세요")
     assert r.state is State.CONFIRM
     assert r.utterances == [
-        "픽업 시간 7시로 바꿨어요.",
-        "그럼 메도빅 하나, 7시 픽업, 총 7,500원이에요. 맞으세요?",
+        "찾으러 오시는 시간은 7시로 바꿔 드렸어요.",
+        "그럼 다시 확인할게요. 메도빅 하나, 7시에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?",
     ]
 
 
@@ -219,7 +225,7 @@ def test_unreadable_correction_reasks_readback(engine: DialogEngine) -> None:
 def test_final_readback_includes_requests(engine: DialogEngine) -> None:
     r = to_confirm(engine, "블린 하나요", "블린은 소스 따로 주세요")
     assert r.utterances == [
-        "블린 하나, 6시 반 픽업, 총 9,000원이에요. "
+        "주문 확인할게요. 블린 하나, 6시 반에 찾으러 오시고, 모두 9,000원이에요. "
         "블린에 소스 따로 주세요라고 적어 뒀어요. 맞으세요?"
     ]
 
@@ -273,7 +279,7 @@ def test_menu_question_during_option_question(engine: DialogEngine) -> None:
     talk(engine, "아메리카노 하나요")
     r = talk(engine, "아메리카노 디카페인 돼요?")
     assert r.state is State.CLARIFY
-    assert r.utterances == ["네, 아메리카노는 디카페인 변경 할 수 있어요. 500원 추가예요.", TEMP_Q]
+    assert r.utterances == ["네, 아메리카노는 디카페인으로도 돼요. 500원 더 받아요.", TEMP_Q]
     r = talk(engine, "차갑게요")
     assert r.state is State.ORDERING
 
@@ -445,7 +451,7 @@ def test_menu_cancel_is_remove_not_order_cancel(engine: DialogEngine) -> None:
     talk(engine, "메도빅 하나랑 블린 하나요")
     r = talk(engine, "블린 취소할게요")
     assert lines(r) == [("m01", 1)]
-    assert r.utterances == ["블린 뺐어요.", MORE_Q]
+    assert r.utterances == ["블린은 빼 드렸어요.", MORE_Q]
 
 
 # ---------------------------------------------------------------- 다시 말해 주세요
@@ -467,16 +473,17 @@ def test_transcript_alternates_customer_and_ai(engine: DialogEngine) -> None:
     order = talk(engine, "네").order
     assert order is not None
     assert order.transcript == [
-        "AI: 네, 샘플 러시안 베이커리입니다. 주문 도와드릴게요.",
+        "AI: 네, 샘플 러시안 베이커리입니다. 어떤 걸로 준비해 드릴까요?",
         "손님: 메도빅 하나요",
         f"AI: 메도빅 하나요. {MORE_Q}",
         "손님: 그게 다예요",
         "AI: 몇 시쯤 오세요?",
         "손님: 6시 반이요",
-        "AI: 메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?",
+        "AI: 주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?",
         "손님: 아니요, 두 개요",
-        "AI: 메도빅 두 개로 바꿨어요.",
-        "AI: 그럼 메도빅 두 개, 6시 반 픽업, 총 15,000원이에요. 맞으세요?",
+        "AI: 메도빅 두 개로 바꿔 드렸어요.",
+        "AI: 그럼 다시 확인할게요. 메도빅 두 개, 6시 반에 찾으러 오시고, 모두 15,000원이에요. "
+        "맞으세요?",
         "손님: 네",
-        "AI: 6시 반에 준비해 둘게요. 감사합니다.",
+        "AI: 네, 6시 반까지 준비해 둘게요. 감사합니다.",
     ]

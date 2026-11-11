@@ -221,7 +221,7 @@ def test_a_button_press_during_the_final_readback_cannot_lead_to_a_confirm(tmp_p
         ("thinking", False), ("speaking", False)
     ]
     assert [e["text"] for e in c.out.of("bot.say", 3)] == [
-        "메도빅 하나, 6시 반 픽업, 총 7,500원이에요.", "맞으세요?"
+        "주문 확인할게요.", "메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요.", "맞으세요?"
     ]
 
 

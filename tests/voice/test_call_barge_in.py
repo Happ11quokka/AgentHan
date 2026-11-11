@@ -272,7 +272,7 @@ async def to_readback(c: Call) -> None:
     await start(c)
     await c.turn(1)
     await c.turn(2)
-    await to_speaking(c, 3)  # 최종 복창: "…총 7,500원이에요." "맞으세요?"
+    await to_speaking(c, 3)  # 최종 복창: "주문 확인할게요." "…모두 7,500원이에요." "맞으세요?"
 
 
 def test_a_yes_before_the_amount_ends_is_ignored_in_the_readback(tmp_path) -> None:
@@ -299,7 +299,7 @@ def test_a_yes_said_after_the_amount_sentence_confirms(tmp_path) -> None:
     async def call() -> Call:
         async with barge_call(tmp_path, [*READBACK, "네"]) as c:
             await to_readback(c)
-            await c.feed(silence(LONG_MS + 200))
+            await c.feed(silence(2 * LONG_MS + 200))  # "주문 확인할게요."와 금액 문장
             await c.feed(tone(500) + silence(1_200))
             await c.out.wait_for("order", turn=4)
             return c
@@ -451,7 +451,7 @@ def test_no_new_duck_within_one_second_after_a_barge_in_is_settled(tmp_path) -> 
 async def to_closing(c: Call) -> None:
     """복창에 "네" → 마무리("…준비해 둘게요. 감사합니다.")를 말하는 중."""
     await to_readback(c)
-    await c.feed(silence(LONG_MS + 200))
+    await c.feed(silence(2 * LONG_MS + 200))  # "주문 확인할게요."와 금액 문장
     await c.say(speech_ms=500)
     await c.out.wait_for("bot.done", turn=4)
 

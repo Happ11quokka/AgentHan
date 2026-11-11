@@ -25,7 +25,7 @@
     {
       "guest": "음",
       "expect_state": "ask_pickup",
-      "expect_say_exact": ["죄송해요, 잘 못 알아들었어요.", "9시 전에 몇 시쯤 오세요?"]
+      "expect_say_exact": ["죄송해요, 제가 잘 못 알아들었어요.", "9시 전에 몇 시쯤 오세요?"]
     },
     {
       "guest": "4시 50분이요",
@@ -40,7 +40,7 @@
     {
       "guest": "네",
       "expect_state": "confirm",
-      "expect_say": ["5시 25분 픽업"]
+      "expect_say": ["5시 25분에 찾으러"]
     },
     {
       "guest": "네",

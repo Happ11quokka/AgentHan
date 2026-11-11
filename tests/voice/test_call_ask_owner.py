@@ -83,7 +83,7 @@ def test_a_written_answer_is_promised_by_text_and_the_end_of_call_carries_the_te
 
     c = run(call())
     assert said(c, 3) == "사장님이 답을 남기셨어요. 문자로 보내 드릴게요. 더 필요하신 거 있으세요?"
-    assert said(c, 6) == "6시 반에 준비해 둘게요. 감사합니다."
+    assert said(c, 6) == "네, 6시 반까지 준비해 둘게요. 감사합니다."
     assert c.out.of("call.ended") == [
         {"type": "call.ended", "turn": 6, "reason": "confirmed", "sms": texts}]
 

@@ -54,9 +54,9 @@ from agenthan.voice.store_config import StoreConfig
 SCENARIO_DIR = Path(__file__).parent / "scenarios"
 MAX_SENTENCE = 150
 
-_TOTAL = re.compile(r"총 ([\d,]+)원")
+_TOTAL = re.compile(r"모두 ([\d,]+)원")
 # CONFIRM으로 끝나는 턴의 질문: 최종 복창, 또는 그 자리에서 받은 "주문 취소할까요?"
-_CONFIRM_QUESTION = re.compile(r"총 [\d,]+원이에요\..*맞으세요\?|주문 취소할까요\?")
+_CONFIRM_QUESTION = re.compile(r"모두 [\d,]+원이에요\..*맞으세요\?|주문 취소할까요\?")
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 _HELLO = "여보세요?"  # 무응답 되묻기의 부르는 말 (질문 수에 넣지 않는다)
 # 괄호·마크다운 기호. TTS가 읽지 않거나 이상하게 읽는다 (spec §7)

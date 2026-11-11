@@ -54,7 +54,7 @@ def test_too_early_offers_prep_time_and_yes_takes_it(engine: DialogEngine) -> No
     r = engine.handle("네", now)
     assert r.state is State.CONFIRM
     assert len(r.utterances) == 1
-    assert "5시 25분 픽업" in r.utterances[0]
+    assert "5시 25분에 찾으러" in r.utterances[0]
 
     order = finish(engine, now).order
     assert order is not None
@@ -72,7 +72,7 @@ def test_too_early_offer_declined_asks_again(engine: DialogEngine) -> None:
 
     r = engine.handle("6시요", now)
     assert r.state is State.CONFIRM
-    assert "6시 픽업" in r.utterances[0]
+    assert "6시에 찾으러" in r.utterances[0]
 
 
 def test_new_time_replaces_offer(engine: DialogEngine) -> None:
@@ -81,7 +81,7 @@ def test_new_time_replaces_offer(engine: DialogEngine) -> None:
     engine.handle("5시 15분이요", now)
     r = engine.handle("그럼 6시 반이요", now)
     assert r.state is State.CONFIRM
-    assert "6시 반 픽업" in r.utterances[0]
+    assert "6시 반에 찾으러" in r.utterances[0]
 
 
 def test_now_takes_prep_time_without_asking(engine: DialogEngine) -> None:
@@ -90,8 +90,8 @@ def test_now_takes_prep_time_without_asking(engine: DialogEngine) -> None:
 
     r = engine.handle("지금 갈게요", now)
     assert r.state is State.CONFIRM
-    assert r.utterances[0] == "준비에 15분 정도 걸려서 5시 25분으로 잡아 둘게요."
-    assert "5시 25분 픽업" in r.utterances[1]
+    assert r.utterances[0] == "준비하는 데 15분쯤 걸려요. 5시 25분까지 해 둘게요."
+    assert "5시 25분에 찾으러" in r.utterances[1]
     assert len(r.utterances) == 2
 
     order = finish(engine, now).order
@@ -112,7 +112,7 @@ def test_after_close_is_refused_and_asked_again(engine: DialogEngine) -> None:
 
     r = engine.handle("8시요", now)  # 딱 3시간 뒤: 확인 없이 받는다
     assert r.state is State.CONFIRM
-    assert "8시 픽업" in r.utterances[0]
+    assert "8시에 찾으러" in r.utterances[0]
 
 
 def test_now_too_close_to_closing(engine: DialogEngine) -> None:
@@ -144,7 +144,7 @@ def test_ambiguous_meridiem_is_confirmed(engine: DialogEngine) -> None:
 
     r = engine.handle("네", now)
     assert r.state is State.CONFIRM
-    assert "11시 픽업" in r.utterances[0]
+    assert "11시에 찾으러" in r.utterances[0]
     order = finish(engine, now).order
     assert order is not None
     assert order.pickup_time == "2026-11-08T11:00:00+09:00"
@@ -186,7 +186,7 @@ def test_yes_without_offer_is_not_understood(engine: DialogEngine) -> None:
     to_ask_pickup(engine, now)
     r = engine.handle("네", now)
     assert r.state is State.ASK_PICKUP
-    assert r.utterances == ["죄송해요, 잘 못 알아들었어요.", "몇 시쯤 오세요?"]
+    assert r.utterances == ["죄송해요, 제가 잘 못 알아들었어요.", "몇 시쯤 오세요?"]
 
 
 def test_native_numeral_time(engine: DialogEngine) -> None:
@@ -221,7 +221,7 @@ def test_now_said_while_ordering_is_kept(engine: DialogEngine) -> None:
     engine.handle("지금 갈게요", now)
     r = engine.handle("그게 다예요", now)
     assert r.state is State.CONFIRM
-    assert "5시 25분 픽업" in r.utterances[0]
+    assert "5시 25분에 찾으러" in r.utterances[0]
 
 
 def test_unreadable_time_while_ordering_is_ignored(engine: DialogEngine) -> None:

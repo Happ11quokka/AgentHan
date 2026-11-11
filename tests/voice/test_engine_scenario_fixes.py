@@ -67,7 +67,9 @@ def test_plain_no_with_pickup_already_known_goes_to_readback(engine: DialogEngin
     talk(engine, "메도빅 하나요", "6시 반에 갈게요")
     r = talk(engine, "아니요")
     assert r.state is State.CONFIRM
-    assert r.utterances == ["메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"]
+    assert r.utterances == [
+        "주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. "
+        "맞으세요?"]
 
 
 def test_plain_yes_to_anything_else_asks_what_to_add(engine: DialogEngine) -> None:
@@ -81,14 +83,14 @@ def test_plain_yes_to_anything_else_asks_what_to_add(engine: DialogEngine) -> No
 
 def test_plain_no_with_empty_cart_is_still_not_understood(engine: DialogEngine) -> None:
     r = talk(engine, "아니요")
-    assert r.utterances == ["죄송해요, 잘 못 알아들었어요.", "어떤 걸로 드릴까요?"]
+    assert r.utterances == ["죄송해요, 제가 잘 못 알아들었어요.", "어떤 걸로 드릴까요?"]
 
 
 def test_plain_no_after_what_to_fix_is_not_done_ordering(engine: DialogEngine) -> None:
     talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요", "아니요")
     r = talk(engine, "아니요")
     assert r.state is State.ORDERING
-    assert r.utterances == ["죄송해요, 잘 못 알아들었어요.", "어떤 걸 고쳐 드릴까요?"]
+    assert r.utterances == ["죄송해요, 제가 잘 못 알아들었어요.", "어떤 걸 고쳐 드릴까요?"]
 
 
 # ---------------------------------------------------------------- 없는 메뉴 안내 뒤 질문
@@ -118,7 +120,7 @@ def test_done_ordering_during_option_question_is_kept(engine: DialogEngine) -> N
     assert r.utterances == [TEMP_Q]  # "잘 못 알아들었어요"가 아니다
     r = talk(engine, "따뜻하게요")
     assert r.state is State.ASK_PICKUP
-    assert r.utterances == ["아메리카노 따뜻하게 한 잔이요.", "몇 시쯤 오세요?"]
+    assert r.utterances == ["따뜻한 아메리카노 한 잔이요.", "몇 시쯤 오세요?"]
 
 
 def test_pickup_time_during_option_question_is_kept(engine: DialogEngine) -> None:
@@ -128,7 +130,9 @@ def test_pickup_time_during_option_question_is_kept(engine: DialogEngine) -> Non
     assert r.utterances == [TEMP_Q]
     r = talk(engine, "차갑게", "그게 다예요")
     assert r.state is State.CONFIRM
-    assert r.utterances == ["아메리카노 차갑게 한 잔, 6시 반 픽업, 총 4,500원이에요. 맞으세요?"]
+    assert r.utterances == [
+        "주문 확인할게요. 아이스 아메리카노 한 잔, 6시 반에 찾으러 오시고, 모두 4,500원이에요. "
+        "맞으세요?"]
 
 
 def test_option_question_hands_off_when_not_counted_as_failure(engine: DialogEngine) -> None:
@@ -150,7 +154,8 @@ def test_correction_through_menu_clarify_reads_back_again(engine: DialogEngine) 
     assert r.state is State.CONFIRM
     assert r.utterances == [
         "나폴레옹 하나요.",
-        "그럼 메도빅 하나, 나폴레옹 하나, 6시 반 픽업, 총 14,500원이에요. 맞으세요?",
+        "그럼 다시 확인할게요. 메도빅 하나, 나폴레옹 하나, 6시 반에 찾으러 오시고, 모두 "
+        "14,500원이에요. 맞으세요?",
     ]
 
 
@@ -159,4 +164,7 @@ def test_correction_menu_clarify_declined_reads_back_again(engine: DialogEngine)
     r = talk(engine, "아니요")
     assert r.state is State.CONFIRM
     assert lines(r) == [("m01", 1)]
-    assert r.utterances[-1] == "그럼 메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"
+    assert r.utterances[-1] == (
+        "그럼 다시 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. "
+        "맞으세요?"
+    )

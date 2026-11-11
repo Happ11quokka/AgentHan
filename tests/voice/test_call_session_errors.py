@@ -56,7 +56,10 @@ def test_stt_stream_break_mid_call_sends_error(tmp_path) -> None:
 
 
 def test_tts_failure_sends_error(tmp_path) -> None:
-    tts = FakeTts(failures={"주문 도와드릴게요.": PortError("요청이 많아요", code="tts_429")})
+    tts = FakeTts(failures={(
+        "어떤 걸로 준비해 "
+        "드릴까요?"
+    ): PortError("요청이 많아요", code="tts_429")})
 
     async def call() -> dict:
         async with Call(tmp_path, tts=tts) as c:
@@ -67,7 +70,7 @@ def test_tts_failure_sends_error(tmp_path) -> None:
 
 
 def test_unexpected_tts_exception_is_reported_without_its_message(tmp_path) -> None:
-    tts = FakeTts(failures={"주문 도와드릴게요.": RuntimeError("secret-key-123")})
+    tts = FakeTts(failures={"어떤 걸로 준비해 드릴까요?": RuntimeError("secret-key-123")})
 
     async def call() -> dict:
         async with Call(tmp_path, tts=tts) as c:

@@ -33,17 +33,17 @@
     {
       "event": "no_input",
       "expect_state": "confirm",
-      "expect_say": ["여보세요?", "메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"]
+      "expect_say": ["여보세요?", "주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?"]
     },
     {
       "event": "no_input",
       "expect_state": "confirm",
-      "expect_say": ["여보세요?", "메도빅 하나, 6시 반 픽업, 총 7,500원이에요. 맞으세요?"]
+      "expect_say": ["여보세요?", "주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?"]
     },
     {
       "guest": "네",
       "expect_state": "closing",
-      "expect_say": ["6시 반에 준비해 둘게요. 감사합니다."]
+      "expect_say": ["네, 6시 반까지 준비해 둘게요. 감사합니다."]
     }
   ],
   "expect_order": {

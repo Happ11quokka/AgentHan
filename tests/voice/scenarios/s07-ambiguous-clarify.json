@@ -139,7 +139,7 @@
       "guest": "6시 반",
       "expect_state": "confirm",
       "expect_say": [
-        "총 23,500원이에요."
+        "모두 23,500원이에요."
       ]
     },
     {

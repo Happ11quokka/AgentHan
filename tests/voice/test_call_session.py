@@ -49,7 +49,7 @@ def test_one_call_from_greeting_to_confirmed_order(tmp_path) -> None:
     c = _full_call(tmp_path)
     says = [e["text"] for e in c.out.of("bot.say")]
     assert says[0] == "네, 샘플 러시안 베이커리입니다."
-    assert "메도빅 하나, 6시 반 픽업, 총 7,500원이에요." in says
+    assert "메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요." in says
     assert [e["text"] for e in c.out.of("stt.final")] == ORDER_SCRIPT
     (order_event,) = c.out.of("order")
     assert order_event["turn"] == 4
@@ -213,7 +213,7 @@ def test_tts_sentences_go_out_in_order_even_if_synthesis_finishes_out_of_order(t
         ("audio", 1, 100, True), ("bot.audio.end", 1),
     ]
     assert [e["text"] for e in c.out.of("bot.say", 0)] == [
-        "네, 샘플 러시안 베이커리입니다.", "주문 도와드릴게요."
+        "네, 샘플 러시안 베이커리입니다.", "어떤 걸로 준비해 드릴까요?"
     ]
 
 

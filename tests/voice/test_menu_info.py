@@ -39,13 +39,13 @@ def test_price() -> None:
 
 def test_option_list() -> None:
     assert answer_menu_question(item("m03"), "아메리카노 옵션 뭐 있어요?") == (
-        "아메리카노는 디카페인 변경, 샷 추가 할 수 있어요."
+        "아메리카노는 디카페인으로, 샷 추가도 돼요."
     )
 
 
 def test_specific_option_with_extra_price() -> None:
     assert answer_menu_question(item("m03"), "아메리카노 디카페인 돼요?") == (
-        "네, 아메리카노는 디카페인 변경 할 수 있어요. 500원 추가예요."
+        "네, 아메리카노는 디카페인으로도 돼요. 500원 더 받아요."
     )
 
 

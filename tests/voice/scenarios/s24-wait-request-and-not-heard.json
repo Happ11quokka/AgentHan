@@ -34,7 +34,7 @@
     },
     {
       "guest": "음",
-      "expect_say": ["죄송해요, 잘 못 알아들었어요."]
+      "expect_say": ["죄송해요, 제가 잘 못 알아들었어요."]
     },
     {
       "event": "not_heard",
@@ -43,7 +43,7 @@
     {
       "guest": "음",
       "expect_state": "ordering",
-      "expect_say": ["죄송해요, 잘 못 알아들었어요."]
+      "expect_say": ["죄송해요, 제가 잘 못 알아들었어요."]
     },
     {
       "event": "no_input",

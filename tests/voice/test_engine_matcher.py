@@ -104,7 +104,9 @@ def test_unintelligible_reply_reasks_the_clarify_question() -> None:
     engine.handle("메도비 하나요", NOW)
     r = engine.handle("음", NOW)
     assert r.state is State.CLARIFY
-    assert r.utterances == ["죄송해요, 잘 못 알아들었어요.", "혹시 메도빅 말씀하신 거 맞으세요?"]
+    assert r.utterances == [
+        "죄송해요, 제가 잘 못 "
+        "알아들었어요.", "혹시 메도빅 말씀하신 거 맞으세요?"]
 
 
 def test_pickup_time_during_clarify_is_kept_and_question_repeated() -> None:
@@ -118,7 +120,7 @@ def test_pickup_time_during_clarify_is_kept_and_question_repeated() -> None:
     assert _cart(r) == [("m01", 1)]
     r = engine.handle("그게 다예요", NOW)
     assert r.state is State.CONFIRM
-    assert "6시 픽업" in r.utterances[0]
+    assert "6시에 찾으러" in r.utterances[0]
 
 
 def test_pickup_time_deferred_by_clarify_goes_through_pickup_rules() -> None:
@@ -132,7 +134,7 @@ def test_pickup_time_deferred_by_clarify_goes_through_pickup_rules() -> None:
     assert r.utterances == ["오후 8시에 오시는 거죠?"]
     r = engine.handle("네", NOW)
     assert r.state is State.CONFIRM
-    assert "8시 픽업" in r.utterances[0]
+    assert "8시에 찾으러" in r.utterances[0]
 
 
 def test_exact_alias_is_not_asked_again() -> None:
@@ -362,7 +364,7 @@ def test_confirmed_menu_then_asks_required_option() -> None:
     assert r.state is State.CLARIFY
     assert r.utterances == ["아메리카노 한 잔이요.", TEMP_Q]
     r = engine.handle("차갑게요", NOW)
-    assert r.utterances == ["아메리카노 차갑게 한 잔이요. 더 필요하신 거 있으세요?"]
+    assert r.utterances == ["아이스 아메리카노 한 잔이요. 더 필요하신 거 있으세요?"]
     r = engine.handle("그게 다예요", NOW)
     assert r.state is State.ASK_PICKUP
 
@@ -379,7 +381,8 @@ def test_deferred_done_and_pickup_wait_for_required_option() -> None:
     assert r.utterances == ["메도빅 하나, 아메리카노 한 잔이요.", TEMP_Q]
     r = engine.handle("차갑게요", NOW)
     assert r.state is State.CONFIRM
-    assert r.utterances[-1].startswith("메도빅 하나, 아메리카노 차갑게 한 잔, 6시 반 픽업")
+    assert r.utterances[-1].startswith(
+        "주문 확인할게요. 메도빅 하나, 아이스 아메리카노 한 잔, 6시 반에 찾으러 오시고")
     r = engine.handle("네", NOW)
     assert r.order is not None
     assert r.order.lines == [

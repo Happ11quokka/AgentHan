@@ -70,7 +70,7 @@ def test_required_option_is_asked_then_applied(engine: DialogEngine) -> None:
     r = talk(engine, "차갑게요")
     assert r.state is State.ORDERING
     assert lines(r) == [("m03", 1, ("차갑게",))]
-    assert r.utterances == [f"아메리카노 차갑게 한 잔이요. {MORE_Q}"]
+    assert r.utterances == [f"아이스 아메리카노 한 잔이요. {MORE_Q}"]
     assert questions(r) == 1
 
 
@@ -79,7 +79,7 @@ def test_decaf_adds_500_to_total(engine: DialogEngine) -> None:
     assert lines(r) == [("m03", 1, ("차갑게", "디카페인 변경"))]
     assert r.cart.total() == 4500 + 500
     r = talk(engine, "그게 다예요", "6시 반이요")
-    assert "총 5,000원" in r.utterances[-1]
+    assert "모두 5,000원" in r.utterances[-1]
 
 
 # ---------------------------------------------------------------- 여러 항목·수량
@@ -133,26 +133,26 @@ def test_change_qty_of_menu_not_in_cart_adds_it(engine: DialogEngine) -> None:
 def test_remove_item_from_earlier_turn(engine: DialogEngine) -> None:
     r = talk(engine, "메도빅 하나요", "블린 하나요", "블린 빼 주세요")
     assert lines(r) == [("m01", 1, ())]
-    assert r.utterances == ["블린 뺐어요.", MORE_Q]
+    assert r.utterances == ["블린은 빼 드렸어요.", MORE_Q]
 
 
 def test_remove_last_item_empties_cart(engine: DialogEngine) -> None:
     r = talk(engine, "블린 하나요", "그거 빼 주세요")
     assert r.cart.is_empty()
-    assert r.utterances == ["블린 뺐어요.", "어떤 걸로 드릴까요?"]
+    assert r.utterances == ["블린은 빼 드렸어요.", "어떤 걸로 드릴까요?"]
 
 
 def test_remove_item_not_in_cart(engine: DialogEngine) -> None:
     r = talk(engine, "메도빅 하나요", "나폴레옹 빼 주세요")
     assert lines(r) == [("m01", 1, ())]
-    assert r.utterances == ["주문하신 것 중에 나폴레옹은 없어요.", MORE_Q]
+    assert r.utterances == ["주문하신 것 중엔 나폴레옹이 없어요.", MORE_Q]
 
 
 def test_remove_while_option_pending_drops_the_question(engine: DialogEngine) -> None:
     r = talk(engine, "메도빅 하나랑 아메리카노 하나요", "아메리카노 빼 주세요")
     assert lines(r) == [("m01", 1, ())]
     assert r.state is State.ORDERING
-    assert r.utterances == ["아메리카노 뺐어요.", MORE_Q]
+    assert r.utterances == ["아메리카노는 빼 드렸어요.", MORE_Q]
 
 
 # ---------------------------------------------------------------- 필수 옵션
@@ -162,20 +162,20 @@ def test_required_option_said_up_front_is_not_asked(engine: DialogEngine) -> Non
     r = talk(engine, "아이스 아메리카노 두 잔이요")
     assert r.state is State.ORDERING
     assert lines(r) == [("m03", 2, ("차갑게",))]
-    assert r.utterances == [f"아메리카노 차갑게 두 잔이요. {MORE_Q}"]
+    assert r.utterances == [f"아이스 아메리카노 두 잔이요. {MORE_Q}"]
 
 
 def test_non_choice_answer_is_applied_and_question_repeats(engine: DialogEngine) -> None:
     r = talk(engine, "아메리카노 하나요", "디카페인으로요")
     assert r.state is State.CLARIFY
     assert lines(r) == [("m03", 1, ("디카페인 변경",))]
-    assert r.utterances == ["아메리카노 디카페인 변경 한 잔이요.", TEMP_Q]
+    assert r.utterances == ["아메리카노 디카페인으로 한 잔이요.", TEMP_Q]
 
 
 def test_unintelligible_answer_reasks_option(engine: DialogEngine) -> None:
     r = talk(engine, "아메리카노 하나요", "음")
     assert r.state is State.CLARIFY
-    assert r.utterances == ["죄송해요, 잘 못 알아들었어요.", TEMP_Q]
+    assert r.utterances == ["죄송해요, 제가 잘 못 알아들었어요.", TEMP_Q]
 
 
 def test_change_temperature_later_replaces_choice(engine: DialogEngine) -> None:
@@ -194,7 +194,7 @@ def test_done_ordering_waits_for_required_option(engine: DialogEngine) -> None:
     assert r.utterances == ["아메리카노 한 잔이요.", TEMP_Q]
     r = talk(engine, "차갑게요")
     assert r.state is State.ASK_PICKUP
-    assert r.utterances == ["아메리카노 차갑게 한 잔이요.", "몇 시쯤 오세요?"]
+    assert r.utterances == ["아이스 아메리카노 한 잔이요.", "몇 시쯤 오세요?"]
 
 
 class ScriptNlu:
@@ -226,7 +226,7 @@ def test_several_missing_required_options_are_asked_in_turn() -> None:
     r = talk(engine, "차갑게요")
     assert r.state is State.CLARIFY
     assert r.utterances == [
-        "아메리카노 차갑게 한 잔이요.",
+        "아이스 아메리카노 한 잔이요.",
         "아메리카노는 톨 드릴까요, 그란데 드릴까요?",
     ]
     r = talk(engine, "그란데요")
@@ -251,7 +251,7 @@ def test_optional_option_on_item_without_it_is_explained(engine: DialogEngine) -
     r = talk(engine, "블린 디카페인으로 하나요")
     assert lines(r) == [("m04", 1, ())]
     assert r.utterances == [
-        "죄송해요, 블린은 그 옵션이 없어요. 사워크림 빼기는 할 수 있어요.",
+        "죄송해요, 블린은 그 옵션이 없어요. 사워크림 빼기만 돼요.",
         f"블린 하나요. {MORE_Q}",
     ]
 
@@ -267,7 +267,7 @@ def test_option_targets_last_item(engine: DialogEngine) -> None:
     r = talk(engine, "블린 하나요", "사워크림 빼 주세요")
     assert lines(r) == [("m04", 1, ("사워크림 빼기",))]
     assert r.cart.total() == 9000
-    assert r.utterances == [f"블린 사워크림 빼기 하나요. {MORE_Q}"]
+    assert r.utterances == [f"블린 사워크림 빼고 하나요. {MORE_Q}"]
 
 
 def test_option_with_empty_cart_asks_for_menu(engine: DialogEngine) -> None:
@@ -335,8 +335,8 @@ def test_full_order_with_options_and_edits(engine: DialogEngine) -> None:
     last = results[-1]
     assert last.state is State.CONFIRM
     assert last.utterances == [
-        "메도빅 하나, 아메리카노 차갑게 디카페인 변경 두 잔, 6시 반 픽업, "
-        "총 17,500원이에요. 맞으세요?"
+        "주문 확인할게요. 메도빅 하나, 아이스 아메리카노 디카페인으로 두 잔, "
+        "6시 반에 찾으러 오시고, 모두 17,500원이에요. 맞으세요?"
     ]
     order = engine.handle("네", NOW).order
     assert order is not None

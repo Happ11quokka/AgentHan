@@ -63,7 +63,7 @@ def lines(r: TurnResult) -> list[tuple[str, int]]:
 
 
 def has_readback(r: TurnResult) -> bool:
-    return any("맞으세요?" in u and "총 " in u for u in r.utterances)
+    return any("맞으세요?" in u and "모두 " in u for u in r.utterances)
 
 
 # ---------------------------------------------------------------- C1: 복창 없는 CONFIRM
@@ -225,7 +225,7 @@ def test_c4_asap_just_before_opening_rounds_up_to_open() -> None:
     talk(engine, "메도빅 하나", "그게 다예요", now=now)
     r = talk(engine, "지금 갈게요", now=now)
     assert r.state is State.CONFIRM
-    assert "10시 5분 픽업" in " ".join(r.utterances)
+    assert "10시 5분에 찾으러" in " ".join(r.utterances)
 
 
 # ---------------------------------------------------------------- C5: 복창에 메뉴 이름만
@@ -244,7 +244,7 @@ def test_c5_repeating_a_cart_menu_name_in_confirm_does_not_add_one() -> None:
     assert r.state is State.CONFIRM
     assert lines(r) == [("m01", 1)]
     assert has_readback(r), r.utterances
-    assert "총 7,500원" in " ".join(r.utterances)
+    assert "모두 7,500원" in " ".join(r.utterances)
 
 
 def test_c5_explicit_more_in_confirm_still_adds() -> None:
@@ -284,7 +284,7 @@ def test_c10_removing_last_item_while_asking_pickup_goes_back_to_ordering() -> N
     r = talk(engine, "메도빅 빼 주세요")
     assert r.state is State.ORDERING
     assert r.cart.is_empty()
-    assert r.utterances == ["메도빅 뺐어요.", "어떤 걸로 드릴까요?"]
+    assert r.utterances == ["메도빅은 빼 드렸어요.", "어떤 걸로 드릴까요?"]
 
 
 def test_c10_item_needing_option_while_asking_pickup_asks_option_first() -> None:
@@ -307,7 +307,7 @@ def test_c14_unreadable_time_during_option_question_keeps_the_known_time() -> No
     assert r.state is State.CLARIFY
     r = talk(engine, "따뜻하게요", "그게 다예요")
     assert r.state is State.CONFIRM
-    assert "6시 반 픽업" in r.utterances[-1]
+    assert "6시 반에 찾으러" in r.utterances[-1]
 
 
 def test_c16_time_taken_while_ordering_is_checked_again_at_readback() -> None:

@@ -39,7 +39,7 @@ def test_a_wait_request_during_the_readback_does_not_confirm(text: str) -> None:
     assert result.state is State.CONFIRM
     assert result.utterances == ["네, 천천히 말씀하세요."]
     again = engine.no_input(NOW)  # 기다린 뒤 되묻기는 지금 장바구니 복창
-    assert again.utterances[-1].endswith("총 7,500원이에요. 맞으세요?")
+    assert again.utterances[-1].endswith("모두 7,500원이에요. 맞으세요?")
 
 
 def test_the_call_ends_on_silence_without_an_order_even_with_items_in_the_cart() -> None:

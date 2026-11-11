@@ -95,7 +95,7 @@ def test_ungrounded_menu_questions_open(before: tuple[str, ...], question: str,
 @pytest.mark.parametrize(("question", "say"), [
     ("메도빅 우유 들어가요?", "네, 메도빅에는 우유가 들어가요."),  # 목록에 있는 알레르기
     ("나폴레옹 얼마예요?", "나폴레옹은 7,000원이에요."),  # 가격
-    ("아메리카노 디카페인 돼요?", "네, 아메리카노는 디카페인 변경 할 수 있어요. 500원 추가예요."),
+    ("아메리카노 디카페인 돼요?", "네, 아메리카노는 디카페인으로도 돼요. 500원 더 받아요."),
     ("주차 돼요?", DONT_KNOW),  # 가게 정보 질문
     ("아메리카노 어떤 맛이에요?", DONT_KNOW),  # 설명이 빈 메뉴의 맛: 버튼 셋으로 답하기 어색 (06)
     ("아메리카노 달아요?", DONT_KNOW),
@@ -292,7 +292,9 @@ def test_closing_with_an_open_question_promises_a_text_and_closes_it() -> None:
     asked = _open(engine)
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
     assert r.state is State.CLOSING
-    assert r.utterances == ["6시 반에 준비해 둘게요. 여쭤보신 건 확인해서 문자로 알려 드릴게요. "
+    assert r.utterances == [
+        "네, 6시 반까지 준비해 둘게요. 여쭤보신 건 확인해서 문자로 알려 드릴게요. "
+        ""
                             "감사합니다."]
     assert r.order is not None
     assert engine.owner_answered(asked.number, "yes", NOW).utterances == []
@@ -303,7 +305,7 @@ def test_closing_without_an_open_question_is_unchanged() -> None:
     engine.owner_answered(_open(engine, "메도빅 하나요 그리고 메도빅에 견과류 들어가요?").number,
                           "yes", NOW)
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
-    assert r.utterances == ["6시 반에 준비해 둘게요. 감사합니다."]
+    assert r.utterances == ["네, 6시 반까지 준비해 둘게요. 감사합니다."]
 
 
 @pytest.mark.parametrize("ending", [("취소할게요", "네"), ("사장님 바꿔 주세요",)])
@@ -325,6 +327,8 @@ def test_a_written_answer_is_not_read_out_and_promises_a_text_message() -> None:
     assert r.utterances == ["사장님이 답을 남기셨어요. 문자로 보내 드릴게요.", MORE_Q]
     assert r.state is State.ORDERING
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
-    assert r.utterances == ["6시 반에 준비해 둘게요. 감사합니다."]  # 답이 왔으니 문자 약속 없음
+    assert r.utterances == [
+        "네, 6시 반까지 준비해 둘게요. "
+        "감사합니다."]  # 답이 왔으니 문자 약속 없음
     assert r.order is not None
     assert "사장님: (글로 답함, 문자로 보냄)" in r.order.transcript

@@ -125,7 +125,7 @@ def test_a_default_choice_the_customer_did_not_pick_is_not_read_back() -> None:
 
     r = engine.handle("곱빼기로 바꿔 주세요", NOW)
     assert _lines(r) == [("p01", 2, ("곱빼기",))]
-    assert "소고기 쌀국수 곱빼기 두 개" in " ".join(r.utterances)
+    assert "소고기 쌀국수 곱빼기로 두 개" in " ".join(r.utterances)
 
     engine.handle("그게 다예요", NOW)
     engine.handle("일곱 시요", NOW)

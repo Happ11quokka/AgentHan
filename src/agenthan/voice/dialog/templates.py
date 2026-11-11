@@ -47,10 +47,30 @@ def qty_phrase(qty: int, unit: str = "개") -> str:
     return f"{attributive} {unit}"
 
 
+# 온도는 메뉴 앞에 붙여 읽는다 ("아이스 아메리카노", 5단계 티켓 10)
+_TEMPERATURE_PREFIX = {"차갑게": "아이스", "따뜻하게": "따뜻한"}
+
+
+def spoken_option(name: str) -> str:
+    """옵션 이름을 말로. 가게 데이터 표기("사워크림 빼기")를 그대로 읽으면 어색하다(티켓 10).
+
+    "○○ 빼기" → "○○ 빼고", "○○ 변경" → "○○로", "○○ 추가"·띄어 쓴 이름 → 그대로,
+    한 단어 선택지("순살", "곱빼기") → "순살로".
+    """
+    if name.endswith(" 빼기"):
+        return name[: -len(" 빼기")] + " 빼고"
+    if name.endswith(" 변경"):
+        return _euro(name[: -len(" 변경")])
+    if name.endswith(" 추가") or " " in name:
+        return name
+    return _euro(name)
+
+
 def line_phrase(name: str, qty: int, unit: str, options: Sequence[str] = ()) -> str:
-    """장바구니 한 줄. 예: "아메리카노 디카페인 변경 두 잔"."""
-    parts = [name, *options, qty_phrase(qty, unit)]
-    return " ".join(parts)
+    """장바구니 한 줄(손님에게 말하는 꼴). 예: "아이스 아메리카노 디카페인으로 두 잔"."""
+    before = [_TEMPERATURE_PREFIX[o] for o in options if o in _TEMPERATURE_PREFIX]
+    after = [spoken_option(o) for o in options if o not in _TEMPERATURE_PREFIX]
+    return " ".join([*before, name, *after, qty_phrase(qty, unit)])
 
 
 def won(amount: int) -> str:
@@ -98,7 +118,7 @@ def i_na(word: str) -> str:
 # ---------------------------------------------------------------- 대사
 
 def greeting(store_name: str) -> str:
-    return f"네, {store_name}입니다. 주문 도와드릴게요."
+    return f"네, {store_name}입니다. 어떤 걸로 준비해 드릴까요?"
 
 
 def ask_order() -> str:
@@ -138,7 +158,7 @@ def option_not_available(menu_name: str, options: Sequence[str]) -> str:
     """그 메뉴에 없는 옵션을 말했을 때. 되는 옵션이 있으면 알려 준다."""
     if not options:
         return f"죄송해요, {eun_neun(menu_name)} 따로 고를 수 있는 옵션이 없어요."
-    can = f"{eun_neun(_join(options))} 할 수 있어요."
+    can = f"{_join(options)}만 돼요."
     return f"죄송해요, {eun_neun(menu_name)} 그 옵션이 없어요. {can}"
 
 
@@ -167,11 +187,11 @@ def which_item() -> str:
 
 
 def removed(menu_name: str) -> str:
-    return f"{menu_name} 뺐어요."
+    return f"{eun_neun(menu_name)} 빼 드렸어요."
 
 
 def not_in_cart(menu_name: str) -> str:
-    return f"주문하신 것 중에 {eun_neun(menu_name)} 없어요."
+    return f"주문하신 것 중엔 {i_ga(menu_name)} 없어요."
 
 
 def request_noted(menu_name: str, request: str) -> str:
@@ -201,8 +221,10 @@ def final_readback(
 
     `requests`는 (메뉴 이름, 요청 원문). 정정한 뒤 다시 복창할 때는 앞에 "그럼"을 붙인다.
     """
-    head = "그럼 " if after_fix else ""
-    parts = [f"{head}{cart_summary}, {spoken_time(pickup)} 픽업, 총 {won(total)}이에요."]
+    head = "그럼 다시 확인할게요." if after_fix else "주문 확인할게요."
+    parts = [head, 
+        f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, 모두 "
+        f"{won(total)}이에요."]
     parts += [f"{name}에 {request}라고 적어 뒀어요." for name, request in requests]
     return " ".join([*parts, "맞으세요?"])
 
@@ -214,11 +236,11 @@ def ask_what_to_fix() -> str:
 def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
     """마무리. 사장님 답을 못 받은 질문이 있으면 문자 약속을 붙인다 (4단계 티켓 06)."""
     later = " 여쭤보신 건 확인해서 문자로 알려 드릴게요." if owner_pending else ""
-    return f"{spoken_time(pickup)}에 준비해 둘게요.{later} 감사합니다."
+    return f"네, {spoken_time(pickup)}까지 준비해 둘게요.{later} 감사합니다."
 
 
 def not_understood() -> str:
-    return "죄송해요, 잘 못 알아들었어요."
+    return "죄송해요, 제가 잘 못 알아들었어요."
 
 
 # ---------------------------------------------------------------- 픽업 규칙 (티켓 04)
@@ -246,7 +268,7 @@ def _euro(word: str) -> str:
 
 
 def pickup_asap(prep_minutes: int, at: datetime) -> str:
-    return f"준비에 {prep_minutes}분 정도 걸려서 {_euro(spoken_time(at))} 잡아 둘게요."
+    return f"준비하는 데 {prep_minutes}분쯤 걸려요. {spoken_time(at)}까지 해 둘게요."
 
 
 def pickup_after_close(close: datetime) -> str:
@@ -327,12 +349,12 @@ def menu_price(name: str, price: int) -> str:
 def menu_options(name: str, options: Sequence[str]) -> str:
     if not options:
         return f"{eun_neun(name)} 따로 고를 수 있는 옵션이 없어요."
-    return f"{eun_neun(name)} {_join(options)} 할 수 있어요."
+    return f"{eun_neun(name)} {_join(spoken_option(o) for o in options)}도 돼요."
 
 
 def option_possible(name: str, option: str, extra_price: int) -> str:
-    said = f"네, {eun_neun(name)} {option} 할 수 있어요."
-    return f"{said} {won(extra_price)} 추가예요." if extra_price else said
+    said = f"네, {eun_neun(name)} {spoken_option(option)}도 돼요."
+    return f"{said} {won(extra_price)} 더 받아요." if extra_price else said
 
 
 def allergen_list(name: str, allergens: Sequence[str]) -> str:
@@ -348,11 +370,11 @@ def allergen_present(name: str, allergen: str) -> str:
 
 def changed_to(phrases: Sequence[str]) -> str:
     """정정한 항목만 되받는다. 예: "아메리카노 두 잔으로 바꿨어요."."""
-    return f"{_euro(_join(phrases))} 바꿨어요."
+    return f"{_euro(_join(phrases))} 바꿔 드렸어요."
 
 
 def pickup_changed(at: datetime) -> str:
-    return f"픽업 시간 {_euro(spoken_time(at))} 바꿨어요."
+    return f"찾으러 오시는 시간은 {_euro(spoken_time(at))} 바꿔 드렸어요."
 
 
 def pickup_noted(at: datetime) -> str:

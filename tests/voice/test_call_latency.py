@@ -25,7 +25,9 @@ def run(coro):
 
 def slow_after_greeting(seconds: float) -> FakeTts:
     """인사 문장은 바로, 그 뒤 문장은 `seconds` 걸려 합성하는 TTS."""
-    return FakeTts(delays=lambda text: 0.0 if text in (GREETING, "주문 도와드릴게요.") else seconds)
+    return FakeTts(delays=lambda text: 0.0 if text in (GREETING, 
+        "어떤 걸로 준비해 "
+        "드릴까요?") else seconds)
 
 
 def test_speech_after_the_engine_but_before_the_first_sound_becomes_the_next_turn(

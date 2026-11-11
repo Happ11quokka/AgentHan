@@ -17,7 +17,7 @@ from agenthan.voice.call.fakes import FakeSttStream, FakeTts
 from agenthan.voice.call.ports import PortError
 from agenthan.voice.call.session import CUSTOMER_RETRY, SessionSettings
 
-GREETING = ("네, 샘플 러시안 베이커리입니다.", "주문 도와드릴게요.")
+GREETING = ("네, 샘플 러시안 베이커리입니다.", "어떤 걸로 준비해 드릴까요?")
 
 
 def run(coro):

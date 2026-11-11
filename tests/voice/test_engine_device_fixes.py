@@ -52,7 +52,7 @@ def test_temperature_inside_the_menu_name_picks_the_option() -> None:
     r = _engine({ICE_ORDER: ICE_ACTS}).handle(ICE_ORDER, NOW)
     assert _lines(r) == [("m01", 2, ()), ("m03", 1, ("차갑게",))]
     assert TEMP_Q not in r.utterances
-    assert r.utterances[0].startswith("메도빅 두 개, 아메리카노 차갑게 한 잔이요.")
+    assert r.utterances[0].startswith("메도빅 두 개, 아이스 아메리카노 한 잔이요.")
 
 
 def test_hot_word_inside_the_menu_name_picks_hot() -> None:
@@ -157,4 +157,4 @@ def test_saying_the_option_that_is_already_set_still_gets_an_answer() -> None:
     r = engine.handle(again, NOW)
     assert _lines(r) == [("m03", 1, ("차갑게",))]
     assert r.utterances, "봇이 아무 말도 안 하면 손님은 끊긴 줄 안다"
-    assert "차갑게" in r.utterances[0]
+    assert "아이스" in r.utterances[0]

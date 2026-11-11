@@ -64,7 +64,7 @@ def test_5_no_with_a_clock_time_after_anything_else_ends_ordering() -> None:
     talk(engine, "블린 하나요")
     r = talk(engine, "아니요, 6시요")
     assert r.state is State.CONFIRM
-    assert "6시 픽업" in " ".join(r.utterances)
+    assert "6시에 찾으러" in " ".join(r.utterances)
 
 
 def test_5_no_with_a_qty_after_anything_else_is_still_a_correction() -> None:
