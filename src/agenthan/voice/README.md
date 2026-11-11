@@ -194,3 +194,11 @@
 - CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다)
 - snapshot의 `captions`에는 통화 중 카드 자막만. `call_ended`가 오면 자막을 버린다
 - 화면: 통화 중 카드 아래 자막 4줄(`web/src/screens/owner/ownerState.ts` `captionLines`, `ownerText.ts` `captionView`). 테스트 `test_owner_captions.py`, vitest `ownerCaptions.test.ts`
+
+## 5단계: 통화 녹음 (`call/recorder.py`, 티켓 01)
+
+- 디버그용. `PHONE_RECORD_DIR`이 있을 때만 통화마다 `<폴더>/YYYYMMDD/<통화 id>.wav`(스테레오 16kHz)를 통화가 끝날 때 쓴다. 왼쪽 = 서버가 받은 손님 마이크(반이중 중 0 프레임 포함), 오른쪽 = 봇 목소리(실제로 보낸 조각만, 말 끊기 뒤는 지움). 기본 꺼짐. 발표·심사 때는 끈다
+- 시간축은 턴 기록 `marks`와 같다(세션 시작 0ms). 녹음 N초 = `marks`의 N×1000. 봇은 보낸 시각이라 실제 재생보다 0.1~0.5초 이르다. 손님 프레임은 이어 붙이고, 0.5초 넘게 안 오면 그 사이를 무음으로 둔다
+- 턴 기록에 `bot`(그 턴에 봇이 말한 문장들, 녹음과 상관없이 늘)과 턴 0의 `recording`(WAV 경로)
+- 서버에서 꺼내기: `docker cp agenthan-phone-app-1:/app/logs/recordings ./private/recordings-server` 뒤 맥으로 `scp`. 맥에서도 `private/` 밖에 두지 않는다(목소리는 개인정보)
+- 테스트 `test_call_recorder.py`·`test_call_recording.py`, 설정 `test_phone_settings.py`, WS `test_phone_ws.py`

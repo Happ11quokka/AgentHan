@@ -116,6 +116,7 @@ from agenthan.voice.call.ports import (
     Tts,
     TurnModel,
 )
+from agenthan.voice.call.recorder import CallRecorder
 from agenthan.voice.call.sentences import TTS_LIMIT, split_sentences
 from agenthan.voice.call.spoken import SpokenTurn
 from agenthan.voice.call.timers import POLL_S, Deadline, OneShot
@@ -316,6 +317,7 @@ class CallSession:
         executor: Executor | None = None,
         turn_model: TurnModel | None = None,
         turn_executor: Executor | None = None,
+        record_dir: Path | None = None,
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
@@ -341,6 +343,9 @@ class CallSession:
         self._score: Future[tuple[float, float]] | None = None  # 마지막 말 끝의 점수 작업
         self._model_info: dict[str, Any] | None = None  # 마지막 판정에 쓴 점수의 출처
         self._log = LatencyLog(log_dir, self.call_id, clock)
+        # 통화 녹음 (5단계 티켓 01). `PHONE_RECORD_DIR`이 있을 때만. 시간축은 `self._log.ms()`
+        self._rec_name = f"{clock.now():%Y%m%d}/{self.call_id}.wav"
+        self._rec = CallRecorder(record_dir / self._rec_name) if record_dir is not None else None
         self._vad = SilenceDetector(self._settings.vad)
 
         self._out: asyncio.Queue[tuple[str, Any, Callable[[], None] | None] | None] = (
@@ -438,6 +443,8 @@ class CallSession:
 
     async def feed_audio(self, pcm: bytes) -> None:
         """올라온 PCM16LE 16kHz mono 프레임 하나 (헤더 없음)."""
+        if self._rec is not None and not self.done:
+            self._rec.customer(pcm, at_ms=self._log.ms())  # STT 연결 전 소리도 녹음엔 남긴다
         if not self._ready or self.done:
             return
         was_speaking = self._vad.in_speech
@@ -573,12 +580,23 @@ class CallSession:
         except Exception:
             log.exception("STT 닫기 실패 (%s)", self.call_id)
         self._flush_log()
+        await self._write_recording()
         if self._writer is not None:
             self._out.put_nowait(None)
             try:
                 await asyncio.wait_for(self._writer, 2.0)
             except (TimeoutError, asyncio.CancelledError):
                 self._writer.cancel()
+
+    async def _write_recording(self) -> None:
+        rec, self._rec = self._rec, None
+        if rec is None:
+            return
+        try:
+            path = await asyncio.to_thread(rec.write)
+            log.info("통화 녹음을 씀 (%s): %s", self.call_id, path)
+        except Exception:
+            log.exception("통화 녹음 쓰기 실패 (%s)", self.call_id)
 
     # ------------------------------------------------------------ 작업들
 
@@ -1133,7 +1151,10 @@ class CallSession:
         engine = self._engine
         assert engine is not None
         if u is None:  # 인사 턴. 마이크 실제 설정값(`call.start`)을 이 줄의 client에 남긴다
-            self._log.begin(turn, text="").client.update(self._client_start)
+            record = self._log.begin(turn, text="")
+            record.client.update(self._client_start)
+            if self._rec is not None:
+                record.fields["recording"] = self._rec_name
             self._emit_state()
         now = self._clock.now()
         self._log.mark(turn, "engine_start")
@@ -1291,16 +1312,25 @@ class CallSession:
                 if self._spoken is not None and self._spoken.turn == turn:
                     self._spoken.ms.append(len(pcm) // BYTES_PER_MS)  # 들은 만큼 계산용
                 self._emit({"type": "bot.say", "turn": turn, "seq": seq, "text": text})
+                record = self._log.get(turn)
+                if record is not None:
+                    record.fields.setdefault("bot", []).append(text)  # 봇이 한 말 (티켓 01)
                 for i, (chunk, last) in enumerate(chunk_pcm(pcm, self._settings.chunk_bytes)):
                     frame = pack_audio_frame(AudioFrame(turn, seq, chunk, last))
-                    on_sent = (lambda: self._log.mark(turn, "audio_first")) if i == 0 else None
-                    self._emit_audio(frame, on_sent)
+                    self._emit_audio(frame, functools.partial(self._on_audio_sent, turn, chunk, i))
                 self._emit({"type": "bot.audio.end", "turn": turn, "seq": seq})
         finally:
             for job in jobs:
                 job.cancel()
                 job.add_done_callback(_retrieve)  # 먼저 실패로 끝난 뒤 문장도 (리뷰 16번)
         return audio_bytes // BYTES_PER_MS
+
+    def _on_audio_sent(self, turn: int, chunk: bytes, index: int) -> None:
+        """봇 소리 조각 하나를 실제로 보냈다. 문장 첫 조각이면 `audio_first`, 녹음에 넣는다."""
+        if index == 0:
+            self._log.mark(turn, "audio_first")
+        if self._rec is not None:
+            self._rec.bot(chunk, at_ms=self._log.ms())
 
     def _on_playback_done(self, turn: int, seq: Any, output_latency: Any) -> None:
         if self._phase != "speaking" or turn != self._turn:
@@ -1342,6 +1372,8 @@ class CallSession:
         if self._speaking is not None:
             self._speaking.cancel()  # 남은 문장 TTS·`bot.say`. `_speak`의 finally가 TTS를 취소한다
         self._drop_queued(turn)
+        if self._rec is not None:
+            self._rec.bot_stop(at_ms=self._log.ms())  # 이미 보냈어도 브라우저가 버린 소리
         record = self._log.get(turn)
         if record is not None:
             record.fields["interrupt"] = {"by": by}

@@ -7,6 +7,7 @@
 | `PHONE_TTS` | `fake` · `clova`(티켓 03, `CLOVA_VOICE_*` 필요) | `fake` |
 | `PHONE_TZ` | 가게 시간대 (IANA 이름) | `Asia/Seoul` |
 | `PHONE_LOG_DIR` | 턴별 지연 JSONL 폴더 (gitignore) | `logs` |
+| `PHONE_RECORD_DIR` | 통화 녹음 폴더(디버그용). 통화마다 WAV 하나. 발표 때는 비운다 | 없음(꺼짐) |
 | `PHONE_NOW` | 가게 시작 시각(ISO 8601, 시간대 포함). 그 뒤 실제 시간만큼 감. 시연용 | 없음(지금) |
 | `PHONE_FAKE_STT_REPLIES` | 가짜 STT가 `epFlag`마다 낼 손님 말. `\\|`로 나눈다 | 메도빅 주문 대본 |
 | `PHONE_STORE_FIXTURE` | 개발 서버가 읽는 더미 가게 JSON | `fixtures/sample_store.json` |
@@ -85,6 +86,7 @@ class VoiceSettings:
     tts: AdapterName = "fake"
     tz: tzinfo = KST
     log_dir: Path | None = Path("logs")
+    record_dir: Path | None = None  # 통화 녹음 (5단계 티켓 01). None이면 꺼짐
     now: datetime | None = None
     fake_replies: tuple[str, ...] = DEFAULT_FAKE_REPLIES
     store_fixture: Path | None = None  # None이면 샘플 가게
@@ -179,6 +181,7 @@ class VoiceSettings:
             tts=get("PHONE_TTS", "fake"),  # type: ignore[arg-type]
             tz=_zone(get("PHONE_TZ", "Asia/Seoul")),
             log_dir=Path(log_dir),
+            record_dir=Path(rec) if (rec := get("PHONE_RECORD_DIR", "")) else None,
             now=fixed_now,
             fake_replies=(
                 tuple(r.strip() for r in replies.split("|") if r.strip())

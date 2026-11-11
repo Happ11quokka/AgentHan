@@ -166,6 +166,7 @@ def phone_router(
             owner=owner,
             knowledge=knowledge,
             log_dir=settings.log_dir,
+            record_dir=settings.record_dir,
             settings=session_settings,
             executor=engine_pool,
             turn_model=turn_model,

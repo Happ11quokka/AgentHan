@@ -145,6 +145,19 @@ def test_one_call_over_websocket_from_ready_to_order(tmp_path) -> None:
     assert all("turn" in e for e in phone.events)
 
 
+def test_record_dir_setting_records_each_call_over_websocket(tmp_path) -> None:
+    """`PHONE_RECORD_DIR`(5단계 티켓 01)이 있으면 통화마다 녹음 파일 하나."""
+    client = TestClient(_app(tmp_path, record_dir=tmp_path / "rec"))
+    with client.websocket_connect(WS_PATH) as ws:
+        phone = Phone(ws)
+        phone.send(type="call.start", turn=0)
+        phone.until("call.ready", 0)
+        phone.played(0)
+        phone.send(type="call.end", turn=0)
+    (wav,) = (tmp_path / "rec" / "20261108").glob("call-*.wav")
+    assert wav.stat().st_size > 44
+
+
 def test_client_hangup_closes_the_session_and_the_stt_stream(tmp_path) -> None:
     streams: list[FakeSttStream] = []
 

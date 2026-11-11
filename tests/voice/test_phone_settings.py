@@ -287,3 +287,11 @@ def test_clova_stt_without_its_key_fails_per_call_with_stt_config() -> None:
     with pytest.raises(PortError, match="CLOVA_SPEECH_SECRET_KEY") as err:
         make_stt()
     assert (err.value.code, err.value.retry) == ("stt_config", False)
+
+
+def test_call_recording_is_off_unless_a_folder_is_given(tmp_path) -> None:
+    """통화 녹음 (5단계 티켓 01): 기본 꺼짐. 발표·심사 때 목소리를 남기지 않는다."""
+    assert VoiceSettings.from_env({}, env_file=tmp_path / "없는.env").record_dir is None
+    on = VoiceSettings.from_env({"PHONE_RECORD_DIR": "/app/logs/recordings"},
+                                env_file=tmp_path / "없는.env")
+    assert on.record_dir == Path("/app/logs/recordings")

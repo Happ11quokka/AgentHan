@@ -22,6 +22,8 @@
     (빈 턴, 합성 `eof` 제외). 티켓 04부터 `voiced_ms`(그 epFlag까지의 말소리 길이)도 있다
 - `end_reason`(3단계 티켓 04): 서버가 통화를 끝낸 턴의 이유. confirmed · handoff · cancelled ·
   no_input (`call.ended` 이벤트와 같다)
+- `bot`(5단계 티켓 01): 그 턴에 봇이 실제로 말한 문장들(`bot.say` 순서, 끊긴 뒤 문장은 없음).
+  `recording`(턴 0, 녹음을 켰을 때만): 녹음 폴더 안 WAV 경로. 녹음 시간축이 `marks`와 같다
 - `client`는 그 턴의 `client.metrics` 이벤트 내용을 합친 것(`turn`·`type` 뺌).
   턴 0에는 `call.start`의 값(마이크 실제 설정값 등)도 들어간다
 - 줄은 다음 턴이 시작될 때나 통화가 끝날 때 쓴다.
