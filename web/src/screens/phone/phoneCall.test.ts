@@ -432,6 +432,25 @@ describe('mic closes when playback really starts (6단계 티켓 02, call.ready.
     expect(call.getState().botTalking).toBe(true)
   })
 
+  it('opens the mic once the turn finished playing, before the server says listening', async () => {
+    const { call, ws } = await liveCall({ mic_close: 'playback' })
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(1))
+    const lastChunk = audioFrame(1, 0)
+    new DataView(lastChunk).setUint8(1, 1) // 그 문장의 마지막 조각
+    ws.onmessage!({ data: lastChunk })
+    await new Promise((r) => setTimeout(r, 20)) // 재생 시작
+    expect(sentReal(ws, micFrame())).toBe(false)
+    ws.server({ type: 'bot.audio.end', turn: 1, seq: 0 })
+    ws.server({ type: 'bot.done', turn: 1, sentences: 1 })
+    ctx.sources.at(-1)!.onended?.() // 마지막 조각이 끝났다
+    await new Promise((r) => setTimeout(r, 250)) // 스피커 지연 + 150ms 뒤 마이크를 다시 연다
+    expect(events(ws).some((e) => e.type === 'playback.done')).toBe(true)
+    ctx.currentTime = 1
+    expect(sentReal(ws, micFrame())).toBe(true) // 서버의 listening을 기다리지 않는다
+    expect(call.getState().botTalking).toBe(false)
+  })
+
   it('closes the mic at state speaking when the server did not ask for playback timing', async () => {
     const { call, ws } = await liveCall() // 낡은 서버·`PHONE_MIC_CLOSE=state`
     ws.server(speaking(1))

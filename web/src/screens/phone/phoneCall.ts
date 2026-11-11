@@ -352,6 +352,7 @@ export class PhoneCall {
   private closeMicIfPlaying(): void {
     const s = this.state
     if (s.micCloseAt !== 'playback' || s.phase !== 'speaking' || s.botTalking) return
+    if (s.begunTurn >= s.turn) return // 이 턴은 이미 닫았다(재생이 끝나 다시 연 뒤일 수 있다)
     const at = this.player?.startOf(s.turn) ?? null
     if (at !== null && this.ctx && this.ctx.currentTime >= at) {
       this.dispatch({ type: 'playback.begun', turn: s.turn })

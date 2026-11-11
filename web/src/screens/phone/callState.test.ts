@@ -87,6 +87,20 @@ describe('mic closes at playback start (6단계 티켓 02)', () => {
     expect(callReducer(listeningNow, begun(2))).toBe(listeningNow)
   })
 
+  it('does not close the mic again after this turn finished playing', () => {
+    // 재생이 끝나 마이크를 연 뒤, 서버의 listening이 오기 전에 같은 턴의 재생 시작이 또 보고돼도 닫지 않는다
+    const finished = run(dial, micReady, readyPlayback, speaking(1), begun(1), {
+      type: 'playback.finished',
+      turn: 1,
+    })
+    expect(micLive(finished)).toBe(true)
+    expect(micLive(callReducer(finished, begun(1)))).toBe(true)
+    // 다음 턴은 다시 닫는다
+    expect(micLive(run(dial, micReady, readyPlayback, speaking(1), begun(1), listening(1), speaking(2), begun(2)))).toBe(
+      false,
+    )
+  })
+
   it('still closes at state speaking when the server did not ask for playback timing', () => {
     expect(micLive(run(dial, micReady, ready, speaking(1)))).toBe(false)
   })

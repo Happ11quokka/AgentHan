@@ -100,6 +100,8 @@ export interface CallState {
    * 소리가 나갈 때까지는 마이크에 봇 소리가 없다. playback이면 그 사이 손님 말을 그대로 올린다
    */
   micCloseAt: 'state' | 'playback'
+  /** 재생 시작으로 마이크를 닫은 마지막 턴. 턴마다 한 번만 닫는다(재생이 끝나 연 뒤 다시 닫지 않게). 없으면 -1 */
+  begunTurn: number
   /** 서버가 지금 턴의 말 끊기를 받는다(state.interruptible) */
   interruptible: boolean
   /** 이 통화의 음성 끼어들기(call.ready). null이면 반이중: 봇이 말하는 동안 0 프레임 */
@@ -151,6 +153,7 @@ export const initialCallState: CallState = {
   turn: 0,
   botTalking: false,
   micCloseAt: 'state',
+  begunTurn: -1,
   interruptible: false,
   bargeIn: null,
   cutTurn: -1,
@@ -190,7 +193,9 @@ export function callReducer(state: CallState, action: CallAction): CallState {
       // 지금 말하는 턴의 소리만. 끊은 턴의 늦은 알림은 마이크를 다시 닫지 않는다
       if (state.status !== 'live' || state.phase !== 'speaking' || state.botTalking) return state
       if (action.turn !== state.turn || action.turn <= state.cutTurn) return state
-      return { ...state, botTalking: true }
+      // 턴마다 한 번만. 재생이 끝나 마이크를 연 뒤(서버의 listening 전)에 다시 닫지 않는다
+      if (action.turn <= state.begunTurn) return state
+      return { ...state, botTalking: true, begunTurn: action.turn }
     case 'playback.finished':
       return action.turn === state.turn ? { ...state, botTalking: false } : state
     case 'interrupt':
