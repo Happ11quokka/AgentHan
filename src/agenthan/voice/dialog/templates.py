@@ -443,6 +443,20 @@ def confirm_hint() -> str:
     return "맞으면 네, 고칠 게 있으면 아니요라고 말씀해 주세요."
 
 
+def ack_first(utterances: Sequence[str]) -> list[str]:
+    """받아들인 대답 앞에 고정 문장 "네."를 따로 둔다 (6단계 품질, `PHONE_ACK_FIRST`).
+
+    CLOVA Voice는 같은 문장을 다시 부르면 첫 바이트가 빠르다(서버 캐시). 첫 문장이 매번 바뀌는
+    대답("메도빅 두 개요.")도 첫 소리는 고정 문장으로 나가게 한다. 이미 "네,"로 시작하면 쉼표를
+    마침표로 바꾼다(TTS 문장 나누기는 마침표 뒤에서만 자른다).
+    """
+    if not utterances:
+        return []
+    first = utterances[0]
+    first = "네. " + (first[len("네, "):] if first.startswith("네, ") else first)
+    return [first, *utterances[1:]]
+
+
 def sorry_for_trouble() -> str:
     """손님이 짜증을 냈을 때. 뒤에 사장님 연결 안내가 온다."""
     return "불편을 드려 죄송해요."

@@ -26,6 +26,7 @@
 | `PHONE_MIC_CLOSE` | 반이중 마이크 닫기: `playback`(실제 재생 시작) · `state`(전처럼) | 앞의 것 |
 | `PHONE_TURN_REWIND` | `on`이면 첫 소리 전에 이어 한 말을 앞 턴에 합쳐 다시 처리(되감기) | `off` |
 | `PHONE_GATE_MAX_S` | 되감기 문지기가 글 없는 소리를 기다리는 상한(초) | `3.0` |
+| `PHONE_ACK_FIRST` | `on`이면 받아들인 대답 앞에 고정 문장 "네."를 따로 낸다 | `off` |
 | `PHONE_NO_INPUT_S` | 봇 재생 끝부터 이만큼 말이 없으면 "여보세요?" + 직전 질문 (초) | `6.0` |
 | `PHONE_WAIT_REQUEST_S` | "잠깐만요" 뒤 첫 무응답 대기 (초) | `15.0` |
 | `PHONE_TURN_MODEL` | `smart_turn`(오디오 턴 모델) · `off`(끝말 규칙만) | `smart_turn` |
@@ -117,6 +118,8 @@ class VoiceSettings:
     # 첫 소리 문지기 + 앞 턴 되감기 (6단계 티켓 02 추천안). 기본 끔. 실기기 확인 뒤 켠다
     turn_rewind: bool = False
     gate_max_s: float = 3.0  # 문지기 상한: 글 없는 소리는 여기까지만 기다린다
+    # 받아들인 대답 앞에 고정 문장 "네." (6단계 품질). 억양을 들어 보기 전이라 기본 끔
+    ack_first: bool = False
     no_input_s: float = NO_INPUT_S  # 무응답 되묻기 대기 (3단계 티켓 04)
     wait_request_s: float = WAIT_REQUEST_S  # "잠깐만요" 뒤 첫 대기
     # 오디오 턴 모델 (3단계 티켓 03). 기본 켬(사용자 결정 2026-11-08), 끄면 끝말 규칙만
@@ -226,6 +229,7 @@ class VoiceSettings:
             mic_close=get("PHONE_MIC_CLOSE", "playback"),  # type: ignore[arg-type]
             turn_rewind=_switch("PHONE_TURN_REWIND", get("PHONE_TURN_REWIND", "off")),
             gate_max_s=_number("PHONE_GATE_MAX_S", get("PHONE_GATE_MAX_S", ""), 3.0),
+            ack_first=_switch("PHONE_ACK_FIRST", get("PHONE_ACK_FIRST", "off")),
             no_input_s=_number("PHONE_NO_INPUT_S", get("PHONE_NO_INPUT_S", ""), NO_INPUT_S),
             wait_request_s=_number("PHONE_WAIT_REQUEST_S", get("PHONE_WAIT_REQUEST_S", ""),
                                    WAIT_REQUEST_S),
@@ -251,7 +255,7 @@ class VoiceSettings:
 
 # 서버 설정에서 통화 세션 설정으로 그대로 옮기는 값 (`SessionSettings`와 이름이 같다)
 _SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "more_no_wait_s", "mic_close",
-                   "turn_rewind", "gate_max_s", "no_input_s", "wait_request_s",
+                   "turn_rewind", "gate_max_s", "ack_first", "no_input_s", "wait_request_s",
                    "turn_model_low", "turn_model_high", "barge", "owner_wait_s", "ask_owner",
                    "answer")
 

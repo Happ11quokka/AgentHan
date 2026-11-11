@@ -147,6 +147,9 @@ class TurnResult:
     reask: str = ""
     reasks: int = 0
     handoff: HandoffReason | Literal[""] = ""
+    # 이 턴의 첫 말이 받아들인 대답이다(담기·고치기·빼기 되받기, 마무리). 세션이 `PHONE_ACK_FIRST`
+    # 일 때 그 앞에 고정 문장 "네."를 따로 둔다(TTS 첫 바이트, `templates.ack_first`)
+    ack: bool = False
 
 
 @dataclass
@@ -188,6 +191,7 @@ class _Turn:
     handoff: HandoffReason | Literal[""] = ""
     # 이번 턴에 손님이 확인해 준 큰 수량 (메뉴 id, 수량). 같은 턴에 다시 묻지 않는다
     qty_confirmed: tuple[str, int] | None = None
+    acks: list[str] = field(default_factory=list)  # 받아들인 대답 문장들 (`TurnResult.ack`)
 
     @property
     def question(self) -> str:
@@ -681,7 +685,7 @@ class DialogEngine:
                 if turn.correcting:
                     self._say_corrections(turn)
                 elif turn.accepted:
-                    self._say(turn, templates.items_noted(turn.accepted))
+                    self._say(turn, self._noted(turn, turn.accepted))
                 if turn.pickup_note and self._missing_required() is None:
                     # "아니요, 지금 갈게요" → 복창 앞에 준비 시간 안내 (2단계 리뷰 5번).
                     # 필수 옵션을 먼저 물을 때는 그 질문만 한다
@@ -689,15 +693,16 @@ class DialogEngine:
                 self._advance(turn)
             elif (missing := self._missing_required()) is not None:
                 if turn.accepted:
-                    self._say(turn, templates.items_noted(turn.accepted))
+                    self._say(turn, self._noted(turn, turn.accepted))
                 if turn.pickup_note:
                     self._say(turn, turn.pickup_note)
                 self._ask_required(turn, *missing)
             elif turn.accepted and turn.pickup_note:
-                self._say(turn, templates.items_noted(turn.accepted))
+                self._say(turn, self._noted(turn, turn.accepted))
                 self._say(turn, turn.pickup_note)
                 self._ask(turn, templates.anything_else())
             elif turn.accepted:
+                self._noted(turn, turn.accepted)
                 self._ask(turn, templates.item_accepted(turn.accepted))
             elif turn.changed or turn.time_said or turn.menu_listed:
                 if turn.pickup_note:
@@ -774,9 +779,9 @@ class DialogEngine:
             (changed if was_there else added).append(line.phrase(self._unsaid(line.item)))
         notes = []
         if changed:
-            notes.append(templates.changed_to(changed))
+            notes.append(self._ok(turn, templates.changed_to(changed)))
         if added:
-            notes.append(templates.items_noted(added))
+            notes.append(self._noted(turn, added))
         for note in notes:
             if before_question and turn.question_at is not None:
                 turn.utterances.insert(turn.question_at, note)
@@ -833,7 +838,9 @@ class DialogEngine:
                             readback=readback, owner_question=turn.owner_question,
                             knowledge_requests=tuple(turn.knowledge_requests),
                             answer=turn.answer, route=_route(turn), reask=turn.reask,
-                            reasks=self._reasks, handoff=turn.handoff)
+                            reasks=self._reasks, handoff=turn.handoff,
+                            ack=bool(turn.utterances) and any(
+                                turn.utterances[0].startswith(a) for a in turn.acks))
         if self._state is State.CONFIRM:
             self._read_back = True
         if self._state in TERMINAL:
@@ -846,6 +853,15 @@ class DialogEngine:
     def _say(self, turn: _Turn, text: str) -> None:
         """대사는 턴이 끝날 때 `_result`가 transcript에 옮긴다 (FALLBACK이 바꿀 수 있게)."""
         turn.utterances.append(text)
+
+    def _noted(self, turn: _Turn, phrases: Sequence[str]) -> str:
+        """담은 항목 되받기("메도빅 하나요."). 받아들인 대답으로 적어 둔다 (`TurnResult.ack`)."""
+        return self._ok(turn, templates.items_noted(phrases))
+
+    @staticmethod
+    def _ok(turn: _Turn, text: str) -> str:
+        turn.acks.append(text)
+        return text
 
     def _ask(
         self, turn: _Turn, question: str, *, force: bool = False, again: str | None = None
@@ -1407,7 +1423,7 @@ class DialogEngine:
         if (big := self._big_qty_pending(turn, act)) is not None:
             # 확인하던 큰 수량을 거뒀다. 담지 않고 닫는다(고치던 줄은 그대로 둔다)
             self._close_menu_clarify(turn, big, None)
-            self._say(turn, templates.removed(big.candidates[0].name_ko))
+            self._say(turn, self._ok(turn, templates.removed(big.candidates[0].name_ko)))
             turn.changed = True
             return
         if not self._leave_option_clarify(turn, act):
@@ -1435,7 +1451,7 @@ class DialogEngine:
         if self._focus is not None and any(self._focus.same_kind(g) for g in gone):
             self._focus = None
         if not added_now:  # 이번 턴에 담았다 바로 뺀 것은 따로 말하지 않는다
-            self._say(turn, templates.removed(name))
+            self._say(turn, self._ok(turn, templates.removed(name)))
         turn.changed = True
 
     def _option_removal(self, act: Act) -> Act | None:
@@ -1865,7 +1881,8 @@ class DialogEngine:
         assert self._pickup is not None
         self._state = State.CLOSING
         # 답을 못 받은 사장님 질문이 있으면 문자 약속을 붙이고 닫는다 (티켓 06)
-        self._say(turn, templates.closing(self._pickup, owner_pending=self._owner_open is not None))
+        self._say(turn, self._ok(turn, templates.closing(
+            self._pickup, owner_pending=self._owner_open is not None)))
         self._owner_open = None
         turn.order_status = "confirmed"
 
@@ -1944,7 +1961,7 @@ class DialogEngine:
         self._collect_readback(turn)  # 앞서 담은 줄(티켓 03 `touched`)을 지금 모습으로
         turn.touched = []
         if turn.accepted:
-            self._say(turn, templates.items_noted(turn.accepted))
+            self._say(turn, self._noted(turn, turn.accepted))
         if notice:
             self._say(turn, notice)
         self._pending = _MenuClarify(

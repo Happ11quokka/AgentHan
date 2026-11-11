@@ -141,6 +141,7 @@ from agenthan.voice.call.turn_end import (
     question_kind,
 )
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
+from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.answerer import Answerer
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
@@ -271,6 +272,11 @@ class SessionSettings:
     # 음성 끼어들기 (티켓 06, `PHONE_VOICE_BARGE_IN`). None이면 꺼짐(반이중 + 버튼). 켜도 브라우저가
     # `call.start.voice_barge_in`(안드로이드 크롬)을 알린 통화만 쓴다
     barge: BargeSettings | None = None
+    # 받아들인 대답("메도빅 두 개요. …"·마무리)의 첫 문장을 고정 문장 "네."로 따로 낸다 (6단계 품질,
+    # `PHONE_ACK_FIRST`). CLOVA Voice 서버 캐시로 그 턴의 TTS 첫 바이트가 약 0.3 → 0.03초가 된다
+    # (서버 실측, `research/s6-quality-latency-gap.md` 1-0). 짧은 조각의 억양을 들어 보기 전이라
+    # 기본 끔
+    ack_first: bool = False
     start_timeout_s: float = 10.0  # 소켓만 열고 `call.start`를 안 보내면 닫는다 (리뷰 9·17번)
     max_call_s: float = 600.0  # 통화 하나의 최대 길이 (턴과 무관). 넘으면 call_too_long
 
@@ -1360,8 +1366,11 @@ class CallSession:
             self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
                         "cart": _cart_json(result.cart), "total": result.cart.total()})
+        utterances = result.utterances
+        if self._settings.ack_first and result.ack:
+            utterances = templates.ack_first(utterances)  # 첫 소리를 고정 문장 "네."로
         sentences = [
-            s for text in result.utterances
+            s for text in utterances
             for s in split_sentences(text, self._settings.sentence_limit)
         ]
         audio_ms: int | None = 0
