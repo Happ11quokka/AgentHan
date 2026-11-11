@@ -170,7 +170,8 @@ class MenuMatcher:
         실기기 STT "나폴 내용도 하나요" → 글 "나폴", 추정 "나폴레옹" (6단계).
 
         추정값이 메뉴 하나의 이름·별칭과 정확히 같고, 말한 글(두 글자 이상)이 그 이름의 앞부분과
-        소리가 비슷할 때만이다(같은 통화를 다시 걸자 STT가 "마폴"로 적었다: 자모 유사도 0.83). 신호가 약해서 수락하지 않고 확인 질문으로만 쓴다.
+        소리가 비슷할 때만이다(같은 통화를 다시 걸자 STT가 "마폴"로 적었다: 자모 유사도 0.83).
+        신호가 약해서 수락하지 않고 확인 질문으로만 쓴다.
         """
         guessed = set(query_forms(guess)) if guess else set()
         forms = [q for q in query_forms(text) if len(q) >= MIN_CUT_OFF_CHARS]
