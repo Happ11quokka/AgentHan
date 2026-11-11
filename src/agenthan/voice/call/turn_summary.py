@@ -24,6 +24,16 @@
   - `more_no`: "더 필요하신 거?" 뒤 맨 "아니요"를 짧게 기다린 턴. alone: 뒷말 없이 넘어감(그만큼
     늦어진 턴) · merged: 뒷말과 한 턴이 됨
 
+- 6단계 품질 (경로별 지연·되묻기)
+  - `by_route`: 엔진이 탄 길(`route`)별 말 끝 → 첫 목소리 P50·P90과 구간별 P50. rule: NLU를 안
+    부른 턴(규칙) · nlu: NLU(HCX)를 부른 턴 · answer: 답변기까지 부른 턴 · unknown: `route`가
+    없는 예전 기록(답변기 결과가 있으면 answer로 센다)
+  - `stages`: 손님 턴의 구간별 P50. end_to_ep: 말 끝 → epFlag 보냄 · ep_to_stt: epFlag → STT 글 ·
+    stt_to_engine: 글 → 엔진 시작(말 끝 판정·이어짐 대기) · engine: 엔진(NLU·답변기 포함) ·
+    tts_first: 첫 문장 TTS 첫 바이트 · send_to_play: 첫 조각 보냄 → 브라우저 재생 보고.
+    그 구간의 두 시각이 다 있는 턴만 센다(`n`)
+  - `reask`: 못 알아듣고 되물은 턴 수, 손님 턴당 비율, 슬롯별 수. `handoff`: 넘긴 이유별 통화 수
+
 백분위는 선형 보간(numpy 기본과 같음)이다. 값이 적으면 p99는 사실상 최대값이다.
 """
 
@@ -107,6 +117,55 @@ def _late_fragments(guest: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+ROUTES = ("rule", "nlu", "answer", "unknown")
+# 구간 이름 → (시작 mark, 끝 mark)
+STAGES = {
+    "end_to_ep": ("speech_end", "ep_sent"),
+    "ep_to_stt": ("ep_sent", "stt_final"),
+    "stt_to_engine": ("stt_final", "engine_start"),
+    "engine": ("engine_start", "engine_end"),
+    "tts_first": ("tts_start", "tts_first"),
+    "send_to_play": ("audio_first", "play_start"),
+}
+
+
+def _route(line: dict[str, Any]) -> str:
+    route = line.get("route")
+    if route in ROUTES:
+        return str(route)
+    return "answer" if isinstance(line.get("answer"), dict) else "unknown"
+
+
+def _stages(guest: list[dict[str, Any]]) -> dict[str, dict[str, int | None]]:
+    """구간별 P50. 두 시각이 다 있는 턴만. 한 턴도 없는 구간은 뺀다."""
+    out = {}
+    for name, (start, end) in STAGES.items():
+        values = [line["marks"][end] - line["marks"][start] for line in guest
+                  if {start, end} <= set(line.get("marks", {}))]
+        if values:
+            out[name] = spread(values, (0.5,))
+    return out
+
+
+def _by_route(guest: list[dict[str, Any]]) -> dict[str, Any]:
+    out = {}
+    for route in ROUTES:
+        turns = [line for line in guest if _route(line) == route]
+        if turns:
+            voiced = [line["end_to_voice_ms"] for line in turns if "end_to_voice_ms" in line]
+            out[route] = {"voice": spread(voiced), "stages": _stages(turns)}
+    return out
+
+
+def _reask(lines: list[dict[str, Any]], guest_turns: int) -> dict[str, Any]:
+    reasks = _dicts(lines, "reask")
+    return {
+        "turns": len(reasks),
+        "per_guest_turn": round(len(reasks) / guest_turns, 2) if guest_turns else 0.0,
+        "by_slot": dict(sorted(Counter(r["slot"] for r in reasks if "slot" in r).items())),
+    }
+
+
 def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
     lines = list(lines)
     calls = sorted({line["call"] for line in lines})
@@ -142,6 +201,11 @@ def summarize(lines: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "stt_wait": spread(stt_wait, (0.5, 0.9, 0.99)),
         "prefetch": _prefetch(guest),
         **_late_fragments(guest),
+        "by_route": _by_route(guest),
+        "stages": _stages(guest),
+        "reask": _reask(lines, len(guest)),
+        "handoff": dict(sorted(Counter(
+            h["reason"] for h in _dicts(lines, "handoff") if "reason" in h).items())),
     }
 
 
