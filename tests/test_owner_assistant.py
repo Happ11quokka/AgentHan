@@ -11,8 +11,11 @@ from agenthan.agent import owner_assistant as owner
 from agenthan.agent import place_matcher as matcher
 from agenthan.agent.clova_chat import ClovaChatError, chat
 from agenthan.tools.dummy_store import SEED_PATH, DummyStore, DummyStoreError
-from agenthan.tools.feature_tools import DELEGATED_FEATURES, feature_tool_schema
-from agenthan.tools.owner_tools import TOOL_NAMES, execute_tool, tool_schema
+from agenthan.tools.feature_tools import (
+    DELEGATED_FEATURES,
+    execute_feature_tool,
+    feature_tool_schema,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -79,18 +82,13 @@ def tool_results(request):
     return [json.loads(m["content"]) for m in request[0] if m["role"] == "tool"]
 
 
-def test_schemas_follow_catalog():
-    for feature in matcher.load_features():
-        if not feature["input_supported"] or feature["id"] in DELEGATED_FEATURES:
-            continue
-        schema = tool_schema(feature["id"])["function"]["parameters"]
-        assert set(schema["properties"]) == {f["id"] for f in feature["input_fields"]}
-        assert schema["required"] == [f["id"] for f in feature["input_fields"] if f["required"]]
-        for field in feature["input_fields"]:
-            assert field["name_ko"] in schema["properties"][field["id"]]["description"]
-    assert tool_schema("menu")["function"]["parameters"]["required"] == ["name", "price"]
+def test_menu_schema():
+    params = feature_tool_schema("menu")["function"]["parameters"]
+    assert params["required"] == ["name"]
+    assert set(params["properties"]) == {"name", "action", "price", "new_name", "description"}
+    assert "photo" not in params["properties"]
     with pytest.raises(ValueError):
-        tool_schema("review")  # delegated to agenthan.agent.review
+        feature_tool_schema("review")  # delegated to agenthan.agent.review
 
 
 def test_missing_price_then_followup_saves(tmp_path, mock_index):
@@ -120,7 +118,7 @@ def test_missing_price_then_followup_saves(tmp_path, mock_index):
     assert path.read_bytes() == original  # Previewed only, waiting for approval.
     assert "5000원" in embedded
     assert any(m["role"] == "user" and "신메뉴" in m["content"] for m in fake.requests[2][0])
-    assert fake.requests[0][1] == [tool_schema("menu")]
+    assert fake.requests[0][1] == [feature_tool_schema("menu")]
     third = assistant.ask("네")
     assert len(fake.requests) == 3  # Approval runs the previewed call without the model.
     assert "더미 저장 확인" in third
@@ -196,7 +194,7 @@ def test_pending_menu_switches_when_owner_clearly_asks_other_feature(tmp_path):
 @pytest.mark.parametrize(
     ("feature_id", "arguments", "labels"),
     [
-        ("menu", {}, ["메뉴 이름", "가격 (원)"]),
+        ("menu", {}, ["메뉴 이름"]),
         ("menu", {"name": "차"}, ["가격 (원)"]),
         ("menu", {"name": " ", "price": 5000}, ["메뉴 이름"]),
         ("menu", {"name": 42, "price": 5000}, ["메뉴 이름"]),
@@ -211,7 +209,7 @@ def test_invalid_arguments_do_not_write(tmp_path, existing, feature_id, argument
     before = SEED_PATH.read_bytes()
     if existing:
         path.write_bytes(before)
-    result = execute_tool(DummyStore(path), feature_id, TOOL_NAMES[feature_id], arguments)
+    result = execute_feature_tool(DummyStore(path), "upsert_menu", arguments)
     assert not result["ok"]
     assert result["missing_fields"] == labels
     if existing:
@@ -223,30 +221,19 @@ def test_invalid_arguments_do_not_write(tmp_path, existing, feature_id, argument
 @pytest.mark.parametrize("arguments", [None, [], "not json", "[]"])
 def test_malformed_arguments_do_not_write(tmp_path, arguments):
     path = tmp_path / "store.json"
-    result = execute_tool(DummyStore(path), "menu", "upsert_menu", arguments)
-    assert result["missing_fields"] == ["메뉴 이름", "가격 (원)"]
+    result = execute_feature_tool(DummyStore(path), "upsert_menu", arguments)
+    assert result["missing_fields"] == ["메뉴 이름"]
     assert not path.exists()
 
 
-def test_unknown_tool_and_optional_fields_do_not_write(tmp_path):
+def test_unknown_tool_and_unsupported_fields_do_not_write(tmp_path):
     path = tmp_path / "store.json"
     store = DummyStore(path)
-    assert execute_tool(store, "menu", "send_reply", {})["error"] == "tool_not_allowed"
-    assert execute_tool(store, "review", "save_review_reply", {})["error"] == "tool_not_allowed"
-    for extra in ({"photo": "photo.png"}, {"description": "설명"}, {"unknown": "value"}):
-        assert (
-            execute_tool(
-                store,
-                "menu",
-                "upsert_menu",
-                {
-                    "name": "차",
-                    "price": 1000,
-                    **extra,
-                },
-            )["error"]
-            == "unsupported_fields"
-        )
+    assert execute_feature_tool(store, "send_reply", {})["error"] == "tool_not_allowed"
+    assert execute_feature_tool(store, "save_review_reply", {})["error"] == "tool_not_allowed"
+    for extra in ({"photo": "photo.png"}, {"unknown": "value"}):
+        result = execute_feature_tool(store, "upsert_menu", {"name": "차", "price": 1000, **extra})
+        assert result["error"] == "unsupported_fields"
     assert not path.exists()
 
 

@@ -93,8 +93,11 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     assistant.embed = other
     assert assistant.ask("더 정중하게 고쳐줘").startswith("말씀하신 대로 고쳤어요")
     assert not path.exists()  # nothing saved before confirmation
+    assert assistant.route("응 그대로 등록해").via == "review_draft"  # no DASH guess needed
+    assert assistant.route("영업시간은 그대로 두고 메뉴 가격 바꿔 줘").via != "review_draft"
     out = assistant.ask("이대로 올려줘")
     assert out.startswith("답글 1건을 등록했어요") and assistant.pending_feature is None
+    assert assistant.route("응 그대로 등록해").via != "review_draft"  # nothing waits now
     saved = next(r for r in json.loads(path.read_text())["reviews"] if r["review_id"] == "r03")
     assert saved["has_owner_reply"] is True
     assert saved["owner_reply"]["status"] == "saved_not_sent"

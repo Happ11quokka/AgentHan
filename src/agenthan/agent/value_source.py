@@ -24,7 +24,7 @@ DAY_WORDS = {
 }
 # enum / boolean values → owner words that mean them.
 ENUM_WORDS = {
-    "confirmed": r"확정|승인|confirm",
+    "confirmed": r"확정|승인|예약\s*받|받을게|받겠|confirm",
     "cancelled": r"취소|cancel",
     "no_show": r"노\s*쇼|안\s*왔|no.?show",
     "accepted": r"접수|수락|받아|받을게|accept",
@@ -35,6 +35,13 @@ ENUM_WORDS = {
     "percent": r"%|퍼센트|프로|percent",
     "individual": r"개인",
     "corporation": r"법인",
+    "save": r"",  # Default action: register or edit.
+    "delete": r"삭제|빼|내려|없애|지워|지우|안\s*팔",
+    "sold_out": r"품절|다\s*팔|떨어|매진|재료.{0,6}없|솔드",
+    "on_sale": r"품절\s*(?:해제|풀|취소)|다시\s*(?:팔|판매|올려|내놔)|재판매|들어왔|입고",
+    "today": r"오늘|today",
+    "yesterday": r"어제|yesterday",
+    "last_week": r"지난\s*주|저번\s*주|last week",
     "this_week": r"이번\s*주|this week",
     "this_month": r"이번\s*달|이달|this month",
     "last_month": r"지난\s*달|저번\s*달|last month",
@@ -88,8 +95,13 @@ def korean_number(token: str) -> int | None:
 def numbers(text: str) -> set[int]:
     """Every number the text states, including mixed forms (1만 2천, 만 오천 원)."""
     found: set[int] = set()
+    # 만 right after a non-numeral syllable is the particle "only" (금액만 3000원), not 10000.
+    text = re.sub(r"(?<=[가-힣])(?<![영공일이삼사오육칠팔구십백천한두세네섯])만", "뿐", text)
     compact = re.sub(r"(?<=[\d만천백십])\s+(?=[\d영공일이삼사오육칠팔구십백천만])", "", text)
-    for match in re.finditer(r"[\d,]*\d[\d,]*|[\d영공일이삼사오육칠팔구십백천만]+", compact):
+    # One token per number, digits and units together (2만, 1만2천, 12,000).
+    for match in re.finditer(
+        r"[\d,영공일이삼사오육칠팔구십백천만]*[\d영공일이삼사오육칠팔구십백천만]", compact
+    ):
         token = match.group()
         if not re.search(r"\d|[십백천만]", token):
             continue  # Bare 일/이/사 are usually words (일요일, 이름, 사진).
@@ -233,6 +245,8 @@ def confirmed(
         if len(match) == 1 and (_pointed(talks, match[0]["id"], said, today)):
             return "lookup"
         return None
+    if isinstance(value, list | dict) and kind not in ("string_list", "day_list"):
+        return None  # Wrong shape (a list for a time): unconfirmed; the tool's check answers.
     if kind == "boolean" or isinstance(value, bool):
         yes, no = BOOL_WORDS.get(param_id, (r"(?!)", r"(?!)"))
         return "rule" if re.search(yes if value else no, said, re.I) else None
@@ -248,13 +262,24 @@ def confirmed(
         if value in WEEKDAYS:
             return "owner" if re.search(DAY_WORDS[value], said, re.I) else None
         return "owner" if value in _dates(said, today) else None
+    if kind == "day_list":
+        ok = isinstance(value, list) and value and all(_day_said(v, said, today) for v in value)
+        return "owner" if ok else None
     if kind == "string_list":
         ok = isinstance(value, list) and all(
             isinstance(v, str) and _norm(v) in _norm(said) for v in value
         )
         return "owner" if ok else None
+    if param_id == "name" and isinstance(value, str):
+        # A menu the owner named by its name or an alias (꿀케이크 → 메도빅).
+        for menu in store.get("menus", []):
+            names = [menu.get("name", ""), *menu.get("aliases", [])]
+            if _norm(value) in map(_norm, names) and any(
+                _norm(n) and _norm(n) in _norm(said) for n in names
+            ):
+                return "lookup"
     if isinstance(value, str):
-        if param_id == "value" and re.fullmatch(r"[\d\s()+-]{7,}", value):
+        if param_id in ("value", "phone") and re.fullmatch(r"[\d\s()+-]{7,}", value):
             digits = re.sub(r"\D", "", value)
             return "owner" if digits and digits in re.sub(r"\D", "", said) else None
         if _norm(value) and _norm(value) in _norm(said):
@@ -265,6 +290,40 @@ def confirmed(
             return "owner"
         return None
     return None
+
+
+GROUP_WORDS = {
+    "weekdays": r"평일|주중|weekday",
+    "weekend": r"주말|weekend",
+    "everyday": r"매일|모든\s*요일|요일\s*(?:전부|다)|날마다|everyday|every day",
+}
+GROUP_DAYS = {"weekdays": WEEKDAYS[:5], "weekend": WEEKDAYS[5:], "everyday": WEEKDAYS}
+
+
+def _day_said(value: object, said: str, today: date) -> bool:
+    """A weekday, a group (평일), or a date the owner said; a date inside a range the owner
+    gave by its two ends (20일부터 22일까지) also counts."""
+    if not isinstance(value, str):
+        return False
+    if value in GROUP_WORDS:
+        return bool(re.search(GROUP_WORDS[value], said, re.I))
+    if value in WEEKDAYS:
+        if re.search(DAY_WORDS[value], said, re.I):
+            return True
+        return any(
+            value in GROUP_DAYS[g] and re.search(GROUP_WORDS[g], said, re.I) for g in GROUP_WORDS
+        )
+    dates = _dates(said, today)
+    if value in dates:
+        return True
+    try:
+        day = date.fromisoformat(value)
+    except ValueError:
+        return False
+    ends = sorted(date.fromisoformat(d) for d in dates)
+    return any(
+        a <= day <= b and (b - a).days <= 31 for i, a in enumerate(ends) for b in ends[i + 1 :]
+    )
 
 
 def check(

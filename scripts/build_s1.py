@@ -30,6 +30,7 @@ from pathlib import Path
 from agenthan.eval.scenario import MISSING, Scenario, apply_setup, changes, resolve
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES, execute_feature_tool
+from agenthan.tools.place_report import load_report, report_facts
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "tests/data/eval"
@@ -209,18 +210,38 @@ def count(n: int, unit: str) -> list[str]:
     return [f"{n}{u}" for u in units] + [f"{korean[n]}{u}" for u in units if n in korean]
 
 
+# Ways to say "not supported" (spaces are ignored when scoring, so 안 돼 = 안돼).
 NEGATIVE = [
     "지원하지",
     "지원되지",
+    "지원안",
     "연동되지",
     "연결되지",
+    "호환되지",
     "연동이안",
     "연결이안",
+    "호환이안",
+    "연동안",
+    "연결안",
     "안돼",
-    "안 돼",
+    "안되",
     "불가",
     "어려",
+    "어렵",
+    "안됩",
+    "안되어",
+    "목록에없",
+    "포함되지",
+    "포함되어있지",
+    "확인되지않",
+    "수없",
+    "수는없",
+    "없지만",
+    "없어요",
+    "없습니다",
 ]
+# No matching help article: the reply says none was found or points to the customer center.
+HELP_NOT_FOUND = ["고객센터", "찾지못", "못찾", "없어요", "없습니다", "없네요"]
 
 
 def read_facts(tool: str, args: dict, data: dict | None = None, want: str = "") -> dict | None:
@@ -239,7 +260,9 @@ def read_facts(tool: str, args: dict, data: dict | None = None, want: str = "") 
             "all": [number(record["payout"]) + (number(record["sales"]) if want == "any" else [])]
         }
     if tool == "get_statistics":
-        return {"all": [number(result["record"]["place_views"])]}
+        # The app answers statistics questions from the R1 weekly report, not this tool.
+        facts = report_facts(load_report(), period="week")
+        return {"all": [number(facts.place_views.current)]}
     if tool == "list_call_history":
         records = result["records"]
         n = len(records)
@@ -251,6 +274,8 @@ def read_facts(tool: str, args: dict, data: dict | None = None, want: str = "") 
             "all": [NEGATIVE if not result["supported"] else ["가능", "돼요", "됩니다", "지원"]]
         }
     if tool == "search_help_articles":
+        if not result["found"]:
+            return {"all": [HELP_NOT_FOUND]}
         return {"all": [[r["title"] for r in result["records"]]]}
     return None
 

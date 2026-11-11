@@ -4,7 +4,7 @@ from agenthan.eval import scenario as sc
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import execute_feature_tool
 
-PHONE = {"field": "phone", "value": "02-123-4567"}
+PHONE = {"phone": "02-123-4567"}
 
 
 def make(turns, final, writes, never=(), **kw):

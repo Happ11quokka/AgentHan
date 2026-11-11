@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 from agenthan.agent import clova_chat as clova
-from agenthan.tools.owner_tools import tool_schema
+from agenthan.tools.feature_tools import feature_tool_schema
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +40,7 @@ def test_request_and_tool_result_roundtrip():
         NS(role="assistant", content=None, tool_calls=[sdk_call("call-1", "upsert_menu", args)]),
         NS(role="assistant", content="등록했어요.", tool_calls=None),
     )
-    tools = [tool_schema("menu")]
+    tools = [feature_tool_schema("menu")]
     messages = [{"role": "user", "content": "연습 차 5000원 메뉴 등록"}]
     message = clova.chat(messages, tools=tools, client=client)
     assert message == {
