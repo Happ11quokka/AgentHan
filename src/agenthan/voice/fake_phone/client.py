@@ -270,14 +270,15 @@ def page_origin(ws_url: str) -> str:
 
 async def run_call(url: str, clips: list[Clip], *, pace: float = 1.0, gap_s: float = 0.3,
                    no_turn_timeout_s: float = 6.0,
-                   start: dict[str, Any] | None = None) -> CallRun:
+                   start: dict[str, Any] | None = None, origin: str = "") -> CallRun:
     """통화 하나를 건다. 녹음을 차례로 손님 말로 보내고, 끝날 때까지의 기록을 돌려준다.
 
     `start`는 `call.start`에 덧붙일 값이다(스모크 표시). 보낸 기록(`sent`)에는 남기지 않는다."""
     from websockets.asyncio.client import connect
 
     # 브라우저처럼 화면 오리진을 붙인다. 서버가 Origin을 검사해도(`PHONE_ALLOWED_ORIGINS`) 걸린다
-    async with connect(url, max_size=None, origin=page_origin(url)) as ws:
+    # `origin`: 서버 안에서 `ws://127.0.0.1`로 걸 때는 허용 목록의 오리진을 대신 붙인다(스모크)
+    async with connect(url, max_size=None, origin=origin or page_origin(url)) as ws:
         phone = _Phone(ws, clips, pace, gap_s, no_turn_timeout_s, start)
         tasks = [asyncio.create_task(t) for t in (phone.reader(), phone.writer(), phone.mic())]
         try:

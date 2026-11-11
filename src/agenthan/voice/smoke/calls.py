@@ -207,7 +207,7 @@ def judge(plan: CallPlan, run: CallRun) -> CallReport:
 
 
 async def run_plan(url: str, plan: CallPlan, *, voice: Voice | None, pace: float,
-                   smoke_key: str, no_turn_timeout_s: float) -> CallReport:
+                   smoke_key: str, no_turn_timeout_s: float, origin: str = "") -> CallReport:
     started = time.monotonic()
     try:
         if voice is None:
@@ -217,7 +217,7 @@ async def run_plan(url: str, plan: CallPlan, *, voice: Voice | None, pace: float
                      for i, say in enumerate(plan.says)]
         run = await asyncio.wait_for(
             run_call(url, clips, pace=pace, no_turn_timeout_s=no_turn_timeout_s,
-                     start={"smoke": smoke_key} if smoke_key else None),
+                     start={"smoke": smoke_key} if smoke_key else None, origin=origin),
             CALL_TIMEOUT_S * max(pace, 0.05))
         report = judge(plan, run)
     except Exception as err:  # noqa: BLE001  서버에 못 붙음·합성 실패·시간 초과도 결과로 적는다
@@ -229,13 +229,13 @@ async def run_plan(url: str, plan: CallPlan, *, voice: Voice | None, pace: float
 
 async def run_s2(url: str, plans: Sequence[CallPlan], *, voice: Voice | None, pace: float = 1.0,
                  smoke_key: str = "", retry: bool = True, no_turn_timeout_s: float = 6.0,
-                 max_p50_ms: int | None = None) -> S2Report:
+                 max_p50_ms: int | None = None, origin: str = "") -> S2Report:
     """통화를 하나씩 건다(동시에 걸지 않는다). 실패한 통화는 한 번 다시 건다(통과하면 flaky)."""
     started = time.monotonic()
     report = S2Report([], max_p50_ms)
     for plan in plans:
         kw: dict[str, Any] = {"voice": voice, "pace": pace, "smoke_key": smoke_key,
-                              "no_turn_timeout_s": no_turn_timeout_s}
+                              "no_turn_timeout_s": no_turn_timeout_s, "origin": origin}
         call = await run_plan(url, plan, **kw)
         if not call.ok and retry:
             again = await run_plan(url, plan, **kw)

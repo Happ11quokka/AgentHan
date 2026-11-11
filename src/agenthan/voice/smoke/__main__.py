@@ -91,8 +91,11 @@ async def _s2(url: str, settings: VoiceSettings, store: StoreKnowledge, config: 
     else:
         plans = calls.plan_calls(store.list_menu(), config, store_clock(settings).now(), n)
     try:
+        # 서버가 Origin을 검사하면(`PHONE_ALLOWED_ORIGINS`) 허용된 화면 오리진으로 건다.
+        # `ws://127.0.0.1`의 오리진은 목록에 없어 403이 난다 (6단계 첫 배포에서 확인)
+        allowed = [o for o in settings.allowed_origins if o != "*"]
         return await calls.run_s2(url, plans, voice=voice, smoke_key=settings.smoke_key,
-                                  max_p50_ms=max_p50_ms)
+                                  max_p50_ms=max_p50_ms, origin=allowed[0] if allowed else "")
     finally:
         if tts is not None:
             await tts.aclose()
