@@ -152,14 +152,22 @@ def set_review_report(
         changed["focus"] = focus
     if alert in ("negative", "every_new", "none"):
         changed["alert"] = alert
-    if not (
-        changed.get("frequency") or cur.get("frequency")
-    ):  # 주기를 처음 정하는데 말하지 않았으면 제안값으로
-        changed["frequency"] = suggest_frequency(repo, store_id, today)["frequency"]
-        changed["from_suggestion"] = True
+    if not (changed.get("frequency") or cur.get("frequency")):
+        # 주기를 처음 정하는데 사장님이 말하지 않았다. 말하지 않은 값으로는 저장하지 않는다:
+        # 말한 값(알림·시간 등)만 저장하고 정기 보고는 켜지 않은 채 주기를 제안한다.
+        # 사장님이 '응' 하면 그 주기로 켠다 (pending_suggestion)
+        if changed:
+            cur = {**cur, **changed, "updated_at": now.isoformat(timespec="minutes")}
+            settings_store.save(store_id, cur)
+        return {
+            "action": "suggest",
+            "suggested": suggest_frequency(repo, store_id, today),
+            "changed": changed,
+            "settings": cur,
+        }
     new = {
         **cur,
-        **{k: v for k, v in changed.items() if k != "from_suggestion"},
+        **changed,
         "enabled": True,
         "updated_at": now.isoformat(timespec="minutes"),
     }

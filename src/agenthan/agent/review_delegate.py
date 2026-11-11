@@ -63,6 +63,16 @@ class ReviewSession:
         """True while the owner is expected to answer (draft to confirm or edit, suggestion)."""
         return bool(self.toolbox.drafts or self.toolbox.pending_suggestion)
 
+    @property
+    def pending_drafts(self) -> list[dict]:
+        """Drafts waiting for the owner, as [{"review_id", "version"}] (read-only copy).
+
+        version goes up by one each time that review's draft is rewritten, so a caller can tell
+        whether the owner is answering the draft it showed."""
+        return [
+            {"review_id": rid, "version": d["version"]} for rid, d in self.toolbox.drafts.items()
+        ]
+
 
 def new_session(
     store: DummyStore,

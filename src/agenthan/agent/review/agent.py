@@ -14,9 +14,11 @@ from .analyze import analyze_reviews
 from .clova import ClovaError, model_options
 from .harsh import softened_ids
 from .replies import (
+    BARE_YES,
     CONFIRM,
     MockReplyStore,
     ReplyAwareRepo,
+    declines_post,
     draft_review_reply,
     get_unanswered_reviews,
     post_review_reply,
@@ -140,6 +142,8 @@ EDIT_HINTS = re.compile(
 )
 REPLY_TOOLS = {"get_unanswered_reviews", "draft_review_reply", "post_review_reply"}
 REPORT_TOOLS = {"set_review_report", "run_review_report"}
+# 사장님 말에 있어야 저장하는 보고 설정 값 (ReviewToolbox._ground_report_args)
+REPORT_VALUE_ARGS = ("frequency", "weekday", "time", "focus", "alert")
 # 답글 흐름은 규칙으로 고른다: HCX-005가 도구 4개 중 답글 도구를 안정적으로 고르지 못함 (2026-11-07
 # 실측:
 # '안 좋은 리뷰에 답글 써줘'에 분석 도구를 부르고 초안을 직접 지어냄, '이대로 올려줘'에 등록 없이
@@ -218,6 +222,9 @@ ORIGINAL_ASK = re.compile(
 ORIGINAL_MSG = "가렸던 리뷰 원문이에요. 거친 표현이 그대로 있어요."
 HIDDEN_HINT = (
     "거친 표현이 있는 리뷰는 표현을 가렸어요. 원문이 필요하면 '원문 보여줘'라고 해 주세요."
+)
+DISCARD_MSG = (
+    "알겠어요. 답글 초안은 올리지 않고 지웠어요. 다른 리뷰에 답글이 필요하면 말씀해 주세요."
 )
 HOLD_MSG = "초안은 그대로 두었어요. 올리려면 '이대로 올려줘', 고치려면 고칠 내용을 말씀해 주세요."
 # 초안을 보고 잠시 미루는 말. 수정 요청이 아니다 ('음 잠깐만'에 HCX가 초안을 고침, 벤치마크 H06)
@@ -312,6 +319,13 @@ class ReviewToolbox:
         self.listed: list[dict] = []  # 직전 미답글 목록 (draft의 대상)
         self.listed_for: str | None = None  # 그 목록을 만든 사장님 발화
         self.drafts: dict[str, dict] = {}  # review_id → 직전 초안 (수정·등록의 대상)
+        # review_id → 마지막 초안 버전. 고칠 때마다 1씩 늘고 등록 뒤에도 줄지 않는다.
+        # 비서가 '사장님이 본 그 초안'일 때만 승인을 받도록 밖에서 읽는다 (drafts[id]["version"])
+        self.draft_versions: dict[str, int] = {}
+        # 초안을 보여 주고 '이대로 올릴까요?'를 막 물었다. 다른 도구를 실행하면 풀린다.
+        # 이때만 '네'·'응'만으로 등록한다 (BARE_YES)
+        self.confirm_pending = False
+        self._bare_yes_ok = False
         self.routed_call = False  # 지금 실행하는 호출을 규칙·의도 분류가 정했는지
         self.hidden_reviews: list[str] = []  # 직전에 거친 표현을 가린 리뷰 ('원문 보여줘' 대상)
         self.specs = [
@@ -357,6 +371,8 @@ class ReviewToolbox:
         if self.drafts and EDIT_THEN_POST.search(u) and (POST_WORDS.search(u) or CONFIRM.search(u)):
             return "draft_review_reply", {"edit_request": u}  # 고친 초안은 다시 확인받는다
         if self.drafts and CONFIRM.search(u):
+            return "post_review_reply", {}
+        if self.drafts and self.confirm_pending and BARE_YES.search(u):
             return "post_review_reply", {}
         if (
             POST_WORDS.search(u)
@@ -455,10 +471,15 @@ class ReviewToolbox:
         # (키워드 인자로 받지 않는 이유: dispatch를 감싸는 쪽(벤치마크·팀 비서)이 그대로 쓰도록)
         if not self.routed_call and name == "set_review_report" and utterance is not None:
             why = self._report_write_unfounded(args or {}, utterance)
+            if not why:
+                args, why = self._ground_report_args(args or {}, utterance)
             if why:
                 self.last_tool, self.last_args = name, dict(args or {})
                 self.hidden_reviews = []
                 return {"error": "not_requested", "message": why}
+        self._bare_yes_ok = self.confirm_pending  # 이번 호출이 등록이면 이 값으로 '네'를 받는다
+        if name != "draft_review_reply":
+            self.confirm_pending = False  # 확인을 물은 뒤 다른 일을 했다
         res = self._dispatch(name, args, utterance)
         # 직전 결과에서 거른 리뷰만 '원문 보여줘'로 펼쳐 볼 수 있다 (PRD A-2)
         self.hidden_reviews = softened_ids(res)
@@ -476,6 +497,19 @@ class ReviewToolbox:
         if not REPORT_VALUE.search(u):
             return "어떻게 바꿀지(주기·요일·시간·알림 종류) 사장님 말에 없습니다. 되물으세요."
         return None
+
+    def _ground_report_args(self, args: dict, utterance: str) -> tuple[dict, str | None]:
+        """HCX가 채운 보고 설정 값 중 사장님 말에 없는 값은 버린다 ('매주 보고해줘'에 요일·시간을
+        덧붙이는 경우). 말에서 찾는 기준은 규칙 해석(parse_report_request)과 같다."""
+        if args.get("action") in ("suggest", "off"):
+            return args, None
+        u = drop_quoted(utterance)
+        parsed = parse_report_request(u, None if self.drafts else self.pending_suggestion)
+        said = parsed[1] if parsed and parsed[0] == "set" else {}
+        kept = {k: v for k, v in args.items() if k not in REPORT_VALUE_ARGS or k in said}
+        if not any(k in kept for k in REPORT_VALUE_ARGS):
+            return kept, "어떻게 바꿀지(주기·요일·시간·알림 종류) 사장님 말에 없습니다. 되물으세요."
+        return kept, None
 
     def wants_original(self, utterance: str) -> bool:
         return bool(
@@ -584,7 +618,10 @@ class ReviewToolbox:
                 return self._draft(clean, utterance)
             if name == "post_review_reply":
                 res = post_review_reply(
-                    drafts=self.drafts, store=self.reply_store, utterance=utterance
+                    drafts=self.drafts,
+                    store=self.reply_store,
+                    utterance=utterance,
+                    allow_bare_yes=self._bare_yes_ok,
                 )
                 for r in res.get("results", []):
                     if r.get("posted"):
@@ -628,8 +665,21 @@ class ReviewToolbox:
         )
         for d in res.get("drafts", []):
             if "reply_ko" in d:
-                self.drafts[d["review_id"]] = d
+                rid = d["review_id"]
+                self.draft_versions[rid] = self.draft_versions.get(rid, 0) + 1
+                # 사본에만 붙인다: res는 그대로 모델에 돌아가므로 도구 결과 모양을 바꾸지 않는다
+                self.drafts[rid] = {**d, "version": self.draft_versions[rid]}
+        self.confirm_pending = bool(self.drafts) and any(
+            "reply_ko" in d for d in res.get("drafts", [])
+        )
         return res
+
+    def discard_drafts(self) -> list[str]:
+        """사장님이 초안을 올리지 않겠다고 했다. 버린 review_id (나중 승인에 섞이지 않게)."""
+        dropped = list(self.drafts)
+        self.drafts.clear()
+        self.confirm_pending = False
+        return dropped
 
 
 def _call(id_: str, name: str, arguments) -> dict:
@@ -832,7 +882,7 @@ REPORT_MSG = {
             "none": "",
         },
         "set": "{when} {time}에 리뷰 보고를 보내드릴게요{focus}.{alert} 다음 보고: {next}",
-        "from_suggestion": " (최근 리뷰 수를 보고 정한 주기예요)",
+        "saved_part": "말씀하신 설정은 저장했어요{focus}.{alert} 정기 보고는 아직 꺼져 있어요. ",
         "suggest": (
             "최근 4주 동안 리뷰가 {n}건(주 평균 {avg}건)이라 {freq} 보고가 적당해 보여요. {reason}."
             " 이렇게 설정할까요?"
@@ -864,7 +914,7 @@ REPORT_MSG = {
             "none": "",
         },
         "set": "I'll send a review report {when} at {time}{focus}.{alert} Next report: {next}",
-        "from_suggestion": " (frequency chosen from your recent review volume)",
+        "saved_part": "I saved what you asked for{focus}.{alert} Regular reports are still off. ",
         "suggest": (
             "You had {n} reviews in the last 4 weeks ({avg} per week), so a {freq} report seems "
             "right. Shall I set it up?"
@@ -900,7 +950,7 @@ REPORT_MSG = {
         "set": (
             "Буду присылать отчёт по отзывам {when} в {time}{focus}.{alert} Следующий отчёт: {next}"
         ),
-        "from_suggestion": " (частота выбрана по количеству отзывов)",
+        "saved_part": ("Сохранил ваши настройки{focus}.{alert} Регулярные отчёты пока выключены. "),
         "suggest": (
             "За последние 4 недели было {n} отзыва(ов) ({avg} в неделю), поэтому подойдёт отчёт с "
             "частотой «{freq}». Настроить?"
@@ -924,6 +974,15 @@ def report_message(tool, result, owner_lang) -> str | None:
         msg = m["suggest"].format(
             n=sg["reviews_28d"], avg=sg["weekly_avg"], freq=freq, reason=sg["reason"]
         )
+        if result.get("changed"):  # 말한 값만 저장하고 주기는 제안 (report.set_review_report)
+            st = result["settings"]
+            msg = (
+                m["saved_part"].format(
+                    focus=m["focus"].get(st.get("focus", "all"), ""),
+                    alert=m["alert"].get(st.get("alert", "negative"), ""),
+                )
+                + msg
+            )
         return msg + (m["suggest_more"] if sg.get("suggest_increase_reviews") else "")
     st = result["settings"]
     when = m["freq"][st["frequency"]].format(wd=m["wd"][st["weekday"]])
@@ -935,7 +994,7 @@ def report_message(tool, result, owner_lang) -> str | None:
         alert=m["alert"].get(st.get("alert", "negative"), ""),
         next=nxt,
     )
-    return msg + (m["from_suggestion"] if result.get("changed", {}).get("from_suggestion") else "")
+    return msg
 
 
 def reply_message(tool, result, owner_lang) -> str | None:
@@ -1421,6 +1480,21 @@ def _run_turn_ko(
         if log:
             log("(원문 보기)", {}, {"review_ids": toolbox.hidden_reviews})
         return text
+    if not BARE_YES.search(utter):
+        # '네'만으로 등록하는 것은 확인을 물은 바로 다음 턴뿐이다 (보류·질문 뒤의 '네'는 아니다).
+        # 이번 턴에 초안을 다시 보여 주면 _draft가 다시 켠다
+        toolbox.confirm_pending = False
+    if (
+        toolbox.drafts
+        and declines_post(utter)
+        and not toolbox._asks_edit(utter)
+        and not WRITE_INTENT.search(utter)
+    ):  # 초안을 올리지 않겠다: 버려서 나중 승인에 섞이지 않게 한다 (도구·모델 없이)
+        dropped = toolbox.discard_drafts()
+        messages.append({"role": "assistant", "content": DISCARD_MSG})
+        if log:
+            log("(초안 취소)", {}, {"review_ids": dropped})
+        return DISCARD_MSG
     # 실행 설정: 규칙 라우터는 도구 5개 + 재요청·시스템 직접 실행, 의도 라우터는 plan()이 정한다
     specs, tool_choice, rule_fallbacks = toolbox.specs, None, True
     plan = None
