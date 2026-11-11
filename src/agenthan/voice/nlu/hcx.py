@@ -33,6 +33,7 @@ from agenthan.voice.nlu.clova import ClovaClient, ClovaError, load_api_key
 log = logging.getLogger(__name__)
 
 MODEL = "HCX-DASH-002"
+TASK_ENV = "PHONE_NLU_TASK_ID"  # 튜닝 모델 작업 id (5단계 티켓 08). 비면 기본 프롬프트
 FORCE_PARSE_TURN = {"type": "function", "function": {"name": "parse_turn"}}
 ACT_TYPES: tuple[str, ...] = get_args(ActType)
 # 모델이 도구 호출을 못 만들었을 때 CLOVA가 주는 본문 코드 ("Unsupported function")
@@ -390,9 +391,11 @@ class HcxNlu:
 
     @classmethod
     def from_env(cls, env_file: Path | None = Path(".env"), **kwargs: Any) -> HcxNlu:
+        """`task_id`를 안 주면 `PHONE_NLU_TASK_ID`(환경 변수 → `.env`)의 튜닝 모델. 없으면 기본."""
         key = load_api_key(env_file)
         if not key:
             raise ValueError("CLOVASTUDIO_API_KEY가 없어요. 환경 변수나 .env에 넣어 주세요.")
+        kwargs.setdefault("task_id", load_api_key(env_file, name=TASK_ENV))
         return cls(ClovaClient(key), **kwargs)
 
     def payload(self, text: str, ctx: NluContext, *, tools: bool | None = None) -> dict[str, Any]:

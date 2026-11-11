@@ -83,3 +83,14 @@ def test_misheard_names_change_a_little_and_stay_hangul() -> None:
     heard = {misheard("탄두리 치킨", rng) for _ in range(30)}
     assert "탄두리 치킨" not in heard or len(heard) > 1
     assert all(len(h.replace(" ", "")) == len("탄두리치킨") for h in heard)
+
+
+def test_the_call_nlu_uses_the_tuned_task_only_when_it_is_set(monkeypatch) -> None:
+    """`PHONE_NLU_TASK_ID`(5단계 티켓 08). 없으면 지금 프롬프트 그대로."""
+    from agenthan.voice.call.session import make_nlu
+
+    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "k")
+    monkeypatch.delenv("PHONE_NLU_TASK_ID", raising=False)
+    assert make_nlu("hcx")._task_id == ""
+    monkeypatch.setenv("PHONE_NLU_TASK_ID", "5s8ppwmo")
+    assert make_nlu("hcx")._task_id == "5s8ppwmo"

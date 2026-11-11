@@ -35,14 +35,14 @@ class ClovaError(Exception):
         self.request_id = request_id
 
 
-def load_api_key(env_file: Path | None = Path(".env")) -> str:
-    """환경 변수 → (없으면) `.env` 파일의 `CLOVASTUDIO_API_KEY`. 못 찾으면 ""."""
-    if key := os.environ.get(KEY_ENV, "").strip():
+def load_api_key(env_file: Path | None = Path(".env"), *, name: str = KEY_ENV) -> str:
+    """환경 변수 → (없으면) `.env` 파일의 `name`(기본 `CLOVASTUDIO_API_KEY`). 못 찾으면 ""."""
+    if key := os.environ.get(name, "").strip():
         return key
     if env_file is not None and env_file.is_file():
         for line in env_file.read_text(encoding="utf-8").splitlines():
-            name, sep, value = line.partition("=")
-            if sep and name.strip() == KEY_ENV:
+            key_name, sep, value = line.partition("=")
+            if sep and key_name.strip() == name:
                 return value.strip().strip("'\"")
     return ""
 
