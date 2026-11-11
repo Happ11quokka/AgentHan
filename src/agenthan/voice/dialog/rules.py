@@ -9,6 +9,9 @@
   ("아니요, 취소할게요"는 주문 취소다)
 - 사장님 연결은 "사장님/사람/직원 + 바꿔/연결/통화"가 있을 때만 건다. "사장님이 직접
   만드세요?"는 질문이다
+- "아니요 + 끝 표현"("아니요, 그게 다예요"·"아뇨 됐어요")과 "없어요"는 [no, done_ordering]이다
+  (6단계 티켓 02). 발화 전체가 그 꼴일 때만 건다. 머리말 없는 "그게 다예요"·"괜찮아요"는 다른
+  질문의 답일 수 있어 NLU가 읽는다
 """
 
 from __future__ import annotations
@@ -26,6 +29,28 @@ _YES_WORD = rf"(?:{'|'.join(YES_SHORT)}|맞아요|맞아|맞습니다|좋아요|
 _NO_WORD = r"(?:아니요|아뇨|아니|아니에요|아닌데요|틀려요|틀렸어요)"
 _YES = re.compile(rf"{_YES_WORD}(?:(?:{_SEP})?{_YES_WORD})*")
 _NO = re.compile(rf"{_NO_WORD}(?:(?:{_SEP})?{_NO_WORD})*")
+
+# "아니요, 그게 다예요" (6단계 티켓 02). 손님이 "아니요" 뒤에 쉬었다 덧붙인 말을 세션이 한 턴으로
+# 합치면 이 꼴이 된다. NLU(HCX 약 1초)를 건너뛰려고 규칙으로 둔다. NLU가 내던 것과 같은
+# [no, done_ordering]을 내서 상태별 뜻은 엔진이 그대로 정한다: "더 필요하신 거?" 뒤면 주문 끝
+# (`_no_means_done`), 그 밖에는 앞의 no를 떼고 done_ordering만 본다. 그래서 복창 중에는 확정도
+# 확정 거부도 아니다(못 알아들었다고 하고 복창을 다시 한다).
+# STT 표기 흔들림: 다예요·다에요·다 예요·다요·답니다, 끝이에요·끝이예요, 됐어요·됬어요·됐습니다
+_CLOSE_HEAD = r"(?:아니요|아니오|아뇨|아니에요|아니)"
+_NONE_LEFT = (
+    r"(?:(?:더\s*는?\s*)?(?:필요\s*(?:한\s*(?:거|건|것)\s*(?:은|는)?\s*)?)?"
+    r"(?:없어요|없어|없습니다))"
+)
+_THATS_ALL = (
+    r"(?:(?:이제\s*)?(?:그게|그거|이게|이거|그걸로|이걸로|그거면|이거면|그럼|이제)?\s*"
+    r"(?:(?:다|전부|끝)\s*(?:예요|에요|이에요|이예요|이요|요|입니다|야|이야)|답니다"
+    r"|(?:다\s*)?(?:됐어요|됬어요|됐습니다|됐어|돼요|되요|됩니다)))"
+)
+_CLOSE_TAIL = rf"(?:{_THATS_ALL}|{_NONE_LEFT}|괜찮아요|괜찮습니다|괜찮아)"
+_NO_AND_DONE = re.compile(
+    rf"{_CLOSE_HEAD}(?:{_SEP}{_CLOSE_HEAD})*(?:{_SEP}{_CLOSE_TAIL})+"
+    rf"|{_NONE_LEFT}(?:{_SEP}{_CLOSE_TAIL})*"
+)
 
 # 내용 앞의 예/아니요 머리말. "네 개요"의 "네"(넷)는 뒤에 쉼표나 띄어쓰기가 있어야 떼므로 남는다
 _LEAD = re.compile(rf"^(?:{_YES_WORD}|{_NO_WORD})(?:{_SEP})")
@@ -124,6 +149,8 @@ def apply_rules(text: str) -> list[Act] | None:
         return [Act("yes")]
     if _NO.fullmatch(t):
         return [Act("no")]
+    if _NO_AND_DONE.fullmatch(t):
+        return [Act("no"), Act("done_ordering")]
     rest = _LEAD.sub("", t)  # "아니요, 취소할게요"의 머리말은 떼고 본다 (리뷰 C6)
     if _CANCEL.fullmatch(rest) or _CANCEL_ANYWHERE.search(t):
         return [Act("cancel_order", free_text=text.strip())]

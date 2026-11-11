@@ -487,3 +487,47 @@ def test_transcript_alternates_customer_and_ai(engine: DialogEngine) -> None:
         "손님: 네",
         "AI: 네, 6시 반까지 준비해 둘게요. 감사합니다.",
     ]
+
+
+# ------------------------------------------------ "아니요, 그게 다예요" (6단계 티켓 02)
+
+
+@pytest.mark.parametrize("text", ["아니요 그게 다예요", "아뇨 됐어요", "아니요 괜찮아요", "없어요"])
+def test_no_with_a_closing_phrase_ends_ordering_without_nlu(text: str) -> None:
+    nlu = CountingNlu()
+    engine = make_engine(nlu=nlu)
+    assert talk(engine, "메도빅 하나요").utterances[-1].endswith(MORE_Q)
+    r = talk(engine, text)
+    assert r.state is State.ASK_PICKUP
+    assert lines(r) == [("m01", 1)]
+    assert nlu.calls == ["메도빅 하나요"]
+
+
+def test_no_with_content_after_anything_else_still_adds_the_item() -> None:
+    nlu = CountingNlu()
+    engine = make_engine(nlu=nlu)
+    talk(engine, "메도빅 하나요")
+    r = talk(engine, "아니요 블린도 하나요")
+    assert nlu.calls[-1] == "아니요 블린도 하나요"
+    assert r.state is State.ORDERING
+    assert len(r.cart.lines) == 2
+
+
+@pytest.mark.parametrize("text", ["아니요 그게 다예요", "아뇨 됐어요", "아니요 괜찮아요", "없어요"])
+def test_no_with_a_closing_phrase_at_readback_neither_confirms_nor_rejects(text: str) -> None:
+    # 복창("…맞으세요?") 뒤에 온 "아니요, 그게 다예요"는 확정이 아니고, "아니요"(확정 거부 →
+    # "어떤 걸 고쳐 드릴까요?")도 아니다. 못 알아들었다고 하고 복창을 다시 한다 (NLU 때와 같은 뜻)
+    engine = make_engine()
+    readback = to_confirm(engine, "메도빅 하나요").utterances[-1]
+    r = talk(engine, text)
+    assert r.state is State.CONFIRM
+    assert r.order is None
+    assert r.readback
+    assert r.utterances == [SORRY, readback]
+    assert talk(engine, "네").state is State.CLOSING  # 그 뒤 "네"는 그대로 확정
+
+
+def test_plain_no_at_readback_still_asks_what_to_fix(engine: DialogEngine) -> None:
+    to_confirm(engine, "메도빅 하나요")
+    r = talk(engine, "아니요")
+    assert (r.state, r.utterances) == (State.ORDERING, ["어떤 걸 고쳐 드릴까요?"])
