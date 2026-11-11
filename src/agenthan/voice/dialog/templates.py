@@ -402,6 +402,42 @@ def handoff() -> str:
     return "사장님께 메모 남겨 드릴게요."
 
 
+# ---------------------------------------------------------------- 되묻기 루프 방지 (6단계 품질)
+# 같은 질문의 두 번째 되묻기부터 질문 앞에 붙이는 보기·답하는 법. 질문 문장이 아니다(한 턴 한 질문)
+
+
+def menu_examples(names: Sequence[str]) -> str:
+    """주문 질문의 보기. 가게 메뉴에서 뽑은 이름 몇 개."""
+    return f"저희는 {_join(names)} 같은 메뉴가 있어요."
+
+
+def more_or_done_hint(names: Sequence[str]) -> str:
+    """"더 필요하신 거 있으세요?"의 답하는 법. 메뉴 이름 한두 개를 보기로 든다."""
+    like = i_na(names[0]) + f" {names[1]}" if len(names) > 1 else names[0]
+    return f"더 주문하실 게 있으면 {like}처럼 메뉴 이름을, 없으면 없어요라고 말씀해 주세요."
+
+
+def time_examples(times: Sequence[datetime]) -> str:
+    """픽업 시각 질문의 보기. 가게가 지금 받을 수 있는 시각 한두 개."""
+    said = [spoken_time(t) for t in times]
+    like = i_na(said[0]) + f" {said[1]}" if len(said) > 1 else said[0]
+    return f"{like}처럼 시간으로 말씀해 주세요."
+
+
+def yes_no_hint() -> str:
+    return "네 또는 아니요로 말씀해 주세요."
+
+
+def confirm_hint() -> str:
+    """최종 복창의 답하는 법. 복창 앞에 말한다(복창이 그 턴의 마지막 말)."""
+    return "맞으면 네, 고칠 게 있으면 아니요라고 말씀해 주세요."
+
+
+def sorry_for_trouble() -> str:
+    """손님이 짜증을 냈을 때. 뒤에 사장님 연결 안내가 온다."""
+    return "불편을 드려 죄송해요."
+
+
 # ---------------------------------------------------------------- 무응답·되묻기 (3단계 티켓 04)
 
 

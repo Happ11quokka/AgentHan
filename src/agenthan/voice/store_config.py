@@ -6,6 +6,7 @@
 
     "phone": {
       "prep_minutes": 15, "open": "10:00", "close": "21:00",
+      "max_reasks": 5, "confirm_qty_from": 10,
       "required_options": {
         "<메뉴 id>": [{"name": "온도", "default": "",
                        "choices": ["따뜻하게", {"name": "차갑게", "extra_price": 0}]}]
@@ -14,6 +15,10 @@
 
 `required_options`는 손님이 꼭 하나 골라야 하는 것(음료 온도, 국수 양 등). `default`가 있으면
 묻지 않고 그 값으로 담는다. 없는 메뉴는 묻지 않는다.
+
+6단계 품질: `max_reasks`는 통화 전체에서 못 알아듣거나 되물은 횟수가 이만큼이면 사장님께 넘기는
+값(0이면 끔), `confirm_qty_from`은 한 줄 수량이 이 값 이상이면 "○○ 12개 맞으세요?"로 따로
+확인하는 값(0이면 끔).
 """
 
 from __future__ import annotations
@@ -62,6 +67,11 @@ class StoreConfig:
     required_options: Mapping[str, tuple[RequiredOption, ...]] = field(
         default_factory=lambda: _NO_REQUIRED
     )
+    # 6단계 품질. 통화 전체의 못 알아들음·되묻기가 이만큼이면 사장님께 넘긴다(같은 슬롯 3번과
+    # 따로 센다). 0이면 끔. 조사 노트의 예는 4지만 말했는데 글 없음(`not_heard`)도 세므로 5로 둔다
+    max_reasks: int = 5
+    # 한 줄 수량이 이 값 이상이면 바로 담지 않고 따로 확인한다(장난·오인식). 0이면 끔
+    confirm_qty_from: int = 10
     demo_phone: str = "010-0000-0000"  # 전화번호는 묻지 않고 미리 채운다 (spec §2)
     tz: timezone = KST
 
@@ -93,6 +103,12 @@ class StoreConfig:
             values["open_time"] = time.fromisoformat(str(phone["open"]))
         if "close" in phone:
             values["close_time"] = time.fromisoformat(str(phone["close"]))
+        for name in ("max_reasks", "confirm_qty_from"):
+            if name in phone:
+                number = int(phone[name])
+                if number < 0:
+                    raise ValueError(f"가게 JSON phone.{name}은 0 이상이어야 해요")
+                values[name] = number
         if "required_options" in phone:
             values["required_options"] = MappingProxyType({
                 menu_id: tuple(_required(group) for group in groups)

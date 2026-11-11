@@ -112,7 +112,7 @@ from agenthan.voice.call.frames import (
     chunk_pcm,
     pack_audio_frame,
 )
-from agenthan.voice.call.latency import LatencyLog
+from agenthan.voice.call.latency import LatencyLog, TurnRecord
 from agenthan.voice.call.ports import (
     CUSTOMER_FATAL,
     CUSTOMER_RETRY,
@@ -1328,6 +1328,9 @@ class CallSession:
         record = self._log.get(turn)
         if stats is not None and record is not None:
             record.fields["nlu_prefetch"] = stats
+        if record is not None:
+            self._log_quality(record, result, guest=before is not None or (
+                u is not None and not isinstance(u, _BotTurn)))
         self._last = result
         if result.state in TERMINAL:
             self._terminal = True
@@ -1387,6 +1390,25 @@ class CallSession:
             # 서버 안전망: 재생 끝 보고가 안 와도 소리 길이 + 여유 뒤에는 듣기로 (리뷰 4번)
             delay = audio_ms / 1000 + self._settings.play_done_grace_s
             self._play_timer.arm(delay, turn)
+
+    @staticmethod
+    def _log_quality(record: TurnRecord, result: TurnResult, *, guest: bool) -> None:
+        """6단계 품질 지표를 턴 기록에 남긴다 (글은 없다).
+
+        - `route`(손님 턴): 엔진이 탄 길 rule · nlu · answer. 경로별 지연 요약
+          (`turn_summary`)이 쓴다
+        - `reask {slot, n}`: 못 알아듣고 되물은 턴. `slot`은 order·option·pickup·confirm·cancel·
+          not_heard, `n`은 통화 전체 누적
+        - `handoff {reason, slot, reasks}`: 사장님께 넘긴 턴. reason은 requested(손님이 사람을
+          찾음) · slot_failures(같은 슬롯 3번) · call_failures(통화 전체 상한) · frustrated(짜증)
+        """
+        if guest:
+            record.fields["route"] = result.route
+        if result.reask:
+            record.fields["reask"] = {"slot": result.reask, "n": result.reasks}
+        if result.handoff:
+            record.fields["handoff"] = {"reason": result.handoff, "slot": result.reask,
+                                        "reasks": result.reasks}
 
     def _start_speaking(self, turn: int) -> None:
         """첫 오디오를 보내기 직전. 여기서부터 "봇 말하는 중"이다 (3단계 티켓 01).
@@ -2279,7 +2301,12 @@ def _rewindable(result: TurnResult) -> bool:
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
-    """대화가 끝난 이유 (`call.ended`). 봇이 먼저 말한 턴이면 그 이유(no_input 등)."""
+    """대화가 끝난 이유 (`call.ended`). 봇이 먼저 말한 턴이면 그 이유(no_input 등).
+
+    봇이 먼저 말한 턴이어도 사장님께 넘겼으면 handoff다(6단계 품질: "잘 못 들었어요"가 통화
+    되묻기 상한에 닿음)."""
+    if result.state is State.FALLBACK:
+        return "handoff"
     if isinstance(u, _BotTurn):
         return u.reason
     if result.state is State.CLOSING:
