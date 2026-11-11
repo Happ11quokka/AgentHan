@@ -177,6 +177,42 @@
 - 켜기 전에 실기기로 볼 것: 아이폰 사파리에서 "아니요, 그게 다예요"를 쉼을 바꿔 가며 말해 한 턴이 되는지, 봇 목소리가 손님 말로 잡히지 않는지(`PHONE_MIC_CLOSE`), 효과음이 `empty`·헛 문지기를 늘리지 않는지
 - 테스트: `tests/voice/test_rules.py`·`test_engine_rules.py`(규칙), `test_turn_end.py`·`test_call_turn_end.py`(짧은 대기), `test_call_mic_close.py`(마이크 닫는 때), `test_engine_snapshot.py`·`test_call_rewind.py`(되감기), `web/src/screens/phone/callState.test.ts`·`phoneCall.test.ts`
 
+## 6단계: 품질 (되묻기 루프·큰 수량·경로별 지연·스모크)
+
+발표 전 품질 묶음. 근거와 우선순위 표는 `.scratch/phone-order/research/s6-quality-latency-gap.md`(A1·A2·A5~A8, F1~F4).
+
+| 무엇 | 기본 | 바꾸는 곳 | 하는 일 |
+|---|---|---|---|
+| 두 번째 되묻기에 보기 (`dialog/engine.py` `_choices_hint`) | 켬 | 없음 | 같은 질문을 두 번째 못 알아들으면 질문 앞에 가게 데이터로 만든 보기·답하는 법을 붙인다 |
+| 통화 전체 되묻기 상한 (`_count_failure`) | 5번 | 가게 JSON `phone.max_reasks` (0이면 끔) | 슬롯이 달라도 통화에서 못 알아듣거나 되물은 횟수가 이만큼이면 사장님께 넘긴다 |
+| 짜증·사람 요청 (`dialog/rules.py`) | 켬 | 없음 | 이미 되물은 통화에서 손님이 짜증을 내면 바로 넘긴다. "사람이랑 얘기할게요"·"사장님 계세요?"는 사장님 연결이다 |
+| 큰 수량 확인 (`_confirm_big_qty`) | 10개 이상 | 가게 JSON `phone.confirm_qty_from` (0이면 끔) | 한 줄 수량이 크면 담지 않고 "메도빅 12개 맞으세요?"로 따로 확인한다 |
+| 경로별 지연 요약 (`call/turn_summary.py`) | — | — | 규칙·NLU(HCX)·답변기 경로별 말 끝 → 첫 소리 P50·P90, 구간별 P50, 되묻기율, 넘긴 이유 |
+| 첫 문장 "네." (`templates.ack_first`) | **끔** | `PHONE_ACK_FIRST=on` | 받아들인 대답 앞에 고정 문장 "네."를 따로 내 TTS 첫 바이트를 줄인다 |
+| 스모크 (`smoke/`) | — | `PHONE_SMOKE_KEY`, `PHONE_SMOKE_SPEAKER` | 배포 직후 대본 9개 + 통화 1건. `python -m agenthan.voice.smoke` |
+
+- **되묻기 루프 방지** (조사 노트 F2·F3·F4. 짜증의 원인으로 보도된 것은 복창보다 같은 질문 반복이었다)
+  - 세는 법: 못 알아듣고 진전이 없는 턴을 두 가지로 센다. 같은 슬롯 연속 횟수(전부터 있던 것, 진전이 있으면 0)와 통화 전체 횟수(`_reasks`, 지우지 않는다). 말했는데 글 없음(`not_heard`, "잘 못 들었어요")은 통화 전체에만 든다. 무응답("여보세요?")은 전처럼 따로 세고 3번째에 끊는다
+  - 같은 슬롯 1번째: 전처럼 되묻는다 → 2번째: 보기를 붙여 되묻는다 → 3번째: 넘긴다(전과 같다, 이유 `slot_failures`). 통화 전체가 `max_reasks`에 닿으면 슬롯 횟수와 상관없이 넘긴다(이유 `call_failures`). 둘 다 걸리면 슬롯 이유가 앞선다
+  - 보기: 주문 질문 "저희는 메도빅, 나폴레옹, 아메리카노 같은 메뉴가 있어요."(품절 뺀 메뉴 앞 3개) · 추가 주문 질문 "더 주문하실 게 있으면 메도빅이나 나폴레옹처럼 메뉴 이름을, 없으면 없어요라고 말씀해 주세요." · 픽업 시각 "4시 15분이나 4시 45분처럼 시간으로 말씀해 주세요."(지금 받을 수 있는 가장 빠른 시각과 30분 뒤) · 복창 "맞으면 네, 고칠 게 있으면 아니요라고 말씀해 주세요."(복창 앞에 말한다. 복창이 그 턴의 마지막 말이라는 불변식은 그대로) · 예/아니요 질문(메뉴 확인·시각 제안·취소 확인) "네 또는 아니요로 말씀해 주세요." 보기는 질문 문장이 아니다(한 턴 한 질문)
+  - 붙이지 않는 때: 이미 보기가 든 질문(꼭 고를 것 "따뜻하게 드릴까요, 차갑게 드릴까요?", 둘 중 고르기), 없는 메뉴라 메뉴 목록을 방금 말한 턴, 알아듣기는 했지만 받을 수 없는 답(영업시간 밖 시각 등)
+  - 짜증 표현(`rules.frustrated`)은 오탐이 적은 것만: "몇 번을 말해요" · "말했잖아요" · "왜 못 알아들어요" · "말귀" · "답답하네" · "짜증 나" · 욕설 · 발화 전체가 "(그냥) 끊을게요". "됐어요"·"아 진짜"처럼 다른 뜻으로도 쓰는 말은 넣지 않았다. **통화에서 이미 한 번 되물은 뒤에만** 본다(되물은 적이 없으면 평소처럼 NLU가 읽는다). 걸리면 "불편을 드려 죄송해요. 사장님께 메모 남겨 드릴게요."(이유 `frustrated`)
+  - 사람 요청: 전의 "사장님/사람/직원 + 바꿔·연결·통화"에 "… + 얘기할게요·말할래요", "사장님 (안) 계세요?", "기계·AI 말고 사람"을 더했다(이유 `requested`)
+  - 턴 기록: `reask {slot, n}`(되물은 슬롯 order·option·pickup·confirm·cancel·not_heard, 통화 누적), `handoff {reason, slot, reasks}`. 엔진은 `TurnResult.reask`·`reasks`·`handoff`로 낸다. "잘 못 들었어요"가 상한에 닿아 넘긴 통화도 `call.ended {reason: handoff}`다
+  - 사장님 카드에는 넘긴 이유가 아직 안 보인다(허브는 다른 작업 중이라 건드리지 않았다). 턴 기록에서 본다
+- **큰 수량 확인** (조사 노트 F1. 장난 주문, "열"↔"열두" 같은 수량 오인식)
+  - 담거나 수량을 바꿀 때 한 줄 수량이 `confirm_qty_from` 이상이면(전화 상한 99 이하) 장바구니를 건드리지 않고 "메도빅 12개 맞으세요?"를 묻는다(TTS는 "열두 개"로 읽는다). 메뉴 되묻기와 같은 틀(`_MenuClarify.big_qty`)이라 같은 말의 다른 품목은 그대로 담기고, 복창 뒤 정정에서 열렸으면 답 뒤에 다시 복창한다
+  - 답: "네"·같은 수를 되풀이 → 그 수량으로 담는다 · "아니요" → "그럼 메도빅은 몇 개 드릴까요?"(실패로 세지 않는다) · "아니요, 두 개요"·"두 개요" → 그 수량으로(그 수도 크면 다시 확인) · "빼 주세요" → 담지 않고 닫는다 · 다른 메뉴를 말하면 이 줄은 버리고 그 메뉴를 받는다
+  - 통화 총 수량·총액 상한은 여기서 다루지 않는다(다른 작업)
+- **경로별 지연 요약**: 세션이 손님 턴마다 `route`(rule: NLU를 안 부른 턴 · nlu: NLU를 부른 턴 · answer: 답변기까지 부른 턴)를 턴 기록에 남긴다. `uv run python -m agenthan.voice.call.turn_summary logs/phone-YYYYMMDD.jsonl`의 `by_route`(경로별 말 끝 → 첫 소리 P50·P90과 구간 P50), `stages`(말 끝 → epFlag · epFlag → STT 글 · 글 → 엔진 시작 · 엔진 · TTS 첫 바이트 · 첫 조각 보냄 → 재생 보고), `reask`(턴 수·손님 턴당 비율·슬롯별), `handoff`(이유별). `route`가 없는 예전 기록은 `unknown`(답변기 결과가 있으면 `answer`)이다. 스모크 통화는 빼고 센다(`--include-smoke`로 같이)
+- **첫 문장 "네."** (조사 노트 A2, 서버 실측 TTS 첫 바이트 처음 보는 문장 약 340ms 대 같은 문장 약 30ms): `PHONE_ACK_FIRST=on`이면 담기·고치기·빼기 되받기와 마무리로 여는 턴(`TurnResult.ack`)의 첫 문장을 "네."로 따로 낸다("네. / 메도빅 하나요. / 더 필요하신 거 있으세요?", 마무리는 "네, …"의 쉼표를 마침표로). 사과·질문·복창으로 여는 턴은 그대로다(복창은 이미 고정 문장으로 연다). 주문서의 대화 기록은 엔진 대사 그대로다. **기본 끔**: "네." 한 마디를 따로 합성했을 때의 억양과 뒤 문장과의 틈을 사람이 들어 본 적이 없다. 켜고 `turn_summary`의 `by_route.*.stages.tts_first`를 켜기 전과 비교한다
+- **스모크** (`smoke/`, 조사 노트 3-3의 S1·S2): `python -m agenthan.voice.smoke`. 서버와 같은 설정·가게 데이터를 읽는다. 사용법·호출 수는 `deploy/phone/README.md` 7절과 `smoke/__main__.py` 머리 주석
+  - S1(`smoke/scripts.py`): 대본을 코드에 적지 않고 가게 메뉴·꼭 고를 것·영업시간으로 만든다(9개, NLU 20번, 호출 사이 0.7초 이상). 엔진 시각은 가게 여는 시각 + 30분으로 고정한다. 최종 주문서(상태·줄·옵션·픽업 시각)를 본다
+  - S2(`smoke/calls.py`): `fake_phone`으로 로컬 WS에 통화를 건다. 손님 말은 CLOVA Voice로 그때그때 합성한다(저장하지 않는다. 저장소에 녹음은 없다). 서버가 가짜 STT면 사인파를 보낸다. 주문 확정 여부와 서버 턴 기록(`metrics`)의 말 끝 → 첫 소리를 낸다
+  - 스모크 통화 표시: 서버에 `PHONE_SMOKE_KEY`가 있고 `call.start.smoke`가 같은 값이면 그 통화는 사장님 쪽(`OwnerChannel`)과 주문 받는 곳(`OrderSink`)에 알리지 않고, `call.ready.smoke: true`, 턴 0 기록 `smoke: true`(`CallSession.smoke`). 열쇠는 턴 기록에 남기지 않는다. 열쇠가 비어 있으면 표시를 받지 않는다(아무나 주문을 숨기지 못하게)
+  - 키 없이: `uv run python -m agenthan.voice.smoke --nlu fake --skip-s2`(엔진만), 가짜 서버를 띄워 두고 `--nlu fake --url ws://127.0.0.1:8000/api/phone/ws`(S2까지)
+- 테스트: `tests/voice/test_engine_reask.py`·`test_engine_big_qty.py`·`test_rules.py`(엔진·규칙), `test_call_quality.py`(턴 기록·스모크 표시), `test_turn_summary.py`, `test_ack_first.py`, `test_smoke.py`(가짜 NLU·같은 프로세스 가짜 서버)
+
 ## 2단계: 통화 서버 (`ws.py`, `server.py`)
 
 - 개발 서버 띄우기 (키 없이 전부 가짜, 저장소 루트에서): `uv run python -m agenthan.voice.server`
@@ -186,7 +222,7 @@
 - 설정: 환경 변수 → `.env`(지금 폴더). 변수 표는 `settings.py` 머리 주석
   - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
   - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시작 시각, 시연용. 그 뒤 실제 시간만큼 간다. 멈춘 시계면 질문 카드 마감이 화면 카운트다운과 어긋난다, 리뷰 C2), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
-  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초), 사장님 질문 답 대기 `PHONE_OWNER_WAIT_S`(20초, 4단계). 늦은 조각(6단계): `PHONE_MORE_NO_WAIT_S`(1.2초, 0이면 끔)·`PHONE_MIC_CLOSE`(playback|state)·`PHONE_TURN_REWIND`(off|on, 기본 off)·`PHONE_GATE_MAX_S`(3초). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
+  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초), 사장님 질문 답 대기 `PHONE_OWNER_WAIT_S`(20초, 4단계). 늦은 조각(6단계): `PHONE_MORE_NO_WAIT_S`(1.2초, 0이면 끔)·`PHONE_MIC_CLOSE`(playback|state)·`PHONE_TURN_REWIND`(off|on, 기본 off)·`PHONE_GATE_MAX_S`(3초). 품질(6단계): `PHONE_ACK_FIRST`(off|on, 기본 off)·`PHONE_SMOKE_KEY`(스모크 통화 표시 열쇠). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
   - 엔진 스레드: 라우터 하나가 엔진 전용 스레드 풀(`phone-engine-*`, `PHONE_MAX_CALLS` × 2개)을 갖고 NLU 만들기·엔진 생성·턴을 거기서 돌린다. 루프 기본 풀(2 vCPU에서 6개)은 DNS 조회 등과 같이 쓰고, 시간을 넘긴 엔진 스레드는 취소되지 않고 남기 때문이다(티켓 09)
   - 배포(NCP + Caddy + DuckDNS): 저장소 루트 `deploy/phone/README.md`
   - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)
@@ -245,7 +281,7 @@
 가게마다 코드를 고치지 않는다. 가게 차이는 데이터로만 낸다.
 
 - **메뉴·옵션·다른 이름**: 계약 `MenuItem`(`StoreKnowledge.list_menu`) 그대로
-- **전화 주문 설정**: 가게 JSON의 `phone` 묶음(`StoreConfig.from_store_json`). 준비 시간, 영업시간, 메뉴별 꼭 고를 것(`required_options`, 기본값이 있으면 묻지 않음). 모두 생략 가능(없으면 꼭 고를 것 없음). 예: `fixtures/sample_store.json`, 두 번째 더미 가게 `fixtures/phone/sample_pho_store.json`
+- **전화 주문 설정**: 가게 JSON의 `phone` 묶음(`StoreConfig.from_store_json`). 준비 시간, 영업시간, 메뉴별 꼭 고를 것(`required_options`, 기본값이 있으면 묻지 않음), 통화 되묻기 상한 `max_reasks`(5)·큰 수량 확인 `confirm_qty_from`(10, 6단계 품질). 모두 생략 가능(없으면 꼭 고를 것 없음). 예: `fixtures/sample_store.json`, 두 번째 더미 가게 `fixtures/phone/sample_pho_store.json`
 - **해석은 LLM**: 엔진이 가게 데이터로 메뉴마다 한 줄(`nlu/catalog.py` `menu_catalog`: 이름 | 다른 이름 | 꼭 고를 것 | 옵션)을 만들어 `NluContext.menu_catalog`로 넘기고, HCX 프롬프트는 그것을 "메뉴 목록"으로 받는다. 프롬프트의 고정 부분(규칙·예시)에는 업종 말과 실제 가게 메뉴가 없다. 예시는 가상의 예시 가게(`hcx.EXAMPLE_STORE`, 분식집)로 쓴다(`test_hcx_prompt.py`가 지킨다)
 - **검증은 코드**: 엔진은 LLM 결과를 그 가게 매처·옵션 목록으로 판정한다(티켓 04의 안전망: 메뉴명 속 옵션 말, 메뉴가 아닌 메뉴 말 버리기, 옵션 대상어 빼기, 짧은 메뉴 말 되묻기). 특정 메뉴 이름은 코드에 없다
 - 범위 밖(가게에 묶인 채 남은 것): 개발용 가짜 NLU(`nlu/fake.py`) 정규식, 사장님 카드 러시아어 용어 사전(`owner/lexicon.py`), "잔"으로 세는 분류(`templates._CUP_CATEGORIES`)
