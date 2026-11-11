@@ -103,6 +103,18 @@ export class Player {
   }
 
   /**
+   * `turn`의 첫 소리가 재생되도록 예약된 AudioContext 시각. 그 턴 소리를 아직 못 받았으면 null.
+   * 반이중 마이크를 이 시각에 닫는다(6단계 티켓 02). 스피커는 여기서 `outputLatency`만큼 더 늦다
+   */
+  startOf(turn: number): number | null {
+    let first: number | null = null
+    for (const s of this.starts) {
+      if (s.turn === turn && (first === null || s.at < first)) first = s.at
+    }
+    return first
+  }
+
+  /**
    * 말 끊기(티켓 05): 예약된 소리를 모두 멈추고 손님이 `turn`의 어느 문장 몇 ms까지 들었는지
    * 돌려준다. 시작·끝 알림은 더 보내지 않는다. 스피커는 `outputLatency`만큼 늦게 소리를 내므로
    * 그만큼 덜 들은 것으로 친다(s3-barge-in Q2-2). 그 턴 소리가 아직 안 났으면 0번 문장 0ms.

@@ -23,6 +23,7 @@
 | `PHONE_MAX_CALL_S` | 통화 하나의 최대 길이(초). 넘으면 `call_too_long` | `600` |
 | `PHONE_CONT_WAIT_S` | 이어질 모양("-하고", "음")이면 마지막 말 끝부터 기다리는 초 | `2.0` |
 | `PHONE_MORE_NO_WAIT_S` | "더 필요하신 거?" 뒤 맨 "아니요"를 말 끝부터 기다림(초). 0은 끔 | `1.2` |
+| `PHONE_MIC_CLOSE` | 반이중 마이크 닫기: `playback`(실제 재생 시작) · `state`(전처럼) | 앞의 것 |
 | `PHONE_NO_INPUT_S` | 봇 재생 끝부터 이만큼 말이 없으면 "여보세요?" + 직전 질문 (초) | `6.0` |
 | `PHONE_WAIT_REQUEST_S` | "잠깐만요" 뒤 첫 무응답 대기 (초) | `15.0` |
 | `PHONE_TURN_MODEL` | `smart_turn`(오디오 턴 모델) · `off`(끝말 규칙만) | `smart_turn` |
@@ -78,6 +79,7 @@ NluName = Literal["fake", "hcx"]
 AdapterName = Literal["fake", "clova"]
 TurnModelName = Literal["smart_turn", "off"]
 BargeName = Literal["off", "shadow", "on"]
+MicCloseName = Literal["playback", "state"]
 DEFAULT_TURN_MODEL_PATH = Path("/app/models/smart-turn-v3.2-cpu.onnx")  # Dockerfile이 받는 자리
 
 DEFAULT_FAKE_REPLIES = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
@@ -108,6 +110,8 @@ class VoiceSettings:
     cont_wait_s: float = CONT_WAIT_S  # 이어짐 대기 상한 (3단계 티켓 02)
     # 추가 주문 질문 뒤 맨 "아니요"의 짧은 이어짐 대기 (6단계 티켓 02). 0이면 끔
     more_no_wait_s: float = MORE_NO_WAIT_S
+    # 반이중에서 마이크를 닫는 때 (6단계 티켓 02). playback: 실제 재생 시작, state: 전처럼
+    mic_close: MicCloseName = "playback"
     no_input_s: float = NO_INPUT_S  # 무응답 되묻기 대기 (3단계 티켓 04)
     wait_request_s: float = WAIT_REQUEST_S  # "잠깐만요" 뒤 첫 대기
     # 오디오 턴 모델 (3단계 티켓 03). 기본 켬(사용자 결정 2026-11-08), 끄면 끝말 규칙만
@@ -135,6 +139,7 @@ class VoiceSettings:
         _check("PHONE_STT", self.stt, get_args(AdapterName))
         _check("PHONE_TTS", self.tts, get_args(AdapterName))
         _check("PHONE_TURN_MODEL", self.turn_model, get_args(TurnModelName))
+        _check("PHONE_MIC_CLOSE", self.mic_close, get_args(MicCloseName))
         if not 0 < self.turn_model_low <= self.turn_model_high < 1:
             raise SettingsError(
                 "PHONE_TURN_LOW ≤ PHONE_TURN_HIGH이고 둘 다 0과 1 사이여야 해요: "
@@ -213,6 +218,7 @@ class VoiceSettings:
             cont_wait_s=_number("PHONE_CONT_WAIT_S", get("PHONE_CONT_WAIT_S", ""), CONT_WAIT_S),
             more_no_wait_s=_number("PHONE_MORE_NO_WAIT_S", get("PHONE_MORE_NO_WAIT_S", ""),
                                    MORE_NO_WAIT_S, allow_zero=True),
+            mic_close=get("PHONE_MIC_CLOSE", "playback"),  # type: ignore[arg-type]
             no_input_s=_number("PHONE_NO_INPUT_S", get("PHONE_NO_INPUT_S", ""), NO_INPUT_S),
             wait_request_s=_number("PHONE_WAIT_REQUEST_S", get("PHONE_WAIT_REQUEST_S", ""),
                                    WAIT_REQUEST_S),
@@ -237,9 +243,9 @@ class VoiceSettings:
 
 
 # 서버 설정에서 통화 세션 설정으로 그대로 옮기는 값 (`SessionSettings`와 이름이 같다)
-_SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "more_no_wait_s", "no_input_s",
-                   "wait_request_s", "turn_model_low", "turn_model_high", "barge", "owner_wait_s",
-                   "ask_owner", "answer")
+_SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "more_no_wait_s", "mic_close",
+                   "no_input_s", "wait_request_s", "turn_model_low", "turn_model_high", "barge",
+                   "owner_wait_s", "ask_owner", "answer")
 
 
 def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:

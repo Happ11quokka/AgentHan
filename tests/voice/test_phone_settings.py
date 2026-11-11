@@ -89,6 +89,17 @@ def test_the_wait_after_a_bare_no_defaults_to_1_2_seconds_and_zero_turns_it_off(
             VoiceSettings.from_env({"PHONE_MORE_NO_WAIT_S": wrong}, env_file=None)
 
 
+def test_the_mic_closes_at_playback_start_by_default_and_can_go_back_to_the_state_event() -> None:
+    # 6단계 티켓 02 차선 2. 실기기에서 에코가 보이면 `state`로 돌린다
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert default.mic_close == "playback"
+    assert default.session_settings().mic_close == "playback"
+    s = VoiceSettings.from_env({"PHONE_MIC_CLOSE": "state"}, env_file=None)
+    assert s.session_settings().mic_close == "state"
+    with pytest.raises(SettingsError, match="PHONE_MIC_CLOSE"):
+        VoiceSettings.from_env({"PHONE_MIC_CLOSE": "never"}, env_file=None)
+
+
 def test_no_input_waits_default_to_six_and_fifteen_seconds_and_can_be_changed() -> None:
     # 3단계 티켓 04: 재생 끝부터 6초 무응답이면 되묻고, "잠깐만요" 뒤에는 15초 (grilling Q6)
     default = VoiceSettings.from_env({}, env_file=None)

@@ -337,7 +337,25 @@ export class PhoneCall {
 
   private onSentenceStarted(turn: number, seq: number): void {
     this.clock(turn).playStart ??= performance.now()
+    // 마이크를 먼저 닫고 알린다. 서버는 이 보고를 받은 오디오 시각을 반이중 경계로 쓴다
+    this.dispatch({ type: 'playback.begun', turn })
     this.send({ type: 'playback.started', turn, seq })
+  }
+
+  /**
+   * 마이크를 실제 재생 시작에 닫는다(6단계 티켓 02, `call.ready.mic_close`).
+   * 재생 시작 타이머(`onSentenceStarted`)는 메인 스레드가 바쁘거나 탭이 뒤에 있으면 늦는다. 그래서
+   * 마이크 프레임을 올릴 때마다 오디오 시계로 다시 본다: 이 턴 첫 조각의 예약 시각에 닿았으면 닫는다.
+   * 프레임에는 지금보다 앞의 소리만 들어 있고 스피커는 예약 시각보다 `outputLatency`만큼 늦게
+   * 소리를 내므로, 예약 시각 전에 올린 프레임에는 봇 소리가 없다. 판단이 늦어지면 닫는 쪽으로만 틀린다
+   */
+  private closeMicIfPlaying(): void {
+    const s = this.state
+    if (s.micCloseAt !== 'playback' || s.phase !== 'speaking' || s.botTalking) return
+    const at = this.player?.startOf(s.turn) ?? null
+    if (at !== null && this.ctx && this.ctx.currentTime >= at) {
+      this.dispatch({ type: 'playback.begun', turn: s.turn })
+    }
   }
 
   private onSentenceEnded(turn: number, seq: number): void {
@@ -374,6 +392,7 @@ export class PhoneCall {
 
   private onMicFrame(frame: ArrayBuffer): void {
     if (this.ws?.readyState !== WebSocket.OPEN || this.state.status !== 'live') return
+    this.closeMicIfPlaying()
     // 봇이 말하는 동안에도 같은 속도로 보낸다(CLOVA "계속 보내기"). 내용만 0.
     this.ws.send(micLive(this.state) ? frame : SILENT_FRAME)
     // 회선이 느려 쌓이면 안내만 한다. 프레임을 버리면 서버의 STT 시각이 틀어진다(리뷰 1번)

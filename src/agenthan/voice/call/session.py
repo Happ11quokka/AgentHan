@@ -30,6 +30,8 @@
   (대답 두 번 방지)
 - speaking은 첫 오디오를 보낼 때부터다(3단계 티켓 01). 그 뒤에 시작한 말의 결과는 버린다
   (반이중, 말한 시각 기준). 첫 소리 전에 한 말은 결과가 늦게 와도 다음 턴으로 받는다.
+  브라우저가 그 턴의 재생 시작(`playback.started`)을 알리면 경계를 그 오디오 시각으로 옮긴다
+  (6단계 티켓 02, `mic_close`). 송신 → 실제 재생 사이에는 마이크에 봇 소리가 없기 때문이다.
   마지막 문장의 `playback.done`이 오면 listening.
   안 오면 보낸 소리 길이 + `play_done_grace_s` 뒤 서버가 스스로 listening으로 간다.
   말 끊기 버튼(`user.interrupt`, 3단계 티켓 05)이 오면 남은 문장 TTS·자막·송신 큐 오디오를
@@ -238,6 +240,15 @@ class SessionSettings:
     # 빈 epFlag 응답 뒤 이만큼 글 있는 결과가 없을 때 되묻는다. CLOVA는 글을 gap 결과로 빈 epFlag
     # 응답보다 늦게 낼 수 있다(티켓 10 조각 붙잡기 시험). 그 글이 오면 되묻지 않는다
     not_heard_wait_s: float = 1.0
+    # 반이중에서 마이크를 닫는 때 (6단계 티켓 02 차선 2, `PHONE_MIC_CLOSE`).
+    # - playback: 브라우저가 실제 재생을 시작할 때 0 프레임으로 바꾼다(`call.ready.mic_close`).
+    #   서버도 그 턴 첫 문장의 `playback.started`를 받은 오디오 시각을 반이중 경계로 쓴다
+    # - state: 전처럼 `state: speaking`(첫 오디오 송신 직전)부터 닫는다. 실기기에서 에코가 보이면
+    #   이쪽으로 돌린다
+    mic_close: Literal["playback", "state"] = "playback"
+    # 재생 시작 보고가 늦어도 반이중 경계는 첫 소리 송신 + 이만큼을 넘지 않는다. 보고가 틀린
+    # 손님 쪽이 봇 소리가 섞인 구간을 열어 두지 못하게 하는 안전망이다
+    play_start_cap_ms: int = 2_000
     # 음성 끼어들기 (티켓 06, `PHONE_VOICE_BARGE_IN`). None이면 꺼짐(반이중 + 버튼). 켜도 브라우저가
     # `call.start.voice_barge_in`(안드로이드 크롬)을 알린 통화만 쓴다
     barge: BargeSettings | None = None
@@ -416,7 +427,11 @@ class CallSession:
         self._speech_from: float | None = None  # 지금 말 구간이 시작된 때 (무응답 소음 거르기)
         self._ep_at: float | None = None  # 마지막 epFlag 프레임을 쓰기 큐에 넣은 때
         self._ep_reply_at: float | None = None  # 마지막 epFlag 응답을 받은 때
-        self._speak_from_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각 (반이중 기준)
+        # 반이중 경계(오디오 시각): 이 뒤에 시작한 말은 버린다. 첫 소리를 보낼 때 잡고, 재생 시작
+        # 보고가 오면 그때로 옮긴다(`_on_playback_started`)
+        self._speak_from_ms = 0
+        self._speak_sent_ms = 0  # 이번 봇 소리를 보내기 시작한 오디오 시각
+        self._play_started: int | None = None  # 재생 시작 보고로 경계를 옮긴 턴
         self._client_start: dict[str, Any] = {}
         self._bot_done_turn: int | None = None  # `bot.done`까지 보낸 마지막 턴
         self._play_timer = OneShot(self._on_play_timeout)
@@ -591,6 +606,7 @@ class CallSession:
             spoken = self._spoken
             if spoken is not None and spoken.turn == turn and seq is not None:
                 spoken.marks.setdefault(seq, self._vad.offset_ms)  # 말한 시각 기준 (티켓 06)
+                self._on_playback_started(turn, seq)
         elif kind == "playback.done":
             self._on_playback_done(turn, seq, event.get("output_latency"))
         elif kind == "user.interrupt":  # 말 끊기 버튼 (티켓 05)
@@ -720,6 +736,8 @@ class CallSession:
                                  "sample_rate": SAMPLE_RATE}
         if self._barge is not None:  # 꺼져 있으면 2단계와 같은 모양 (필드 없음)
             ready["voice_barge_in"] = self._barge.mode
+        elif self._settings.mic_close == "playback":
+            ready["mic_close"] = "playback"  # 브라우저가 실제 재생 시작에 마이크를 닫는다
         self._emit(ready)
         self._tell_owner(lambda owner: owner.call_started(self.call_id))
 
@@ -804,6 +822,30 @@ class CallSession:
         뒤에 와도 다음 턴으로 받는다(3단계 티켓 01). 그 전 오디오에는 봇 목소리가 섞일 수 없다
         """
         return self._phase == "speaking" and r.start_ms >= self._speak_from_ms
+
+    def _on_playback_started(self, turn: int, seq: int) -> None:
+        """브라우저가 이 턴의 첫 문장을 틀기 시작했다. 반이중 경계를 지금 오디오 시각으로 옮긴다.
+
+        6단계 티켓 02 차선 2. 서버가 첫 오디오를 보낸 때부터 손님 귀에 소리가 들릴 때까지(망 지연 +
+        재생 예약)는 마이크에 봇 소리가 없다. 브라우저는 그동안 진짜 마이크 소리를 보내고
+        (`call.ready.mic_close`), 재생을 시작하면서 0 프레임으로 바꾼다. 같은 소켓이라 이 보고를
+        받은 순간의 오디오 시각이 마이크를 닫은 때다(`spoken.py` 설명).
+
+        - 그 턴의 첫 보고(첫 문장)만 본다. 경계는 뒤로만, `play_start_cap_ms`까지만 옮긴다
+        - 보고가 없으면 경계는 첫 소리를 보낸 때 그대로다(전과 같다)
+        - 음성 끼어들기 통화는 마이크를 닫지 않아 해당 없다(봇 말 구간으로 판정한다)
+        """
+        if (self._settings.mic_close != "playback" or self._barge is not None or seq != 0
+                or self._phase != "speaking" or turn != self._turn or self._play_started == turn):
+            return
+        self._play_started = turn
+        cap = self._speak_sent_ms + self._settings.play_start_cap_ms
+        self._speak_from_ms = max(self._speak_sent_ms, min(self._vad.offset_ms, cap))
+        if self._spoken is not None and self._spoken.turn == turn:
+            self._spoken.from_ms = self._speak_from_ms  # 복창 앞 "네" 거르기도 같은 경계
+        record = self._log.get(turn)
+        if record is not None:  # 전보다 더 열어 둔 시간 (지표)
+            record.fields["mic_open_extra_ms"] = self._speak_from_ms - self._speak_sent_ms
 
     def _continues_after(self, r: SttResult) -> bool:
         """말 끝 후보 결과 `r` 뒤에 손님 말이 이어지나 (붙잡을지).
@@ -1275,7 +1317,7 @@ class CallSession:
         """
         self._phase = "speaking"
         self._thinking_timer.cancel()
-        self._speak_from_ms = self._vad.offset_ms
+        self._speak_from_ms = self._speak_sent_ms = self._vad.offset_ms
         if self._spoken is not None and self._spoken.turn == turn:
             self._spoken.from_ms = self._speak_from_ms
         if self._parts:

@@ -176,7 +176,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function liveCall(): Promise<{ call: PhoneCall; ws: FakeSocket }> {
+async function liveCall(ready: Record<string, unknown> = {}): Promise<{ call: PhoneCall; ws: FakeSocket }> {
   const call = new PhoneCall()
   call.attach()
   call.dial()
@@ -184,7 +184,7 @@ async function liveCall(): Promise<{ call: PhoneCall; ws: FakeSocket }> {
   await flush()
   const ws = FakeSocket.instances[0]
   ws.open()
-  ws.server({ type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000 })
+  ws.server({ type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000, ...ready })
   return { call, ws }
 }
 
@@ -353,6 +353,90 @@ describe('말 끊기 button (user.interrupt · playback.interrupted)', () => {
     expect(events(ws).filter((e) => String(e.type).includes('interrupt'))).toEqual([])
     expect(micFrame()).not.toBe(ws.sent.at(-1)) // 반이중 그대로
     expect(call.getState().botTalking).toBe(true)
+  })
+})
+
+describe('mic closes when playback really starts (6단계 티켓 02, call.ready.mic_close)', () => {
+  const speaking = (turn: number) => ({
+    type: 'state',
+    turn,
+    phase: 'speaking',
+    interruptible: true,
+    dialog: 'ordering',
+    cart: [],
+    total: 0,
+  })
+  const events = (ws: FakeSocket) =>
+    ws.sent.filter((m): m is string => typeof m === 'string').map((m) => JSON.parse(m) as Record<string, unknown>)
+  const micFrame = () => {
+    const frame = new ArrayBuffer(3200)
+    FakeWorkletNode.last!.port.onmessage!({ data: frame })
+    return frame
+  }
+  const sentReal = (ws: FakeSocket, frame: ArrayBuffer) => ws.sent.at(-1) === frame
+
+  it('keeps sending the real mic after state speaking until the first chunk is due', async () => {
+    const { call, ws } = await liveCall({ mic_close: 'playback' })
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(1))
+    expect(sentReal(ws, micFrame())).toBe(true) // 봇 오디오가 아직 안 왔다. 스피커는 조용하다
+    ctx.currentTime = 1
+    ws.onmessage!({ data: audioFrame(1, 0) }) // 지금(1초) + 50ms에 시작하도록 예약된다
+    ctx.currentTime = 1.04
+    expect(sentReal(ws, micFrame())).toBe(true) // 예약 시각 전: 이 프레임에는 봇 소리가 없다
+    expect(call.getState().botTalking).toBe(false)
+    ctx.currentTime = 1.05
+    // 재생 시작 타이머가 아직 안 돌았어도(늦은 타이머) 오디오 시계가 예약 시각에 닿으면 닫는다
+    expect(sentReal(ws, micFrame())).toBe(false)
+    expect(call.getState().botTalking).toBe(true)
+    ctx.currentTime = 1.3
+    expect(sentReal(ws, micFrame())).toBe(false)
+  })
+
+  it('closes the mic when the sentence start fires and then reports playback.started', async () => {
+    const { call, ws } = await liveCall({ mic_close: 'playback' })
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    expect(call.getState().botTalking).toBe(false)
+    await new Promise((r) => setTimeout(r, 80)) // 예약 시각(50ms)의 타이머
+    expect(call.getState().botTalking).toBe(true)
+    expect(events(ws).filter((e) => e.type === 'playback.started')).toEqual([
+      { type: 'playback.started', turn: 1, seq: 0 },
+    ])
+    expect(sentReal(ws, micFrame())).toBe(false)
+  })
+
+  it('shows the interrupt button only once the sound has started', async () => {
+    const { call, ws } = await liveCall({ mic_close: 'playback' })
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    call.interrupt() // 아직 소리가 안 났다. 끊을 것이 없다
+    expect(events(ws).filter((e) => e.type === 'user.interrupt')).toEqual([])
+    ctx.currentTime = 0.2
+    micFrame()
+    call.interrupt()
+    expect(events(ws).filter((e) => e.type === 'user.interrupt')).toEqual([{ type: 'user.interrupt', turn: 1 }])
+    expect(sentReal(ws, micFrame())).toBe(true) // 끊은 뒤에는 바로 진짜 마이크
+  })
+
+  it('reopens the mic only after the turn finished playing, not when the next sentence is late', async () => {
+    const { call, ws } = await liveCall({ mic_close: 'playback' })
+    const ctx = FakeAudioContext.instances[0]
+    ws.server(speaking(1))
+    ws.onmessage!({ data: audioFrame(1, 0) })
+    ctx.currentTime = 0.1
+    micFrame()
+    ctx.currentTime = 2 // 첫 문장이 끝났고 둘째 문장 오디오가 아직 안 왔다
+    expect(sentReal(ws, micFrame())).toBe(false)
+    expect(call.getState().botTalking).toBe(true)
+  })
+
+  it('closes the mic at state speaking when the server did not ask for playback timing', async () => {
+    const { call, ws } = await liveCall() // 낡은 서버·`PHONE_MIC_CLOSE=state`
+    ws.server(speaking(1))
+    expect(call.getState().botTalking).toBe(true)
+    expect(sentReal(ws, micFrame())).toBe(false)
   })
 })
 

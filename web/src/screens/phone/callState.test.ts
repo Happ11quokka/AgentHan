@@ -56,6 +56,50 @@ describe('voice barge-in (ticket 06)', () => {
   })
 })
 
+describe('mic closes at playback start (6단계 티켓 02)', () => {
+  const readyPlayback: CallAction = {
+    type: 'server',
+    event: { type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000, mic_close: 'playback' },
+  }
+  const begun = (turn: number): CallAction => ({ type: 'playback.begun', turn })
+
+  it('keeps the mic live after state speaking until this turn starts to play', () => {
+    const waiting = run(dial, micReady, readyPlayback, speaking(1))
+    expect(waiting.botTalking).toBe(false)
+    expect(micLive(waiting)).toBe(true)
+    const playing = callReducer(waiting, begun(1))
+    expect(micLive(playing)).toBe(false)
+    expect(micLive(callReducer(playing, { type: 'playback.finished', turn: 1 }))).toBe(true)
+  })
+
+  it('offers the interrupt button only once the sound has started', () => {
+    const waiting = run(dial, micReady, readyPlayback, speaking(1))
+    expect(canInterrupt(waiting)).toBe(false)
+    expect(canInterrupt(callReducer(waiting, begun(1)))).toBe(true)
+  })
+
+  it('ignores a playback start of another turn, of a cut turn, or outside the speaking phase', () => {
+    const waiting = run(dial, micReady, readyPlayback, speaking(2))
+    expect(callReducer(waiting, begun(1))).toBe(waiting)
+    const cut = run(dial, micReady, readyPlayback, speaking(2), begun(2), interrupt)
+    expect(micLive(callReducer(cut, begun(2)))).toBe(true)
+    const listeningNow = run(dial, micReady, readyPlayback, speaking(2), begun(2), listening(2))
+    expect(callReducer(listeningNow, begun(2))).toBe(listeningNow)
+  })
+
+  it('still closes at state speaking when the server did not ask for playback timing', () => {
+    expect(micLive(run(dial, micReady, ready, speaking(1)))).toBe(false)
+  })
+
+  it('never closes the mic of a voice barge-in call', () => {
+    const barge: CallAction = {
+      type: 'server',
+      event: { type: 'call.ready', turn: 0, call: 'c1', sample_rate: 16000, voice_barge_in: 'on' },
+    }
+    expect(micLive(run(dial, micReady, barge, speaking(1), begun(1)))).toBe(true)
+  })
+})
+
 describe('말 끊기 button (ticket 05)', () => {
   it('is offered only while the bot speaks a turn the server marks interruptible', () => {
     expect(canInterrupt(run(dial, micReady, ready, speaking(1)))).toBe(true)

@@ -33,6 +33,11 @@ export type ServerEvent =
       sample_rate: number
       /** 음성 끼어들기(티켓 06). 서버 스위치가 켜져 있고 이 브라우저가 할 수 있다고 알렸을 때만 온다 */
       voice_barge_in?: BargeMode
+      /**
+       * 반이중에서 마이크를 닫는 때(6단계 티켓 02). 'playback'이면 `state: speaking`이 아니라 이 턴의
+       * 봇 소리가 실제로 재생되기 시작할 때 닫는다. 없으면(낡은 서버·`PHONE_MIC_CLOSE=state`) 전처럼
+       */
+      mic_close?: 'playback'
     }
   | { type: 'stt.final'; turn: number; text: string; epd_type: string; fragments: number; end_by: string }
   | {
@@ -80,8 +85,16 @@ export interface CallState {
   status: Status
   phase: Phase | null
   turn: number
-  /** 봇 소리를 내는 중(서버 speaking ~ 이 턴 재생 끝 + 여유). 이 동안 마이크 대신 0을 보낸다. */
+  /**
+   * 봇 소리를 내는 중. 이 동안 마이크 대신 0을 보낸다. 끝은 이 턴 재생 끝 + 여유.
+   * 시작은 `micCloseAt`에 따라 서버 speaking(state) 또는 이 턴의 실제 재생 시작(playback)
+   */
   botTalking: boolean
+  /**
+   * 마이크를 닫는 때(`call.ready.mic_close`, 6단계 티켓 02). 서버가 첫 오디오를 보낸 때부터 스피커로
+   * 소리가 나갈 때까지는 마이크에 봇 소리가 없다. playback이면 그 사이 손님 말을 그대로 올린다
+   */
+  micCloseAt: 'state' | 'playback'
   /** 서버가 지금 턴의 말 끊기를 받는다(state.interruptible) */
   interruptible: boolean
   /** 이 통화의 음성 끼어들기(call.ready). null이면 반이중: 봇이 말하는 동안 0 프레임 */
@@ -116,6 +129,8 @@ export type CallAction =
   | { type: 'mic.ready'; settings: Record<string, unknown> }
   | { type: 'mic.failed'; reason: MicFailure }
   | { type: 'server'; event: ServerEvent }
+  /** 이 턴의 첫 봇 소리가 재생되기 시작한다(예약 시각에 닿았다). 여기서부터 마이크를 닫는다 */
+  | { type: 'playback.begun'; turn: number }
   | { type: 'playback.finished'; turn: number }
   | { type: 'interrupt' }
   | { type: 'audio.state'; state: string }
@@ -130,6 +145,7 @@ export const initialCallState: CallState = {
   phase: null,
   turn: 0,
   botTalking: false,
+  micCloseAt: 'state',
   interruptible: false,
   bargeIn: null,
   cutTurn: -1,
@@ -165,6 +181,11 @@ export function callReducer(state: CallState, action: CallAction): CallState {
       return { ...state, status: 'failed', error: { message: MIC_MESSAGES[action.reason], retry: true } }
     case 'server':
       return onServer(state, action.event)
+    case 'playback.begun':
+      // 지금 말하는 턴의 소리만. 끊은 턴의 늦은 알림은 마이크를 다시 닫지 않는다
+      if (state.status !== 'live' || state.phase !== 'speaking' || state.botTalking) return state
+      if (action.turn !== state.turn || action.turn <= state.cutTurn) return state
+      return { ...state, botTalking: true }
     case 'playback.finished':
       return action.turn === state.turn ? { ...state, botTalking: false } : state
     case 'interrupt':
@@ -206,7 +227,13 @@ function onServer(state: CallState, event: ServerEvent): CallState {
   if (state.status === 'ended' || state.status === 'failed') return state
   switch (event.type) {
     case 'call.ready':
-      return { ...state, status: 'live', bargeIn: event.voice_barge_in ?? null, callId: event.call }
+      return {
+        ...state,
+        status: 'live',
+        bargeIn: event.voice_barge_in ?? null,
+        micCloseAt: event.mic_close === 'playback' ? 'playback' : 'state',
+        callId: event.call,
+      }
     case 'bot.stop':
       // 서버가 음성 끼어들기로 멈췄다. 버튼과 같이 끊되, 복창 정정처럼 버튼이 막힌 턴에서도 끊는다
       if (event.turn !== state.turn || event.turn <= state.cutTurn) return state
@@ -221,7 +248,8 @@ function onServer(state: CallState, event: ServerEvent): CallState {
         total: event.total,
         interruptible: event.interruptible === true && !cut,
       }
-      if (event.phase === 'speaking' && !cut) next.botTalking = true
+      // playback이면 여기서 닫지 않는다. 이 턴의 소리가 실제로 시작할 때(`playback.begun`) 닫는다
+      if (event.phase === 'speaking' && !cut && state.micCloseAt === 'state') next.botTalking = true
       if (event.phase === 'listening') next.botTalking = false
       return next
     }
