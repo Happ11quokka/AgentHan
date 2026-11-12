@@ -1020,10 +1020,14 @@ class OwnerAssistant:
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
                 )
+            # "아까 아메리카노 얼마로 바꿨죠?": the owner only asks, so "4800원으로 바꿨어요" is
+            # an answer about a past change, not a made-up save.
+            asked_only = bool(OWNER_QUESTION.search(text)) and not CHANGE_WORDS.search(text)
             if (
                 not calls
                 and not saved
                 and not nudged
+                and not asked_only
                 and needs_approval(exposed[0]["function"]["name"])
                 and (self.pending_action is None or self._adding)
                 and not missing
@@ -1048,6 +1052,7 @@ class OwnerAssistant:
             if (
                 not calls
                 and not saved
+                and not asked_only
                 and needs_approval(exposed[0]["function"]["name"])
                 and (FAKE_DONE.search(message["content"]) or "시스템" in message["content"])
             ):

@@ -587,3 +587,13 @@ def test_items_packed_into_one_call_are_split_per_day(tmp_path):
     assert bot.ask("둘 다 저장해 주세요").startswith("저장했어요")
     hours = DummyStore(tmp_path / "store.json").read()["shop"]["hours"]
     assert hours["mon"]["closed"] is True and hours["fri"]["close_time"] == "23:00"
+
+
+def test_a_question_about_a_past_change_is_not_a_made_up_save(tmp_path):
+    fake = base.FakeChat(base.answer("아메리카노 가격은 4800원으로 바꿨어요."))
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("menu", "select")
+    assert (
+        bot.ask("아까 아메리카노 가격 얼마로 바꿨죠?") == "아메리카노 가격은 4800원으로 바꿨어요."
+    )
+    assert len(fake.requests) == 1 and not bot.trace.get("nudged")
