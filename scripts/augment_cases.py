@@ -1,7 +1,8 @@
 # ruff: noqa: E501 — 프롬프트·문서 문장은 줄을 나누지 않는다
 """기능 매칭(route)·전체 흐름(flow) 케이스 증강: Gemini(agy) 생성 → 코드 검증 → Sonnet(agy) 독립 라벨.
 
-리뷰 기능(review_reply, ai_review)은 근형님 평가를 따르므로 만들지 않는다. 입력은 한국어 위주(ko·ko_simple, en 소수).
+리뷰 기능은 리뷰 골드셋에서 다루므로 만들지 않는다. 입력은 한국어 위주(ko·ko_simple, en 소수)로 만들었다.
+새로 만들 때는 한국어만 쓴다(docs/eval-baseline.md §0).
 Sonnet 정답(route=기능, flow=도구+인자)이 생성 정답과 정확히 같을 때만 채택한다. .env·키는 읽지 않는다.
 
   .venv/bin/python scripts/augment_cases.py gen --out <폴더>     # 초안 + REPORT.md
