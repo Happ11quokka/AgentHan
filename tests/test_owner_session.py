@@ -457,6 +457,13 @@ def test_keywords_with_unsaid_removals_are_a_replacement():
     new = ["러시아 케이크", "수제 메도빅", "홍차 맛집"]
     args = {"add": new, "remove": ["메도빅", "러시아 디저트"]}
     assert owner.OwnerAssistant._keywords_as_list(args, said, store) == {"keywords": new}
+    partial = {"add": ["러시아 케이크", "홍차 맛집"], "remove": ["메도빅"]}
+    assert owner.OwnerAssistant._keywords_as_list(partial, said, store) == {
+        "keywords": ["러시아 케이크", "홍차 맛집"]
+    }
+    quoted = {"add": ["블린"], "remove": ["메도빅"]}
+    keep = owner.OwnerAssistant._keywords_as_list(quoted, "'메도빅' 빼고 '블린'으로 바꿔 줘", store)
+    assert keep == quoted
     said_remove = {"add": ["블린"], "remove": ["메도빅"]}
     kept = owner.OwnerAssistant._keywords_as_list(
         said_remove, "메도빅 빼고 블린으로 바꿔 줘", store

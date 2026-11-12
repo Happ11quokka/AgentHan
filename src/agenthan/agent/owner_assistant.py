@@ -1105,12 +1105,17 @@ class OwnerAssistant:
         add = args.get("add")
         remove = args.get("remove") or []
         current = store.get("shop", {}).get("keywords", [])
-        flat = re.sub(r"\s+", "", said)
-        for word in add if isinstance(add, list) else []:  # "수제 메도빅" does not say "메도빅".
+        # The new words themselves ("'수제 메도빅'") do not say an old one ("메도빅").
+        flat = re.sub(r"\s+", "", re.sub(r"['‘’\"“”][^'‘’\"“”]*['‘’\"“”]", "", said))
+        for word in add if isinstance(add, list) else []:
             flat = flat.replace(re.sub(r"\s+", "", str(word)), "")
         # Words to remove the owner never said: the model is making room for the new list
         # itself ("이렇게 세 개로 해 주세요" → remove the current ones), which is a replacement.
-        unsaid_remove = bool(remove) and not any(re.sub(r"\s+", "", str(w)) in flat for w in remove)
+        unsaid_remove = (
+            bool(remove)
+            and not re.search(r"빼|제거|삭제|지워|지우", said)
+            and not any(re.sub(r"\s+", "", str(w)) in flat for w in remove)
+        )
         if (
             isinstance(add, list)
             and not args.get("keywords")
