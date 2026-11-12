@@ -522,3 +522,16 @@ def test_a_question_back_on_a_read_tool_that_needs_nothing_is_nudged(tmp_path):
     bot.route = lambda text: owner.Route("smartcall", "select")
     assert bot.ask("참, 부재중 전화 있었어요?").startswith("부재중 전화는 2통이에요.")
     assert owner.READ_NUDGE in fake.requests[1][0][0]["content"]
+
+
+def test_a_read_question_back_for_a_value_already_said_is_nudged(tmp_path):
+    fake = base.FakeChat(
+        base.answer("이번 주 정산을 위해 날짜가 필요합니다. 몇 월 며칠부터 계산할까요?"),
+        base.call("get_settlement_summary", {"period": "this_week"}),
+        base.answer("이번 주 입금액은 116,400원이에요."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("settlement", "select")
+    assert "116,400원" in bot.ask("이번 주 정산 얼마예요?")
+    schema = owner.feature_tool_schema("settlement")
+    assert not owner.OwnerAssistant._read_needs_nothing_new("settlement", schema, "정산 얼마예요?")

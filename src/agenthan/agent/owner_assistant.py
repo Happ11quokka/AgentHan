@@ -1012,7 +1012,7 @@ class OwnerAssistant:
                         not re.search(r"[?？]\s*$", message["content"])
                         # A read tool that needs nothing (전화 기록): a question back ("모두
                         # 볼까요, 기간만 볼까요?") only delays the answer.
-                        or not exposed[0]["function"]["parameters"].get("required")
+                        or self._read_needs_nothing_new(feature_id, exposed[0], text)
                     )
                 ):
                     # A read answer without the read tool is made up (전화 기록, 정산): ask
@@ -1101,6 +1101,22 @@ class OwnerAssistant:
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
                 )
+
+    @staticmethod
+    def _read_needs_nothing_new(feature_id: str, schema: dict, text: str) -> bool:
+        """Every required input of this read tool is already in the owner's words, so a
+        question back ("모두 볼까요?", "몇 월 며칠부터요?") only delays the answer.
+
+        True when nothing is required (전화 기록), or each required input is a choice whose
+        words the owner said (이번 주 → this_week). Free text (POS 이름) never counts."""
+        required = schema["function"]["parameters"].get("required") or []
+        params = {p[0]: p for p in tool_params(feature_id)}
+        for name in required:
+            choices = params.get(name, (None, None, ()))[2]
+            words = [value_source.ENUM_WORDS.get(c) for c in choices]
+            if not any(w and re.search(w, text, re.I) for w in words):
+                return False
+        return True
 
     def _only_asks(self, text: str, task) -> bool:
         """The owner only asked about this feature ("오늘 들어온 주문 있어요?") in a task opened by
