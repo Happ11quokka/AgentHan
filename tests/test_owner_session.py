@@ -610,3 +610,27 @@ def test_a_read_question_with_its_only_keyword_goes_to_that_read_feature():
     assert pick("오늘 들어온 주문 있어요?", ranked, "coupon") is None  # 주문 writes.
     ranked = place_matcher.rank_features("부재중 전화 기록 지워 줘", None)
     assert pick("부재중 전화 기록 지워 줘", ranked, "talktalk") is None  # Not a question.
+
+
+def test_a_price_edit_answered_in_words_twice_reuses_the_shown_change(tmp_path):
+    fake = base.FakeChat(
+        base.call("upsert_menu", {"name": "러시안 홍차", "price": 5000}),
+        base.answer("알겠습니다. 5,500원에 추가하겠습니다."),
+        base.answer("도구 실행 중..."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("menu", "select")
+    assert "5000" in bot.ask("마실 거에 '러시안 홍차' 5000원으로 새로 하나 올려주세요")
+    out = bot.ask("아 찻잎 값이 비싸서 안 되겠어요 가격은 5500원으로 바꿀게요")
+    assert "바꿀까요" in out and '"price": 5500' in out and bot.trace["code_edit"] is True
+    assert not (tmp_path / "store.json").exists()  # A new preview only; approval still needed.
+    assert bot.ask("저장해 주세요").startswith("저장했어요")
+
+
+def test_arguments_written_as_a_dict_run_as_the_exposed_call():
+    call = owner.written_call("{'name': '러시안 홍차', 'price': 5500}", {"upsert_menu"})
+    assert call["function"] == {
+        "name": "upsert_menu",
+        "arguments": '{"name": "러시안 홍차", "price": 5500}',
+    }
+    assert owner.written_call("{'a': 1} {'b': 2}", {"upsert_menu"}) is None  # Two: not ours.

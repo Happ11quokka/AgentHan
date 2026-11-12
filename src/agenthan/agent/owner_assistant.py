@@ -349,6 +349,15 @@ def written_call(content: str, names: set[str]) -> dict | None:
             if arguments and not node.args and len(arguments) == len(node.keywords):
                 found.append((match.group(1), arguments))
             break
+    if not found and len(names) == 1:
+        # Only the arguments written out: {'name': '러시안 홍차', 'price': 5500}.
+        for match in re.finditer(r"\{[^{}]*\}", content):
+            try:
+                value = ast.literal_eval(match.group(0))
+            except (SyntaxError, ValueError):
+                continue
+            if isinstance(value, dict) and value and all(isinstance(k, str) for k in value):
+                found.append((next(iter(names)), value))
     if len(found) != 1:
         return None  # None or several written calls: not ours to pick.
     name, arguments = found[0]
@@ -490,6 +499,7 @@ class OwnerAssistant:
         self.reads = ReadContext()
         self._turn_task: str | None = None  # Ledger task this owner turn works on.
         self._adding = False  # This reply adds a change to the shown batch.
+        self._edited: list[dict] | None = None  # The shown change this reply edits, if any.
         self._act: str | None = None  # Route.act of this owner turn, checked by code.
         self._targets: dict | None = None  # Candidate records for this turn's id parameter.
         self.today = today or date.today()
@@ -891,6 +901,7 @@ class OwnerAssistant:
         self._adding = False
         self._act = route.act
         self._targets = None
+        self._edited = None
         self.trace = new_trace(route.feature_id, route.via)
         if route.act:
             self.trace["act"] = route.act
@@ -908,6 +919,7 @@ class OwnerAssistant:
             if ADD_HINT.search(text):
                 self._adding = True  # "그리고 금요일은 …": one more change in the same batch.
             elif EDIT_HINT.search(text) or route.act == "edit":
+                self._edited = copy.deepcopy(held.preview.get("actions") or [held.preview])
                 self.ledger.drop_preview(held)
         # Glossary, clarify, help and statistics answers are one-shot: a held task stays.
         if route.glossary:
@@ -1038,6 +1050,15 @@ class OwnerAssistant:
                 ]
                 message["content"] = ""
                 self.trace["code_read"] = True
+            if not calls and tools and nudged and count == 0 and self._edited:
+                edit = self._number_edit(feature_id, text)
+                if edit is not None:
+                    # "가격은 5500원으로 바꿀게요" after the preview, answered in words twice:
+                    # the shown change with the one number the owner changed. It still goes
+                    # through the value gate, a new preview and approval.
+                    calls = message["tool_calls"] = [edit]
+                    message["content"] = ""
+                    self.trace["code_edit"] = True
             if not calls and self._previewed_now():
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
@@ -1056,7 +1077,8 @@ class OwnerAssistant:
                 and (
                     # "그리고 금요일은 9시부터 …" adds an item with its values: any answer
                     # without the call ("금요일은 이미 …", "몇 시부터요?") is a miss.
-                    (self._adding and EDIT_HINT.search(text))
+                    # So does editing a shown change ("가격은 5500원으로 바꿀게요").
+                    ((self._adding or self._edited) and EDIT_HINT.search(text))
                     or (
                         not ASKS_VALUE.search(message["content"])
                         and (
@@ -1181,6 +1203,30 @@ class OwnerAssistant:
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
                 )
+
+    def _number_edit(self, feature_id: str, text: str) -> dict | None:
+        """The edited preview's call with its one number replaced by the one new number the
+        owner said, or None when that is not exactly what the reply does."""
+        if len(self._edited) != 1:
+            return None
+        shown = self._edited[0]
+        args = _as_args(shown.get("arguments"))
+        if not isinstance(args, dict):
+            return None
+        integer = [p[0] for p in tool_params(feature_id) if p[1] == "integer"]
+        held = [k for k in integer if isinstance(args.get(k), int)]
+        said = value_source.numbers(text) - {args[k] for k in held}
+        if len(held) != 1 or len(said) != 1:
+            return None
+        new_args = {**args, held[0]: said.pop()}
+        return {
+            "id": "code-edit",
+            "type": "function",
+            "function": {
+                "name": shown["name"],
+                "arguments": json.dumps(new_args, ensure_ascii=False),
+            },
+        }
 
     @staticmethod
     def _unpack_items(feature_id: str, calls: list[dict]) -> list[dict]:
