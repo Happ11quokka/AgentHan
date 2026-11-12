@@ -1100,30 +1100,38 @@ class OwnerAssistant:
 
     @staticmethod
     def _keywords_as_list(args: dict, said: str, store: dict) -> dict:
-        """ "이 세 개로 해 주세요" sent as add: when adding would pass 5 and the owner gave the
-        list itself (…로 해·바꿔·넣어·정해), it is the new whole list."""
+        """The owner gave the whole new list ("이 세 개로 해 주세요", "A, B, C로요") but the model
+        sent a change (add, or add + remove): send it as the whole list (keywords).
+
+        - add only, passing 5: add is the new list.
+        - add + remove of words the owner never said: the model worked out the difference
+          itself, so its result (current − remove + add) is the new list.
+        Every word of the list still has to be one the owner said (value gate), so a current
+        word the owner did not repeat makes the gate ask instead of keeping it silently."""
         add = args.get("add")
         remove = args.get("remove") or []
         current = store.get("shop", {}).get("keywords", [])
+        if not isinstance(add, list) or args.get("keywords") or not isinstance(remove, list):
+            return args
+        if not re.search(r"(?:으로|로)\s*(?:해|바꿔|바꾸|넣어|정해|설정|등록|요|$)", said):
+            return args
         # The new words themselves ("'수제 메도빅'") do not say an old one ("메도빅").
         flat = re.sub(r"\s+", "", re.sub(r"['‘’\"“”][^'‘’\"“”]*['‘’\"“”]", "", said))
-        for word in add if isinstance(add, list) else []:
+        for word in add:
             flat = flat.replace(re.sub(r"\s+", "", str(word)), "")
-        # Words to remove the owner never said: the model is making room for the new list
-        # itself ("이렇게 세 개로 해 주세요" → remove the current ones), which is a replacement.
         unsaid_remove = (
             bool(remove)
             and not re.search(r"빼|제거|삭제|지워|지우", said)
             and not any(re.sub(r"\s+", "", str(w)) in flat for w in remove)
         )
-        if (
-            isinstance(add, list)
-            and not args.get("keywords")
-            and (unsaid_remove or (not remove and len(set(current) | set(add)) > 5))
-            and re.search(r"(?:으로|로)\s*(?:해|바꿔|바꾸|넣어|정해|설정|등록)", said)
-        ):
-            args = {k: v for k, v in args.items() if k not in ("add", "remove")}
-            args["keywords"] = add
+        if unsaid_remove:
+            whole = [w for w in current if w not in remove] + [w for w in add if w not in current]
+        elif not remove and len(set(current) | set(add)) > 5:
+            whole = add
+        else:
+            return args
+        args = {k: v for k, v in args.items() if k not in ("add", "remove")}
+        args["keywords"] = whole
         return args
 
     def _system(self, feature_id: str, task) -> str:

@@ -458,9 +458,15 @@ def test_keywords_with_unsaid_removals_are_a_replacement():
     args = {"add": new, "remove": ["메도빅", "러시아 디저트"]}
     assert owner.OwnerAssistant._keywords_as_list(args, said, store) == {"keywords": new}
     partial = {"add": ["러시아 케이크", "홍차 맛집"], "remove": ["메도빅"]}
+    # The model's own difference is applied; the value gate then asks about 러시아 디저트.
     assert owner.OwnerAssistant._keywords_as_list(partial, said, store) == {
-        "keywords": ["러시아 케이크", "홍차 맛집"]
+        "keywords": ["러시아 디저트", "러시아 케이크", "홍차 맛집"]
     }
+    three = {"shop": {"keywords": ["러시안 베이커리", "메도빅", "베이커리 카페"]}}
+    diff = {"add": ["나폴레옹"], "remove": ["베이커리 카페"]}
+    assert owner.OwnerAssistant._keywords_as_list(
+        diff, "이제 키워드요. 메도빅, 나폴레옹, 러시안 베이커리로요", three
+    ) == {"keywords": ["러시안 베이커리", "메도빅", "나폴레옹"]}
     quoted = {"add": ["블린"], "remove": ["메도빅"]}
     keep = owner.OwnerAssistant._keywords_as_list(quoted, "'메도빅' 빼고 '블린'으로 바꿔 줘", store)
     assert keep == quoted
