@@ -10,14 +10,17 @@
 루트에서 실행한다. 의존성 추가 없이 기존 HCX 클라이언트 설정과 더미 저장소를 쓴다.
 실제 네이버 발송·저장은 없다. 키는 환경 변수로만 전달하며 녹화에 키·헤더를 저장하지 않는다.
 
-평가는 실제 앱 흐름(`OwnerAssistant`)을 그대로 따라 두 축만 본다.
+> **회귀 판정은 아래 "S1 실행과 회귀 게이트"의 S1 하나로만 한다**(정본 `docs/eval-baseline.md`).
+> 이 절의 route·flow(`agenthan.eval.run`)는 실패 원인을 찾는 L2 진단이고 게이트에 쓰지 않는다.
+
+L2 진단은 실제 앱 흐름(`OwnerAssistant`)을 그대로 따라 두 축을 본다.
 
 - **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `ask()`의 분기 전체(상태 규칙 →
   임베딩 후보 5개 → HCX-DASH-002 `select_feature`, 실패 시 임계값 규칙)를
   `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/eval/route.jsonl`(310건).
 - **전체 흐름(`flow`)**: 케이스마다 새 비서와 임시 더미 저장소로 `turns`를 차례로 실행해
   턴마다 분기 → 빠진 정보 질문 → 도구 호출·인자 → 저장소 변화를 채점한다.
-  기본 세트는 `tests/data/eval/flow.jsonl`(193건, 237턴).
+  기본 세트는 `tests/data/eval/flow.jsonl`(196건, 240턴).
 
 케이스 파일 구성·출처·dev/holdout은 [`tests/data/eval/README.md`](../../../tests/data/eval/README.md)에 정리했다.
 
@@ -28,8 +31,8 @@
 # 키와 네트워크 없이 전체 경로 확인 (합성 응답, 성능 기준선으로 사용 금지)
 uv run --frozen --offline python -m agenthan.eval.run --backend replay
 
-# 실제 성능 측정: CLOVASTUDIO_API_KEY가 환경에 있어야 한다
-uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 2 --label m0 --save-baseline m0 --record <레포 밖 경로>/live.json
+# L2 진단 실측: CLOVASTUDIO_API_KEY가 환경에 있어야 한다 (기준선 저장은 S1에서만)
+uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 2 --label diag --record <레포 밖 경로>/live.json
 
 ```
 
@@ -170,7 +173,8 @@ route·flow 요약은 게이트에 넣지 않는다(L2 진단). 외부 리뷰 �
 - `tests/fixtures/replay/m0.json`: 키 없이 전체 경로를 돌리기 위한 **결정적 합성 응답**.
   고정 임베딩과 기대 도구·타입별 더미 인자를 쓰므로 모델 품질 측정에 쓰면 안 된다.
   `uv run --frozen --offline python -m agenthan.eval.seed_replay`로 다시 만든다.
-- `baselines/m0.json`: 위 실제 측정 명령으로 만든 기준선(커밋 90c40a3, DASH 분기, repeat 3, pause 2).
+- `baselines/m0.json`·`m1.json`·`m2.json`: S1 이전 route·flow 기준선. 게이트에 쓰지 않는다. m0·m1은 삭제 예정,
+  m2는 L2 참고값(정본 §7). S1 기준선은 `baselines/s1.json`이다.
 - `tests/fixtures/replay/live.json`: 기준선 측정 때 녹화한 실제 HCX-005·embedding-v2 응답.
   공개 기존 케이스와 더미 시드만 사용했다. 재생은 마지막 반복의 응답이라 기준선 평균과 다를 수 있다.
 

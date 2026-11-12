@@ -38,6 +38,12 @@ OUT = DATA / "s1.jsonl"
 KOREAN = ("ko", "ko_simple")
 TODAY = "2026-11-10"
 REPEAT = 3
+# Sealed scenarios whose failures were looked at while tuning (2026-11-12 night loop): dev now.
+SEEN = {
+    "p1-set_representative_keywords-aug-ab07b8": "sealed-seen-2026-11-12",
+    "p3-update_reservation_status-confirm-292455": "sealed-seen-2026-11-12",
+    "p9-W06": "sealed-seen-2026-11-12",
+}
 # §5 target counts. P4·P5 have only the existing scenarios.
 TARGET = {"P1": 28, "P2": 12, "P3": 12, "P4": 7, "P5": 9, "P6": 4, "P7": 8, "P8": 4, "P9": 8}
 FAMILY_TYPE = {
@@ -587,6 +593,10 @@ def build() -> list[dict]:
             pool, cover = extra[kind]
             chosen += pick(pool, target - len(chosen), cover)
         out += chosen
+    # After choosing, so the selection stays the same.
+    for row in out:
+        if row["id"] in SEEN:
+            row["split"], row["origin"] = "dev", SEEN[row["id"]]
     return out
 
 

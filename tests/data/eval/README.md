@@ -11,10 +11,15 @@
 지금 남아 있는 `en`·`ru`·`mn` 케이스(route 97건, flow 40건)는 삭제 예정(#17)이며 새 케이스로 추가하지 않는다.
 아래 표의 건수는 삭제 전 기준이다.
 
-| 파일 | 평가 경로 | 케이스 | dev / holdout |
-| --- | --- | --- | --- |
-| `route.jsonl` | 기능 분기 (`OwnerAssistant.route()`) | 310 | 217 / 93 |
-| `flow.jsonl` | 전체 흐름 (분기 → 질문 → 도구·인자 → 저장소) | 193 (237턴) | 152 / 41 |
+| 파일 | 층 | 평가 경로 | 케이스 | 나눔 |
+| --- | --- | --- | --- | --- |
+| `s1.jsonl` | **L1 회귀 게이트** | 시나리오 (`agenthan.eval.scenario`, 업무 명세로 채점) | 92 | dev 80 / sealed 12 |
+| `route.jsonl` | L2 진단 | 기능 분기 (`OwnerAssistant.route()`) | 310 | dev 217 / holdout 93 |
+| `flow.jsonl` | L2 진단 | 전체 흐름 (분기 → 질문 → 도구·인자 → 저장소) | 196 (240턴) | dev 154 / holdout 42 |
+| `scenario.jsonl` | S1 원본 | 기존 시나리오 30건 (`scripts/build_s1.py`가 S1으로 옮김) | 30 | 전부 dev |
+
+`s1.jsonl`은 손으로 고치지 않는다. 원본(flow·route·scenario·리뷰 골드셋)을 고치고 `scripts/build_s1.py`로 다시 만든다.
+flow의 인자는 2026-11-12 도구 스펙(`docs/tools.md`)을 따른다.
 
 ## source
 
@@ -25,12 +30,14 @@
 | `aug2:…` | 2차 증강 (`scripts/augment_cases_v2.py`, 값 지어내기·가게 단어 섞인 무관 질문·여러 턴 승인) | 22 | 73 |
 | `review:근형` | 리뷰 기능 분기 (근형) | 169 | |
 
-## dev / holdout
+## dev / holdout (route·flow) · dev / sealed (S1)
 
 - 케이스마다 `split`이 들어 있다. 묶음마다 `cases.make_splits`(기능·종류별 7:3, ID 해시 순서)로 나눠서
   새 묶음을 붙여도 앞선 배정은 움직이지 않는다.
 - 이미 실패 내용을 본 holdout 케이스는 dev로 옮기고 `origin: holdout-seen-<날짜>`를 남긴다.
 - `review:근형`은 기존 116건이 dev, 나중에 새로 쓴 53건(`origin: 근형 holdout1`)이 holdout이다.
+- S1에서는 원래 holdout이던 케이스가 sealed다. 실패를 본 sealed는 dev로 옮기고 `origin: sealed-seen-<날짜>`를 남긴다
+  (`scripts/build_s1.py`의 `SEEN`). 튜닝 중에는 `--split dev`만 돌린다.
 
 ## 여기 없는 것
 

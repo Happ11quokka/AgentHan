@@ -104,6 +104,7 @@ class Scenario(BaseModel):
     source: str | None = None  # original case id (flow:…, route:…, goldset:…, scenario:…)
     lang: Literal["ko", "ko_simple"] = "ko"  # Korean only (docs/eval-baseline.md §0)
     split: Literal["dev", "sealed"] = "dev"
+    origin: str | None = None  # e.g. sealed-seen-<date>: was sealed, failure looked at, now dev
     tags: list[str] = Field(default_factory=list)
     repeat: int = Field(default=3, ge=1)
     today: str | None = None  # Date the spec assumes (내일 etc.)
