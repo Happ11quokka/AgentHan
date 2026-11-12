@@ -634,3 +634,19 @@ def test_arguments_written_as_a_dict_run_as_the_exposed_call():
         "arguments": '{"name": "러시안 홍차", "price": 5500}',
     }
     assert owner.written_call("{'a': 1} {'b': 2}", {"upsert_menu"}) is None  # Two: not ours.
+
+
+def test_adding_an_item_sends_only_this_turn_to_the_model(tmp_path):
+    fake = base.FakeChat(
+        base.call("update_business_hours", {"days": ["mon"], "closed": True}),
+        base.call(
+            "update_business_hours", {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}
+        ),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("business_hours", "select")
+    bot.ask("월요일은 쉬는 걸로 해 주세요")
+    bot.ask("그리고 금요일은 9시부터 밤 11시까지요")
+    said = [m["content"] for m in fake.requests[1][0] if m["role"] == "user"]
+    assert said == ["그리고 금요일은 9시부터 밤 11시까지요"]
+    assert owner.ADD_NOTE in fake.requests[1][0][0]["content"]

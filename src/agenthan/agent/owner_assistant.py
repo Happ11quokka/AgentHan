@@ -1450,7 +1450,13 @@ class OwnerAssistant:
         """This turn in full plus the last CONTEXT_TURNS earlier messages as plain text.
 
         Earlier tool calls and results (often another feature's) are left out; their
-        outcome is in the assistant's answer text."""
+        outcome is in the assistant's answer text.
+
+        A reply that adds an item to a shown change ("그리고 금요일은 …") gets this turn only:
+        the shown item is held by the system (ADD_NOTE says so), and with its request still in
+        view the model re-asks it or says the new item is "이미" set (5/8 → 8/8)."""
+        if self._adding and self.pending_action is not None:
+            return self.history[turn_start:]
         earlier = [
             {"role": m["role"], "content": _plain(m)}
             for i, m in enumerate(self.history[:turn_start])
