@@ -510,3 +510,15 @@ def test_pos_check_answer_starts_with_the_yes_or_no(tmp_path):
     bot.route = lambda t: owner.Route("place_plus", "select")
     out = bot.ask("우리 계산기 '하나로페이' 써요 플레이스랑 연결 돼요?")
     assert out.startswith("'하나로페이'은(는) 지금 네이버 플레이스와 연동되지 않아요.")
+
+
+def test_a_question_back_on_a_read_tool_that_needs_nothing_is_nudged(tmp_path):
+    fake = base.FakeChat(
+        base.answer("모두 확인할까요, 아니면 특정 기간만 볼까요?"),
+        base.call("list_call_history", {"missed_only": True}),
+        base.answer("부재중 전화는 2통이에요."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("smartcall", "select")
+    assert bot.ask("참, 부재중 전화 있었어요?").startswith("부재중 전화는 2통이에요.")
+    assert owner.READ_NUDGE in fake.requests[1][0][0]["content"]

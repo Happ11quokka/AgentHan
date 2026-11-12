@@ -1008,7 +1008,12 @@ class OwnerAssistant:
                     and tools
                     and count == 0
                     and not nudged
-                    and not re.search(r"[?？]\s*$", message["content"])
+                    and (
+                        not re.search(r"[?？]\s*$", message["content"])
+                        # A read tool that needs nothing (전화 기록): a question back ("모두
+                        # 볼까요, 기간만 볼까요?") only delays the answer.
+                        or not exposed[0]["function"]["parameters"].get("required")
+                    )
                 ):
                     # A read answer without the read tool is made up (전화 기록, 정산): ask
                     # once more to look it up.

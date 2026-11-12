@@ -276,7 +276,8 @@ SEED_IDS = {
 
 @pytest.mark.parametrize("feature_id", TOOL_LOOP_FEATURES)
 def test_only_matched_feature_tool_is_exposed(tmp_path, mock_index, feature_id):
-    fake = FakeChat(answer("무엇을 도와드릴까요?"))
+    # Read tools that need nothing get one nudge after a question back, hence two answers.
+    fake = FakeChat(answer("무엇을 도와드릴까요?"), answer("무엇을 도와드릴까요?"))
     assistant = owner.OwnerAssistant(
         tmp_path / "store.json", chat=fake, embed=feature_embed(mock_index, feature_id)
     )
