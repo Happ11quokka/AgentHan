@@ -34,7 +34,7 @@ class Case(BaseModel):
     id: str
     split: Literal["dev", "holdout"] | None = None
     kind: Literal["full", "missing", "unrelated", "ambiguous", "confusable", "injection"] = "full"
-    lang: Literal["ko", "ko_simple", "en", "mn", "ru"] = "ko"
+    lang: Literal["ko", "ko_simple"] = "ko"  # Korean only (docs/eval-baseline.md §0)
     text: str = ""
     expected_tool: str | None = None
     expected_args: dict | None = None

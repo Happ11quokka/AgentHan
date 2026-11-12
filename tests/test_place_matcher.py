@@ -41,7 +41,7 @@ FEATURE_IDS = {
 
 
 def cases():
-    """The 64 M0 feature-matching sentences (source m0) in the shared route file."""
+    """The M0 feature-matching sentences (source m0) in the shared route file (42, Korean only)."""
     rows = [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
     return [row for row in rows if row["source"] == "m0"]
 
@@ -106,10 +106,10 @@ def test_dataset():
     data = cases()
     assert len(data) >= 40
     counts = Counter(row["lang"] for row in data)
-    assert counts["ko"] >= 20 and counts["ko_simple"] >= 10 and counts["en"] >= 10
-    assert set(counts) == {"ko", "ko_simple", "en"}
+    assert counts["ko"] >= 20 and counts["ko_simple"] >= 10
+    assert set(counts) == {"ko", "ko_simple"}  # Korean only (docs/eval-baseline.md §0)
     expected_counts = Counter(row["expected"] for row in data)
-    assert expected_counts[None] >= 5
+    assert expected_counts[None] >= 4  # 5 before the English case was removed
     assert all(expected_counts[feature] >= 5 for feature in SUPPORTED)
     assert len({row["text"] for row in data}) == len(data)
     for row in data:
@@ -211,8 +211,8 @@ def test_ascii_keywords_with_korean_particles(text, feature_id, term):
 
 
 def test_missing_key_and_keyword_recall():
-    # Korean only (docs/eval-baseline.md §0): the catalog has no English keywords.
-    data = [row for row in cases() if row["expected"] is not None and row["lang"] != "en"]
+    # Korean only (docs/eval-baseline.md §0): no English cases or keywords.
+    data = [row for row in cases() if row["expected"] is not None]
     misses = []
     for row in data:
         matches = matcher.match_features(row["text"])

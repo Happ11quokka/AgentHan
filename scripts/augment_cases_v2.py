@@ -291,7 +291,7 @@ def build(r: dict) -> tuple[str, dict | None, list[str]]:
 
 def code_issues(mode: str, c: dict, required: dict, features: set[str]) -> list[str]:
     out = []
-    if c.get("lang") not in ("ko", "ko_simple", "en"):
+    if c.get("lang") not in ("ko", "ko_simple"):
         out.append("bad lang")
     if mode == "route":
         return out

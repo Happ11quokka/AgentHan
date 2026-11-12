@@ -371,7 +371,7 @@ def to_case(r: dict) -> tuple[str, dict]:
 
 def issues_of(mode: str, c: dict, features: set[str], required: dict) -> list[str]:
     out = []
-    if c["lang"] not in ("ko", "ko_simple", "en"):
+    if c["lang"] not in ("ko", "ko_simple"):
         out.append("bad lang")
     if not c["text"]:
         out.append("empty text")

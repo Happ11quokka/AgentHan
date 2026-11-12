@@ -8,14 +8,14 @@
 
 **한국어 케이스만 쓴다.** `lang`은 `ko`(보통 한국어)와 `ko_simple`(외국인 사장님처럼 짧고 서툰 한국어)만
 허용한다. 외국어는 비서 코어가 아니라 앞단·뒷단 번역이 맡으므로 이 세트에 넣지 않는다.
-지금 남아 있는 `en`·`ru`·`mn` 케이스(route 97건, flow 40건)는 삭제 예정(#17)이며 새 케이스로 추가하지 않는다.
-아래 표의 건수는 삭제 전 기준이다.
+`en`·`ru`·`mn` 케이스(route 97건, flow 40건)는 2026-11-12에 지웠고(#17), 그 밖의 `lang`은 불러올 때 오류다
+(`agenthan.eval.cases.Case`). 남은 케이스의 dev/holdout은 옮기지 않았다.
 
 | 파일 | 층 | 평가 경로 | 케이스 | 나눔 |
 | --- | --- | --- | --- | --- |
 | `s1.jsonl` | **L1 회귀 게이트** | 시나리오 (`agenthan.eval.scenario`, 업무 명세로 채점) | 92 | dev 80 / sealed 12 |
-| `route.jsonl` | L2 진단 | 기능 분기 (`OwnerAssistant.route()`) | 310 | dev 217 / holdout 93 |
-| `flow.jsonl` | L2 진단 | 전체 흐름 (분기 → 질문 → 도구·인자 → 저장소) | 196 (240턴) | dev 154 / holdout 42 |
+| `route.jsonl` | L2 진단 | 기능 분기 (`OwnerAssistant.route()`) | 213 | dev 149 / holdout 64 |
+| `flow.jsonl` | L2 진단 | 전체 흐름 (분기 → 질문 → 도구·인자 → 저장소) | 156 (194턴) | dev 120 / holdout 36 |
 | `scenario.jsonl` | S1 원본 | 기존 시나리오 30건 (`scripts/build_s1.py`가 S1으로 옮김) | 30 | 전부 dev |
 
 `s1.jsonl`은 손으로 고치지 않는다. 원본(flow·route·scenario·리뷰 골드셋)을 고치고 `scripts/build_s1.py`로 다시 만든다.

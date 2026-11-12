@@ -4,8 +4,8 @@
 > 하나로 옮기는 중이며, 아래 route·flow는 그 문서의 L2 진단이다. 이 README와 다르면 정본을 따른다.
 >
 > **언어: 한국어만 평가한다.** 비서 코어는 한국어 입출력만 다루고, 사장님 언어는 앞단·뒷단에서 번역만
-> 한다. 케이스의 `lang`은 `ko`·`ko_simple`만 허용하며 남아 있는 `en`·`ru`·`mn` 케이스는 삭제 예정(#17)이다.
-> 그때까지 결과는 `ko`·`ko_simple`만 보고 해석한다.
+> 한다. 케이스의 `lang`은 `ko`·`ko_simple`만 허용하고(그 밖은 불러올 때 오류), `en`·`ru`·`mn` 케이스는
+> 2026-11-12에 지웠다(#17). 그 전 기준선(m0·m1·m2)에는 외국어 케이스가 섞여 있어 지금 세트와 해시가 다르다.
 
 루트에서 실행한다. 의존성 추가 없이 기존 HCX 클라이언트 설정과 더미 저장소를 쓴다.
 실제 네이버 발송·저장은 없다. 키는 환경 변수로만 전달하며 녹화에 키·헤더를 저장하지 않는다.
@@ -17,10 +17,10 @@ L2 진단은 실제 앱 흐름(`OwnerAssistant`)을 그대로 따라 두 축을 
 
 - **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `ask()`의 분기 전체(상태 규칙 →
   임베딩 후보 5개 → HCX-DASH-002 `select_feature`, 실패 시 임계값 규칙)를
-  `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/eval/route.jsonl`(310건).
+  `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/eval/route.jsonl`(213건).
 - **전체 흐름(`flow`)**: 케이스마다 새 비서와 임시 더미 저장소로 `turns`를 차례로 실행해
   턴마다 분기 → 빠진 정보 질문 → 도구 호출·인자 → 저장소 변화를 채점한다.
-  기본 세트는 `tests/data/eval/flow.jsonl`(196건, 240턴).
+  기본 세트는 `tests/data/eval/flow.jsonl`(156건, 194턴).
 
 케이스 파일 구성·출처·dev/holdout은 [`tests/data/eval/README.md`](../../../tests/data/eval/README.md)에 정리했다.
 

@@ -99,18 +99,19 @@ def test_default_replay_outputs_conditions_table_rows_and_splits(offline, tmp_pa
     directory = next(tmp_path.glob("*-test"))
     summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
     rows = [json.loads(line) for line in (directory / "rows.jsonl").read_text().splitlines()]
-    assert len(rows) == 550  # route 310 (리뷰 분기 169 포함) + flow 240턴
+    # Korean only (docs/eval-baseline.md §0): en·ru·mn route 97 and flow 40 removed.
+    assert len(rows) == 407  # route 213 (리뷰 분기 105 포함) + flow 194턴
     assert set(summary["results"]) == {"route", "flow"}
-    assert summary["results"]["route"]["cases"] == 310
-    assert summary["results"]["flow"]["flow_cases"] == 196
-    assert summary["results"]["flow"]["cases"] == 240  # turns; multi-turn cases since aug2
+    assert summary["results"]["route"]["cases"] == 213
+    assert summary["results"]["flow"]["flow_cases"] == 156
+    assert summary["results"]["flow"]["cases"] == 194  # turns; multi-turn cases since aug2
     assert summary["status"] == "COMPLETE"
     assert set(summary["by_split"]) == {"null", "dev", "holdout"}
     # Every case carries its own split (tests/data/eval); none is left without one.
     assert summary["by_split"]["null"]["route"]["cases"] == 0
-    assert summary["by_split"]["dev"]["route"]["cases"] == 217
-    assert summary["by_split"]["holdout"]["route"]["cases"] == 93
-    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 42
+    assert summary["by_split"]["dev"]["route"]["cases"] == 149
+    assert summary["by_split"]["holdout"]["route"]["cases"] == 64
+    assert summary["by_split"]["holdout"]["flow"]["flow_cases"] == 36
     conditions = summary["conditions"]
     assert conditions["model_id"] == CHAT_MODEL
     assert conditions["backend"] == "replay" and conditions["repeat"] == 1
@@ -296,7 +297,7 @@ def test_missing_replay_is_counted_in_both_paths_despite_matcher_fallback(tmp_pa
 def test_save_baseline_copies_summary_only_and_subset_hash_changes(monkeypatch, tmp_path):
     baselines = tmp_path / "baselines"
     monkeypatch.setattr(run, "BASELINES", baselines)
-    for number, case_id in enumerate(("upsert_menu-1", "upsert_menu-2")):
+    for number, case_id in enumerate(("upsert_menu-1", "upsert_menu-3")):
         assert (
             run.main(
                 [
@@ -517,17 +518,19 @@ def test_splits_are_fixed_stratified_and_cover_every_case():
         for case in cases:
             batches.setdefault(case.source.split(":")[0], []).append(case)
         assert {"m0", "aug", "aug2"} <= set(batches)
-        # Each generated batch is split on its own so earlier assignments never move. Holdout
-        # cases already inspected were moved to dev and say so in origin.
+        # Each generated batch was split on its own by make_splits so earlier assignments never
+        # move. The en·ru·mn cases were then deleted (Korean only, docs/eval-baseline.md §0,
+        # 2026-11-12) without moving anyone, so make_splits on what is left no longer reproduces
+        # the split exactly. Check that the kept assignment still looks like a 7:3 split.
         for name, batch in batches.items():
             if name == "review":
                 continue  # Own dev/holdout (holdout written later as a fresh set).
-            expected = make_splits(batch)
+            assert set(make_splits(batch)) == {c.id for c in batch}
+            share = sum(c.split == "holdout" for c in batch) / len(batch)
+            assert 0.15 <= share <= 0.4, (name, share)
             for case in batch:
                 if (case.origin or "").startswith("holdout-seen"):
-                    assert case.split == "dev" and expected[case.id] == "holdout"
-                else:
-                    assert case.split == expected[case.id], case.id
+                    assert case.split == "dev"
         m0 = batches["m0"]
         holdout = {c.expected_feature or c.expected_tool for c in m0 if c.split == "holdout"}
-        assert len(holdout) >= 13  # 18 features since review_reply + ai_review → review
+        assert len(holdout) >= 11  # 18 features; 13+ before the foreign cases were removed

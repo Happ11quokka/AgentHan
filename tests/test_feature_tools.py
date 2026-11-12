@@ -170,7 +170,7 @@ def test_eval_dataset_covers_every_tool():
     assert {c.expected_tool for c in full} == set(TOOL_FEATURES)
     for name in TOOL_FEATURES:
         langs = {c.lang for c in full if c.expected_tool == name}
-        assert langs == {"ko", "en", "ko_simple"}
+        assert langs == {"ko", "ko_simple"}  # Korean only (docs/eval-baseline.md §0)
     assert all(c.expected_tool is None for c in cases if c.kind != "full")
     assert all(c.near_tool in TOOL_FEATURES for c in cases if c.kind == "missing")
 

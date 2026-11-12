@@ -7,7 +7,8 @@ from agenthan.eval.run import FLOW_CASES, ROUTE_CASES
 
 
 def test_existing_sets_are_adapted_without_modifying_files():
-    for path, count in ((FLOW_CASES, 64), (ROUTE_CASES, 64)):
+    # 64 each before the en·ru·mn cases were removed (Korean only, docs/eval-baseline.md §0)
+    for path, count in ((FLOW_CASES, 43), (ROUTE_CASES, 42)):
         before = path.read_bytes()
         cases = [c for c in load_cases(path) if c.source == "m0"]
         assert len(cases) == count
@@ -60,6 +61,15 @@ def test_three_goldset_lines_preserve_turns_split_and_origin(tmp_path):
     assert [c.id for c in load_cases(path, split="holdout")] == ["multi"]
 
 
+@pytest.mark.parametrize("lang", ["en", "ru", "mn"])
+def test_foreign_language_cases_are_rejected(tmp_path, lang):
+    """Korean only (docs/eval-baseline.md §0): other languages fail at load time."""
+    path = tmp_path / "foreign.jsonl"
+    path.write_text(json.dumps({"id": "x", "lang": lang, "text": "hello"}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_cases(path)
+
+
 def test_new_schema_defaults_and_code_owned_approval(tmp_path):
     path = tmp_path / "v2.jsonl"
     path.write_text(
@@ -68,7 +78,7 @@ def test_new_schema_defaults_and_code_owned_approval(tmp_path):
                 "id": "new",
                 "split": "dev",
                 "kind": "confusable",
-                "lang": "mn",
+                "lang": "ko_simple",
                 "text": "dummy",
                 "expected_tool": "get_statistics",
                 "expected_args": {"period": "7d"},
