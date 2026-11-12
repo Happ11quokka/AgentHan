@@ -393,6 +393,7 @@ def test_more_text_only_confirmations_are_caught():
         "알겠습니다. '러시안 홍차'를 5,500원에 추가하도록 하겠습니다.",
         "추가하겠습니다. 도구를 불러오는 중...",
         "바로 바꿔 드리겠습니다",
+        '이렇게 바꾸면 될까요? 더미 답변 작성 (실제 전송 없음): {"inquiry": "talk-1"}',
     ):
         assert owner.FAKE_ASK.search(text), text
     assert owner.FAKE_DONE.search("성공했습니다! 다음은 방금 추가한 메뉴의 기록입니다.")
