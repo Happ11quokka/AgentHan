@@ -103,6 +103,12 @@ MULTI_HINT = re.compile(r"둘\s*다|모두|전부|이랑|랑\s|그리고|및")
 MAX_BATCH = 5
 # A reply to a shown change that edits a value (number, quote, change word).
 EDIT_HINT = re.compile(r"\d|['‘’“”\"]|바꿔|고쳐|수정|으로|로\s*해|말고|대신|빼")
+# An owner question with no change in it: it ends as a question and names nothing to do.
+OWNER_QUESTION = re.compile(r"(?:[?？]|나요|가요|까요|죠|니|어때요?)\s*$")
+CHANGE_WORDS = re.compile(
+    r"바꾸|바꿔|바꿀|변경|수정|고쳐|고칠|등록|추가|삭제|지워|지울|빼|넣어|넣을|만들|올려|올릴|내려"
+    r"|저장|접수|거절|확정|취소|켜|꺼|설정|답장|보내|쉬|휴무|품절|노쇼|해\s*(?:줘|주세요|주실)|할\s*수"
+)
 DEFER = re.compile(r"잠깐|두고|말고|먼저|그\s*전에|근데|그런데|참[,\s]|그리고")
 
 
@@ -148,14 +154,17 @@ DIAGNOSE_TOOL_NAME = "diagnose_search_visibility"  # Read-only tool of search_di
 # A text-only answer that imitates the system preview or claims a save that did not happen.
 PREVIEW_MARK = "(시스템이 변경 미리보기를 보여 줌)"
 FAKE_ASK = re.compile(
-    r"(?:바꿀|저장할|변경할|진행할|등록할|확정할|접수할|처리할)까요|네\s*/\s*취소|변경할게요|확정할게요"
-    r"|시스템이|미리보기|시겠(?:습니까|어요|나요)"
+    r"(?:바꿀|저장할|변경할|진행할|등록할|확정할|접수할|처리할|추가할)까요|네\s*/\s*취소"
+    r"|변경할게요|확정할게요|시스템이|미리보기|시겠(?:습니까|어요|나요)"
     r"|\b[a-z]+(?:_[a-z]+)+\("  # A tool call written out as text: create_coupon(...)
-    r"|(?:접수|저장|변경|처리|확정|등록|수정|진행|반영|취소|생성)하겠습니다|바꾸겠습니다"
+    r"|(?:접수|저장|변경|처리|확정|등록|수정|진행|반영|취소|생성|추가|적용)하겠습니다|바꾸겠습니다"
     r"|만들(?:어\s*보)?겠습니다|잠시만\s*기다려|게\s*맞(?:나요|으신가요|습니까|죠)"
+    r"|도구\s*(?:호출|실행|를\s*(?:불러|호출|실행))|(?:불러오는|실행하는|처리하는)\s*중"
+    r"|도록\s*하겠습니다|[가-힣]\s*드리겠습니다"
 )
 FAKE_DONE = re.compile(
-    r"(?:저장|변경|처리|확정|접수|등록|완료|수정|업데이트)(?:했|하였|됐|되었)|바꿨|바꾸었"
+    r"(?:저장|변경|처리|확정|접수|등록|완료|수정|업데이트|추가|반영|적용)(?:했|하였|됐|되었)"
+    r"|바꿨|바꾸었|성공(?:했|하였|적으로)"
 )
 # A question for a missing value ("어떤 상태로 바꿀까요?") is not an imitation.
 ASKS_VALUE = re.compile(r"어떤|어느|무엇|무슨|뭐|몇|언제|얼마|어떻게|알려\s*주")
@@ -230,6 +239,12 @@ ACT_NOTE = {
 }
 
 
+ADD_NOTE = (
+    "사장님이 방금 보여 준 변경에 항목을 하나 더한다. 보여 준 변경은 시스템이 그대로 두므로 "
+    "인자에 다시 넣지 않는다. 이번 말에 나온 새 항목만 인자로 도구를 한 번 호출한다."
+)
+
+
 def _plain(message: dict) -> str:
     """Earlier system-made previews and save notes, marked so the model does not copy them."""
     content = message["content"]
@@ -298,25 +313,36 @@ def tool_params(feature_id: str) -> list[tuple[str, str, tuple[str, ...], str]]:
     return [(p.id, p.kind, p.enum, p.label) for p in TOOLS[feature_id].params]
 
 
+WRITTEN_CALL = re.compile(r"(?<![A-Za-z0-9_])([a-z]+(?:_[a-z]+)+)\(")
+
+
 def written_call(content: str, names: set[str]) -> dict | None:
-    """`create_coupon(title="…", discount_value=10)` written as the whole reply → a tool call."""
-    match = re.fullmatch(r"\s*`*([a-z]+(?:_[a-z]+)+)\((.*)\)`*\s*", content, re.S)
-    if not match or match.group(1) not in names:
-        return None
-    try:
-        node = ast.parse(f"f({match.group(2)})", mode="eval").body
-        arguments = {k.arg: ast.literal_eval(k.value) for k in node.keywords if k.arg}
-    except (SyntaxError, ValueError):
-        return None
-    if not arguments or node.args:
-        return None
+    """`create_coupon(title="…", discount_value=10)` written in the reply → a tool call.
+
+    The call may stand alone or sit inside a sentence ("알겠습니다. 도구 호출: upsert_menu(…)").
+    Only one call of an exposed tool with keyword literals counts; it still goes through the
+    value gate, preview and approval like a real call."""
+    found = []
+    for match in WRITTEN_CALL.finditer(content):
+        if match.group(1) not in names:
+            continue
+        start = match.end()
+        for end in (i for i, ch in enumerate(content[start:], start) if ch == ")"):
+            try:  # The first ")" that closes a valid call (quoted ")" inside values is fine).
+                node = ast.parse(f"f({content[start:end]})", mode="eval").body
+                arguments = {k.arg: ast.literal_eval(k.value) for k in node.keywords if k.arg}
+            except (SyntaxError, ValueError):
+                continue
+            if arguments and not node.args and len(arguments) == len(node.keywords):
+                found.append((match.group(1), arguments))
+            break
+    if len(found) != 1:
+        return None  # None or several written calls: not ours to pick.
+    name, arguments = found[0]
     return {
         "id": "written-call",
         "type": "function",
-        "function": {
-            "name": match.group(1),
-            "arguments": json.dumps(arguments, ensure_ascii=False),
-        },
+        "function": {"name": name, "arguments": json.dumps(arguments, ensure_ascii=False)},
     }
 
 
@@ -444,6 +470,7 @@ class OwnerAssistant:
         self.embed = embed
         self.max_tool_calls = max_tool_calls
         self.history: list[dict] = []
+        self._history_task: list[str | None] = []  # Ledger task id per history message.
         # Every task the owner asked for (pending feature, write awaiting approval, photo
         # drafts, review waiting) lives in the ledger; see agent.task_ledger.
         self.ledger = TaskLedger()
@@ -565,7 +592,15 @@ class OwnerAssistant:
             # The turn's task is finished; a task held below it resumes.
             task = self.ledger.get(self._turn_task) if self._turn_task else None
             if task is not None and task.is_open and task.preview is None:
-                self.ledger.close(task, "done")
+                # What was saved, for later questions about it (아까 아메리카노 얼마로 바꿨죠?):
+                # the finished task's own messages leave the model context.
+                written = [
+                    r.get("record", r.get("records")) for r in saved if r.get("action") != "read"
+                ]
+                summary = (
+                    "저장함 " + json.dumps(written, ensure_ascii=False)[:160] if written else ""
+                )
+                self.ledger.close(task, "done", summary)
         return self._end_turn(answer)
 
     def _end_turn(self, answer: str, blocks: str = "") -> str:
@@ -583,6 +618,8 @@ class OwnerAssistant:
             if key in RESUME_TEXT and (task.kind != "tool" or key != "collecting" or task.prompt):
                 notice = "\n" + RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
         self.history.append({"role": "assistant", "content": answer + notice})
+        # Which ledger task each message of this turn worked on (see _finished_task_message).
+        self._history_task += [self._turn_task] * (len(self.history) - len(self._history_task))
         return answer + (f"\n{blocks}" if blocks else "") + notice
 
     def _task_for(self, feature_id: str, kind: str):
@@ -960,7 +997,9 @@ class OwnerAssistant:
                     not needs_approval(exposed[0]["function"]["name"])
                     or self.trace["via"] == "menu_name"  # A price question, not a change.
                 )
-                if read_only and not re.search(r"[?？]\s*$", message["content"]):
+                if (read_only and not re.search(r"[?？]\s*$", message["content"])) or (
+                    self._only_asks(text, task)
+                ):
                     # A read question answered in words is finished; a held task resumes.
                     self.ledger.close(task, "done")
                 return self._finish(message["content"], saved, missing)
@@ -1036,6 +1075,19 @@ class OwnerAssistant:
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
                 )
 
+    def _only_asks(self, text: str, task) -> bool:
+        """The owner only asked about this feature ("오늘 들어온 주문 있어요?") in a task opened by
+        this very utterance: answered in words, it is done even if the model ends with its own
+        question ("어떤 주문을 접수할까요?"). Left open, it would take the next answer meant for
+        the task it interrupted (쿠폰 기간 → 주문)."""
+        return (
+            task.started == self.ledger.turn
+            and len(task.said) == 1
+            and self._act not in ("answer", "edit", "resume")
+            and bool(OWNER_QUESTION.search(text))
+            and not CHANGE_WORDS.search(text)
+        )
+
     def _chat_once_more_if_rejected(self, messages: list[dict], tools: list[dict]) -> dict:
         """HCX sometimes rejects (HTTP 400) a request it accepts on the next try: ask twice."""
         for attempt in range(2):
@@ -1069,9 +1121,17 @@ class OwnerAssistant:
         line per finished task. Approvals, ids and amounts come from the ledger, not prose."""
         state = {
             "기능": get_feature(feature_id)["name_ko"],
-            "사장님이 확인한 값": {k: v.value for k, v in task.slots.items()},
+            # Adding an item to the shown batch: the shown item's values are not this item's
+            # (_propose ignores them too), so the model must not see them as held values.
+            "사장님이 확인한 값": {}
+            if self._adding and self.pending_action is not None
+            else {k: v.value for k, v in task.slots.items()},
         }
-        if self._act in ACT_NOTE:
+        if self._adding and self.pending_action is not None:
+            # "그리고 금요일은 …" while a change is shown: say so, or the model re-asks the shown
+            # item or answers in words (two-hours-while-pending).
+            state["이번 말"] = ADD_NOTE
+        elif self._act in ACT_NOTE:
             state["이번 말"] = ACT_NOTE[self._act]
         lines = [
             SYSTEM,
@@ -1136,12 +1196,26 @@ class OwnerAssistant:
         outcome is in the assistant's answer text."""
         earlier = [
             {"role": m["role"], "content": _plain(m)}
-            for m in self.history[:turn_start]
-            if m["role"] in ("user", "assistant") and not m.get("tool_calls") and m["content"]
+            for i, m in enumerate(self.history[:turn_start])
+            if m["role"] in ("user", "assistant")
+            and not m.get("tool_calls")
+            and m["content"]
+            and not self._finished_task_message(i)
         ][-CONTEXT_MESSAGES:]
         while earlier and earlier[0]["role"] != "user":
             earlier.pop(0)
         return [*earlier, *self.history[turn_start:]]
+
+    def _finished_task_message(self, index: int) -> bool:
+        """The message belongs to a task that is closed (saved, cancelled or failed).
+
+        Its outcome is in the system prompt (앞서 끝난 작업) and the store slice. Left in the
+        context, the finished request → preview → "네" exchange makes the model ask for its
+        own confirmation on the next change ("나폴레옹도 7500원으로 바꾸시겠습니까?") instead of
+        calling the tool: 6/6 with it, 0/3 without it (two-menu-prices, 2026-11-12)."""
+        task_id = self._history_task[index] if index < len(self._history_task) else None
+        task = self.ledger.get(task_id) if task_id else None
+        return task is not None and not task.is_open
 
     def _propose(self, task, feature_id: str, raw: object) -> tuple[object, dict | None]:
         """The model proposes values; code keeps them per task and decides what may run.
@@ -1158,11 +1232,24 @@ class OwnerAssistant:
         if not isinstance(arguments, dict):
             return raw, None
         given = {k: v for k, v in arguments.items() if v is not None and v != ""}
+        params = tool_params(feature_id)
+        packed = [
+            p[3] for p in params if not p[1].endswith("list") and isinstance(given.get(p[0]), list)
+        ]
+        if packed:
+            # Several items packed into one call (closed=[true, false] for 월·금): one value
+            # per call, so each item is checked and previewed on its own.
+            return raw, {
+                "ok": False,
+                "error": "one_value_per_call",
+                "message": "값이 목록이면 안 됩니다. 항목(요일 묶음)마다 값이 다르면 항목마다 따로 "
+                "호출하세요. 이미 보여 준 변경은 다시 넣지 마세요.",
+                "fields": packed,
+            }
         # Held values fill in the change being collected, not a new item of a batch. A second
         # call in the turn that already previewed one is a new item (월요일 휴무 + 금요일 9시).
         slots = {} if self._adding or self._previewed_now() else dict(task.slots)
         merged = {**{k: s.value for k, s in slots.items()}, **given}
-        params = tool_params(feature_id)
         store = self.store.read()
         if feature_id == "search_keywords":
             merged = self._keywords_as_list(merged, "\n".join(task.said), store)
