@@ -745,7 +745,29 @@ class OwnerAssistant:
             # "메도빅 가격 지금 얼마죠?" while another change waits: DASH tends to say none,
             # but a menu of this shop by name plus a price word is the menu feature.
             return Route("menu", "menu_name", candidates=choice.candidates, act=choice.act)
+        read_feature = self._only_read_keyword(text, ranked, choice.feature_id)
+        if read_feature is not None:
+            # "부재중 전화 몇 통이에요?" sent to 톡톡 while a reservation waits (1 of 6): the only
+            # keyword hit is a read feature and DASH picked one with no hit. Reads write nothing.
+            return Route(read_feature, "keyword", candidates=choice.candidates)
         return Route(choice.feature_id, "select", candidates=choice.candidates, act=choice.act)
+
+    @staticmethod
+    def _only_read_keyword(text: str, ranked, chosen: str | None) -> str | None:
+        """The read feature to use instead of DASH's choice, or None.
+
+        Only for an owner question with no change words, when exactly one feature's keyword is
+        in it (keywords are unique per feature, catalog rule 4), that feature only reads, and
+        DASH chose another feature none of whose keywords was said."""
+        hits = {m.feature_id for m in ranked if m.matched_terms}
+        if chosen is None or chosen in hits or len(hits) != 1:
+            return None
+        if not OWNER_QUESTION.search(text) or CHANGE_WORDS.search(text):
+            return None
+        (only,) = hits
+        if only not in TOOL_FEATURE_IDS:
+            return None
+        return None if needs_approval(feature_tool_schema(only)["function"]["name"]) else only
 
     def _names_menu_price(self, text: str) -> bool:
         """The owner names one of this shop's menus (or an alias) and asks about its price."""

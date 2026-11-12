@@ -597,3 +597,16 @@ def test_a_question_about_a_past_change_is_not_a_made_up_save(tmp_path):
         bot.ask("아까 아메리카노 가격 얼마로 바꿨죠?") == "아메리카노 가격은 4800원으로 바꿨어요."
     )
     assert len(fake.requests) == 1 and not bot.trace.get("nudged")
+
+
+def test_a_read_question_with_its_only_keyword_goes_to_that_read_feature():
+    from agenthan.agent import place_matcher
+
+    ranked = place_matcher.rank_features("부재중 전화 몇 통이에요?", None)
+    pick = owner.OwnerAssistant._only_read_keyword
+    assert pick("부재중 전화 몇 통이에요?", ranked, "talktalk") == "smartcall"
+    assert pick("부재중 전화 몇 통이에요?", ranked, "smartcall") is None  # Already right.
+    ranked = place_matcher.rank_features("오늘 들어온 주문 있어요?", None)
+    assert pick("오늘 들어온 주문 있어요?", ranked, "coupon") is None  # 주문 writes.
+    ranked = place_matcher.rank_features("부재중 전화 기록 지워 줘", None)
+    assert pick("부재중 전화 기록 지워 줘", ranked, "talktalk") is None  # Not a question.
