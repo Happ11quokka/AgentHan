@@ -577,8 +577,30 @@ class OwnerAssistant:
     def _missing_search_keyword(self, value) -> None:
         self.reads.missing_search_keyword = value
 
+    def _pos_headline(self) -> str | None:
+        """The POS check's yes/no, stated by code: the model sometimes lists the supported
+        POS and leaves out that the owner's one is not among them."""
+        for call, result in zip(self.trace["calls"], self.trace["results"], strict=False):
+            if call["name"] != "check_pos_compatibility" or not result.get("ok"):
+                continue
+            args = call.get("arguments")
+            try:
+                args = json.loads(args) if isinstance(args, str) else args
+            except ValueError:
+                continue
+            name = (args or {}).get("pos_name") if isinstance(args, dict) else None
+            if not name:
+                continue
+            if result.get("supported"):
+                return f"'{name}'은(는) 네이버 플레이스와 연동돼요."
+            return f"'{name}'은(는) 지금 네이버 플레이스와 연동되지 않아요."
+        return None
+
     def _finish(self, answer: str, saved: list[dict], missing: list[str]) -> str:
         self.trace["missing"] = list(missing)
+        headline = self._pos_headline()
+        if headline and headline not in answer:
+            answer = headline + "\n" + answer
         if missing:
             answer += "\n확인할 항목: " + ", ".join(missing)
         if saved:

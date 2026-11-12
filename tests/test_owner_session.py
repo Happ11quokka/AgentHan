@@ -499,3 +499,14 @@ def test_unsaid_menu_action_next_to_a_said_price_falls_back_to_save(tmp_path):
     out = bot.ask("아메리카노 가격 5000원으로 올려 주세요")
     assert "바꿀까요" in out and bot.trace["dropped"] == ["action"]
     assert bot.pending_action["actions"][0]["preview"]["record"]["price"] == 5000
+
+
+def test_pos_check_answer_starts_with_the_yes_or_no(tmp_path):
+    fake = base.FakeChat(
+        base.call("check_pos_compatibility", {"pos_name": "하나로페이"}),
+        base.answer("연동되는 계산기는 연습POS 시리즈입니다."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("place_plus", "select")
+    out = bot.ask("우리 계산기 '하나로페이' 써요 플레이스랑 연결 돼요?")
+    assert out.startswith("'하나로페이'은(는) 지금 네이버 플레이스와 연동되지 않아요.")
