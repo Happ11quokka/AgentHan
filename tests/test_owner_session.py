@@ -310,8 +310,9 @@ def test_rejected_request_is_asked_once_more(tmp_path):
 
     bot = owner.OwnerAssistant(tmp_path / "store.json", chat=chat, embed=base.fake_embed)
     bot.route = lambda text: owner.Route("smartcall", "select")
-    assert bot.ask("부재중 전화 있어요?") == "부재중 전화는 2통이에요."
-    assert bot.trace["rejected_retry"] is True
+    # The model never called the read, so code ran it and the result is shown under the answer.
+    assert bot.ask("부재중 전화 있어요?").startswith("부재중 전화는 2통이에요.\n더미 조회 결과")
+    assert bot.trace["rejected_retry"] is True and bot.trace["code_read"] is True
 
 
 def test_named_menu_price_question(tmp_path):
