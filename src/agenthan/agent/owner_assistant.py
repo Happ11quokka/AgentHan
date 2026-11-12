@@ -1082,8 +1082,7 @@ class OwnerAssistant:
         the task it interrupted (쿠폰 기간 → 주문)."""
         return (
             task.started == self.ledger.turn
-            and len(task.said) == 1
-            and self._act not in ("answer", "edit", "resume")
+            and len(task.said) == 1  # Opened by this utterance (DASH's act may still say answer).
             and bool(OWNER_QUESTION.search(text))
             and not CHANGE_WORDS.search(text)
         )
