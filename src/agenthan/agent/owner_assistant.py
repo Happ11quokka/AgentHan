@@ -248,6 +248,16 @@ ADD_NOTE = (
 )
 
 
+def _as_args(arguments: object) -> object:
+    """Tool arguments as data: a JSON string is parsed, anything else is kept."""
+    if isinstance(arguments, str):
+        try:
+            return json.loads(arguments)
+        except ValueError:
+            return arguments
+    return arguments
+
+
 def _plain(message: dict) -> str:
     """Earlier system-made previews and save notes, marked so the model does not copy them."""
     content = message["content"]
@@ -1017,8 +1027,18 @@ class OwnerAssistant:
                 and needs_approval(exposed[0]["function"]["name"])
                 and (self.pending_action is None or self._adding)
                 and not missing
-                and not ASKS_VALUE.search(message["content"])
-                and (FAKE_ASK.search(message["content"]) or FAKE_DONE.search(message["content"]))
+                and (
+                    # "그리고 금요일은 9시부터 …" adds an item with its values: any answer
+                    # without the call ("금요일은 이미 …", "몇 시부터요?") is a miss.
+                    (self._adding and EDIT_HINT.search(text))
+                    or (
+                        not ASKS_VALUE.search(message["content"])
+                        and (
+                            FAKE_ASK.search(message["content"])
+                            or FAKE_DONE.search(message["content"])
+                        )
+                    )
+                )
             ):
                 # The model wrote its own preview or claimed a save without a tool call: ask
                 # once more, with the rule next to the request.
@@ -1060,6 +1080,9 @@ class OwnerAssistant:
                     # A read question answered in words is finished; a held task resumes.
                     self.ledger.close(task, "done")
                 return self._finish(message["content"], saved, missing)
+            # 월·금 packed into one call (closed=[true, false]): one call per item, so each is
+            # checked and previewed on its own (two-hours-while-pending, 4 of 5 runs).
+            calls = message["tool_calls"] = self._unpack_items(feature_id, calls)
             self.history.append(message)
             over_limit = count + len(calls) > self.max_tool_calls
             for call in calls:
@@ -1131,6 +1154,50 @@ class OwnerAssistant:
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
                 )
+
+    @staticmethod
+    def _unpack_items(feature_id: str, calls: list[dict]) -> list[dict]:
+        """A call that packs several items into one ("days": [mon, fri] with "closed":
+        [true, false], …) becomes one call per item. Only when the tool has one list input
+        (the items) and every packed value lines up with it; anything else is left as it is
+        (and refused by _propose as one_value_per_call)."""
+        params = tool_params(feature_id) if feature_id in TOOLS else []
+        lists = [p[0] for p in params if p[1].endswith("list")]
+        scalars = [p[0] for p in params if not p[1].endswith("list")]
+        if len(lists) != 1:
+            return calls
+        out = []
+        for call in calls:
+            fn = call["function"]
+            try:
+                raw = fn.get("arguments")
+                args = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError:
+                args = None
+            items = args.get(lists[0]) if isinstance(args, dict) else None
+            packed = [
+                k for k in scalars if isinstance(args, dict) and isinstance(args.get(k), list)
+            ]
+            if (
+                not packed
+                or not isinstance(items, list)
+                or len(items) < 2
+                or any(len(args[k]) != len(items) for k in packed)
+            ):
+                out.append(call)
+                continue
+            for i, item in enumerate(items):
+                one = {k: v for k, v in args.items() if k not in packed and k != lists[0]}
+                one[lists[0]] = [item]
+                one.update({k: args[k][i] for k in packed if args[k][i] not in (None, "")})
+                if one.get("closed") is True:  # A closed day has no hours (guide step 2).
+                    for key in ("open_time", "close_time", "break_start", "break_end"):
+                        one.pop(key, None)
+                arguments = json.dumps(one, ensure_ascii=False)
+                out.append(
+                    {**call, "id": f"{call['id']}-{i}", "function": {**fn, "arguments": arguments}}
+                )
+        return out
 
     @staticmethod
     def _read_needs_nothing_new(feature_id: str, schema: dict, text: str) -> bool:
@@ -1467,7 +1534,10 @@ class OwnerAssistant:
         adding = current is not None and (self._previewed_now() or self._adding)
         earlier = current["actions"] if adding else []
         action = {"name": name, "arguments": copy.deepcopy(arguments)}
-        if any(a["name"] == name and a["arguments"] == action["arguments"] for a in earlier):
+        if any(
+            a["name"] == name and _as_args(a["arguments"]) == _as_args(action["arguments"])
+            for a in earlier
+        ):  # The same change again (also when only its JSON spacing differs).
             return {
                 "ok": True,
                 "action": "pending_approval",

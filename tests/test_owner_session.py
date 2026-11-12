@@ -439,7 +439,8 @@ def test_owner_question_needs_no_change_words():
 
 
 def test_packed_values_ask_for_one_call_per_item(tmp_path):
-    packed = {"days": ["mon", "fri"], "closed": [True, False], "open_time": ["", "09:00"]}
+    # Lengths do not line up with days, so it cannot be split: refused, then called again.
+    packed = {"days": ["mon", "fri"], "closed": [True, False, False], "open_time": "09:00"}
     fake = base.FakeChat(
         base.call("update_business_hours", packed),
         base.call(
@@ -557,3 +558,32 @@ def test_code_runs_the_read_when_the_model_still_will_not(tmp_path):
     schema = owner.feature_tool_schema("settlement")
     args = owner.OwnerAssistant._read_arguments("settlement", schema, "이번 주 정산 얼마예요?")
     assert args == {"period": "this_week"}
+
+
+def test_items_packed_into_one_call_are_split_per_day(tmp_path):
+    packed = {
+        "days": ["mon", "fri"],
+        "closed": [True, False],
+        "open_time": ["09:00", "09:00"],
+        "close_time": ["21:00", "23:00"],
+    }
+    fake = base.FakeChat(
+        base.call("update_business_hours", {"days": ["mon"], "closed": True}),
+        base.call("update_business_hours", packed),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("business_hours", "select")
+    assert "바꿀까요" in bot.ask("월요일은 쉬는 걸로 해 주세요")
+    out = bot.ask("그리고 금요일은 9시부터 밤 11시까지요")
+    actions = bot.pending_action["actions"]
+    assert [
+        json.loads(a["arguments"]) if isinstance(a["arguments"], str) else a["arguments"]
+        for a in actions
+    ] == [
+        {"days": ["mon"], "closed": True},
+        {"days": ["fri"], "closed": False, "open_time": "09:00", "close_time": "23:00"},
+    ]
+    assert '"fri"' in out and '"mon"' in out
+    assert bot.ask("둘 다 저장해 주세요").startswith("저장했어요")
+    hours = DummyStore(tmp_path / "store.json").read()["shop"]["hours"]
+    assert hours["mon"]["closed"] is True and hours["fri"]["close_time"] == "23:00"
