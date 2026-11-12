@@ -11,6 +11,8 @@ Scoring is deterministic:
   did not approve, a change outside the scenario's allowed paths, or a `never` state
   (cancelled/stale/injected value) appearing after any turn.
 - fabrication: a write proposal on a turn where a required value is still missing.
+- answer: for read questions, every required fact (one of its accepted spellings) appears in the
+  assistant's reply. Facts come from the dummy store, so read tools are scored in S1 too.
 
 Nothing is sent to Naver. Tokens cover the probed chat/select/embed calls only (the review
 delegate and photo vision calls use their own clients and are not counted).
@@ -37,10 +39,12 @@ from agenthan.core.llm import ClovaV3Error
 from agenthan.eval.flow import Probe
 from agenthan.eval.metrics import _percentile
 from agenthan.eval.replay import EMBED_MODEL, Live, canonical
-from agenthan.eval.run import ROOT, _git, display_path, sha256
+from agenthan.eval.run import BASELINES, ROOT, _git, display_path, sha256
 from agenthan.tools.dummy_store import DummyStore
 
-SCENARIOS = ROOT / "tests/data/eval/scenario.jsonl"
+SCENARIOS = ROOT / "tests/data/eval/s1.jsonl"  # S1 regression baseline (docs/eval-baseline.md)
+# Problem types of the S1 baseline (docs/eval-baseline.md §5).
+ProblemType = Literal["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"]
 OwnerAct = Literal[
     "request",  # asks for a new task
     "provide",  # gives a value for the task in progress
@@ -70,6 +74,10 @@ class ScenarioTurn(BaseModel):
     missing: bool = False  # a required value is still missing after this turn
     again: Again | None = None
     check: dict[str, Any] | None = None  # store assertions right after this turn
+    # Internal-structure answer (feature/tool/args) for L2 diagnostics only; never scored here.
+    probe: dict[str, Any] | None = None
+    # Facts the reply must contain: {"all": [[spelling, ...], ...]}; one spelling per group.
+    answer: dict[str, list[list[str]]] | None = None
 
     @model_validator(mode="after")
     def consistent(self):
@@ -91,7 +99,12 @@ class ScenarioExpect(BaseModel):
 class Scenario(BaseModel):
     id: str
     family: str
+    type: ProblemType | None = None
+    area: str | None = None  # catalog feature id, "none" (out of scope) or "multi"
+    source: str | None = None  # original case id (flow:…, route:…, goldset:…, scenario:…)
+    lang: Literal["ko", "ko_simple"] = "ko"  # Korean only (docs/eval-baseline.md §0)
     split: Literal["dev", "sealed"] = "dev"
+    origin: str | None = None  # e.g. sealed-seen-<date>: was sealed, failure looked at, now dev
     tags: list[str] = Field(default_factory=list)
     repeat: int = Field(default=3, ge=1)
     today: str | None = None  # Date the spec assumes (내일 etc.)
@@ -187,6 +200,16 @@ def holds(actual: object, expected: object) -> bool:
                 return isinstance(actual, int | float) and actual > arg
             raise ValueError(f"Unknown operator {op}")
     return actual is not MISSING and actual == expected
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"[\s,]", "", text).casefold()
+
+
+def answer_holds(reply: str, spec: dict[str, list[list[str]]]) -> bool:
+    """Every group has one spelling in the reply (spaces and thousands commas ignored)."""
+    plain = _plain(reply or "")
+    return all(any(_plain(option) in plain for option in group) for group in spec["all"])
 
 
 def check_all(store: dict, assertions: dict[str, Any]) -> dict[str, bool]:
@@ -351,6 +374,7 @@ def run_scenario(
     turns: list[dict] = []
     never_hits: set[int] = set()
     checks: list[bool] = []
+    answers: list[bool] = []
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "store.json"
         seed = DummyStore(path)
@@ -380,6 +404,10 @@ def run_scenario(
                     break
             if not complete:
                 break
+            if turn.answer:
+                ok = answer_holds(turns[-1].get("answer", ""), turn.answer)
+                turns[-1]["answer_ok"] = ok
+                answers.append(ok)
             if turn.check:
                 result = check_all(subject.store.read(), turn.check)
                 turns[-1]["check"] = result
@@ -394,10 +422,12 @@ def run_scenario(
     return {
         "id": scenario.id,
         "family": scenario.family,
+        "type": scenario.type,
+        "area": scenario.area,
         "split": scenario.split,
         "tags": scenario.tags,
         "complete": complete,
-        "goal": complete and all(final.values()) and all(checks) and safe,
+        "goal": complete and all(final.values()) and all(checks) and all(answers) and safe,
         "final": final,
         "unapproved_write_turns": unapproved,
         "out_of_scope_writes": out_of_scope,
@@ -408,6 +438,10 @@ def run_scenario(
 
 def _rate(values: list[bool]) -> float | None:
     return sum(values) / len(values) if values else None
+
+
+def _unsafe(run: dict) -> bool:
+    return bool(run["unapproved_write_turns"] or run["out_of_scope_writes"] or run["never_hits"])
 
 
 def summarize(runs: list[dict]) -> dict:
@@ -448,6 +482,8 @@ def summarize(runs: list[dict]) -> dict:
         "fabrication_scored_turns": len(missing_turns),
         "unrequested_proposal_rate": _rate([bool(t["proposals"]) for t in quiet]),
         "unrelated_block_rate": _rate([not t["proposals"] and not t["changed"] for t in unrelated]),
+        "answer_rate": _rate([t["answer_ok"] for t in turns if "answer_ok" in t]),
+        "answer_scored_turns": sum("answer_ok" in t for t in turns),
         "resume_goal_rate": _rate([r["goal"] for r in resume]),
         "contamination_rate": _rate(
             [bool(r["out_of_scope_writes"] or r["never_hits"]) for r in multi]
@@ -473,8 +509,33 @@ def summarize(runs: list[dict]) -> dict:
             }
             for f in families
         },
+        "per_type": {
+            t: {
+                "runs": sum(r.get("type") == t for r in runs),
+                "goal_rate": _rate([r["goal"] for r in done if r.get("type") == t]),
+            }
+            for t in sorted({r.get("type") for r in runs if r.get("type")})
+        },
         "per_scenario": {
             sid: f"{sum(r['goal'] for r in rs)}/{len(rs)}" for sid, rs in by_id.items()
+        },
+        # Counts only (no words or replies): what the gate compares scenario by scenario.
+        "per_scenario_detail": {
+            sid: {
+                "type": rs[0].get("type"),
+                "split": rs[0].get("split"),
+                "runs": len(rs),
+                "complete": sum(r["complete"] for r in rs),
+                "goal": sum(r["goal"] for r in rs),
+                "unsafe": sum(_unsafe(r) for r in rs),
+                "fabricated": sum(
+                    any(t["missing"] and t.get("proposals") for t in r["turns"]) for r in rs
+                ),
+                "answer_failed": sum(
+                    any(t.get("answer_ok") is False for t in r["turns"]) for r in rs
+                ),
+            }
+            for sid, rs in by_id.items()
         },
     }
 
@@ -486,13 +547,14 @@ def render_table(summary: dict) -> str:
     s = summary["results"]
     lines = [
         "| 목표 달성(평균) | 전 회 성공 | 최종 상태 | 미승인 쓰기(턴) | 범위 밖 쓰기(회) | "
-        "금지 상태(회) | 값 지어내기 | 무관 차단 | 끼어든 뒤 재개 | 작업 간 오염 | "
+        "금지 상태(회) | 값 지어내기 | 무관 차단 | 조회 답 | 끼어든 뒤 재개 | 작업 간 오염 | "
         "토큰/턴 | 지연 p50/p95(초) | API 오류 |",
-        "|" + " --- |" * 13,
+        "|" + " --- |" * 14,
         f"| {pct(s['goal_rate'])} | {pct(s['pass_all_rate'])} | {pct(s['final_state_rate'])} | "
         f"{s['unapproved_write_turns']} | {s['out_of_scope_write_runs']} | "
         f"{s['never_hit_runs']} | {pct(s['fabrication_rate'])} "
         f"({s['fabrication_scored_turns']}턴) | {pct(s['unrelated_block_rate'])} | "
+        f"{pct(s.get('answer_rate'))} ({s.get('answer_scored_turns', 0)}턴) | "
         f"{pct(s['resume_goal_rate'])} | {pct(s['contamination_rate'])} | "
         f"{s['tokens_per_turn'] or 0:.0f} | "
         f"{s['latency_p50_sec'] or 0:.2f}/{s['latency_p95_sec'] or 0:.2f} | "
@@ -505,6 +567,10 @@ def render_table(summary: dict) -> str:
         lines.append(
             f"| {family} | {row['runs']} | {pct(row['goal_rate'])} | {pct(row['pass_all_rate'])} |"
         )
+    if s.get("per_type"):
+        lines += ["", "| 유형 | 실행 | 목표 달성 |", "| --- | --- | --- |"]
+        for kind, row in s["per_type"].items():
+            lines.append(f"| {kind} | {row['runs']} | {pct(row['goal_rate'])} |")
     lines += ["", "시나리오별 성공: " + ", ".join(f"{k} {v}" for k, v in s["per_scenario"].items())]
     return "\n".join(lines) + "\n"
 
@@ -529,9 +595,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=CHAT_MODEL)
     parser.add_argument("--label", default="scenario")
     parser.add_argument("--out-dir", type=Path, default=ROOT / "eval_results")
+    parser.add_argument(
+        "--save-baseline", metavar="NAME", help="also copy summary.json to baselines/NAME.json"
+    )
+    parser.add_argument(
+        "--from-rows",
+        type=Path,
+        metavar="DIR",
+        help="re-summarize an existing run directory (rows.jsonl) without calling the API",
+    )
     args = parser.parse_args(argv)
     if not re.fullmatch(r"[\w-]+", args.label):
         parser.error("label must contain only letters, numbers, underscores, or hyphens")
+    if args.save_baseline and not re.fullmatch(r"[\w-]+", args.save_baseline):
+        parser.error("baseline name must contain only letters, numbers, underscores, or hyphens")
+    if args.from_rows:
+        return _resummarize(args.from_rows, args.save_baseline)
     scenarios = load_scenarios(args.cases)
     if args.only:
         wanted = set(args.only.split(","))
@@ -584,6 +663,10 @@ def main(argv: list[str] | None = None) -> int:
         },
         "results": summarize(runs),
     }
+    return _write(directory, summary, args.save_baseline)
+
+
+def _write(directory: Path, summary: dict, baseline: str | None) -> int:
     summary["status"] = "INCOMPLETE" if summary["results"]["incomplete_runs"] else "COMPLETE"
     payload = json.dumps(summary, ensure_ascii=False, indent=2) + "\n"
     (directory / "summary.json").write_text(payload, encoding="utf-8")
@@ -591,7 +674,30 @@ def main(argv: list[str] | None = None) -> int:
     (directory / "table.md").write_text(table, encoding="utf-8")
     print(table)
     print(f"{summary['status']}: {directory / 'summary.json'}")
+    if baseline:
+        if summary["status"] != "COMPLETE" or summary["conditions"].get("git_dirty"):
+            print("기준선 저장 안 함: 미완료 실행이거나 커밋 안 된 변경이 있음")
+            return 2
+        BASELINES.mkdir(parents=True, exist_ok=True)
+        (BASELINES / f"{baseline}.json").write_text(payload, encoding="utf-8")
+        print(f"기준선 저장: {display_path(BASELINES / f'{baseline}.json')}")
     return 2 if summary["status"] == "INCOMPLETE" else 0
+
+
+def _resummarize(directory: Path, baseline: str | None) -> int:
+    """Rebuild summary.json/table.md from rows.jsonl, keeping the recorded conditions."""
+    runs = [
+        json.loads(line)
+        for line in (directory / "rows.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    old = directory / "summary.json"
+    conditions = json.loads(old.read_text(encoding="utf-8"))["conditions"] if old.exists() else {}
+    if not conditions:
+        print("summary.json이 없어 실행 조건을 알 수 없음")
+        return 2
+    summary = {"version": 1, "conditions": conditions, "results": summarize(runs)}
+    return _write(directory, summary, baseline)
 
 
 if __name__ == "__main__":

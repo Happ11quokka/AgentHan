@@ -20,7 +20,7 @@
         보류한 작업의 기능은 후보에 늘 남긴다. DASH가 실패하면 예전 규칙(임계값 0.48 넘는 1위)
      ③ 대표 기능 위임 또는 그 기능 도구만 붙여 HCX-005 실행
         (그 기능의 짧은 절차·예시와, 예약·주문·톡톡이면 코드가 좁힌 대상 후보만 함께 준다)
-        ├ menu                    → upsert_menu (tools/owner_tools.py, 더미 플레이스 API에 저장)
+        ├ menu                    → upsert_menu (tools/feature_tools.py, 등록·수정·삭제·품절, 더미 저장)
         ├ 메뉴판·음식 사진          → ask_photo(): 사진 분류 → 초안 → 사장님 승인 → 저장
         ├ review → 리뷰 서브에이전트 (agent/review_delegate.py → agent/review/)
         ├ statistics (A-3, R2)    → R1 facts → 해석 규칙 → 도구 없는 HCX-005 문장화/템플릿
@@ -45,7 +45,7 @@
 | `tools/place_report.py`, `place_report_data.json` | R1 로컬 더미 통계 계산 (`ReportFacts`) |
 | `tools/report_insights.py` | R2 가게 정보와 통계를 연결하는 해석 규칙, 우선순위 상위 3개 |
 | `tools/dummy_store.py` | 더미 플레이스 API (로컬 `.agenthan/store.json`, 실제 네이버 연동 없음) |
-| `tools/owner_tools.py`, `feature_tools.py` | 메뉴 도구와 15개 기능 도구, 조회 전용 도구 목록 |
+| `tools/feature_tools.py` | 17개 기능 도구(기능당 하나)와 조회 전용 도구 목록. 도구별 용도·인자는 [`docs/tools.md`](../../../docs/tools.md) |
 | `tools/review_clf/` | 리뷰 [특징] 분류기 (`models/baseline.joblib`은 실제 리뷰로 학습해 레포에 없음 · 카톡으로 받기) |
 | `tools/knowledge_adapters.py` | `StoreKnowledge`(Part B 계약) → 리뷰 서브에이전트의 리뷰·메뉴 입력 |
 | `tools/review_adapters.py` | 더미 플레이스 API → 리뷰 서브에이전트 입력 |

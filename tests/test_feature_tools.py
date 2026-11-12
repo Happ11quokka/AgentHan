@@ -31,9 +31,10 @@ def store(tmp_path):
 
 
 VALID = {
-    "update_business_info": {"field": "phone", "value": "02-000-0001"},
+    "upsert_menu": {"name": "시르니키", "price": 6500},
+    "update_business_info": {"phone": "02-000-0001"},
     "update_business_hours": {
-        "day": "fri",
+        "days": ["fri"],
         "closed": False,
         "open_time": "10:00",
         "close_time": "23:00",
@@ -85,9 +86,10 @@ def test_valid_call_succeeds_and_keeps_seed(store, name):
 
 
 def test_writes_are_persisted(store):
-    opened = {"day": "mon", "open_time": "11:00", "close_time": "20:00"}
-    assert execute_feature_tool(store, "update_business_hours", opened)["record"]["closed"] is False
-    execute_feature_tool(store, "update_business_hours", {"day": "2026-11-08", "closed": True})
+    opened = {"days": ["mon"], "open_time": "11:00", "close_time": "20:00"}
+    result = execute_feature_tool(store, "update_business_hours", opened)
+    assert result["record"]["mon"]["closed"] is False
+    execute_feature_tool(store, "update_business_hours", {"days": ["2026-11-08"], "closed": True})
     execute_feature_tool(store, "update_order_status", VALID["update_order_status"])
     execute_feature_tool(store, "create_coupon", VALID["create_coupon"])
     data = store.read()
@@ -99,13 +101,19 @@ def test_writes_are_persisted(store):
 @pytest.mark.parametrize(
     ("name", "arguments"),
     [
-        ("update_business_info", {"field": "email", "value": "x"}),
-        ("update_business_hours", {"day": "monday", "closed": True}),
-        ("update_business_hours", {"day": "mon", "closed": False}),
+        ("update_business_info", {}),
+        ("update_business_info", {"phone": " "}),
+        ("update_business_hours", {"days": ["monday"], "closed": True}),
+        ("update_business_hours", {"days": []}),
+        ("update_business_hours", {"days": ["2026-11-08"], "closed": False}),
         (
             "update_business_hours",
-            {"day": "mon", "closed": False, "open_time": "25:00", "close_time": "10:00"},
+            {"days": ["mon"], "closed": False, "open_time": "25:00", "close_time": "10:00"},
         ),
+        ("update_business_hours", {"days": ["mon"], "break_start": "15:00"}),
+        ("upsert_menu", {"name": "없는 메뉴"}),
+        ("upsert_menu", {"name": "메도빅", "action": "pause"}),
+        ("set_representative_keywords", {}),
         ("create_coupon", {**VALID["create_coupon"], "discount_value": 150}),
         ("create_coupon", {**VALID["create_coupon"], "end_date": "2026-11-01"}),
         ("create_coupon", {**VALID["create_coupon"], "start_date": "2026/11/10"}),
@@ -165,3 +173,77 @@ def test_eval_dataset_covers_every_tool():
         assert langs == {"ko", "en", "ko_simple"}
     assert all(c.expected_tool is None for c in cases if c.kind != "full")
     assert all(c.near_tool in TOOL_FEATURES for c in cases if c.kind == "missing")
+
+
+def test_menu_actions(store):
+    assert (
+        execute_feature_tool(store, "upsert_menu", {"name": "꿀케이크", "price": 8000})["action"]
+        == "updated"
+    )  # An alias finds the stored menu.
+    sold = execute_feature_tool(store, "upsert_menu", {"name": "메도빅", "action": "sold_out"})
+    assert sold["record"]["sold_out"] is True and sold["record"]["price"] == 8000
+    renamed = execute_feature_tool(
+        store,
+        "upsert_menu",
+        {"name": "블린", "new_name": "블리니 세트", "description": "연어 블린"},
+    )
+    assert renamed["record"]["name"] == "블리니 세트"
+    assert renamed["previous"]["name"] == "블린"
+    taken = execute_feature_tool(store, "upsert_menu", {"name": "나폴레옹", "new_name": "메도빅"})
+    assert taken["error"] == "name_taken"
+    gone = execute_feature_tool(store, "upsert_menu", {"name": "아메리카노", "action": "delete"})
+    assert gone["action"] == "deleted"
+    missing = execute_feature_tool(store, "upsert_menu", {"name": "라떼", "action": "delete"})
+    assert missing["error"] == "menu_not_found"
+    names = [m["name"] for m in store.read()["menus"]]
+    assert "아메리카노" not in names and "블리니 세트" in names
+
+
+def test_business_info_several_fields(store):
+    result = execute_feature_tool(
+        store, "update_business_info", {"phone": "02-000-0002", "introduction": "새 소개"}
+    )
+    assert result["record"] == {"phone": "02-000-0002", "introduction": "새 소개"}
+    assert result["previous"]["phone"] == "02-000-0000"
+
+
+def test_hours_groups_breaks_and_dates(store):
+    weekdays = {"days": ["weekdays"], "open_time": "10:00", "close_time": "20:00"}
+    result = execute_feature_tool(store, "update_business_hours", weekdays)
+    assert result["days"] == ["mon", "tue", "wed", "thu", "fri"]
+    breaks = {"days": ["everyday"], "break_start": "15:00", "break_end": "16:00"}
+    result = execute_feature_tool(store, "update_business_hours", breaks)
+    hours = store.read()["shop"]["hours"]
+    assert hours["mon"] == {
+        "closed": False,
+        "open_time": "10:00",
+        "close_time": "20:00",
+        "break_start": "15:00",
+        "break_end": "16:00",
+    }
+    closed = {"days": ["2026-11-20", "2026-11-21"], "closed": True}
+    execute_feature_tool(store, "update_business_hours", closed)
+    assert store.read()["shop"]["hours"]["2026-11-21"] == {"closed": True}
+
+
+def test_keywords_add_remove_and_limit(store):
+    added = execute_feature_tool(store, "set_representative_keywords", {"add": ["디저트"]})
+    assert added["record"] == ["러시안 베이커리", "메도빅", "베이커리 카페", "디저트"]
+    swapped = execute_feature_tool(
+        store, "set_representative_keywords", {"add": ["케이크"], "remove": ["메도빅"]}
+    )
+    assert swapped["record"] == ["러시안 베이커리", "베이커리 카페", "디저트", "케이크"]
+    absent = execute_feature_tool(store, "set_representative_keywords", {"remove": ["없는말"]})
+    assert absent["error"] == "keyword_not_found"
+    over = execute_feature_tool(store, "set_representative_keywords", {"add": ["가", "나"]})
+    assert over["error"] == "too_many_keywords"
+    assert store.read()["shop"]["keywords"] == swapped["record"]
+
+
+def test_optional_reason_and_common_period(store):
+    rejected = {"order_id": "order-2", "status": "rejected", "reason": "재료 소진"}
+    assert execute_feature_tool(store, "update_order_status", rejected)["record"]["reason"] == (
+        "재료 소진"
+    )
+    week = execute_feature_tool(store, "get_settlement_summary", {"period": "last_week"})
+    assert week["error"] == "no_data"

@@ -4,7 +4,7 @@ from agenthan.eval import scenario as sc
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import execute_feature_tool
 
-PHONE = {"field": "phone", "value": "02-123-4567"}
+PHONE = {"phone": "02-123-4567"}
 
 
 def make(turns, final, writes, never=(), **kw):
@@ -172,3 +172,87 @@ def test_owner_assistant_subject_counts_previews_not_executions():
     assert s.proposals() == [{"tool": "update_business_info", "arguments": PHONE}]
     s.say("네")
     assert s.proposals() == []
+
+
+def test_s1_composition_language_and_coverage():
+    """S1 (docs/eval-baseline.md §5): 80 Korean scenarios in the agreed type ratio."""
+    import subprocess
+    import sys
+    from collections import Counter
+
+    from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES
+
+    s1 = sc.load_scenarios(sc.SCENARIOS)
+    assert sc.SCENARIOS.name == "s1.jsonl"
+    counts = Counter(s.type for s in s1)
+    assert counts == {
+        "P1": 28,
+        "P2": 12,
+        "P3": 12,
+        "P4": 7,
+        "P5": 9,
+        "P6": 4,
+        "P7": 8,
+        "P8": 4,
+        "P9": 8,
+    }
+    assert {s.lang for s in s1} <= {"ko", "ko_simple"}
+    assert all(s.source and s.area and s.repeat == 3 for s in s1)
+    # Read tools are scored by answer facts (search diagnosis uses live search, so it is L2 only).
+    read = {s.area for s in s1 if s.type == "P1" and any(t.answer for t in s.turns)}
+    assert read == {TOOL_FEATURES[t] for t in READ_ONLY_TOOLS if t != "diagnose_search_visibility"}
+    # Every write tool appears at least twice in P1–P3.
+    areas = Counter(s.area for s in s1 if s.type in ("P1", "P2", "P3"))
+    for tool, feature in TOOL_FEATURES.items():
+        if tool not in READ_ONLY_TOOLS:
+            assert areas[feature] >= 2, feature
+    # Scenarios that never approve may not allow any write.
+    for s in s1:
+        if not any(t.act == "approve" for t in s.turns):
+            assert s.expect.writes == [], s.id
+    # The file is exactly what the build script produces from the sources.
+    root = sc.ROOT
+    done = subprocess.run(
+        [sys.executable, str(root / "scripts/build_s1.py"), "--check"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_answer_facts_ignore_spacing_and_commas():
+    spec = {"all": [["116400", "11만6400"], ["2026-11-13", "11월13일"]]}
+    assert sc.answer_holds("이번 주 입금액은 116,400원이고 11월 13일에 들어와요.", spec)
+    assert sc.answer_holds("11만 6400원, 11월13일 입금 예정이에요", spec)
+    assert not sc.answer_holds("116,400원이에요", spec)  # the date group is missing
+    assert not sc.answer_holds("", spec)
+
+
+class AnswerSubject:
+    def __init__(self, path, reply):
+        self.store, self.reply = DummyStore(path), reply
+
+    def say(self, text):
+        return self.reply
+
+    def photo(self, image, text):
+        return self.reply
+
+    def proposals(self):
+        return []
+
+    def rejected(self):
+        return False
+
+
+def test_read_turn_without_the_fact_fails_the_goal(tmp_path):
+    s = make(
+        [{"say": "이번 주 정산 얼마예요?", "act": "request", "answer": {"all": [["116400"]]}}],
+        {},
+        [],
+    )
+    bad = sc.run_scenario(s, lambda *a: AnswerSubject(tmp_path / "s.json", "몰라요"))
+    assert not bad["goal"] and bad["turns"][0]["answer_ok"] is False
+    ok = sc.run_scenario(s, lambda *a: AnswerSubject(tmp_path / "t.json", "116,400원이에요"))
+    assert ok["goal"] and ok["turns"][0]["answer_ok"]

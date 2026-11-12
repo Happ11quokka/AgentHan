@@ -20,6 +20,11 @@ STORE = json.loads(SEED_PATH.read_text(encoding="utf-8"))
         ("12,000원", 12000),
         ("10% 할인", 10),
         ("가격은 5000원", 5000),
+        ("할인 금액만 3000원으로", 3000),
+        ("오늘만 일만 오천 원", 15000),
+        ("가격 2만 원", 20000),
+        ("이번만 2만원", 20000),
+        ("3천5백원", 3500),
     ],
 )
 def test_korean_numbers(text, value):
@@ -35,13 +40,8 @@ def check(feature, args, said):
 
 
 def test_values_the_owner_said_pass():
-    assert (
-        check("business_info", {"field": "phone", "value": "02-777-8888"}, "새 번호는 02-777-8888")[
-            1
-        ]
-        == []
-    )
-    hours = {"day": "sat", "closed": False, "open_time": "10:00", "close_time": "20:00"}
+    assert check("business_info", {"phone": "02-777-8888"}, "새 번호는 02-777-8888")[1] == []
+    hours = {"days": ["sat"], "closed": False, "open_time": "10:00", "close_time": "20:00"}
     assert check("business_hours", hours, "토요일은 10시부터 저녁 8시까지 할게요")[1] == []
     coupon = {
         "title": "겨울 할인 쿠폰",
@@ -70,9 +70,7 @@ def test_values_the_owner_said_pass():
 
 def test_values_the_owner_did_not_say_are_refused():
     # The store's own number or a neighbour of it is not the owner's new number.
-    assert check(
-        "business_info", {"field": "phone", "value": "02-000-0001"}, "전화번호 바꿔 주세요"
-    )[1]
+    assert check("business_info", {"phone": "02-000-0001"}, "전화번호 바꿔 주세요")[1]
     assert check("menu", {"name": "피로시키", "price": 3000}, "피로시키 추가해 주세요")[1] == [
         "가격 (원)"
     ]
@@ -82,3 +80,26 @@ def test_values_the_owner_did_not_say_are_refused():
         "reservation", {"reservation_id": "resv-1", "status": "confirmed"}, "예약 처리해 줘"
     )[1]
     assert check("onsite_payment", {"enabled": True}, "매장결제 어떻게 해요?")[1]
+
+
+def test_new_tool_inputs_need_the_owners_words():
+    # Day groups and date ranges the owner gave by their ends.
+    weekdays = {"days": ["mon", "tue", "wed", "thu", "fri"], "open_time": "10:00"}
+    assert check("business_hours", weekdays, "평일은 10시에 열어요")[1] == []
+    assert check("business_hours", {"days": ["weekend"], "closed": True}, "주말엔 쉬어요")[1] == []
+    closed = {"days": ["2026-11-20", "2026-11-21", "2026-11-22"], "closed": True}
+    assert check("business_hours", closed, "11월 20일부터 22일까지 쉬어요")[1] == []
+    assert check("business_hours", {"days": ["sat"], "closed": True}, "평일은 쉬어요")[1]
+    # A menu named by its alias; actions need the owner's words.
+    sold = {"name": "메도빅", "action": "sold_out"}
+    assert check("menu", sold, "꿀케이크 오늘 다 팔렸어요")[1] == []
+    assert check("menu", {"name": "메도빅", "action": "delete"}, "메도빅 가격 알려줘")[1]
+    # Keywords to add or remove must be said.
+    keywords = {"add": ["디저트"], "remove": ["메도빅"]}
+    assert check("search_keywords", keywords, "메도빅 빼고 디저트 넣어줘")[1] == []
+    assert check("search_keywords", {"add": ["브런치"]}, "키워드 하나 추가해줘")[1]
+
+
+def test_wrong_shapes_are_unconfirmed_not_errors():
+    hours = {"days": ["fri"], "open_time": ["09:00"], "close_time": "23:00"}
+    assert check("business_hours", hours, "금요일은 9시부터 밤 11시까지요")[1] == ["여는 시간"]

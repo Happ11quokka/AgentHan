@@ -17,7 +17,7 @@ from agenthan.agent import place_matcher as matcher
 from agenthan.core import embedding as clova
 
 CASES_PATH = Path(__file__).parent / "data" / "eval" / "route.jsonl"
-SUPPORTED = {"menu"}
+SUPPORTED: set[str] = set()  # Tool inputs live in tools/feature_tools.py
 FEATURE_IDS = {
     "business_info",
     "menu",
@@ -92,12 +92,6 @@ def test_catalog():
             assert all(f["name_ko"] and type(f["required"]) is bool for f in fields)
         else:
             assert not feature.get("input_fields")
-    assert {f["id"] for f in matcher.get_feature("menu")["input_fields"]} == {
-        "name",
-        "price",
-        "description",
-        "photo",
-    }
     assert matcher.get_feature("unknown") is None
     names = [f["name_ko"] for f in features]
     assert len(set(names)) == len(names)

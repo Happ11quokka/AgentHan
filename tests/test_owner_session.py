@@ -72,6 +72,7 @@ def test_contrast_reply_does_not_approve(tmp_path, mock_index):
         tmp_path,
         mock_index,
         answer("정산은 116,400원이에요."),
+        answer("정산은 116,400원이에요."),  # Asked once more to use the read tool.
         rules=[("정산", "settlement")],
     )
     out = bot.ask("네 그런데 정산부터 알려 줘요")
@@ -94,7 +95,7 @@ def test_store_change_after_preview_asks_again(tmp_path, mock_index):
 
 
 def test_photo_drafts_wait_while_another_request_runs(tmp_path, mock_index):
-    hours = {"day": "sun", "open_time": "10:00", "close_time": "18:00"}
+    hours = {"days": ["sun"], "open_time": "10:00", "close_time": "18:00"}
     fake = FakeChat(call("update_business_hours", hours))
     path = tmp_path / "store.json"
     bot = owner.OwnerAssistant(
@@ -161,7 +162,7 @@ def test_model_sees_only_this_features_store_slice_and_plain_earlier_turns(tmp_p
     bot, fake, path = reservation_then(
         tmp_path,
         mock_index,
-        call("update_business_info", {"field": "phone", "value": "02-777-8888"}, "call-2"),
+        call("update_business_info", {"phone": "02-777-8888"}, "call-2"),
         rules=[("번호", "business_info")],
     )
     bot.ask("가게 전화번호를 02-777-8888로 바꿔 주세요")
@@ -193,7 +194,7 @@ def test_code_keeps_confirmed_values_and_fills_what_the_model_drops(tmp_path, mo
 
 def test_fabricated_value_is_refused_before_preview(tmp_path, mock_index):
     fake = FakeChat(
-        call("update_business_info", {"field": "phone", "value": "02-000-0001"}),
+        call("update_business_info", {"phone": "02-000-0001"}),
         answer("새 전화번호를 알려 주세요."),
     )
     path = tmp_path / "store.json"
@@ -215,7 +216,7 @@ def test_question_about_the_shown_change_keeps_it(tmp_path, mock_index):
 def test_imitated_preview_is_retried_and_false_claim_replaced(tmp_path, mock_index):
     fake = FakeChat(
         answer('"02-777-8888"로 바꿀까요?\n네 / 취소'),  # Imitates the system preview.
-        call("update_business_info", {"field": "phone", "value": "02-777-8888"}),
+        call("update_business_info", {"phone": "02-777-8888"}),
     )
     path = tmp_path / "store.json"
     bot = owner.OwnerAssistant(path, chat=fake, embed=lambda _: mock_index["business_info"])
@@ -246,8 +247,10 @@ def test_two_changes_are_shown_and_approved_together(tmp_path, mock_index):
 
 def test_added_item_joins_the_shown_batch(tmp_path, mock_index):
     fake = FakeChat(
-        call("update_business_hours", {"day": "mon", "closed": True}),
-        call("update_business_hours", {"day": "fri", "open_time": "09:00", "close_time": "23:00"}),
+        call("update_business_hours", {"days": ["mon"], "closed": True}),
+        call(
+            "update_business_hours", {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}
+        ),
     )
     path = tmp_path / "store.json"
     bot = owner.OwnerAssistant(path, chat=fake, embed=lambda _: mock_index["business_hours"])
@@ -271,3 +274,101 @@ def test_rejected_interjection_gives_the_held_change_back(tmp_path, mock_index):
     assert "다시 말씀해 주세요" in out and "아직 저장 전이에요" in out
     bot.ask("네")
     assert read_file(path)["reservations"][0]["status"] == "confirmed"
+
+
+def test_formal_self_confirmation_counts_as_imitation():
+    assert owner.FAKE_ASK.search("나폴레옹 가격을 7500원으로 변경하시겠습니까?")
+    assert not owner.ASKS_VALUE.search("나폴레옹 가격을 7500원으로 변경하시겠습니까?")
+    assert owner.FAKE_ASK.search("order-1 주문을 접수하겠습니다.")
+    assert owner.FAKE_ASK.search('create_coupon(title="평일 낮 10% 혜택", discount_value=10)')
+
+
+def test_said_price_takes_one_clear_price():
+    assert owner.OwnerAssistant._said_price("가격은 12000원이에요") == 12000
+    assert owner.OwnerAssistant._said_price("만 이천 원으로 해 줘") == 12000
+    assert owner.OwnerAssistant._said_price("1번 8000원, 2번 9000원") is None
+    assert owner.OwnerAssistant._said_price("이름을 펠메니로") is None
+
+
+def test_rejected_request_is_asked_once_more(tmp_path):
+    from agenthan.agent.clova_chat import ClovaRequestRejected
+
+    replies = iter(
+        [
+            ClovaRequestRejected("rejected"),
+            base.answer("부재중 전화는 2통이에요."),
+            base.answer("부재중 전화는 2통이에요."),  # After the read-tool nudge.
+        ]
+    )
+
+    def chat(messages, *, tools):
+        reply = next(replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=chat, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("smartcall", "select")
+    assert bot.ask("부재중 전화 있어요?") == "부재중 전화는 2통이에요."
+    assert bot.trace["rejected_retry"] is True
+
+
+def test_named_menu_price_question(tmp_path):
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=base.FakeChat(), embed=base.fake_embed)
+    assert bot._names_menu_price("메도빅 가격 지금 얼마로 돼 있죠?")
+    assert bot._names_menu_price("꿀케이크 얼마예요?")  # alias
+    assert not bot._names_menu_price("메도빅 맛있다는 리뷰 있어?")
+    assert not bot._names_menu_price("은행 영업시간 알려줘")
+
+
+def test_read_answer_without_the_read_tool_is_asked_again(tmp_path):
+    fake = base.FakeChat(
+        base.answer("부재중 전화는 1통이에요."),  # Made up, no tool call.
+        base.call("list_call_history", {"missed_only": True}),
+        base.answer("부재중 전화는 2통이에요."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("smartcall", "select")
+    assert bot.ask("부재중 전화 몇 통이에요?").startswith("부재중 전화는 2통이에요.")
+    assert owner.READ_NUDGE in fake.requests[1][0][0]["content"]
+
+
+def test_paraphrased_reason_is_dropped_not_asked(tmp_path):
+    args = {"reservation_id": "resv-1", "status": "cancelled", "reason": "손님 개인 사정"}
+    fake = base.FakeChat(base.call("update_reservation_status", args))
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("reservation", "select")
+    out = bot.ask("resv-1 손님이 못 온대요 예약 취소로 바꿔주세요")
+    assert "바꿀까요" in out and "사정" not in out
+    assert bot.trace["dropped"] == ["reason"]
+    assert bot.pending_action["actions"][0]["preview"]["record"]["status"] == "cancelled"
+
+
+def test_keyword_list_sent_as_add_becomes_the_whole_list():
+    store = {"shop": {"keywords": ["러시안 베이커리", "메도빅", "베이커리 카페"]}}
+    said = "'러시아 케이크', '수제 메도빅', '홍차 맛집' 이렇게 세개로 해주세요"
+    args = owner.OwnerAssistant._keywords_as_list(
+        {"add": ["러시아 케이크", "수제 메도빅", "홍차 맛집"]}, said, store
+    )
+    assert args == {"keywords": ["러시아 케이크", "수제 메도빅", "홍차 맛집"]}
+    added = owner.OwnerAssistant._keywords_as_list({"add": ["디저트"]}, "디저트 추가해 줘", store)
+    assert added == {"add": ["디저트"]}
+    assert owner.FAKE_ASK.search("쿠폰을 만들어보겠습니다. 잠시만 기다려 주세요.")
+    assert owner.FAKE_ASK.search("11시까지로 바꾸시는 게 맞나요?")
+
+
+def test_tool_call_written_as_text_runs_as_a_call(tmp_path):
+    text = (
+        'create_coupon(title="평일 낮 10% 혜택", discount_type="percent", discount_value=10, '
+        'start_date="2026-11-10", end_date="2026-11-20")'
+    )
+    fake = base.FakeChat(base.answer(text))
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("coupon", "select")
+    out = bot.ask(
+        "'평일 낮 10% 혜택' 이름으로 10퍼센트 할인 쿠폰, 기간은 2026-11-10부터 2026-11-20까지"
+    )
+    assert "바꿀까요" in out and bot.trace["written_call"] is True
+    assert not (tmp_path / "store.json").exists()  # Only a preview; approval still needed.
+    assert owner.written_call("create_coupon(1, 2)", {"create_coupon"}) is None
+    assert owner.written_call("upsert_menu(name='차')", {"create_coupon"}) is None

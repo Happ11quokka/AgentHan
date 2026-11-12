@@ -1,16 +1,26 @@
 # M0 평가
 
+> **정본은 [`docs/eval-baseline.md`](../../../docs/eval-baseline.md)다.** 회귀 게이트를 시나리오 기준선 S1
+> 하나로 옮기는 중이며, 아래 route·flow는 그 문서의 L2 진단이다. 이 README와 다르면 정본을 따른다.
+>
+> **언어: 한국어만 평가한다.** 비서 코어는 한국어 입출력만 다루고, 사장님 언어는 앞단·뒷단에서 번역만
+> 한다. 케이스의 `lang`은 `ko`·`ko_simple`만 허용하며 남아 있는 `en`·`ru`·`mn` 케이스는 삭제 예정(#17)이다.
+> 그때까지 결과는 `ko`·`ko_simple`만 보고 해석한다.
+
 루트에서 실행한다. 의존성 추가 없이 기존 HCX 클라이언트 설정과 더미 저장소를 쓴다.
 실제 네이버 발송·저장은 없다. 키는 환경 변수로만 전달하며 녹화에 키·헤더를 저장하지 않는다.
 
-평가는 실제 앱 흐름(`OwnerAssistant`)을 그대로 따라 두 축만 본다.
+> **회귀 판정은 아래 "S1 실행과 회귀 게이트"의 S1 하나로만 한다**(정본 `docs/eval-baseline.md`).
+> 이 절의 route·flow(`agenthan.eval.run`)는 실패 원인을 찾는 L2 진단이고 게이트에 쓰지 않는다.
+
+L2 진단은 실제 앱 흐름(`OwnerAssistant`)을 그대로 따라 두 축을 본다.
 
 - **기능 매칭(`route`)**: 요청을 올바른 기능으로 보내는가. `ask()`의 분기 전체(상태 규칙 →
   임베딩 후보 5개 → HCX-DASH-002 `select_feature`, 실패 시 임계값 규칙)를
   `OwnerAssistant.route()`로 채점한다. 기본 세트는 `tests/data/eval/route.jsonl`(310건).
 - **전체 흐름(`flow`)**: 케이스마다 새 비서와 임시 더미 저장소로 `turns`를 차례로 실행해
   턴마다 분기 → 빠진 정보 질문 → 도구 호출·인자 → 저장소 변화를 채점한다.
-  기본 세트는 `tests/data/eval/flow.jsonl`(193건, 237턴).
+  기본 세트는 `tests/data/eval/flow.jsonl`(196건, 240턴).
 
 케이스 파일 구성·출처·dev/holdout은 [`tests/data/eval/README.md`](../../../tests/data/eval/README.md)에 정리했다.
 
@@ -21,12 +31,29 @@
 # 키와 네트워크 없이 전체 경로 확인 (합성 응답, 성능 기준선으로 사용 금지)
 uv run --frozen --offline python -m agenthan.eval.run --backend replay
 
-# 실제 성능 측정: CLOVASTUDIO_API_KEY가 환경에 있어야 한다
-uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 2 --label m0 --save-baseline m0 --record <레포 밖 경로>/live.json
+# L2 진단 실측: CLOVASTUDIO_API_KEY가 환경에 있어야 한다 (기준선 저장은 S1에서만)
+uv run --frozen --offline --env-file .env python -m agenthan.eval.run --backend live --repeat 3 --pause 2 --label diag --record <레포 밖 경로>/live.json
 
-# 회귀 게이트: 실제 실행 결과의 summary.json 경로를 지정한다
-uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/eval/baselines/m0.json --current eval_results/<실행>/summary.json
 ```
+
+## S1 실행과 회귀 게이트
+
+회귀 판정은 S1 시나리오(`tests/data/eval/s1.jsonl`)로만 한다. 위 route·flow는 L2 진단이다.
+실측은 샌드박스·프록시를 거치지 않고 직접 연결로 돌린다(92건 × 3회, 약 50분).
+
+```bash
+# S1 실행 (dev만 빠르게 볼 때는 --split dev, 특정 시나리오는 --only a,b)
+uv run --frozen --offline --env-file .env python -m agenthan.eval.scenario --label <이름>
+# 커밋된 깨끗한 상태의 전체 실행만 기준선으로 저장한다
+uv run --frozen --offline --env-file .env python -m agenthan.eval.scenario --label s1 --save-baseline s1
+# 중간에 멈춘 실행이나 예전 실행을 rows.jsonl에서 다시 요약
+uv run --frozen --offline python -m agenthan.eval.scenario --from-rows eval_results/<실행>
+# 회귀 게이트: 0=PASS(향상/차이 없음), 1=FAIL, 2=미완료
+uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/eval/baselines/s1.json --current eval_results/<실행>/summary.json
+```
+
+게이트는 같은 시나리오끼리 짝지어 기준선·현재 성공률 차이를 보고, 시나리오를 다시 뽑는 부트스트랩
+95% 구간으로 "향상 / 차이 없음 / 하락"을 판단한다. 판정 규칙은 정본 §6과 `gate.py` 설명에 있다.
 
 출력은 콘솔 표와 `eval_results/<YYYYMMDD-HHMMSS>-<label>/`의
 `summary.json`, `table.md`, `rows.jsonl`이다(UTC 시각, 같은 초 재실행은 접미사 추가).
@@ -64,7 +91,7 @@ holdout은 마지막에 한 번만 잰다.
 | `result` | 보존만 하고 채점하지 않는다 |
 
 통계와 리뷰 기능은 **분기까지만** 채점하고 그 케이스의 나머지 턴은 건너뛴다(`skipped_turns`,
-미실행으로 세지 않는다). 리뷰 기능은 근형님 쪽 평가를 따른다.
+미실행으로 세지 않는다). 리뷰 안의 도구 선택은 리뷰 골드셋(L2 진단)으로 본다.
 
 holdout은 과적합 측정에만 쓴다. **실패를 고치기 전에** 해당 케이스를 dev로 옮기고
 `origin`에 `holdout1` 같은 출처를 기록한다. **새 holdout을 먼저 만든 다음** 수정한다.
@@ -134,11 +161,7 @@ HCX가 HTTP 400으로 거절한 요청(예: `40009 Unsupported function`)은 장
 녹화에는 응답 본문 없이 `{"rejected": true}`만 남기며 재생 때 같은 거절을 낸다.
 임베딩 빈도 제한을 피하려고 실제 측정은 `--pause 2`로 돌린다.
 
-게이트 종료 코드는 0=PASS, 1=안전 위반 또는 같은 세트에서 정확도 하락, 2=INCOMPLETE다.
-비교 지표는 `selection_accuracy`, `args_accuracy`이고, 기준선에 있으면 `feature_accuracy`,
-`ask_accuracy`, `store_accuracy`, `completion_rate`도 비교한다. API 오류·미실행이 있으면
-안전 위반보다 우선해 2를 반환한다. 세트 해시가 다르면 `세트 다름`으로 비교하지 않고 2를 반환한다.
-기준선에 있던 지표가 사라지면 2다. 외부 리뷰 요약은 표시만 하고 게이트에 합산하지 않는다.
+route·flow 요약은 게이트에 넣지 않는다(L2 진단). 외부 리뷰 요약도 표시만 한다.
 
 ## 녹화와 재생
 
@@ -150,7 +173,8 @@ HCX가 HTTP 400으로 거절한 요청(예: `40009 Unsupported function`)은 장
 - `tests/fixtures/replay/m0.json`: 키 없이 전체 경로를 돌리기 위한 **결정적 합성 응답**.
   고정 임베딩과 기대 도구·타입별 더미 인자를 쓰므로 모델 품질 측정에 쓰면 안 된다.
   `uv run --frozen --offline python -m agenthan.eval.seed_replay`로 다시 만든다.
-- `baselines/m0.json`: 위 실제 측정 명령으로 만든 기준선(커밋 90c40a3, DASH 분기, repeat 3, pause 2).
+- `baselines/m0.json`·`m1.json`·`m2.json`: S1 이전 route·flow 기준선. 게이트에 쓰지 않는다. m0·m1은 삭제 예정,
+  m2는 L2 참고값(정본 §7). S1 기준선은 `baselines/s1.json`이다.
 - `tests/fixtures/replay/live.json`: 기준선 측정 때 녹화한 실제 HCX-005·embedding-v2 응답.
   공개 기존 케이스와 더미 시드만 사용했다. 재생은 마지막 반복의 응답이라 기준선 평균과 다를 수 있다.
 
