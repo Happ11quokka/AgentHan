@@ -488,3 +488,14 @@ def test_ledger_log_keeps_old_tasks_of_the_same_feature():
     recent = ledger.log("menu", last=5)
     assert recent[0] == f"{first.id} menu: done (저장함)" and len(recent) == 6
     assert len(ledger.log(last=5)) == 5 and len(ledger.log()) == 7
+
+
+def test_unsaid_menu_action_next_to_a_said_price_falls_back_to_save(tmp_path):
+    fake = base.FakeChat(
+        base.call("upsert_menu", {"name": "아메리카노", "action": "on_sale", "price": 5000})
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("menu", "select")
+    out = bot.ask("아메리카노 가격 5000원으로 올려 주세요")
+    assert "바꿀까요" in out and bot.trace["dropped"] == ["action"]
+    assert bot.pending_action["actions"][0]["preview"]["record"]["price"] == 5000

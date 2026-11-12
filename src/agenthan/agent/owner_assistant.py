@@ -1320,6 +1320,17 @@ class OwnerAssistant:
                 merged.pop(param_id, None)
                 unconfirmed.remove(label)
             self.trace.setdefault("dropped", []).extend(p[0] for p in extras)
+        action = next((p for p in params if p[0] == "action" and "save" in p[2]), None)
+        if (
+            action is not None
+            and action[3] in unconfirmed
+            and any(k in sources for k in ("price", "new_name", "description"))
+        ):
+            # "가격 5000원으로 올려 주세요" sent with action=on_sale: the owner said a value
+            # change, which is the default action (save). Preview and approval still follow.
+            merged.pop("action", None)
+            unconfirmed.remove(action[3])
+            self.trace.setdefault("dropped", []).append("action")
         for param_id, source in sources.items():
             self.ledger.set_slot(task, param_id, merged[param_id], source)
         label = next((p[3] for p in params if targets and p[0] == targets["param"]), None)
