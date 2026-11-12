@@ -976,6 +976,33 @@ class OwnerAssistant:
                     calls = message["tool_calls"] = [written]
                     message["content"] = ""
                     self.trace["written_call"] = True
+            if (
+                not calls
+                and tools
+                and nudged
+                and count == 0
+                and not needs_approval(exposed[0]["function"]["name"])
+                and OWNER_QUESTION.search(text)
+                and self._read_needs_nothing_new(feature_id, exposed[0], text)
+            ):
+                # Asked once more and still no read (부재중 전화 "5통" made up, or "조회할 수
+                # 없습니다"): every input is in the owner's words, so code runs the read and
+                # the model only phrases its result.
+                calls = message["tool_calls"] = [
+                    {
+                        "id": "code-read",
+                        "type": "function",
+                        "function": {
+                            "name": exposed[0]["function"]["name"],
+                            "arguments": json.dumps(
+                                self._read_arguments(feature_id, exposed[0], text),
+                                ensure_ascii=False,
+                            ),
+                        },
+                    }
+                ]
+                message["content"] = ""
+                self.trace["code_read"] = True
             if not calls and self._previewed_now():
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
@@ -1117,6 +1144,26 @@ class OwnerAssistant:
             if not any(w and re.search(w, text, re.I) for w in words):
                 return False
         return True
+
+    @staticmethod
+    def _read_arguments(feature_id: str, schema: dict, text: str) -> dict:
+        """The read inputs the owner's words give: each required choice (이번 주 → this_week)
+        and a yes/no the words say (부재중 → missed_only). Nothing else is filled in."""
+        required = schema["function"]["parameters"].get("required") or []
+        args: dict = {}
+        for name, kind, choices, _ in tool_params(feature_id):
+            if name in required and choices:
+                args[name] = next(
+                    c
+                    for c in choices
+                    if value_source.ENUM_WORDS.get(c)
+                    and re.search(value_source.ENUM_WORDS[c], text, re.I)
+                )
+            elif kind == "boolean" and name in value_source.BOOL_WORDS:
+                yes, no = value_source.BOOL_WORDS[name]
+                if re.search(yes, text, re.I) and not re.search(no, text, re.I):
+                    args[name] = True
+        return args
 
     def _only_asks(self, text: str, task) -> bool:
         """The owner only asked about this feature ("오늘 들어온 주문 있어요?") in a task opened by

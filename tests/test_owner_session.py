@@ -298,6 +298,7 @@ def test_rejected_request_is_asked_once_more(tmp_path):
             ClovaRequestRejected("rejected"),
             base.answer("부재중 전화는 2통이에요."),
             base.answer("부재중 전화는 2통이에요."),  # After the read-tool nudge.
+            base.answer("부재중 전화는 2통이에요."),  # Phrasing the read code ran.
         ]
     )
 
@@ -535,3 +536,22 @@ def test_a_read_question_back_for_a_value_already_said_is_nudged(tmp_path):
     assert "116,400원" in bot.ask("이번 주 정산 얼마예요?")
     schema = owner.feature_tool_schema("settlement")
     assert not owner.OwnerAssistant._read_needs_nothing_new("settlement", schema, "정산 얼마예요?")
+
+
+def test_code_runs_the_read_when_the_model_still_will_not(tmp_path):
+    fake = base.FakeChat(
+        base.answer("부재중 전화가 총 5통 있습니다."),
+        base.answer("죄송하지만 이 기능에서는 조회할 수 없습니다."),
+        base.answer("부재중 전화는 2통이에요."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("smartcall", "select")
+    assert bot.ask("부재중 전화 몇 통이에요?").startswith("부재중 전화는 2통이에요.")
+    assert bot.trace["code_read"] is True
+    assert bot.trace["calls"][0] == {
+        "name": "list_call_history",
+        "arguments": '{"missed_only": true}',
+    }
+    schema = owner.feature_tool_schema("settlement")
+    args = owner.OwnerAssistant._read_arguments("settlement", schema, "이번 주 정산 얼마예요?")
+    assert args == {"period": "this_week"}

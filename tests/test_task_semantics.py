@@ -301,6 +301,7 @@ def test_only_the_chosen_feature_guide_is_sent(tmp_path, mock_index):
         answer("몇 시부터 몇 시까지 여나요?"),
         answer("부재중 전화는 없어요."),
         answer("부재중 전화는 없어요."),  # After the read-tool nudge.
+        answer("부재중 전화는 없어요."),  # Phrasing the read code ran.
     )
     bot = bot_with(
         tmp_path, mock_index, fake, Select(picked("business_hours"), picked("smartcall"))
