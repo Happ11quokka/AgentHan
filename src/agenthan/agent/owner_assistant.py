@@ -923,7 +923,7 @@ class OwnerAssistant:
             tools = [] if saved or count >= self.max_tool_calls else exposed
             try:
                 message = self._chat_once_more_if_rejected(
-                    [system, *self._context(turn_start)], tools
+                    [system, *self._context(turn_start, feature_id)], tools
                 )
             except ClovaRequestRejected:
                 # The same history would be rejected again, so drop this whole turn.
@@ -1207,7 +1207,7 @@ class OwnerAssistant:
             prop["enum"] = list(targets["ids"])
         return schema
 
-    def _context(self, turn_start: int) -> list[dict]:
+    def _context(self, turn_start: int, feature: str | None = None) -> list[dict]:
         """This turn in full plus the last CONTEXT_TURNS earlier messages as plain text.
 
         Earlier tool calls and results (often another feature's) are left out; their
@@ -1218,22 +1218,24 @@ class OwnerAssistant:
             if m["role"] in ("user", "assistant")
             and not m.get("tool_calls")
             and m["content"]
-            and not self._finished_task_message(i)
+            and not self._finished_task_message(i, feature)
         ][-CONTEXT_MESSAGES:]
         while earlier and earlier[0]["role"] != "user":
             earlier.pop(0)
         return [*earlier, *self.history[turn_start:]]
 
-    def _finished_task_message(self, index: int) -> bool:
-        """The message belongs to a task that is closed (saved, cancelled or failed).
+    def _finished_task_message(self, index: int, feature: str | None) -> bool:
+        """The message belongs to a closed task (saved, cancelled or failed) of this feature.
 
         Its outcome is in the system prompt (앞서 끝난 작업) and the store slice. Left in the
-        context, the finished request → preview → "네" exchange makes the model ask for its
-        own confirmation on the next change ("나폴레옹도 7500원으로 바꾸시겠습니까?") instead of
-        calling the tool: 6/6 with it, 0/3 without it (two-menu-prices, 2026-11-12)."""
+        context, the finished request → preview → "네" exchange of the same feature makes the
+        model ask for its own confirmation on the next change ("나폴레옹도 7500원으로
+        바꾸시겠습니까?") instead of calling the tool: 6/6 with it, 0/3 without it
+        (two-menu-prices, 2026-11-12). Other features' finished turns (a settlement question in
+        between) stay: dropping them too made "11시부터 5시까지" come back as 15:00 more often."""
         task_id = self._history_task[index] if index < len(self._history_task) else None
         task = self.ledger.get(task_id) if task_id else None
-        return task is not None and not task.is_open
+        return task is not None and not task.is_open and task.feature == feature
 
     def _propose(self, task, feature_id: str, raw: object) -> tuple[object, dict | None]:
         """The model proposes values; code keeps them per task and decides what may run.
