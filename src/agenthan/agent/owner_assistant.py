@@ -1111,7 +1111,13 @@ class OwnerAssistant:
         add = args.get("add")
         remove = args.get("remove") or []
         current = store.get("shop", {}).get("keywords", [])
-        if not isinstance(add, list) or args.get("keywords") or not isinstance(remove, list):
+        whole = args.get("keywords")
+        if isinstance(whole, list) and whole:
+            # The whole new list already says what stays: a remove (or an add it contains)
+            # next to it changes nothing and must not block the change as an unsaid value.
+            extra = isinstance(add, list) and any(w not in whole for w in add)
+            return {k: v for k, v in args.items() if k != "remove" and (k != "add" or extra)}
+        if not isinstance(add, list) or not isinstance(remove, list):
             return args
         if not re.search(r"(?:으로|로)\s*(?:해|바꿔|바꾸|넣어|정해|설정|등록|요|$)", said):
             return args
