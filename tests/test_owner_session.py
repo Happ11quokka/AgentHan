@@ -372,3 +372,104 @@ def test_tool_call_written_as_text_runs_as_a_call(tmp_path):
     assert not (tmp_path / "store.json").exists()  # Only a preview; approval still needed.
     assert owner.written_call("create_coupon(1, 2)", {"create_coupon"}) is None
     assert owner.written_call("upsert_menu(name='차')", {"create_coupon"}) is None
+
+
+def test_tool_call_written_inside_a_sentence_runs_as_a_call(tmp_path):
+    text = '알겠습니다. 5,500원으로 하겠습니다.\n\n도구 호출: upsert_menu(name="블린", price=9500)'
+    fake = base.FakeChat(base.answer(text))
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("menu", "select")
+    out = bot.ask("블린 9500원으로 바꿔 주세요")
+    assert "바꿀까요" in out and bot.trace["written_call"] is True
+    assert not (tmp_path / "store.json").exists()  # Only a preview; approval still needed.
+    two = 'upsert_menu(name="a", price=1) 그리고 upsert_menu(name="b", price=2)'
+    assert owner.written_call(two, {"upsert_menu"}) is None  # Not ours to pick one.
+
+
+def test_more_text_only_confirmations_are_caught():
+    for text in (
+        "알겠습니다. '러시안 홍차'를 5,500원에 추가하도록 하겠습니다.",
+        "추가하겠습니다. 도구를 불러오는 중...",
+        "바로 바꿔 드리겠습니다",
+    ):
+        assert owner.FAKE_ASK.search(text), text
+    assert owner.FAKE_DONE.search("성공했습니다! 다음은 방금 추가한 메뉴의 기록입니다.")
+    assert not owner.FAKE_ASK.search("러시안 홍차 가격은 얼마인가요?")
+
+
+def test_finished_task_leaves_the_model_context(tmp_path):
+    fake = base.FakeChat(
+        base.call("upsert_menu", {"name": "아메리카노", "price": 4800}),
+        base.answer("확인했어요."),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("menu", "select")
+    assert "바꿀까요" in bot.ask("아메리카노 4800원으로 바꿔 주세요")
+    assert bot.ask("네").startswith("저장했어요")
+    bot.ask("나폴레옹도 7500원으로 바꿔 주세요")
+    messages = fake.requests[-1][0]
+    said = [m["content"] for m in messages if m["role"] == "user"]
+    assert said == ["나폴레옹도 7500원으로 바꿔 주세요"]  # The finished menu change is gone,
+    assert "저장함" in messages[0]["content"] and "4800" in messages[0]["content"]  # but noted.
+
+
+def test_a_question_in_a_new_task_does_not_take_over_the_held_one(tmp_path):
+    fake = base.FakeChat(
+        base.answer("쿠폰 이름, 할인, 기간을 알려 주세요."),
+        base.answer("새 주문이 2건 있어요. 어떤 주문을 접수하실 건가요?"),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    features = iter(["coupon", "order"])
+    bot.route = lambda t: owner.Route(next(features), "select")
+    bot.ask("쿠폰 하나 만들고 싶어요")
+    out = bot.ask("아 그런데 오늘 들어온 주문 있어요?")
+    assert "2건" in out
+    assert bot.ledger.active().feature == "coupon"  # The coupon period goes to the coupon.
+
+
+def test_owner_question_needs_no_change_words():
+    def asks(text):
+        return bool(owner.OWNER_QUESTION.search(text)) and not owner.CHANGE_WORDS.search(text)
+
+    assert asks("오늘 들어온 주문 있어요?") and asks("톡톡 문의 온 거 있나요?")
+    assert not asks("예약 취소할 수 있어요?") and not asks("주문 접수해 주세요")
+
+
+def test_packed_values_ask_for_one_call_per_item(tmp_path):
+    packed = {"days": ["mon", "fri"], "closed": [True, False], "open_time": ["", "09:00"]}
+    fake = base.FakeChat(
+        base.call("update_business_hours", packed),
+        base.call(
+            "update_business_hours", {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}
+        ),
+        base.answer(""),
+    )
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda t: owner.Route("business_hours", "select")
+    out = bot.ask("금요일은 9시부터 밤 11시까지요")
+    assert bot.trace["results"][0]["error"] == "one_value_per_call"
+    assert "바꿀까요" in out and len(bot.pending_action["actions"]) == 1
+
+
+def test_keywords_with_unsaid_removals_are_a_replacement():
+    store = {"shop": {"keywords": ["메도빅", "러시아 디저트"]}}
+    said = "'러시아 케이크', '수제 메도빅', '홍차 맛집' 이렇게 세개로 해주세요"
+    new = ["러시아 케이크", "수제 메도빅", "홍차 맛집"]
+    args = {"add": new, "remove": ["메도빅", "러시아 디저트"]}
+    assert owner.OwnerAssistant._keywords_as_list(args, said, store) == {"keywords": new}
+    said_remove = {"add": ["블린"], "remove": ["메도빅"]}
+    kept = owner.OwnerAssistant._keywords_as_list(
+        said_remove, "메도빅 빼고 블린으로 바꿔 줘", store
+    )
+    assert kept == said_remove
+
+
+def test_ledger_log_keeps_old_tasks_of_the_same_feature():
+    ledger = TaskLedger()
+    first = ledger.start("menu")
+    ledger.close(first, "done", "저장함")
+    for feature in ("order", "coupon", "talktalk", "reservation", "settlement", "smartcall"):
+        ledger.close(ledger.start(feature), "done")
+    recent = ledger.log("menu", last=5)
+    assert recent[0] == f"{first.id} menu: done (저장함)" and len(recent) == 6
+    assert len(ledger.log(last=5)) == 5 and len(ledger.log()) == 7

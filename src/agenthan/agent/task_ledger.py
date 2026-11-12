@@ -171,10 +171,16 @@ class TaskLedger:
         """True when a held task has waited long enough to stop resume notices."""
         return task.paused_at is not None and self.turn - task.paused_at > QUIET_AFTER
 
-    def log(self) -> list[str]:
-        """One line per finished task, oldest first."""
+    def log(self, feature: str | None = None, last: int | None = None) -> list[str]:
+        """One line per finished task, oldest first.
+
+        With last: the last N finished tasks, plus every finished task of feature however old
+        (아까 아메리카노 얼마로 바꿨죠? after five other tasks)."""
+        done = [t for t in self.tasks if not t.is_open]
+        if last is not None:
+            recent = {t.id for t in done[-last:]} if last else set()
+            done = [t for t in done if t.id in recent or (feature and t.feature == feature)]
         return [
             f"{t.id} {t.feature}: {t.status}" + (f" ({t.summary})" if t.summary else "")
-            for t in self.tasks
-            if not t.is_open
+            for t in done
         ]

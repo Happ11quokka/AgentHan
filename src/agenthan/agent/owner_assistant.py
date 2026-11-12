@@ -1104,15 +1104,21 @@ class OwnerAssistant:
         """ "이 세 개로 해 주세요" sent as add: when adding would pass 5 and the owner gave the
         list itself (…로 해·바꿔·넣어·정해), it is the new whole list."""
         add = args.get("add")
+        remove = args.get("remove") or []
         current = store.get("shop", {}).get("keywords", [])
+        flat = re.sub(r"\s+", "", said)
+        for word in add if isinstance(add, list) else []:  # "수제 메도빅" does not say "메도빅".
+            flat = flat.replace(re.sub(r"\s+", "", str(word)), "")
+        # Words to remove the owner never said: the model is making room for the new list
+        # itself ("이렇게 세 개로 해 주세요" → remove the current ones), which is a replacement.
+        unsaid_remove = bool(remove) and not any(re.sub(r"\s+", "", str(w)) in flat for w in remove)
         if (
             isinstance(add, list)
-            and not args.get("remove")
             and not args.get("keywords")
-            and len(set(current) | set(add)) > 5
+            and (unsaid_remove or (not remove and len(set(current) | set(add)) > 5))
             and re.search(r"(?:으로|로)\s*(?:해|바꿔|바꾸|넣어|정해|설정|등록)", said)
         ):
-            args = {k: v for k, v in args.items() if k != "add"}
+            args = {k: v for k, v in args.items() if k not in ("add", "remove")}
             args["keywords"] = add
         return args
 
@@ -1158,7 +1164,7 @@ class OwnerAssistant:
         guide = guide_text(feature_id)
         if guide:
             lines.append(guide)
-        done = self.ledger.log()[-5:]
+        done = self.ledger.log(feature_id, last=5)
         if done:
             lines.append("앞서 끝난 작업: " + "; ".join(done))
         return "\n".join(lines)
