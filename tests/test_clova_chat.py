@@ -57,8 +57,10 @@ def test_request_and_tool_result_roundtrip():
     messages += [message, {"role": "tool", "tool_call_id": "call-1", "content": '{"ok":true}'}]
     assert clova.chat(messages, tools=[], client=client)["content"] == "등록했어요."
     first, second = client.requests
-    assert first["model"] == "HCX-005" and first["tools"] == tools
-    assert first["max_tokens"] >= 1024 and "response_format" not in first
+    # #56: the execution model is HCX-007 with reasoning off (S1 276/276).
+    assert first["model"] == "HCX-007" and first["tools"] == tools
+    assert first["max_completion_tokens"] >= 1024 and "response_format" not in first
+    assert first["extra_body"] == {"reasoning_effort": "none"}
     # CLOVA rejects tool_choice objects; never send it, and omit empty tools.
     assert "tool_choice" not in first and "tool_choice" not in second
     assert "tools" not in second
@@ -133,3 +135,14 @@ def test_client_uses_openai_compatible_endpoint(monkeypatch):
 def test_invalid_message(message):
     with pytest.raises(clova.ClovaChatError):
         clova.parse_message(message)
+
+
+def test_review_flow_keeps_hcx005():
+    """#56 changed only the owner assistant's tool turn; the review flow was measured on 005."""
+    import inspect
+
+    from agenthan.agent import review_delegate
+
+    assert review_delegate.REVIEW_MODEL == "HCX-005"
+    assert inspect.signature(review_delegate.new_session).parameters["model"].default == "HCX-005"
+    assert review_delegate.ReviewSession.__dataclass_fields__["model"].default == "HCX-005"

@@ -9,7 +9,8 @@ import os
 
 from agenthan.core import llm as hcx
 
-CHAT_MODEL = "HCX-005"
+# Tool and argument turn. HCX-007 with reasoning off (llm.request_options): S1 276/276 (#56).
+CHAT_MODEL = "HCX-007"
 REQUEST_TIMEOUT = 45
 TEMPERATURE = 0.2
 

@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from agenthan.agent.clova_chat import CHAT_MODEL, ClovaChatError
+from agenthan.agent.clova_chat import ClovaChatError
 from agenthan.agent.review.agent import LANG_EN, ReviewToolbox, run_turn, system_prompt
 from agenthan.agent.review.clova import ClovaClient, ClovaError
 from agenthan.agent.review.report import ReportSettingsStore
@@ -26,6 +26,8 @@ from agenthan.tools.review_adapters import (
     DummyStoreReviewRepo,
 )
 
+# The review flow (drafts, translation) stayed on HCX-005 when #56 moved the tool turn to 007.
+REVIEW_MODEL = "HCX-005"
 REVIEW_FEATURES = frozenset({"review"})
 
 _VI = re.compile(r"[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]", re.I)
@@ -53,7 +55,7 @@ class ReviewSession:
     today: date
     owner_lang: str
     client: object = None
-    model: str = CHAT_MODEL
+    model: str = REVIEW_MODEL
     messages: list[dict] = field(default_factory=list)
     log: object = None
     translator: object = None  # owner language <-> Korean (made on the first non-ko turn)
@@ -78,7 +80,7 @@ def new_session(
     store: DummyStore,
     *,
     client=None,
-    model: str = CHAT_MODEL,
+    model: str = REVIEW_MODEL,
     owner_lang: str = "ko",
     today: date | None = None,
     writer=None,

@@ -171,3 +171,32 @@ HEAD(bba5e8b)에서 그 단계 커밋의 코드만 `git revert`한 작업 트리
 게이트는 두 번 다 "차이 없음"이고 안전 위반·값 지어내기 0, 지연 p50은 4.45초 → 3.56초로 줄었다. 그러나 목표 달성
 99.3%(274/276)가 d5b9ffd 99.6%(275/276)보다 1회 낮아 #51 기준("낮지 않음")을 넘지 못했다. 남은 두 실패 시나리오는
 d5b9ffd에서도 각각 6회 중 1회 떨어지던 것이다. 다음은 #56(실행 모델 HCX-007). 코드는 #53·#54가 들어간 4e6c4d6 그대로 둔다.
+
+## #56: 실행 모델 HCX-007 (#51 기각 뒤 조건부)
+
+코드: 8e9f8dc가 #52·#53·#54를 모두 되돌려 코드는 d5b9ffd다. 그 위에서 도구·인자 턴(`OwnerAssistant.chat`, 통계
+문장화 포함) 모델만 HCX-007로 바꿨다. 추론은 끈다(`reasoning_effort=none`, `llm.request_options`). 기능 고르기
+DASH-002, 리뷰 흐름 HCX-005는 그대로. 그래서 이 측정은 "#51 구조 + 007"이 아니라 "d5b9ffd + 007"이다.
+
+측정: 2026-11-13, 760ac38(작업 트리 깨끗), `--model HCX-007`, S1 전체 `--repeat 3`
+([`s1-56-hcx007`](runs/s1-56-hcx007.summary.json), 게이트 [`s1-56-hcx007.gate.md`](runs/s1-56-hcx007.gate.md)).
+
+```bash
+uv run --frozen python -m agenthan.eval.scenario --label s1-56-hcx007 --model HCX-007 --repeat 3
+uv run --frozen python -m agenthan.eval.gate --baseline docs/runs/s1-d5b9ffd-r2.summary.json \
+  --current eval_results/<run>/summary.json
+```
+
+| 측정 | 목표 달성 | 전 회 성공 | 안전 위반 | 값 지어내기 | 지연 p50/p95(초) | 토큰/턴 | 게이트 (기준 d5b9ffd-r2) |
+|---|---|---|---|---|---|---|---|
+| d5b9ffd 2차 (HCX-005) | 275/276 (99.6%) | 98.9% | 0 | 0 | 4.45/8.58 | 1384 | 기준선 |
+| d5b9ffd + HCX-007 | **276/276 (100%)** | 100% | 0 | 0 | **3.09/6.87** | 1365 | PASS 차이 없음, +0.4%p [+0.0, +1.1] |
+
+API 오류 0, 조회 답 100%, 재개 100%. 게이트 경고는 "모델 다름: HCX-005 → HCX-007"뿐이다(의도한 차이).
+d5b9ffd에서 흔들리던 `p3-upsert_menu-revise-20c9b0`·`two-hours-while-pending`이 3/3이다.
+
+### 판정: 채택
+
+#51 기준을 모두 넘는다: 게이트 "차이 없음" 이상, 목표 달성 100% ≥ 99.6%, 안전 위반·값 지어내기 0, 지연 p50
+4.45초 → 3.09초. `CHAT_MODEL`을 HCX-007로 바꾸고 리뷰 흐름은 `review_delegate.REVIEW_MODEL = "HCX-005"`로 고정해
+측정한 구성과 맞췄다. 게이트 구간 하한이 0이라 "향상"은 아니다. 시나리오당 3회라 남은 차이는 잡음 범위다.
