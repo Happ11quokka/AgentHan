@@ -1,14 +1,12 @@
-"""CLOVA Studio 연결·모델 점검. CLOVA Studio에 접속할 수 있는 환경에서 실행한다.
+"""CLOVA Studio 네이티브 REST v3 점검. CLOVA Studio에 접속할 수 있는 환경에서 실행한다.
 
-    export CLOVASTUDIO_API_KEY=nv-...      # 키는 터미널에만. 파일·채팅에 붙여넣지 말 것
-    python scripts/hcx_check.py
+    uv run --env-file .env python scripts/hcx_check.py   # 키는 .env에만. 파일·채팅에 붙여넣지 말 것
 
 확인하는 것
-1. 사용 가능한 모델 목록
-2. 모델별 기본 응답과 지연 시간
-3. JSON 스키마 출력이 지켜지는지 (문서상 Structured Outputs는 HCX-007 전용 → HCX-005에서도 되는지
-확인)
-4. analyze_reviews 도구 호출(function calling)이 기대대로 되는지
+1. 모델별 기본 응답과 지연 시간
+2. JSON 스키마(responseFormat): 문서상 HCX-007 전용 → 005·DASH에서도 되는지
+3. 도구 호출(function calling), 도구 지정 toolChoice
+4. 메시지 제약 (system 2개)
 결과: models/hcx_check.json (키는 저장하지 않음)
 """
 
@@ -16,100 +14,62 @@ import json
 import time
 from pathlib import Path
 
+from agenthan.agent.review.clova import ClovaClient, ClovaError, model_options
 from agenthan.agent.review.specs import ANALYZE_REVIEWS, GET_SALES_STATS
-from agenthan.core.llm import make_client
 
 ROOT = Path(__file__).resolve().parents[1]
-
-client = make_client(max_retries=2)  # 실측용: SDK 기본 재시도 횟수 유지
-out = {"checked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
-
-
-def no_think(model):  # HCX-007은 추론 모델: JSON 스키마·도구 호출과 추론을 동시에 쓸 수 없어 끈다
-    return {"reasoning_effort": "none"} if model.startswith("HCX-007") else {}
+MODELS = ["HCX-005", "HCX-007", "HCX-DASH-002"]
+client = ClovaClient()
+out = {"checked_at": time.strftime("%Y-%m-%d %H:%M:%S"), "api": "native v3", "models": MODELS}
 
 
-def call(model, **kw):
-    if (
-        model.startswith("HCX-007") and "max_tokens" in kw
-    ):  # 추론 모델은 max_completion_tokens만 받는다
-        kw["max_completion_tokens"] = max(kw.pop("max_tokens"), 1024)
-    if not model.startswith(
-        "HCX-007"
-    ):  # 005·DASH는 response_format을 거절(400) → 프롬프트만으로 JSON 요청
-        kw.pop("response_format", None)
+def call(model, messages, **kw):
     t = time.time()
     try:
-        r = client.chat.completions.create(model=model, extra_body=no_think(model), **kw)
-        return r, round(time.time() - t, 2), None
-    except Exception as e:
-        return None, round(time.time() - t, 2), f"{type(e).__name__}: {str(e)[:300]}"
+        return client.chat(model, messages, **kw), round(time.time() - t, 2), None
+    except ClovaError as e:
+        return None, round(time.time() - t, 2), str(e)
 
 
-# 1. 모델 목록
-try:
-    out["models"] = sorted(m.id for m in client.models.list().data)
-except Exception as e:
-    out["models_error"] = str(e)[:300]
-    out["models"] = []
-print("models:", out["models"] or out.get("models_error"))
-cands = [
-    m for m in ["HCX-005", "HCX-007", "HCX-DASH-002"] if not out["models"] or m in out["models"]
-]
-
-# 2~3. 기본 응답 + JSON 스키마
+# 1~2. 기본 응답 + JSON 스키마 (구절은 지어낸 예시)
 schema = {
-    "name": "s",
-    "schema": {
-        "type": "object",
-        "properties": {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
             "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "clause": {"type": "integer"},
-                        "sentiment": {
-                            "type": "string",
-                            "enum": ["positive", "negative", "neutral"],
-                        },
-                    },
-                    "required": ["clause", "sentiment"],
+                "type": "object",
+                "properties": {
+                    "clause": {"type": "integer"},
+                    "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral"]},
                 },
-            }
-        },
-        "required": ["items"],
-    },
-}
-clauses = "[0] 떡피는 최곤데\n[1] 딸기모찌 개 노맛...ㅜㅜ\n[2] 식탁 위에서 바퀴벌레 기어다녀요"
-expect = {0: "positive", 1: "negative", 2: "negative"}
-out["chat"], out["json_schema"] = {}, {}
-for m in cands:
-    r, sec, err = call(
-        m, messages=[{"role": "user", "content": "한 단어로만 답하세요: 안녕"}], max_tokens=20
-    )
-    out["chat"][m] = {
-        "ok": err is None,
-        "sec": sec,
-        "text": r.choices[0].message.content if r else None,
-        "error": err,
-    }
-    r, sec, err = call(
-        m,
-        max_tokens=300,
-        temperature=0,
-        response_format={"type": "json_schema", "json_schema": schema},
-        messages=[
-            {
-                "role": "system",
-                "content": "각 절의 감정을 positive/negative/neutral 로 판단해 다음 JSON으로만 "
-                "답하세요: "
-                '{"items": [{"clause": 번호, "sentiment": "positive|negative|neutral"}]}',
+                "required": ["clause", "sentiment"],
             },
-            {"role": "user", "content": clauses},
-        ],
+        }
+    },
+    "required": ["items"],
+}
+clauses = (
+    "[0] 떡이 쫀득해서 좋았는데\n[1] 딸기모찌는 완전 노맛\n[2] 테이블 밑에 바퀴벌레가 있었어요"
+)
+expect = {0: "positive", 1: "negative", 2: "negative"}
+system = (
+    "각 절의 감정을 positive/negative/neutral 로 판단해 다음 JSON으로만 답하세요: "
+    '{"items": [{"clause": 번호, "sentiment": "positive|negative|neutral"}]}'
+)
+out["chat"], out["json_schema"] = {}, {}
+for m in MODELS:
+    r, sec, err = call(
+        m, [{"role": "user", "content": "한 단어로만 답하세요: 안녕"}], **model_options(m, 200)
     )
-    raw = r.choices[0].message.content if r else None
+    out["chat"][m] = {"ok": err is None, "sec": sec, "text": r and r["content"], "error": err}
+    opts = model_options(m, 1024)
+    opts["responseFormat"] = {"type": "json", "schema": schema}  # 모든 모델에 붙여 본다
+    if m.startswith("HCX-007"):
+        opts.pop("maxTokens", None)
+    msgs = [{"role": "system", "content": system}, {"role": "user", "content": clauses}]
+    r, sec, err = call(m, msgs, temperature=0, **opts)
+    raw = r and r["content"]
     rec = {"sec": sec, "raw": raw, "error": err}
     try:
         items = json.loads(raw[raw.find("{") : raw.rfind("}") + 1])["items"]
@@ -118,19 +78,9 @@ for m in cands:
     except Exception:
         rec["valid_json"] = False
     out["json_schema"][m] = rec
-    print(
-        m,
-        "chat",
-        out["chat"][m]["ok"],
-        "| json",
-        rec.get("valid_json"),
-        rec.get("correct"),
-        "/3",
-        f"{sec}s",
-        err or "",
-    )
+    print(m, "chat", out["chat"][m]["ok"], "| responseFormat", rec.get("valid_json"), err or "")
 
-# 4. 도구 호출
+# 3. 도구 호출
 cases = [
     ("최근 리뷰 어때?", "analyze_reviews", {}),
     (
@@ -148,29 +98,22 @@ cases = [
     ("이번 주 매출 얼마야?", "get_sales_stats", None),
     ("오늘 날씨 어때?", None, None),
 ]
+tools = [ANALYZE_REVIEWS, GET_SALES_STATS]
+sys_msg = {
+    "role": "system",
+    "content": "당신은 가게 사장님을 돕는 비서입니다. 필요하면 도구를 호출하세요.",
+}
 out["function_calling"] = {}
-for m in cands:
+for m in ["HCX-005", "HCX-DASH-002"]:
     rows = []
     for text, want_tool, want_args in cases:
         r, sec, err = call(
-            m,
-            max_tokens=1024,
-            tools=[ANALYZE_REVIEWS, GET_SALES_STATS],
-            messages=[
-                {
-                    "role": "system",
-                    "content": "당신은 가게 사장님을 돕는 비서입니다. 필요하면 도구를 호출하세요.",
-                },
-                {"role": "user", "content": text},
-            ],
+            m, [sys_msg, {"role": "user", "content": text}], tools=tools, **model_options(m, 1024)
         )
-        tc = (r.choices[0].message.tool_calls or []) if r else []
-        got_tool = tc[0].function.name if tc else None
-        try:
-            got_args = json.loads(tc[0].function.arguments) if tc else None
-        except Exception:
-            got_args = tc[0].function.arguments if tc else None
-        ok_tool = err is None and got_tool == want_tool  # 호출 실패는 통과로 치지 않는다
+        tc = (r or {}).get("toolCalls") or []
+        got_tool = tc[0]["function"]["name"] if tc else None
+        got_args = tc[0]["function"]["arguments"] if tc else None
+        ok_tool = err is None and got_tool == want_tool
         ok_args = want_args is None or (
             isinstance(got_args, dict) and all(got_args.get(k) == v for k, v in want_args.items())
         )
@@ -192,6 +135,30 @@ for m in cands:
             f"{'OK' if ok_tool and ok_args else 'CHECK'}"
         )
     out["function_calling"][m] = rows
+
+# 3-2. 도구 지정 + 4. system 2개
+force = {"type": "function", "function": {"name": "analyze_reviews"}}
+out["tool_choice_forced"] = {}
+for q in ["딸기모찌 리뷰 어때?", "안녕하세요"]:  # 관련 질문 / 도구와 무관한 인사
+    r, sec, err = call(
+        "HCX-005",
+        [{"role": "user", "content": q}],
+        tools=tools,
+        tool_choice=force,
+        **model_options("HCX-005", 1024),
+    )
+    out["tool_choice_forced"][q] = {"ok": bool(r and r.get("toolCalls")), "error": err}
+r, sec, err = call(
+    "HCX-005",
+    [
+        {"role": "system", "content": "a"},
+        {"role": "system", "content": "b"},
+        {"role": "user", "content": "hi"},
+    ],
+    maxTokens=30,
+)
+out["two_system_messages"] = {"ok": err is None, "error": err}
+print("toolChoice 지정:", out["tool_choice_forced"], "| system 2개:", out["two_system_messages"])
 
 (ROOT / "models").mkdir(exist_ok=True)
 (ROOT / "models" / "hcx_check.json").write_text(

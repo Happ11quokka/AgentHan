@@ -1,53 +1,50 @@
 {
-  "checked_at": "2026-11-07 16:44:11",
+  "checked_at": "2026-11-08 09:21:46",
+  "api": "native v3",
   "models": [
-    "HCX-003",
     "HCX-005",
     "HCX-007",
-    "HCX-DASH-001",
     "HCX-DASH-002"
   ],
   "chat": {
     "HCX-005": {
       "ok": true,
-      "sec": 0.34,
+      "sec": 0.27,
       "text": "안녕",
       "error": null
     },
     "HCX-007": {
       "ok": true,
-      "sec": 0.31,
+      "sec": 1.1,
       "text": "안녕",
       "error": null
     },
     "HCX-DASH-002": {
       "ok": true,
-      "sec": 0.27,
-      "text": "안녕",
+      "sec": 0.35,
+      "text": "안녕!",
       "error": null
     }
   },
   "json_schema": {
     "HCX-005": {
-      "sec": 1.27,
-      "raw": "{\"items\": [{\"clause\": 0, \"sentiment\": \"positive\"}, {\"clause\": 1, \"sentiment\": \"negative\"}, {\"clause\": 2, \"sentiment\": \"negative\"}]}",
-      "error": null,
-      "valid_json": true,
-      "correct": 3
+      "sec": 1.01,
+      "raw": null,
+      "error": "CLOVA HTTP 400 (cfd4b0a5-7bbf-492c-9cb5-250e5244eae5)",
+      "valid_json": false
     },
     "HCX-007": {
-      "sec": 1.13,
+      "sec": 1.71,
       "raw": "{\"items\":[{\"clause\":0,\"sentiment\":\"positive\"},{\"clause\":1,\"sentiment\":\"negative\"},{\"clause\":2,\"sentiment\":\"negative\"}]}",
       "error": null,
       "valid_json": true,
       "correct": 3
     },
     "HCX-DASH-002": {
-      "sec": 0.79,
-      "raw": "{\"items\": [{\"clause\": 0, \"sentiment\": \"positive\"}, {\"clause\": 1, \"sentiment\": \"negative\"}, {\"clause\": 2, \"sentiment\": \"negative\"}]}",
-      "error": null,
-      "valid_json": true,
-      "correct": 3
+      "sec": 0.87,
+      "raw": null,
+      "error": "CLOVA HTTP 400 (bd6aa09b-81ab-46b5-9be3-67f0ce1bcce9)",
+      "valid_json": false
     }
   },
   "function_calling": {
@@ -58,11 +55,12 @@
         "got_tool": "analyze_reviews",
         "want_args": {},
         "got_args": {
-          "period": "7d"
+          "period": "7d",
+          "focus": "all"
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 2.25,
+        "sec": 3.56,
         "error": null
       },
       {
@@ -76,12 +74,12 @@
         },
         "got_args": {
           "period": "30d",
-          "focus": "complaint",
-          "topic": "메도빅"
+          "topic": "메도빅",
+          "focus": "complaint"
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 3.13,
+        "sec": 2.76,
         "error": null
       },
       {
@@ -92,11 +90,12 @@
           "topic": "웨이팅"
         },
         "got_args": {
-          "topic": "웨이팅"
+          "topic": "웨이팅",
+          "period": "30d"
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 2.41,
+        "sec": 2.97,
         "error": null
       },
       {
@@ -113,7 +112,7 @@
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 2.31,
+        "sec": 2.55,
         "error": null
       },
       {
@@ -130,7 +129,7 @@
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 2.89,
+        "sec": 2.84,
         "error": null
       },
       {
@@ -143,7 +142,7 @@
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.69,
+        "sec": 2.16,
         "error": null
       },
       {
@@ -154,115 +153,7 @@
         "got_args": null,
         "tool_ok": true,
         "args_ok": true,
-        "sec": 4.06,
-        "error": null
-      }
-    ],
-    "HCX-007": [
-      {
-        "text": "최근 리뷰 어때?",
-        "want_tool": "analyze_reviews",
-        "got_tool": "analyze_reviews",
-        "want_args": {},
-        "got_args": {
-          "period": "7d"
-        },
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.5,
-        "error": null
-      },
-      {
-        "text": "이번 달 메도빅 불만 있어?",
-        "want_tool": "analyze_reviews",
-        "got_tool": "analyze_reviews",
-        "want_args": {
-          "period": "30d",
-          "focus": "complaint",
-          "topic": "메도빅"
-        },
-        "got_args": {
-          "period": "30d",
-          "focus": "complaint",
-          "topic": "메도빅"
-        },
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.92,
-        "error": null
-      },
-      {
-        "text": "웨이팅 길다는 얘기 많아?",
-        "want_tool": "analyze_reviews",
-        "got_tool": "analyze_reviews",
-        "want_args": {
-          "topic": "웨이팅"
-        },
-        "got_args": {
-          "focus": "complaint",
-          "topic": "웨이팅"
-        },
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.74,
-        "error": null
-      },
-      {
-        "text": "Any bad reviews this week?",
-        "want_tool": "analyze_reviews",
-        "got_tool": "analyze_reviews",
-        "want_args": {
-          "period": "7d",
-          "focus": "complaint"
-        },
-        "got_args": {
-          "period": "7d",
-          "focus": "complaint"
-        },
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.76,
-        "error": null
-      },
-      {
-        "text": "Есть плохие отзывы на этой неделе?",
-        "want_tool": "analyze_reviews",
-        "got_tool": "analyze_reviews",
-        "want_args": {
-          "period": "7d",
-          "focus": "complaint"
-        },
-        "got_args": {
-          "period": "7d",
-          "focus": "complaint"
-        },
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.76,
-        "error": null
-      },
-      {
-        "text": "이번 주 매출 얼마야?",
-        "want_tool": "get_sales_stats",
-        "got_tool": "get_sales_stats",
-        "want_args": null,
-        "got_args": {
-          "period": "7d"
-        },
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.36,
-        "error": null
-      },
-      {
-        "text": "오늘 날씨 어때?",
-        "want_tool": null,
-        "got_tool": null,
-        "want_args": null,
-        "got_args": null,
-        "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.39,
+        "sec": 4.55,
         "error": null
       }
     ],
@@ -277,7 +168,7 @@
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.3,
+        "sec": 1.46,
         "error": null
       },
       {
@@ -290,13 +181,12 @@
           "topic": "메도빅"
         },
         "got_args": {
-          "focus": "complaint",
-          "topic": "메도빅",
-          "period": "30d"
+          "period": "30d",
+          "topic": "메도빅"
         },
         "tool_ok": true,
-        "args_ok": true,
-        "sec": 1.78,
+        "args_ok": false,
+        "sec": 1.6,
         "error": null
       },
       {
@@ -308,11 +198,12 @@
         },
         "got_args": {
           "focus": "complaint",
-          "topic": "웨이팅"
+          "topic": "웨이팅",
+          "format": "chat"
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.61,
+        "sec": 1.54,
         "error": null
       },
       {
@@ -324,12 +215,12 @@
           "focus": "complaint"
         },
         "got_args": {
-          "focus": "complaint",
-          "period": "7d"
+          "period": "7d",
+          "focus": "complaint"
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.43,
+        "sec": 1.26,
         "error": null
       },
       {
@@ -346,7 +237,7 @@
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.5,
+        "sec": 1.3,
         "error": null
       },
       {
@@ -359,7 +250,7 @@
         },
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.14,
+        "sec": 1.18,
         "error": null
       },
       {
@@ -370,9 +261,23 @@
         "got_args": null,
         "tool_ok": true,
         "args_ok": true,
-        "sec": 1.54,
+        "sec": 1.24,
         "error": null
       }
     ]
+  },
+  "tool_choice_forced": {
+    "딸기모찌 리뷰 어때?": {
+      "ok": true,
+      "error": null
+    },
+    "안녕하세요": {
+      "ok": false,
+      "error": "CLOVA HTTP 400 (9b8c123a-0678-482e-ba2b-9af0446e6fc4)"
+    }
+  },
+  "two_system_messages": {
+    "ok": false,
+    "error": "CLOVA HTTP 400 (6f76f8a3-5b67-4056-a14b-38975e9a8c07)"
   }
 }

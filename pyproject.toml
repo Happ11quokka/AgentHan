@@ -5,9 +5,11 @@ description = "네이버 클라우드 기반 소상공인 AI 비서"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "fastapi>=0.162.5",
     "joblib>=1.6.0",
     "numpy>=2.4.6",
     "openai>=1.40",
+    "opencv-python-headless>=5.0.0.93",
     "openpyxl>=3.1.5",
     "pydantic>=2",
     # models/baseline.joblib이 1.9.1로 저장됨. 버전을 바꾸면 scripts/train_baseline.py로 재학습
@@ -15,7 +17,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = [
+    "httpx>=0.28.1",
+    "pytest",
+    "ruff",
+]
 
 [build-system]
 requires = ["hatchling"]

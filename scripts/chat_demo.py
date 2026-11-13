@@ -2,17 +2,17 @@
 
 CLOVA Studio에 접속할 수 있는 환경에서 실행한다.
 
-    python scripts/chat_demo.py --store 홍만당 --ask "요즘 손님들 불만 뭐야?"
-    python scripts/chat_demo.py --store 홍만당 --lang ru            # 대화형 (빈 줄 입력 시 종료)
-    python scripts/chat_demo.py --store 홍만당 --analysis hcx       # 도구 안 감정 판단·요약도 HCX로
+    python scripts/chat_demo.py --store 달빛모찌 --ask "요즘 손님들 불만 뭐야?"
+    python scripts/chat_demo.py --store 달빛모찌 --lang ru            # 대화형 (빈 줄 입력 시 종료)
+    python scripts/chat_demo.py --store 달빛모찌 --analysis hcx   # 감정 판단·요약도 HCX로
     # 답글 흐름: 같은 대화에서 차례로 묻기 (--ask 여러 번)
-    python scripts/chat_demo.py --store 홍만당 --reset-replies \
+    python scripts/chat_demo.py --store 달빛모찌 --reset-replies \
         --ask "답글 안 단 리뷰 있어?" \
         --ask "안 좋은 리뷰에 답글 써줘" \
         --ask "사과를 더 정중하게, 다음엔 맛을 꼭 확인하겠다고 해줘" \
         --ask "이대로 올려줘"
     # 정기 보고
-    python scripts/chat_demo.py --store 홍만당 --reset-replies \
+    python scripts/chat_demo.py --store 달빛모찌 --reset-replies \
         --ask "보고 얼마나 자주 받는 게 좋아?" \
         --ask "응 그렇게 해줘" \
         --ask "나쁜 리뷰 올라오면 바로 알려줘" \
@@ -26,15 +26,16 @@ from pathlib import Path
 
 from agenthan.agent.review import MenuCatalog, SnapshotRepo
 from agenthan.agent.review.agent import ReviewToolbox, run_turn, system_prompt
+from agenthan.agent.review.clova import ClovaClient
 from agenthan.agent.review.hcx_llm import HCXReviewLLM, HCXSentiment
 from agenthan.agent.review.replies import MockReplyStore
 from agenthan.agent.review.report import ReportSettingsStore
-from agenthan.core.llm import make_client
+from agenthan.agent.review.translate import make_translator
 
 ROOT = Path(__file__).resolve().parents[1]
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--store", default="홍만당")
+ap.add_argument("--store", default="달빛모찌")
 ap.add_argument("--today", default="2026-11-07")
 ap.add_argument("--lang", default="ko", help="사장님 언어 (ko, en, ru …)")
 ap.add_argument("--model", default="HCX-DASH-002", help="도구 안 감정 판단·요약 모델")
@@ -64,20 +65,14 @@ ap.add_argument(
 ap.add_argument("--quiet", action="store_true", help="도구 호출 로그 숨기기")
 ap.add_argument(
     "--snapshot",
-    type=Path,
-    default=ROOT / "data" / "snapshots" / "test_baseline.jsonl",
-    help="리뷰 스냅샷 (실제 데이터 없이: tests/fixtures/review_snapshot.jsonl)",
+    default=str(ROOT / "fixtures" / "review_snapshot.jsonl"),
+    help="리뷰 스냅샷 (기본: 더미. 팀 내부 데이터는 data/ 경로를 직접 준다)",
 )
-ap.add_argument(
-    "--menus",
-    type=Path,
-    default=ROOT / "data" / "menus_sample.json",
-    help="메뉴 별칭 (실제 데이터 없이: tests/fixtures/menus.json)",
-)
+ap.add_argument("--menus", default=str(ROOT / "fixtures" / "review_menus.json"), help="메뉴·별칭")
 a = ap.parse_args()
 chat_model = a.chat_model or a.model
 
-client = make_client()
+client = ClovaClient()  # 네이티브 REST v3 (CLOVASTUDIO_API_KEY)
 repo = SnapshotRepo(a.snapshot)
 store_name = repo._match_store(a.store)
 today = date.fromisoformat(a.today)
@@ -134,6 +129,7 @@ def log(name, args, result):
             "action",
             "next_run",
             "suggested",
+            "text",
         ]
         if k in result
     }
@@ -143,10 +139,12 @@ def log(name, args, result):
     )
 
 
-messages = [{"role": "system", "content": system_prompt(store_name, today, a.lang)}]
+messages = [{"role": "system", "content": system_prompt(store_name, today)}]
+translator = make_translator(client, chat_model)  # 사장님 언어 ↔ 한국어 (Papago, 없으면 HCX)
+papago = "Papago" if translator.papago.available else "HCX (PAPAGO_CLIENT_ID 없음)"
 print(
     f"[{store_name} · 오늘 {today} · 언어 {a.lang} · 대화 {chat_model} · 분석 "
-    f"{a.analysis}({a.model})]"
+    f"{a.analysis}({a.model}) · 번역 {papago if a.lang != 'ko' else '안 함'}]"
 )
 queue = list(a.ask or [])
 while True:
@@ -160,4 +158,7 @@ while True:
         if not q:
             break
     messages.append({"role": "user", "content": q})
-    print("비서>", run_turn(client, chat_model, messages, toolbox, log, owner_lang=a.lang))
+    out = run_turn(
+        client, chat_model, messages, toolbox, log, owner_lang=a.lang, translator=translator
+    )
+    print("비서>", out)

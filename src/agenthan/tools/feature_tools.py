@@ -1,6 +1,6 @@
-"""Tools for the catalog features handled by agenthan (menu + 15 features).
+"""Tools for the catalog features handled by agenthan (17 features, one tool each).
 
-Review features (review_reply, ai_review) are delegated to agenthan.agent.review.
+The review feature (review) is delegated to agenthan.agent.review.
 
 Every tool works only on the local dummy store or on fixed dummy reference data.
 Nothing is sent to Naver. Invalid arguments never reach storage.
@@ -9,15 +9,27 @@ Nothing is sent to Naver. Invalid arguments never reach storage.
 import copy
 import json
 import re
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 
 from agenthan.agent.place_matcher import get_feature, load_features
 from agenthan.tools.dummy_store import DummyStore, find_records, normalize
-from agenthan.tools.owner_tools import TOOL_NAMES, execute_tool, tool_schema
 
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+# Day groups the owner says in one word; the handler stores each weekday separately.
+DAY_GROUPS = {
+    "weekdays": WEEKDAYS[:5],
+    "weekend": WEEKDAYS[5:],
+    "everyday": WEEKDAYS,
+}
+# One period vocabulary for every read tool that takes a period.
+PERIODS = ("today", "yesterday", "this_week", "last_week", "this_month", "last_month")
+PERIOD_HINT = (
+    "today=오늘, yesterday=어제, this_week=이번 주, last_week=지난주, "
+    "this_month=이번 달, last_month=지난달"
+)
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$|^24:00$")
 DUMMY_NOTE = "로컬 더미 데이터만 사용하며 실제 네이버 연동·발송은 하지 않습니다."
 
@@ -27,20 +39,17 @@ NAVERPAY_GUIDE = {
     "corporation": ["사업자등록증", "법인 등기부등본", "법인 인감증명서", "법인 계좌"],
 }
 DUMMY_POS = ["연습POS 베이직", "연습POS 플러스", "연습POS 모바일"]
+# topics: words that pick the article; generic learning words are in HELP_GENERIC.
 HELP_ARTICLES = [
-    {"id": "help-1", "title": "스마트플레이스 처음 시작하기", "keywords": ["시작", "가입", "처음"]},
-    {"id": "help-2", "title": "예약 받는 방법 배우기", "keywords": ["예약", "교육"]},
-    {"id": "help-3", "title": "리뷰 답글 잘 쓰는 법", "keywords": ["리뷰", "답글"]},
+    {"id": "help-1", "title": "스마트플레이스 처음 시작하기", "topics": ["시작", "가입", "처음"]},
+    {"id": "help-2", "title": "예약 받는 방법 배우기", "topics": ["예약"]},
+    {"id": "help-3", "title": "리뷰 답글 잘 쓰는 법", "topics": ["리뷰", "답글"]},
     {
         "id": "help-4",
         "title": "고객센터 문의하기",
-        "keywords": ["고객센터", "문의", "상담", "도움"],
+        "topics": ["고객센터", "문의", "상담", "도움말", "상담원"],
     },
-    {
-        "id": "help-5",
-        "title": "비즈니스 스쿨 무료 강의",
-        "keywords": ["교육", "강의", "스쿨", "배우"],
-    },
+    {"id": "help-5", "title": "비즈니스 스쿨 무료 강의", "topics": ["스쿨", "무료 강의"]},
 ]
 
 
@@ -48,7 +57,8 @@ HELP_ARTICLES = [
 class Param:
     id: str
     label: str
-    kind: str = "string"  # string | integer | boolean | date | time | day | string_list
+    # string | integer | boolean | date | time | day | day_list | string_list
+    kind: str = "string"
     required: bool = True
     enum: tuple[str, ...] = ()
     hint: str = ""
@@ -72,10 +82,14 @@ def _json_schema(param: Param) -> dict:
             spec["minimum"] = param.minimum
     elif param.kind == "boolean":
         spec = {"type": "boolean"}
-    elif param.kind == "string_list":
+    elif param.kind in ("string_list", "day_list"):
         spec = {"type": "array", "items": {"type": "string"}, "minItems": 1}
         if param.max_items:
             spec["maxItems"] = param.max_items
+        if param.kind == "day_list":
+            description += (
+                " (요일 mon~sun, 날짜 YYYY-MM-DD, 또는 weekdays=평일·weekend=주말·everyday=매일)"
+            )
     else:
         spec = {"type": "string"}
         if param.kind == "date":
@@ -95,12 +109,16 @@ def _valid(param: Param, value: object) -> bool:
         ok = type(value) is int and (param.minimum is None or value >= param.minimum)
     elif param.kind == "boolean":
         ok = type(value) is bool
-    elif param.kind == "string_list":
+    elif param.kind in ("string_list", "day_list"):
         ok = (
             isinstance(value, list)
             and bool(value)
             and (param.max_items is None or len(value) <= param.max_items)
             and all(isinstance(v, str) and normalize(v) for v in value)
+            and (
+                param.kind == "string_list"
+                or all(v in WEEKDAYS or v in DAY_GROUPS or _is_date(v) for v in value)
+            )
         )
     elif not isinstance(value, str) or not normalize(value):
         ok = False
@@ -149,37 +167,152 @@ def _saved(store: DummyStore, collection: str, record_id: str, action: str) -> d
 # --- handlers: arguments are already validated -------------------------------------
 
 
-def _business_info(store, args):
+def _find_menu(menus: list[dict], name: str) -> dict | None:
+    key = normalize(name)
+    return next(
+        (m for m in menus if key in [normalize(m["name"]), *map(normalize, m.get("aliases", []))]),
+        None,
+    )
+
+
+def _menu(store, args):
     data = store.read()
-    previous = data["shop"].get(args["field"])
-    data["shop"][args["field"]] = " ".join(args["value"].split())
+    action = args.get("action") or "save"
+    record = _find_menu(data["menus"], args["name"])
+    if action != "save":
+        if record is None:
+            return _not_found("menu", data["menus"], "name")
+        if action == "delete":
+            data["menus"] = [m for m in data["menus"] if m["id"] != record["id"]]
+            store.write(data)
+            return {
+                "ok": True,
+                "action": "deleted",
+                "record": {"id": record["id"], "name": record["name"]},
+            }
+        previous = record.get("sold_out", False)
+        record["sold_out"] = action == "sold_out"
+        store.write(data)
+        result = _saved(store, "menus", record["id"], "updated")
+        result["previous_sold_out"] = previous
+        return result
+    if record is None:
+        if args.get("price") is None:
+            return _needs(["가격 (원)"])
+        if args.get("new_name"):
+            return _not_found("menu", data["menus"], "name")
+        record = {
+            "id": str(uuid.uuid4()),
+            "name": " ".join(args["name"].split()),
+            "price": args["price"],
+            "aliases": [],
+        }
+        if args.get("description"):
+            record["description"] = " ".join(args["description"].split())
+        data["menus"].append(record)
+        store.write(data)
+        return _saved(store, "menus", record["id"], "created")
+    changes = [k for k in ("price", "new_name", "description") if args.get(k) is not None]
+    if not changes:
+        return _needs(["가격 (원)"])
+    previous = {k: record.get(k) for k in ("name", "price", "description")}
+    if args.get("new_name"):
+        clash = _find_menu(data["menus"], args["new_name"])
+        if clash is not None and clash["id"] != record["id"]:
+            return {
+                "ok": False,
+                "error": "name_taken",
+                "message": "같은 이름의 메뉴가 이미 있습니다.",
+                "candidates": [{"id": clash["id"], "name": clash["name"]}],
+            }
+        record["name"] = " ".join(args["new_name"].split())
+    if args.get("price") is not None:
+        record["price"] = args["price"]
+    if args.get("description"):
+        record["description"] = " ".join(args["description"].split())
+    store.write(data)
+    result = _saved(store, "menus", record["id"], "updated")
+    result["previous"] = previous
+    result["previous_price"] = previous["price"]
+    return result
+
+
+BUSINESS_FIELDS = ("name", "address", "phone", "introduction")
+
+
+def _business_info(store, args):
+    given = {k: " ".join(args[k].split()) for k in BUSINESS_FIELDS if args.get(k)}
+    if not given:
+        return _needs(["바꿀 업체 정보 항목"])
+    data = store.read()
+    previous = {k: data["shop"].get(k) for k in given}
+    data["shop"].update(given)
     store.write(data)
     shop = store.read()["shop"]
     return {
         "ok": True,
         "action": "updated",
-        "field": args["field"],
         "previous": previous,
-        "record": shop[args["field"]],
+        "record": {k: shop[k] for k in given},
     }
+
+
+def _expand_days(days: list[str]) -> list[str]:
+    out: list[str] = []
+    for day in days:
+        for one in DAY_GROUPS.get(day, [day]):
+            if one not in out:
+                out.append(one)
+    return out
 
 
 def _business_hours(store, args):
-    if args.get("closed"):
-        hours = {"closed": True}
-    elif not args.get("open_time") or not args.get("close_time"):
-        return _needs([p.label for p in TOOLS["business_hours"].params[2:]])
-    else:
-        hours = {"closed": False, "open_time": args["open_time"], "close_time": args["close_time"]}
+    break_given = [args.get("break_start"), args.get("break_end")]
+    if any(break_given) and not all(break_given):
+        return _needs(["쉬는 시간 시작", "쉬는 시간 끝"])
     data = store.read()
-    data["shop"].setdefault("hours", {})[args["day"]] = hours
+    hours = data["shop"].setdefault("hours", {})
+    days = _expand_days(args["days"])
+    grouped = {d for g in args["days"] if g in DAY_GROUPS for d in DAY_GROUPS[g]}
+    skipped = []
+    for day in days:
+        old = hours.get(day) or {}
+        if (
+            day in grouped
+            and day not in args["days"]
+            and old.get("closed")
+            and not args.get("closed")
+            and not (args.get("open_time") and args.get("close_time"))
+        ):
+            skipped.append(day)  # 매일 브레이크: a closed day stays closed.
+            continue
+        if args.get("closed"):
+            hours[day] = {"closed": True}
+            continue
+        open_time = args.get("open_time") or (None if old.get("closed") else old.get("open_time"))
+        close_time = args.get("close_time") or (
+            None if old.get("closed") else old.get("close_time")
+        )
+        if not open_time or not close_time:
+            return _needs(["여는 시간", "닫는 시간"])
+        record = {"closed": False, "open_time": open_time, "close_time": close_time}
+        if all(break_given):
+            record.update(break_start=break_given[0], break_end=break_given[1])
+        elif not old.get("closed") and old.get("break_start"):
+            record.update(break_start=old["break_start"], break_end=old.get("break_end"))
+        hours[day] = record
     store.write(data)
-    return {
+    saved = store.read()["shop"]["hours"]
+    days = [d for d in days if d not in skipped]
+    result = {
         "ok": True,
         "action": "updated",
-        "day": args["day"],
-        "record": store.read()["shop"]["hours"][args["day"]],
+        "days": days,
+        "record": {day: saved[day] for day in days},
     }
+    if skipped:
+        result["kept_closed"] = skipped
+    return result
 
 
 def _talktalk(store, args):
@@ -200,6 +333,8 @@ def _status_updater(collection: str, key: str, text_key: str):
             return _not_found(key.removesuffix("_id"), data[collection], text_key)
         previous = matches[0].get("status")
         matches[0]["status"] = args["status"]
+        if args.get("reason"):
+            matches[0]["reason"] = " ".join(args["reason"].split())
         store.write(data)
         result = _saved(store, collection, matches[0]["id"], "updated")
         result["previous_status"] = previous
@@ -216,10 +351,36 @@ def _call_history(store, args):
 
 
 def _keywords(store, args):
-    keywords = list(dict.fromkeys(" ".join(k.split()) for k in args["keywords"]))
+    if not any(args.get(k) for k in ("keywords", "add", "remove")):
+        return _needs(["더하거나 뺄 대표키워드"])
     data = store.read()
     previous = data["shop"].get("keywords", [])
-    data["shop"]["keywords"] = keywords
+    current = [" ".join(k.split()) for k in (args.get("keywords") or previous)]
+    remove = {normalize(k) for k in args.get("remove") or []}
+    absent = [k for k in args.get("remove") or [] if normalize(k) not in map(normalize, current)]
+    if absent:
+        return {
+            "ok": False,
+            "error": "keyword_not_found",
+            "message": "지금 대표키워드에 없는 단어입니다: " + ", ".join(absent),
+            "current": previous,
+        }
+    current = [k for k in current if normalize(k) not in remove]
+    for k in args.get("add") or []:
+        k = " ".join(k.split())
+        if normalize(k) not in map(normalize, current):
+            current.append(k)
+    current = list(dict.fromkeys(current))
+    if len(current) > 5:
+        return {
+            "ok": False,
+            "error": "too_many_keywords",
+            "message": "대표키워드는 최대 5개입니다. 사장님이 목록을 정해 준 것이면 keywords로 "
+            "전체를 바꾸고, 더하는 것이면 뺄 키워드를 사장님께 물어보세요.",
+            "current": previous,
+            "after": current,
+        }
+    data["shop"]["keywords"] = current
     store.write(data)
     return {
         "ok": True,
@@ -300,14 +461,40 @@ def _statistics(store, args):
     return {"ok": True, "action": "read", "period": args["period"], "record": record}
 
 
+def _search_diagnosis(store, args):
+    # The diagnosis text is built by the assistant (live search, report facts); this only
+    # marks the read so the tool registry stays one feature, one tool.
+    return {"ok": True, "action": "read"}
+
+
+# Words that say "I want to learn" without a topic; a query of only these gets the general
+# education entry (비즈니스 스쿨). Any other word must match an article's topic.
+HELP_GENERIC = re.compile(
+    r"교육|강의|수업|배우|배울|공부|듣|싶|찾아|알려|주세요|줘|관련|방법|하는|법|있|뭐|어디|좀|"
+    r"스마트플레이스|플레이스|네이버|사용|쓰는"
+)
+
+
 def _help(store, args):
     key = normalize(args["query"])
     found = [
         a
         for a in HELP_ARTICLES
-        if any(normalize(k) in key for k in a["keywords"]) or key in normalize(a["title"])
+        if any(normalize(k) in key for k in a["topics"]) or key in normalize(a["title"])
     ]
-    return {"ok": True, "action": "read", "records": found or HELP_ARTICLES[3:4]}
+    if not found and all(HELP_GENERIC.search(word) for word in key.split()):
+        found = [a for a in HELP_ARTICLES if a["id"] == "help-5"]
+    if found:
+        return {"ok": True, "action": "read", "found": True, "records": found}
+    # Nothing matches: say so and point to the customer center (not a matching article).
+    return {
+        "ok": True,
+        "action": "read",
+        "found": False,
+        "records": [],
+        "fallback": HELP_ARTICLES[3:4],
+        "message": "맞는 교육·도움말을 찾지 못했습니다. 고객센터 문의를 안내하세요.",
+    }
 
 
 _TOOL_LIST = [
@@ -315,21 +502,49 @@ _TOOL_LIST = [
         "business_info",
         "update_business_info",
         (
-            Param(
-                "field",
-                "바꿀 업체 정보 항목",
-                enum=("name", "address", "phone", "introduction"),
-                hint="name=상호, address=주소, phone=전화번호, introduction=가게 소개",
-            ),
-            Param("value", "새 내용"),
+            Param("name", "새 상호(가게 이름)", required=False),
+            Param("address", "새 주소", required=False),
+            Param("phone", "새 전화번호", required=False),
+            Param("introduction", "새 가게 소개글", required=False),
         ),
         _business_info,
+    ),
+    FeatureTool(
+        "menu",
+        "upsert_menu",
+        (
+            Param("name", "메뉴 이름", hint="바꾸거나 지울 메뉴는 지금 이름"),
+            Param(
+                "action",
+                "할 일",
+                required=False,
+                enum=("save", "delete", "sold_out", "on_sale"),
+                hint="save=등록·수정(기본), delete=메뉴 삭제, sold_out=품절, on_sale=품절 해제",
+            ),
+            Param(
+                "price",
+                "가격 (원)",
+                kind="integer",
+                required=False,
+                minimum=1,
+                hint="새 메뉴면 필수",
+            ),
+            Param("new_name", "바꿀 새 메뉴 이름", required=False),
+            Param("description", "메뉴 설명", required=False, hint="사장님이 말한 문장 그대로"),
+        ),
+        _menu,
     ),
     FeatureTool(
         "business_hours",
         "update_business_hours",
         (
-            Param("day", "바꿀 요일 또는 날짜", kind="day"),
+            Param(
+                "days",
+                "바꿀 요일·날짜 목록",
+                kind="day_list",
+                max_items=31,
+                hint="임시 휴무 기간은 날짜를 모두 나열",
+            ),
             Param(
                 "closed",
                 "그날 쉬는지 여부",
@@ -337,8 +552,22 @@ _TOOL_LIST = [
                 required=False,
                 hint="쉬는 날이면 true, 생략하면 영업하는 날",
             ),
-            Param("open_time", "여는 시간", kind="time", required=False, hint="쉬지 않으면 필수"),
-            Param("close_time", "닫는 시간", kind="time", required=False, hint="쉬지 않으면 필수"),
+            Param(
+                "open_time",
+                "여는 시간",
+                kind="time",
+                required=False,
+                hint="쉬지 않으면 필수, 지금 값이 있으면 생략 가능",
+            ),
+            Param(
+                "close_time",
+                "닫는 시간",
+                kind="time",
+                required=False,
+                hint="쉬지 않으면 필수, 지금 값이 있으면 생략 가능",
+            ),
+            Param("break_start", "쉬는 시간(브레이크) 시작", kind="time", required=False),
+            Param("break_end", "쉬는 시간(브레이크) 끝", kind="time", required=False),
         ),
         _business_hours,
     ),
@@ -362,6 +591,7 @@ _TOOL_LIST = [
                 enum=("accepted", "rejected", "ready", "completed"),
                 hint="accepted=접수, rejected=거절, ready=준비 완료, completed=전달 완료",
             ),
+            Param("reason", "거절 사유", required=False, hint="사장님이 말했을 때만"),
         ),
         _status_updater("orders", "order_id", "items"),
     ),
@@ -374,8 +604,9 @@ _TOOL_LIST = [
                 "status",
                 "바꿀 예약 상태",
                 enum=("confirmed", "cancelled", "no_show"),
-                hint="confirmed=확정, cancelled=취소, no_show=노쇼",
+                hint="confirmed=확정(예약 받기), cancelled=취소, no_show=노쇼",
             ),
+            Param("reason", "취소 사유", required=False, hint="사장님이 말했을 때만"),
         ),
         _status_updater("reservations", "reservation_id", "date"),
     ),
@@ -388,8 +619,39 @@ _TOOL_LIST = [
     FeatureTool(
         "search_keywords",
         "set_representative_keywords",
-        (Param("keywords", "대표키워드 목록", kind="string_list", max_items=5, hint="최대 5개"),),
+        (
+            Param(
+                "add",
+                "더할 대표키워드",
+                kind="string_list",
+                required=False,
+                max_items=5,
+                hint="지금 키워드는 두고 '추가', '하나 더'라고 할 때만",
+            ),
+            Param(
+                "remove",
+                "뺄 대표키워드",
+                kind="string_list",
+                required=False,
+                max_items=5,
+                hint="지금 키워드 중 빼라고 한 것",
+            ),
+            Param(
+                "keywords",
+                "새 대표키워드 전체 목록",
+                kind="string_list",
+                required=False,
+                max_items=5,
+                hint="사장님이 목록을 정해 줄 때('이 세 개로', '~로 바꿔·넣어·해'). 최대 5개",
+            ),
+        ),
         _keywords,
+    ),
+    FeatureTool(
+        "search_diagnosis",
+        "diagnose_search_visibility",
+        (),
+        _search_diagnosis,
     ),
     FeatureTool(
         "coupon",
@@ -440,8 +702,8 @@ _TOOL_LIST = [
             Param(
                 "period",
                 "정산 기간",
-                enum=("this_week", "this_month", "last_month"),
-                hint="this_week=이번 주, this_month=이번 달, last_month=지난달",
+                enum=PERIODS,
+                hint=PERIOD_HINT,
             ),
         ),
         _settlement,
@@ -467,15 +729,30 @@ _TOOL_LIST = [
 ]
 TOOLS = {t.feature_id: t for t in _TOOL_LIST}
 # Handled by agenthan.agent.review (ReviewToolbox + run_turn), not by a tool in this module.
-DELEGATED_FEATURES = frozenset({"review_reply", "ai_review"})
+DELEGATED_FEATURES = frozenset({"review"})
 # Every other catalog feature has exactly one tool name.
-TOOL_FEATURES = {**{v: k for k, v in TOOL_NAMES.items()}, **{t.name: k for k, t in TOOLS.items()}}
+TOOL_FEATURES = {t.name: k for k, t in TOOLS.items()}
+# Tools that only read. Every other tool writes the store and needs the owner's approval.
+READ_ONLY_TOOLS = frozenset(
+    {
+        "list_call_history",
+        "get_naverpay_signup_guide",
+        "get_settlement_summary",
+        "check_pos_compatibility",
+        "diagnose_search_visibility",
+        "get_statistics",
+        "search_help_articles",
+    }
+)
+
+
+def needs_approval(tool: str | None) -> bool:
+    """Unknown tools are conservatively treated as writes; no call needs no approval."""
+    return tool is not None and tool not in READ_ONLY_TOOLS
 
 
 def feature_tool_schema(feature_id: str) -> dict:
-    """Schema for any non-delegated feature; menu comes from owner_tools."""
-    if feature_id in TOOL_NAMES:
-        return tool_schema(feature_id)
+    """Schema for any non-delegated feature."""
     tool = TOOLS.get(feature_id)
     feature = get_feature(feature_id)
     if tool is None or feature is None:
@@ -496,19 +773,17 @@ def feature_tool_schema(feature_id: str) -> dict:
 
 
 def all_tool_schemas() -> list[dict]:
-    """All 16 agenthan tools in catalog order (review features are delegated)."""
+    """All 17 agenthan tools in catalog order (review features are delegated)."""
     return [
         feature_tool_schema(f["id"]) for f in load_features() if f["id"] not in DELEGATED_FEATURES
     ]
 
 
 def execute_feature_tool(store: DummyStore, name: str, arguments: object) -> dict:
-    """Run any of the 16 tools by name after validating its arguments."""
+    """Run any of the 17 tools by name after validating its arguments."""
     feature_id = TOOL_FEATURES.get(name)
     if feature_id is None:
         return {"ok": False, "error": "tool_not_allowed", "message": "허용되지 않은 도구입니다."}
-    if feature_id in TOOL_NAMES:
-        return execute_tool(store, feature_id, name, arguments)
     tool = TOOLS[feature_id]
     if isinstance(arguments, str):
         try:

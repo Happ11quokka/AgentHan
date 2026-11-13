@@ -39,6 +39,8 @@ class FakeV3:
         self.calls.append((model, copy.deepcopy(body)))
         content = body["messages"][-1]["content"]
         if isinstance(content, list):
+            if content[1]["text"] == "사진을 분류해 menu_board, food, other 중 한 단어만 답하세요.":
+                return {"message": {"content": "menu_board"}}
             assert content[0]["dataUri"]["data"].startswith("data:image/jpeg;base64,")
             return {"message": {"content": self.vision}}
         name = content.rsplit("메뉴 원어 이름: ", 1)[1]
@@ -236,7 +238,7 @@ def test_edit_then_approve(tmp_path):
     assert [t["function"]["name"] for t in tools] == ["edit_menu_draft"]
     assert '"number": 3' in messages[0]["content"]
     bot.ask("그대로 올려줘")
-    assert set(menu_names(tmp_path)) == {"연습 라떼", "연습 샌드위치", "메도빅", "펠메니"}
+    assert set(menu_names(tmp_path)) == {"메도빅", "나폴레옹", "아메리카노", "블린", "펠메니"}
 
 
 @pytest.mark.parametrize(

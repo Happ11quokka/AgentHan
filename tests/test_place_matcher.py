@@ -16,8 +16,8 @@ import pytest
 from agenthan.agent import place_matcher as matcher
 from agenthan.core import embedding as clova
 
-CASES_PATH = Path(__file__).parent / "data" / "place_request_cases.jsonl"
-SUPPORTED = {"menu", "review_reply"}
+CASES_PATH = Path(__file__).parent / "data" / "eval" / "route.jsonl"
+SUPPORTED: set[str] = set()  # Tool inputs live in tools/feature_tools.py
 FEATURE_IDS = {
     "business_info",
     "menu",
@@ -27,10 +27,10 @@ FEATURE_IDS = {
     "reservation",
     "smartcall",
     "search_keywords",
+    "search_diagnosis",
     "coupon",
     "new_opening",
-    "review_reply",
-    "ai_review",
+    "review",
     "naverpay_signup",
     "onsite_payment",
     "settlement",
@@ -41,7 +41,9 @@ FEATURE_IDS = {
 
 
 def cases():
-    return [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
+    """The M0 feature-matching sentences (source m0) in the shared route file (42, Korean only)."""
+    rows = [json.loads(line) for line in CASES_PATH.read_text(encoding="utf-8").splitlines()]
+    return [row for row in rows if row["source"] == "m0"]
 
 
 def vector(first=1.0, second=0.0):
@@ -76,27 +78,26 @@ def test_catalog():
     }
     for feature in features:
         assert re.fullmatch(r"[a-z]+(?:_[a-z]+)*", feature["id"])
-        for field in ("name_ko", "name_en", "summary_ko"):
+        for field in ("name_ko", "summary_ko"):
             assert isinstance(feature[field], str) and feature[field].strip()
         assert feature["stage"] in stages
         assert type(feature["input_supported"]) is bool
-        for field in ("keywords_ko", "keywords_en"):
-            assert isinstance(feature[field], list) and feature[field]
-            assert all(isinstance(term, str) and term.strip() for term in feature[field])
+        assert isinstance(feature["keywords_ko"], list) and feature["keywords_ko"]
+        assert all(isinstance(term, str) and term.strip() for term in feature["keywords_ko"])
+        # Korean-only core (docs/eval-baseline.md §0).
+        assert "name_en" not in feature and "keywords_en" not in feature
         if feature["input_supported"]:
             fields = feature["input_fields"]
             assert fields and len({f["id"] for f in fields}) == len(fields)
             assert all(f["name_ko"] and type(f["required"]) is bool for f in fields)
         else:
             assert not feature.get("input_fields")
-    assert {f["id"] for f in matcher.get_feature("menu")["input_fields"]} == {
-        "name",
-        "price",
-        "description",
-        "photo",
-    }
-    assert matcher.get_feature("review_reply")["input_fields"]
     assert matcher.get_feature("unknown") is None
+    names = [f["name_ko"] for f in features]
+    assert len(set(names)) == len(names)
+    # A keyword shared by two features pulls both toward the same request.
+    owners = Counter(term for f in features for term in set(f["keywords_ko"]))
+    assert [term for term, n in owners.items() if n > 1] == []
     features[0]["name_ko"] = "mutated"
     assert matcher.get_feature(features[0]["id"])["name_ko"] != "mutated"
 
@@ -105,14 +106,14 @@ def test_dataset():
     data = cases()
     assert len(data) >= 40
     counts = Counter(row["lang"] for row in data)
-    assert counts["ko"] >= 20 and counts["ko_simple"] >= 10 and counts["en"] >= 10
-    assert set(counts) == {"ko", "ko_simple", "en"}
+    assert counts["ko"] >= 20 and counts["ko_simple"] >= 10
+    assert set(counts) == {"ko", "ko_simple"}  # Korean only (docs/eval-baseline.md §0)
     expected_counts = Counter(row["expected"] for row in data)
-    assert expected_counts[None] >= 5
+    assert expected_counts[None] >= 4  # 5 before the English case was removed
     assert all(expected_counts[feature] >= 5 for feature in SUPPORTED)
     assert len({row["text"] for row in data}) == len(data)
     for row in data:
-        assert set(row) == {"text", "lang", "expected"}
+        assert set(row) == {"id", "split", "source", "text", "lang", "expected"}
         assert isinstance(row["text"], str) and row["text"].strip()
         assert row["expected"] is None or row["expected"] in FEATURE_IDS
 
@@ -186,9 +187,9 @@ def test_empty_input_never_embeds(text):
 def test_top_k_and_normalization():
     assert matcher.match_features("메뉴와 사진", top_k=0) == []
     assert matcher.match_features("메뉴", top_k=-1) == []
-    assert len(matcher.match_features("사진", top_k=1)) == 1
+    assert len(matcher.match_features("가게 사진이랑 음식 사진", top_k=1)) == 1
     assert matcher.match_features("영 업 시 간을 바꿔요")[0].feature_id == "business_hours"
-    assert matcher.match_features("ＭＥＮＵ prices")[0].feature_id == "menu"
+    assert matcher.match_features("ＰＯＳ 연동")[0].feature_id == "place_plus"
     assert matcher.match_features("chair airport repair") == []  # no substring hit for AI
 
 
@@ -196,7 +197,7 @@ def test_top_k_and_normalization():
     ("text", "feature_id", "term"),
     [
         ("QR로 결제하고 싶어요", "onsite_payment", "QR"),
-        ("AI가 답글 써줘요", "ai_review", "AI"),
+        ("AI가 답글 써줘요", "review", "AI"),
         ("POS를 연결해요", "place_plus", "POS"),
         ("place+를 연결해요", "place_plus", "place+"),
     ],
@@ -210,6 +211,7 @@ def test_ascii_keywords_with_korean_particles(text, feature_id, term):
 
 
 def test_missing_key_and_keyword_recall():
+    # Korean only (docs/eval-baseline.md §0): no English cases or keywords.
     data = [row for row in cases() if row["expected"] is not None]
     misses = []
     for row in data:
@@ -291,7 +293,7 @@ def test_build_index_is_atomic_and_uses_catalog(fake_index, monkeypatch):
     monkeypatch.setattr(matcher, "embed_text", embed)
     matcher.build_index()
     assert texts == [matcher.feature_embedding_text(f) for f in matcher.load_features()]
-    assert len(matcher._load_index(matcher.load_features())) == 18
+    assert len(matcher._load_index(matcher.load_features())) == len(FEATURE_IDS)
     original = matcher.INDEX_PATH.read_bytes()
 
     def fail(_):
@@ -359,6 +361,23 @@ def test_client_retry_policy(monkeypatch, code, api_status):
     assert sleeps == ([0.25, 0.5] if retryable else [])
 
 
+@pytest.mark.parametrize("error", [http.client.IncompleteRead(b""), ConnectionResetError()])
+def test_truncated_read_is_retried_until_success(monkeypatch, error):
+    monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-test-key")
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(request)
+        if len(calls) < 5:
+            raise error
+        return response()
+
+    monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
+    assert clova.embed_text("hello") == vector()
+    assert len(calls) == 5
+
+
 def test_client_retry_can_succeed(monkeypatch):
     monkeypatch.setenv("CLOVASTUDIO_API_KEY", "fake-test-key")
     calls = []
@@ -400,9 +419,11 @@ def test_client_errors_never_expose_key(monkeypatch, capsys, failure):
         return response(code=secret)
 
     monkeypatch.setattr(clova.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(clova.time, "sleep", lambda _: None)
     with pytest.raises(clova.ClovaEmbeddingError) as error:
         clova.embed_text("hello")
-    assert len(calls) == 1
+    # Truncated reads are retried; other failures are not.
+    assert len(calls) == (clova.TRANSPORT_RETRIES + 1 if failure == "http_protocol" else 1)
     assert secret not in str(error.value)
     assert secret not in "".join(traceback.format_exception(error.value))
     assert secret not in repr(capsys.readouterr())

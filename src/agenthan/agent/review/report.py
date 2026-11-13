@@ -3,7 +3,7 @@
 
 주기 제안 기준 (최근 4주 주평균 리뷰 수):
   15건 이상 daily / 3~14건 weekly / 1~2건 biweekly / 1건 미만 monthly (+ 리뷰 늘리기 제안)
-스냅샷은 특징별 최신 20건 표본이라 오래된 기간일수록 리뷰가 빠져 있다. 최근 4주는 비교적 온전하다.
+스냅샷은 표본이라 오래된 기간일수록 리뷰가 빠져 있을 수 있다. 최근 4주는 비교적 온전하다.
 """
 
 from __future__ import annotations
@@ -152,14 +152,22 @@ def set_review_report(
         changed["focus"] = focus
     if alert in ("negative", "every_new", "none"):
         changed["alert"] = alert
-    if not (
-        changed.get("frequency") or cur.get("frequency")
-    ):  # 주기를 처음 정하는데 말하지 않았으면 제안값으로
-        changed["frequency"] = suggest_frequency(repo, store_id, today)["frequency"]
-        changed["from_suggestion"] = True
+    if not (changed.get("frequency") or cur.get("frequency")):
+        # 주기를 처음 정하는데 사장님이 말하지 않았다. 말하지 않은 값으로는 저장하지 않는다:
+        # 말한 값(알림·시간 등)만 저장하고 정기 보고는 켜지 않은 채 주기를 제안한다.
+        # 사장님이 '응' 하면 그 주기로 켠다 (pending_suggestion)
+        if changed:
+            cur = {**cur, **changed, "updated_at": now.isoformat(timespec="minutes")}
+            settings_store.save(store_id, cur)
+        return {
+            "action": "suggest",
+            "suggested": suggest_frequency(repo, store_id, today),
+            "changed": changed,
+            "settings": cur,
+        }
     new = {
         **cur,
-        **{k: v for k, v in changed.items() if k != "from_suggestion"},
+        **changed,
         "enabled": True,
         "updated_at": now.isoformat(timespec="minutes"),
     }
@@ -231,6 +239,7 @@ def check_alerts(
     mode = settings.get("alert", "negative")
     if mode == "none":
         return {"alerts": [], "mode": mode}
+    from .harsh import harsh_of
     from .replies import _quote, _review_sentiment, risk_of
 
     sentiment = sentiment or RuleSentiment()
@@ -249,6 +258,7 @@ def check_alerts(
                     "sentiment": s,
                     "risk": risk_of(r["text"], s),
                     "quote": _quote(r["text"]),
+                    "softened": bool(harsh_of(r["text"])),
                 }
             )
     out.sort(key=lambda x: 0 if x["risk"] else 1)  # 고위험 먼저

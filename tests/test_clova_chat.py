@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 from agenthan.agent import clova_chat as clova
-from agenthan.tools.owner_tools import tool_schema
+from agenthan.tools.feature_tools import feature_tool_schema
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +40,7 @@ def test_request_and_tool_result_roundtrip():
         NS(role="assistant", content=None, tool_calls=[sdk_call("call-1", "upsert_menu", args)]),
         NS(role="assistant", content="등록했어요.", tool_calls=None),
     )
-    tools = [tool_schema("menu")]
+    tools = [feature_tool_schema("menu")]
     messages = [{"role": "user", "content": "연습 차 5000원 메뉴 등록"}]
     message = clova.chat(messages, tools=tools, client=client)
     assert message == {
@@ -57,8 +57,10 @@ def test_request_and_tool_result_roundtrip():
     messages += [message, {"role": "tool", "tool_call_id": "call-1", "content": '{"ok":true}'}]
     assert clova.chat(messages, tools=[], client=client)["content"] == "등록했어요."
     first, second = client.requests
-    assert first["model"] == "HCX-005" and first["tools"] == tools
-    assert first["max_tokens"] >= 1024 and "response_format" not in first
+    # #56: the execution model is HCX-007 with reasoning off (S1 276/276).
+    assert first["model"] == "HCX-007" and first["tools"] == tools
+    assert first["max_completion_tokens"] >= 1024 and "response_format" not in first
+    assert first["extra_body"] == {"reasoning_effort": "none"}
     # CLOVA rejects tool_choice objects; never send it, and omit empty tools.
     assert "tool_choice" not in first and "tool_choice" not in second
     assert "tools" not in second
@@ -91,6 +93,22 @@ def test_sanitized_errors(failure):
     assert secret not in "".join(traceback.format_exception(error.value))
 
 
+class HttpError(Exception):
+    def __init__(self, status_code, body):
+        super().__init__(body)
+        self.status_code, self.body = status_code, body
+
+
+def test_http_400_is_a_sanitized_rejection_and_others_are_not():
+    secret = "fake-sensitive-test-body"
+    with pytest.raises(clova.ClovaRequestRejected) as error:
+        clova.chat([], tools=[], client=FakeClient(HttpError(400, secret)))
+    assert secret not in "".join(traceback.format_exception(error.value))
+    with pytest.raises(clova.ClovaChatError) as error:
+        clova.chat([], tools=[], client=FakeClient(HttpError(429, secret)))
+    assert not isinstance(error.value, clova.ClovaRequestRejected)
+
+
 def test_missing_key():
     with pytest.raises(clova.ClovaChatError, match="CLOVASTUDIO_API_KEY"):
         clova.chat([], tools=[])
@@ -117,3 +135,14 @@ def test_client_uses_openai_compatible_endpoint(monkeypatch):
 def test_invalid_message(message):
     with pytest.raises(clova.ClovaChatError):
         clova.parse_message(message)
+
+
+def test_review_flow_keeps_hcx005():
+    """#56 changed only the owner assistant's tool turn; the review flow was measured on 005."""
+    import inspect
+
+    from agenthan.agent import review_delegate
+
+    assert review_delegate.REVIEW_MODEL == "HCX-005"
+    assert inspect.signature(review_delegate.new_session).parameters["model"].default == "HCX-005"
+    assert review_delegate.ReviewSession.__dataclass_fields__["model"].default == "HCX-005"

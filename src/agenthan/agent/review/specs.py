@@ -1,4 +1,4 @@
-"""LLM에게 주는 도구 명세 (OpenAI 호환 function 스키마).
+"""LLM에게 주는 도구 명세 (CLOVA v3 tools[] function 스키마).
 
 도구 동작을 바꾸면 이 명세도 함께 고친다.
 """
