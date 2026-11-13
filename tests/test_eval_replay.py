@@ -12,7 +12,7 @@ from agenthan.agent import owner_assistant as owner
 from agenthan.agent import place_matcher
 from agenthan.agent.clova_chat import CHAT_MODEL, ClovaChatError, ClovaRequestRejected
 from agenthan.core.embedding import ClovaEmbeddingError
-from agenthan.eval import flow, replay, run
+from agenthan.eval import replay, run
 from agenthan.eval.cases import Case, load_cases
 from agenthan.eval.metrics import summarize
 from agenthan.eval.replay import Live, Recorder, Replay, ReplayMiss, request_hash
@@ -66,24 +66,6 @@ def test_chat_and_embed_record_roundtrip_and_no_transport_fields(tmp_path):
         Replay(path, "another-model").chat(messages, tools=tools)
     with pytest.raises(ReplayMiss):
         replay.embed("not recorded")
-
-
-def test_forced_tool_choice_is_part_of_the_recorded_request(tmp_path):
-    class Forced(Fake):
-        def chat(self, messages, *, tools, tool_choice=None):
-            self.choice = tool_choice
-            return super().chat(messages, tools=tools)
-
-    backend, path = Forced(), tmp_path / "record.json"
-    messages = [{"role": "user", "content": "public dummy request"}]
-    tools = [feature_tool_schema("statistics")]
-    force = {"type": "function", "function": {"name": "get_statistics"}}
-    recorded = Recorder(path, backend).chat(messages, tools=tools, tool_choice=force)
-    assert backend.choice == force
-    probe = flow.Probe(Replay(path))
-    assert probe.chat(messages, tools=tools, tool_choice=force) == recorded
-    with pytest.raises(ReplayMiss):
-        probe.chat(messages, tools=tools)
 
 
 @pytest.fixture

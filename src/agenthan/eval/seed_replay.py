@@ -20,7 +20,7 @@ class Synthetic:
         self.cases = {case.text: case for case in cases}
         self.schemas = {tool["function"]["name"]: tool["function"] for tool in all_tool_schemas()}
 
-    def chat(self, messages, *, tools, tool_choice=None):
+    def chat(self, messages, *, tools):
         case = self.cases.get(messages[-1]["content"]) if messages[-1]["role"] == "user" else None
         tool = case.expected_tool if case else None
         if tool is None or not tools:

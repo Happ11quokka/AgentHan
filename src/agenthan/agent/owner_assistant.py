@@ -198,8 +198,13 @@ FAKE_DONE = re.compile(
 )
 # A question for a missing value ("어떤 상태로 바꿀까요?") is not an imitation.
 ASKS_VALUE = re.compile(r"어떤|어느|무엇|무슨|뭐|몇|언제|얼마|어떻게|알려\s*주")
+NUDGE = (
+    "주의: 방금처럼 도구 없이 저장·확인 문구를 쓰지 마세요. 값이 다 모였으면 지금 도구를 호출하고, "
+    "빠진 값이 있으면 그 값만 짧게 물으세요."
+)
 # Optional inputs the change does not need: an unconfirmed value is dropped, never asked for.
 DROPPABLE = frozenset({"reason", "description"})
+READ_NUDGE = "주의: 조회 결과는 지어내지 말고 지금 노출된 조회 도구를 호출한 뒤 그 결과로 답하세요."
 NOT_SAVED_TEXT = "아직 저장하지 않았어요. 바꿀 내용을 한 번 더 말씀해 주세요."
 REJECTED_TEXT = (
     "{name}: 이 요청은 지금 처리하지 못했어요. 저장한 것은 없어요. 다른 말로 다시 말씀해 주세요."
@@ -985,16 +990,13 @@ class OwnerAssistant:
         missing: list[str] = []
         count = 0
         nudged = more = False
-        first = None  # The answer without a call, asked again with the tool forced.
         turn_start = len(self.history) - 1  # Index of this turn's user message.
         while True:
             tools = [] if saved or count >= self.max_tool_calls else exposed
-            messages = [system, *self._context(turn_start, feature_id)]
             try:
-                if first is not None:
-                    message, first = self._forced_call(messages, exposed, first), None
-                else:
-                    message = self._chat_once_more_if_rejected(messages, tools)
+                message = self._chat_once_more_if_rejected(
+                    [system, *self._context(turn_start, feature_id)], tools
+                )
             except ClovaRequestRejected:
                 # The same history would be rejected again, so drop this whole turn.
                 del self.history[turn_start:]
@@ -1091,9 +1093,9 @@ class OwnerAssistant:
                 )
             ):
                 # The model wrote its own preview or claimed a save without a tool call: ask
-                # once more with the same messages and this feature's tool forced.
+                # once more, with the rule next to the request.
                 nudged = self.trace["nudged"] = True
-                first = message
+                system = {"role": "system", "content": system["content"] + "\n" + NUDGE}
                 continue
             if (
                 not calls
@@ -1117,9 +1119,9 @@ class OwnerAssistant:
                     )
                 ):
                     # A read answer without the read tool is made up (전화 기록, 정산): ask
-                    # once more with the read tool forced.
+                    # once more to look it up.
                     nudged = self.trace["nudged"] = True
-                    first = message
+                    system = {"role": "system", "content": system["content"] + "\n" + READ_NUDGE}
                     continue
                 read_only = (
                     not needs_approval(exposed[0]["function"]["name"])
@@ -1259,20 +1261,6 @@ class OwnerAssistant:
                     raise
                 self.trace["rejected_retry"] = True
         raise AssertionError("unreachable")
-
-    def _forced_call(self, messages: list[dict], tools: list[dict], first: dict) -> dict:
-        """The same request with the feature's tool forced (tool_choice). HCX answers 400 when
-        it wants to ask for a value instead (#43): then the first answer, the question, stands."""
-        choice = {"type": "function", "function": {"name": tools[0]["function"]["name"]}}
-        try:
-            message = self.chat(
-                copy.deepcopy(messages), tools=copy.deepcopy(tools), tool_choice=choice
-            )
-        except ClovaRequestRejected:
-            self.trace["forced_rejected"] = True
-            return first
-        self.trace["forced"] = True
-        return parse_message(message)
 
     @staticmethod
     def _keywords_as_list(args: dict, said: str, store: dict) -> dict:
