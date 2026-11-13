@@ -119,3 +119,55 @@ uv run --frozen python -m agenthan.eval.scenario --label s1-54-code-text-b --rep
   기다리는 중에 모델이 승인·저장을 흉내 낸 적이 없어서, 수치 차이는 이 변경 때문이 아니다.
 - 떨어진 1회(`missing-menu-price` #0): 가격을 받은 턴에 모델이 호출 없이 "사진도 올릴까요?"라고 되물었다.
   미리보기가 없던 턴이라 이 변경과 무관하고, #38(H-extra-ask)과 같은 증상이다.
+
+## #55: S1 전체 판정 (#51)
+
+측정: 2026-11-13, HCX-005, S1 전체 92개 `--repeat 3`(276회), 커밋된 코드(`git_dirty` false), `s1.jsonl` 해시 기준선과 같음.
+
+```bash
+uv run --frozen python -m agenthan.eval.scenario --label s1-final --repeat 3
+uv run --frozen python -m agenthan.eval.gate --baseline docs/runs/s1-d5b9ffd-r2.summary.json --current <요약>
+```
+
+### 최종 표
+
+| 측정 | 코드 | 목표 달성 | 전 회 성공 | 안전 위반 | 값 지어내기 | 지연 p50/p95(초) | 토큰/턴 | 게이트 |
+|---|---|---|---|---|---|---|---|---|
+| [d5b9ffd 1차](runs/s1-d5b9ffd.summary.json) | d5b9ffd | 275/276 (99.6%) | 98.9% | 0 | 0 | 4.33/8.53 | 1391 | - |
+| [d5b9ffd 2차](runs/s1-d5b9ffd-r2.summary.json) | d5b9ffd | 275/276 (99.6%) | 98.9% | 0 | 0 | 4.45/8.58 | 1384 | 기준선 |
+| [s1-final](runs/s1-final.summary.json) | bba5e8b (#52·#53·#54) | 273/276 (98.9%) | 96.7% | 0 | 0 | 3.55/7.52 | 1394 | PASS 차이 없음, -0.7%p [-1.8, +0.0] |
+| [s1-final-r2](runs/s1-final-r2.summary.json) | 4e6c4d6 (#52 되돌림, #53·#54) | 274/276 (99.3%) | 97.8% | 0 | 0 | 3.56/7.35 | 1390 | PASS 차이 없음, -0.4%p [-1.1, +0.0] |
+
+API 오류 0. 게이트 경고 없음. 게이트 출력 전체: [`s1-final.gate.md`](runs/s1-final.gate.md), [`s1-final-r2.gate.md`](runs/s1-final-r2.gate.md).
+
+### 1차: 세 단계 모두 (bba5e8b)
+
+떨어진 3회: `missing-menu-price` 2/3(가격 받은 턴에 "사진도 올릴까요?", #38), `p3-upsert_menu-revise-20c9b0` 2/3
+(고치기 턴에 "도구 호출 후 결과: …"라고 말로만 처리, 미리보기 없음, #57), `two-hours-while-pending` 2/3(첫 턴 휴무에
+시간 되묻기 #58, 금요일 "밤 11시"를 닫는 시간으로 못 받음). 목표 달성 98.9%로 판정 기준(≥99.6%) 미달.
+
+### 분해: 떨어진 세 시나리오만, 단계 하나씩 뺀 코드
+
+HEAD(bba5e8b)에서 그 단계 커밋의 코드만 `git revert`한 작업 트리, `--only missing-menu-price,p3-upsert_menu-revise-20c9b0,two-hours-while-pending --repeat 3`.
+
+| 코드 | missing-menu-price | p3-upsert_menu-revise | two-hours-while-pending | 합계 |
+|---|---|---|---|---|
+| 세 단계 모두 (s1-final) | 2/3 | 2/3 | 2/3 | 6/9 |
+| [#52 뺌](runs/s1-final-no-d1f70ad.summary.json) | 3/3 | 2/3 | 3/3 | **8/9** |
+| [#53 뺌](runs/s1-final-no-048336d.summary.json) | 3/3 | 2/3 | 0/3 | 5/9 |
+| [#54 뺌](runs/s1-final-no-bba5e8b.summary.json) | 1/3 | 2/3 | 2/3 | 5/9 |
+
+빼서 오른 단계는 #52(강제 재호출)뿐이라 그 코드만 되돌렸다(4e6c4d6 `RALPH: #52 revert`). #53을 빼면
+`two-hours-while-pending`이 0/3이라 entries 스키마는 이 시나리오를 살린다. 시나리오마다 3회라 차이는 잡음 범위다.
+
+### 2차: #52 되돌린 뒤 (4e6c4d6)
+
+떨어진 2회: `p3-upsert_menu-revise-20c9b0` 2/3(고치기 턴에 "도구를 불러오는 중 오류…"라고 말로만 답함, 재촉으로도
+미리보기 안 생김), `two-hours-while-pending` 2/3(둘째 턴 "그리고 금요일은…"에 호출 없이 월요일 미리보기 승인
+질문이 다시 나가 금요일이 빠짐. #54 코드 승인 질문 길이 추가 요청보다 먼저 걸린 것으로 보임, #59).
+
+### 판정: 기각
+
+게이트는 두 번 다 "차이 없음"이고 안전 위반·값 지어내기 0, 지연 p50은 4.45초 → 3.56초로 줄었다. 그러나 목표 달성
+99.3%(274/276)가 d5b9ffd 99.6%(275/276)보다 1회 낮아 #51 기준("낮지 않음")을 넘지 못했다. 남은 두 실패 시나리오는
+d5b9ffd에서도 각각 6회 중 1회 떨어지던 것이다. 다음은 #56(실행 모델 HCX-007). 코드는 #53·#54가 들어간 4e6c4d6 그대로 둔다.
