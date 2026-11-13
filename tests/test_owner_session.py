@@ -14,6 +14,7 @@ FakeChat, answer, call, read_file = base.FakeChat, base.answer, base.call, base.
 mock_index, offline_by_default = base.mock_index, base.offline_by_default  # fixtures
 
 CONFIRM = {"reservation_id": "resv-1", "status": "confirmed"}
+FORCE_PHONE = {"type": "function", "function": {"name": "update_business_info"}}
 
 
 def routed(index, rules, default):
@@ -222,13 +223,26 @@ def test_imitated_preview_is_retried_and_false_claim_replaced(tmp_path, mock_ind
     bot = owner.OwnerAssistant(path, chat=fake, embed=lambda _: mock_index["business_info"])
     assert "바꿀까요" in bot.ask("전화번호 02-777-8888로 바꿔 주세요")
     assert bot.pending_action is not None and bot.trace["nudged"]
-    assert "주의" in fake.requests[1][0][0]["content"]
+    # Asked again with the same messages, the feature tool forced instead of a nudge text.
+    assert fake.requests[1] == fake.requests[0]
+    assert fake.choices == [None, FORCE_PHONE]
 
-    fake = FakeChat(answer("전화번호를 변경했습니다."), answer("변경했습니다!"))
+    fake = FakeChat(answer("전화번호를 변경했습니다."), owner.ClovaRequestRejected("400"))
     bot = owner.OwnerAssistant(
         tmp_path / "other.json", chat=fake, embed=lambda _: mock_index["business_info"]
     )
     assert bot.ask("전화번호 02-777-8888로 바꿔 주세요").startswith(owner.NOT_SAVED_TEXT)
+
+
+def test_forced_call_rejected_keeps_the_first_answer(tmp_path, mock_index):
+    first = "가격을 7500원으로 변경하시겠습니까?"
+    fake = FakeChat(answer(first), owner.ClovaRequestRejected("400"))
+    bot = owner.OwnerAssistant(
+        tmp_path / "store.json", chat=fake, embed=lambda _: mock_index["business_info"]
+    )
+    assert bot.ask("전화번호 02-777-8888로 바꿔 주세요") == first
+    assert len(fake.requests) == 2 and fake.choices[1] == FORCE_PHONE
+    assert bot.pending_action is None and bot.trace["forced_rejected"] is True
 
 
 def test_two_changes_are_shown_and_approved_together(tmp_path, mock_index):
@@ -266,7 +280,7 @@ def test_added_item_joins_the_shown_batch(tmp_path, mock_index):
 def test_rejected_interjection_gives_the_held_change_back(tmp_path, mock_index):
     bot, fake, path = reservation_then(tmp_path, mock_index, rules=[("부재중", "smartcall")])
 
-    def reject(messages, *, tools):
+    def reject(messages, *, tools, tool_choice=None):
         raise owner.ClovaRequestRejected("rejected")
 
     bot.chat = reject
@@ -297,12 +311,12 @@ def test_rejected_request_is_asked_once_more(tmp_path):
         [
             ClovaRequestRejected("rejected"),
             base.answer("부재중 전화는 2통이에요."),
-            base.answer("부재중 전화는 2통이에요."),  # After the read-tool nudge.
+            ClovaRequestRejected("rejected"),  # The read tool forced: the model would ask.
             base.answer("부재중 전화는 2통이에요."),  # Phrasing the read code ran.
         ]
     )
 
-    def chat(messages, *, tools):
+    def chat(messages, *, tools, tool_choice=None):
         reply = next(replies)
         if isinstance(reply, Exception):
             raise reply
@@ -332,7 +346,7 @@ def test_read_answer_without_the_read_tool_is_asked_again(tmp_path):
     bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
     bot.route = lambda text: owner.Route("smartcall", "select")
     assert bot.ask("부재중 전화 몇 통이에요?").startswith("부재중 전화는 2통이에요.")
-    assert owner.READ_NUDGE in fake.requests[1][0][0]["content"]
+    assert fake.choices[1] == {"type": "function", "function": {"name": "list_call_history"}}
 
 
 def test_paraphrased_reason_is_dropped_not_asked(tmp_path):
@@ -525,7 +539,7 @@ def test_a_question_back_on_a_read_tool_that_needs_nothing_is_nudged(tmp_path):
     bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
     bot.route = lambda text: owner.Route("smartcall", "select")
     assert bot.ask("참, 부재중 전화 있었어요?").startswith("부재중 전화는 2통이에요.")
-    assert owner.READ_NUDGE in fake.requests[1][0][0]["content"]
+    assert fake.choices[1] == {"type": "function", "function": {"name": "list_call_history"}}
 
 
 def test_a_read_question_back_for_a_value_already_said_is_nudged(tmp_path):
@@ -537,6 +551,7 @@ def test_a_read_question_back_for_a_value_already_said_is_nudged(tmp_path):
     bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
     bot.route = lambda text: owner.Route("settlement", "select")
     assert "116,400원" in bot.ask("이번 주 정산 얼마예요?")
+    assert fake.choices[1] == {"type": "function", "function": {"name": "get_settlement_summary"}}
     schema = owner.feature_tool_schema("settlement")
     assert not owner.OwnerAssistant._read_needs_nothing_new("settlement", schema, "정산 얼마예요?")
 

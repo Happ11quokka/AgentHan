@@ -41,9 +41,10 @@ class Probe:
         self.tokens: list[int] = []
         self.select_rejected = 0
 
-    def chat(self, messages, *, tools):
+    def chat(self, messages, *, tools, tool_choice=None):
+        forced = {"tool_choice": tool_choice} if tool_choice else {}
         try:
-            response = self.backend.chat(messages, tools=tools)
+            response = self.backend.chat(messages, tools=tools, **forced)
         except ClovaRequestRejected:
             raise  # The app answers the owner; scored as a failed turn, not an outage.
         except ClovaChatError as error:

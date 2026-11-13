@@ -88,8 +88,10 @@ class Live:
                 time.sleep(LIVE_RETRY_DELAY * 2**attempt)  # 2, 4, 8, 16, 32 s
         raise AssertionError("unreachable")  # pragma: no cover
 
-    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        return self._create(chat_request(messages, tools, self.model))
+    def chat(
+        self, messages: list[dict], *, tools: list[dict], tool_choice: dict | None = None
+    ) -> dict:
+        return self._create(chat_request(messages, tools, self.model, tool_choice))
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._create(select_request(messages, tools))
@@ -147,9 +149,12 @@ class Recorder:
         self.path.write_text(canonical(self.data) + "\n", encoding="utf-8")
         return response
 
-    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        request = chat_request(messages, tools, self.model)
-        return self._record(request, lambda: self.backend.chat(messages, tools=tools))
+    def chat(
+        self, messages: list[dict], *, tools: list[dict], tool_choice: dict | None = None
+    ) -> dict:
+        request = chat_request(messages, tools, self.model, tool_choice)
+        forced = {"tool_choice": tool_choice} if tool_choice else {}
+        return self._record(request, lambda: self.backend.chat(messages, tools=tools, **forced))
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         if not hasattr(self.backend, "select"):
@@ -191,8 +196,10 @@ class Replay:
             raise ReplayMiss(f"Missing replay {operation}: {key}")
         return copy.deepcopy(self.data["entries"][key])
 
-    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        return self._replay(chat_request(messages, tools, self.model))
+    def chat(
+        self, messages: list[dict], *, tools: list[dict], tool_choice: dict | None = None
+    ) -> dict:
+        return self._replay(chat_request(messages, tools, self.model, tool_choice))
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._replay(select_request(messages, tools))
