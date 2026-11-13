@@ -20,7 +20,7 @@
 |---|---|---|---|
 | 메뉴 | `upsert_menu` | **name**, action(save·delete·sold_out·on_sale), price, new_name, description | 등록(새 메뉴는 price 필수), 가격·이름·설명 수정, 삭제, 품절·품절 해제. 별칭으로도 찾는다 |
 | 업체 정보 | `update_business_info` | name, address, phone, introduction (하나 이상) | 상호·주소·전화번호·소개글을 한 번에 여러 개 |
-| 영업시간 | `update_business_hours` | **entries**: 항목마다 **days**(요일·날짜·weekdays·weekend·everyday), closed, open_time, close_time, break_start, break_end | 같은 시간을 받는 요일은 항목 하나, 요일마다 시간이 다르면 항목을 나눠 한 호출에(#53). 임시 휴무(날짜 나열), 브레이크 타임. 시각을 빼면 지금 시각을 유지. 매일·평일 묶음은 쉬는 날을 그대로 둔다 |
+| 영업시간 | `update_business_hours` | **days**(요일·날짜·weekdays·weekend·everyday), closed, open_time, close_time, break_start, break_end | 여러 요일 한 번에, 임시 휴무(날짜 나열), 브레이크 타임. 시각을 빼면 지금 시각을 유지. 매일·평일 묶음은 쉬는 날을 그대로 둔다 |
 | 톡톡 | `save_talktalk_reply` | **inquiry**, **reply_text** | 문의 하나에 답장 저장(발송 안 함) |
 | 주문 | `update_order_status` | **order_id**, **status**, reason | 접수·거절·준비 완료·전달 완료, 거절 사유 |
 | 예약 | `update_reservation_status` | **reservation_id**, **status**, reason | 확정·취소·노쇼, 취소 사유 |

@@ -36,7 +36,7 @@ from agenthan.agent import (
 )
 from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, chat, parse_message
 from agenthan.agent.place_matcher import RELEVANCE_THRESHOLD, get_feature
-from agenthan.agent.task_ledger import QUIET_AFTER, Task, TaskLedger
+from agenthan.agent.task_ledger import QUIET_AFTER, TaskLedger
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError, find_records
@@ -149,33 +149,6 @@ APPROVAL_TEXT = {
     "saved": "저장했어요.",
     "cancel": "취소했어요. 저장한 것은 없어요.",
 }
-
-
-# The four owner texts of a write task come from its ledger state, never from the model:
-# preview with the approval question, saved, and the resume notice of a held task.
-def approval_question(task: Task) -> str:
-    # New-record ids are random; showing them would change the next prompt on every run.
-    previews = [_comparable(a["preview"]) for a in task.preview["actions"]]
-    records = [p.get("record", p.get("records")) for p in previews]
-    return APPROVAL_TEXT["ask"].format(
-        name=get_feature(task.feature)["name_ko"],
-        record="\n".join(json.dumps(r, ensure_ascii=False) for r in records),
-    )
-
-
-def saved_text(task: Task) -> str:
-    """What was saved follows as the reread records (see OwnerAssistant._finish)."""
-    return APPROVAL_TEXT["saved"]
-
-
-def resume_text(task: Task) -> str | None:
-    """Notice for a held task; None when it has nothing waiting on the owner yet."""
-    key = "photo" if task.kind == "photo" else task.held_status or task.status
-    if key not in RESUME_TEXT or (task.kind == "tool" and key == "collecting" and not task.prompt):
-        return None
-    return RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
-
-
 CLARIFY_TEXT = "어떤 걸 도와드릴까요? {options} 중에서 골라 말씀해 주세요."
 DIAGNOSE_TOOL_NAME = "diagnose_search_visibility"  # Read-only tool of search_diagnosis.
 # A text-only answer that imitates the system preview or claims a save that did not happen.
@@ -198,8 +171,13 @@ FAKE_DONE = re.compile(
 )
 # A question for a missing value ("어떤 상태로 바꿀까요?") is not an imitation.
 ASKS_VALUE = re.compile(r"어떤|어느|무엇|무슨|뭐|몇|언제|얼마|어떻게|알려\s*주")
+NUDGE = (
+    "주의: 방금처럼 도구 없이 저장·확인 문구를 쓰지 마세요. 값이 다 모였으면 지금 도구를 호출하고, "
+    "빠진 값이 있으면 그 값만 짧게 물으세요."
+)
 # Optional inputs the change does not need: an unconfirmed value is dropped, never asked for.
 DROPPABLE = frozenset({"reason", "description"})
+READ_NUDGE = "주의: 조회 결과는 지어내지 말고 지금 노출된 조회 도구를 호출한 뒤 그 결과로 답하세요."
 NOT_SAVED_TEXT = "아직 저장하지 않았어요. 바꿀 내용을 한 번 더 말씀해 주세요."
 REJECTED_TEXT = (
     "{name}: 이 요청은 지금 처리하지 못했어요. 저장한 것은 없어요. 다른 말로 다시 말씀해 주세요."
@@ -671,8 +649,9 @@ class OwnerAssistant:
         elif task is not None and not self.ledger.quiet(task):
             if task.paused_at is None:
                 task.paused_at = self.ledger.turn
-            text = resume_text(task)
-            notice = "\n" + text if text else ""
+            key = "photo" if task.kind == "photo" else task.status
+            if key in RESUME_TEXT and (task.kind != "tool" or key != "collecting" or task.prompt):
+                notice = "\n" + RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
         self.history.append({"role": "assistant", "content": answer + notice})
         # Which ledger task each message of this turn worked on (see _finished_task_message).
         self._history_task += [self._turn_task] * (len(self.history) - len(self._history_task))
@@ -878,7 +857,7 @@ class OwnerAssistant:
             renewed = [{**a, "preview": f} for a, f in zip(actions, fresh, strict=True)]
             self.ledger.set_preview(task, {**action, "preview": fresh[0], "actions": renewed})
             self.trace["pending_approval"] = True
-            return self._finish(approval_question(task), [], [])
+            return self._finish(self._approval_question(task.feature, renewed), [], [])
         saved = []
         for item in actions:
             result = execute_feature_tool(self.store, item["name"], item["arguments"])
@@ -887,7 +866,7 @@ class OwnerAssistant:
             if not result["ok"]:
                 return self._finish(result["message"], saved, result.get("missing_fields", []))
             saved.append(result)
-        return self._finish(saved_text(task), saved, [])
+        return self._finish(APPROVAL_TEXT["saved"], saved, [])
 
     def _dry_run_all(self, actions: list[dict]) -> list[dict]:
         """Run a batch of writes in order on one throwaway copy of the current store."""
@@ -895,6 +874,15 @@ class OwnerAssistant:
             copy_store = DummyStore(Path(folder) / "store.json")
             copy_store.write(self.store.read())
             return [execute_feature_tool(copy_store, a["name"], a["arguments"]) for a in actions]
+
+    def _approval_question(self, feature_id: str, actions: list[dict]) -> str:
+        # New-record ids are random; showing them would change the next prompt on every run.
+        previews = [_comparable(a["preview"]) for a in actions]
+        records = [p.get("record", p.get("records")) for p in previews]
+        return APPROVAL_TEXT["ask"].format(
+            name=get_feature(feature_id)["name_ko"],
+            record="\n".join(json.dumps(r, ensure_ascii=False) for r in records),
+        )
 
     def respond(self, text: str, route: Route) -> str:
         """Answer one utterance on an already chosen route (evaluation reuses route())."""
@@ -975,7 +963,9 @@ class OwnerAssistant:
         ):
             # "아까 그거 계속하자" with nothing new: show the held change again, no model call.
             self.trace["pending_approval"] = True
-            return self._finish(approval_question(task), [], [])
+            return self._finish(
+                self._approval_question(feature_id, task.preview["actions"]), [], []
+            )
         task.said.append(text)
         self._targets = self._record_targets(feature_id, task)
         exposed = [self._tool_schema(feature_id)]
@@ -985,16 +975,13 @@ class OwnerAssistant:
         missing: list[str] = []
         count = 0
         nudged = more = False
-        first = None  # The answer without a call, asked again with the tool forced.
         turn_start = len(self.history) - 1  # Index of this turn's user message.
         while True:
             tools = [] if saved or count >= self.max_tool_calls else exposed
-            messages = [system, *self._context(turn_start, feature_id)]
             try:
-                if first is not None:
-                    message, first = self._forced_call(messages, exposed, first), None
-                else:
-                    message = self._chat_once_more_if_rejected(messages, tools)
+                message = self._chat_once_more_if_rejected(
+                    [system, *self._context(turn_start, feature_id)], tools
+                )
             except ClovaRequestRejected:
                 # The same history would be rejected again, so drop this whole turn.
                 del self.history[turn_start:]
@@ -1008,8 +995,12 @@ class OwnerAssistant:
                     # This turn's new task failed; the task it interrupted comes back on top.
                     held = self.ledger.close(task, "failed", "HCX 거절")
                 answer = REJECTED_TEXT.format(name=feature["name_ko"])
-                if held is not None and not self.ledger.quiet(held) and resume_text(held):
-                    answer += "\n" + resume_text(held)
+                if held is not None and not self.ledger.quiet(held):
+                    key = "photo" if held.kind == "photo" else held.status
+                    if key in RESUME_TEXT:
+                        answer += "\n" + RESUME_TEXT[key].format(
+                            name=get_feature(held.feature)["name_ko"]
+                        )
                 return answer
             calls = message.get("tool_calls", [])
             if not calls and tools:
@@ -1048,27 +1039,12 @@ class OwnerAssistant:
                 message["content"] = ""
                 self.trace["code_read"] = True
             if not calls and self._previewed_now():
-                return self._finish(approval_question(task), saved, [])
+                return self._finish(
+                    self._approval_question(feature_id, self.pending_action["actions"]), saved, []
+                )
             # "아까 아메리카노 얼마로 바꿨죠?": the owner only asks, so "4800원으로 바꿨어요" is
             # an answer about a past change, not a made-up save.
             asked_only = bool(OWNER_QUESTION.search(text)) and not CHANGE_WORDS.search(text)
-            if (
-                not calls
-                and task.preview is not None
-                and needs_approval(exposed[0]["function"]["name"])
-                and not ASKS_VALUE.search(message["content"])
-                and (
-                    FAKE_ASK.search(message["content"])
-                    or (
-                        not asked_only
-                        and (FAKE_DONE.search(message["content"]) or "시스템" in message["content"])
-                    )
-                )
-            ):
-                # A change is shown and waiting: the model's own approval question or save
-                # claim is replaced by the shown change's question (same version, still counts).
-                self.trace["code_text"] = "approval"
-                return self._finish(approval_question(task), saved, [])
             if (
                 not calls
                 and not saved
@@ -1091,9 +1067,9 @@ class OwnerAssistant:
                 )
             ):
                 # The model wrote its own preview or claimed a save without a tool call: ask
-                # once more with the same messages and this feature's tool forced.
+                # once more, with the rule next to the request.
                 nudged = self.trace["nudged"] = True
-                first = message
+                system = {"role": "system", "content": system["content"] + "\n" + NUDGE}
                 continue
             if (
                 not calls
@@ -1117,9 +1093,9 @@ class OwnerAssistant:
                     )
                 ):
                     # A read answer without the read tool is made up (전화 기록, 정산): ask
-                    # once more with the read tool forced.
+                    # once more to look it up.
                     nudged = self.trace["nudged"] = True
-                    first = message
+                    system = {"role": "system", "content": system["content"] + "\n" + READ_NUDGE}
                     continue
                 read_only = (
                     not needs_approval(exposed[0]["function"]["name"])
@@ -1131,6 +1107,9 @@ class OwnerAssistant:
                     # A read question answered in words is finished; a held task resumes.
                     self.ledger.close(task, "done")
                 return self._finish(message["content"], saved, missing)
+            # 월·금 packed into one call (closed=[true, false]): one call per item, so each is
+            # checked and previewed on its own (two-hours-while-pending, 4 of 5 runs).
+            calls = message["tool_calls"] = self._unpack_items(feature_id, calls)
             self.history.append(message)
             over_limit = count + len(calls) > self.max_tool_calls
             for call in calls:
@@ -1199,7 +1178,53 @@ class OwnerAssistant:
                     more = True  # "둘 다": let the model add the other change to the batch.
                     self._adding = True
                     continue
-                return self._finish(approval_question(task), saved, [])
+                return self._finish(
+                    self._approval_question(feature_id, self.pending_action["actions"]), saved, []
+                )
+
+    @staticmethod
+    def _unpack_items(feature_id: str, calls: list[dict]) -> list[dict]:
+        """A call that packs several items into one ("days": [mon, fri] with "closed":
+        [true, false], …) becomes one call per item. Only when the tool has one list input
+        (the items) and every packed value lines up with it; anything else is left as it is
+        (and refused by _propose as one_value_per_call)."""
+        params = tool_params(feature_id) if feature_id in TOOLS else []
+        lists = [p[0] for p in params if p[1].endswith("list")]
+        scalars = [p[0] for p in params if not p[1].endswith("list")]
+        if len(lists) != 1:
+            return calls
+        out = []
+        for call in calls:
+            fn = call["function"]
+            try:
+                raw = fn.get("arguments")
+                args = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError:
+                args = None
+            items = args.get(lists[0]) if isinstance(args, dict) else None
+            packed = [
+                k for k in scalars if isinstance(args, dict) and isinstance(args.get(k), list)
+            ]
+            if (
+                not packed
+                or not isinstance(items, list)
+                or len(items) < 2
+                or any(len(args[k]) != len(items) for k in packed)
+            ):
+                out.append(call)
+                continue
+            for i, item in enumerate(items):
+                one = {k: v for k, v in args.items() if k not in packed and k != lists[0]}
+                one[lists[0]] = [item]
+                one.update({k: args[k][i] for k in packed if args[k][i] not in (None, "")})
+                if one.get("closed") is True:  # A closed day has no hours (guide step 2).
+                    for key in ("open_time", "close_time", "break_start", "break_end"):
+                        one.pop(key, None)
+                arguments = json.dumps(one, ensure_ascii=False)
+                out.append(
+                    {**call, "id": f"{call['id']}-{i}", "function": {**fn, "arguments": arguments}}
+                )
+        return out
 
     @staticmethod
     def _read_needs_nothing_new(feature_id: str, schema: dict, text: str) -> bool:
@@ -1259,20 +1284,6 @@ class OwnerAssistant:
                     raise
                 self.trace["rejected_retry"] = True
         raise AssertionError("unreachable")
-
-    def _forced_call(self, messages: list[dict], tools: list[dict], first: dict) -> dict:
-        """The same request with the feature's tool forced (tool_choice). HCX answers 400 when
-        it wants to ask for a value instead (#43): then the first answer, the question, stands."""
-        choice = {"type": "function", "function": {"name": tools[0]["function"]["name"]}}
-        try:
-            message = self.chat(
-                copy.deepcopy(messages), tools=copy.deepcopy(tools), tool_choice=choice
-            )
-        except ClovaRequestRejected:
-            self.trace["forced_rejected"] = True
-            return first
-        self.trace["forced"] = True
-        return parse_message(message)
 
     @staticmethod
     def _keywords_as_list(args: dict, said: str, store: dict) -> dict:
@@ -1439,12 +1450,12 @@ class OwnerAssistant:
             p[3] for p in params if not p[1].endswith("list") and isinstance(given.get(p[0]), list)
         ]
         if packed:
-            # Several values packed into one input (price=[5000, 5500]): one value per
-            # call, so each change is checked and previewed on its own.
+            # Several items packed into one call (closed=[true, false] for 월·금): one value
+            # per call, so each item is checked and previewed on its own.
             return raw, {
                 "ok": False,
                 "error": "one_value_per_call",
-                "message": "값이 목록이면 안 됩니다. 항목마다 값이 다르면 항목마다 따로 "
+                "message": "값이 목록이면 안 됩니다. 항목(요일 묶음)마다 값이 다르면 항목마다 따로 "
                 "호출하세요. 이미 보여 준 변경은 다시 넣지 마세요.",
                 "fields": packed,
             }
@@ -1463,9 +1474,6 @@ class OwnerAssistant:
                 continue
             newer = "\n".join(task.said[slot.said_at :])
             spec = [p for p in params if p[0] == name]
-            if spec and spec[0][1] == "entry_list":
-                merged[name] = self._keep_entries(name, slot.value, value, newer, store)
-                continue
             if newer and spec:
                 ok, _ = value_source.check(spec, {name: value}, newer, store, today=self.today)
                 if ok:
@@ -1538,52 +1546,6 @@ class OwnerAssistant:
         if merged == arguments:
             return raw, None
         return json.dumps(merged, ensure_ascii=False), None
-
-    def _keep_entries(
-        self, name: str, held: object, given: object, newer: str, store: dict
-    ) -> object:
-        """Entry by entry (same days), a confirmed field changes only when the owner's later
-        words say the new value; a field the model left out keeps the confirmed one. Entries
-        for other days are the model's."""
-        if not isinstance(held, list) or not isinstance(given, list):
-            return given
-        fields = {f[0]: f for f in value_source.ENTRY_FIELDS.get(name, [])}
-        out = []
-        for entry in given:
-            before = next(
-                (
-                    o
-                    for o in held
-                    if isinstance(o, dict)
-                    and isinstance(entry, dict)
-                    and o.get("days") == entry.get("days")
-                ),
-                None,
-            )
-            if before is None:
-                out.append(entry)
-                continue
-            one = dict(entry)
-            for key, value in entry.items():
-                if key not in before or before[key] == value or key not in fields:
-                    continue
-                said = (
-                    newer
-                    and not value_source.check(
-                        [fields[key]], {key: value}, newer, store, today=self.today
-                    )[1]
-                )
-                if not said:
-                    one[key] = before[key]
-                    self.trace.setdefault("kept_slots", []).append(key)
-            closed = one.get("closed") is True
-            for key, value in before.items():
-                times = key in ("open_time", "close_time", "break_start", "break_end")
-                opened = key == "closed" and ("open_time" in one or "close_time" in one)
-                if key not in one and not (closed and times) and not opened:
-                    one[key] = value
-            out.append(one)
-        return out
 
     def _previewed_now(self) -> bool:
         return (

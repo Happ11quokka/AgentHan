@@ -160,12 +160,12 @@ def test_act_is_asked_only_while_a_task_is_open(tmp_path, mock_index):
     fake = FakeChat(
         call(
             "update_business_hours",
-            {"entries": [{"days": ["sat"], "open_time": "10:00", "close_time": "20:00"}]},
+            {"days": ["sat"], "open_time": "10:00", "close_time": "20:00"},
         ),
         # The model carries over a different opening time from the older words (8시).
         call(
             "update_business_hours",
-            {"entries": [{"days": ["sat"], "open_time": "08:00", "close_time": "21:00"}]},
+            {"days": ["sat"], "open_time": "08:00", "close_time": "21:00"},
             "c2",
         ),
     )
@@ -178,13 +178,11 @@ def test_act_is_asked_only_while_a_task_is_open(tmp_path, mock_index):
     assert "바꿀까요" in out
     arguments = json.loads(bot.pending_action["arguments"])
     # Only the edited slot changed; the confirmed opening time stayed.
-    edited = [{"days": ["sat"], "open_time": "10:00", "close_time": "21:00"}]
-    assert arguments == {"entries": edited}
+    assert arguments == {"days": ["sat"], "open_time": "10:00", "close_time": "21:00"}
     assert bot.trace["kept_slots"] == ["open_time"] and bot.trace["act"] == "edit"
     task = bot.ledger.active()
-    assert task.slots["entries"].value == edited
-    before = [{"days": ["sat"], "open_time": "10:00", "close_time": "20:00"}]
-    assert ("entries", before, edited) in [c[1:4] for c in task.changes]
+    assert task.slots["close_time"].value == "21:00"
+    assert ("close_time", "20:00", "21:00") in [c[1:4] for c in task.changes]
     assert "고치는 중" in fake.requests[1][0][0]["content"]
 
 
@@ -208,8 +206,7 @@ def test_resume_shows_the_held_change_again_without_a_model_call(tmp_path, mock_
     )
     fake = FakeChat(
         call(
-            "update_business_hours",
-            {"entries": [{"days": ["sat"], "open_time": "10:00", "close_time": "20:00"}]},
+            "update_business_hours", {"days": ["sat"], "open_time": "10:00", "close_time": "20:00"}
         ),
         answer("쿠폰 이름, 할인, 기간을 알려 주세요."),
     )
@@ -266,8 +263,8 @@ def test_second_call_in_one_turn_is_not_filled_with_the_first_calls_values(tmp_p
             }
             for i, args in enumerate(
                 [
-                    {"entries": [{"days": ["mon"], "closed": True}]},
-                    {"entries": [{"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}]},
+                    {"days": ["mon"], "closed": True},
+                    {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"},
                 ]
             )
         ],
@@ -284,9 +281,8 @@ def test_second_call_in_one_turn_is_not_filled_with_the_first_calls_values(tmp_p
     bot.ask("월요일은 쉬는 걸로 해 주세요")
     bot.ask("그리고 금요일은 9시부터 밤 11시까지요")
     actions = [json.loads(a["arguments"]) for a in bot.pending_action["actions"]]
-    entries = [a["entries"] for a in actions]
-    assert [e[0]["days"] for e in entries] == [["mon"], ["fri"]]
-    assert entries[1][0].get("open_time") == "09:00" and not entries[1][0].get("closed")
+    assert [a["days"] for a in actions] == [["mon"], ["fri"]]
+    assert actions[1].get("open_time") == "09:00" and not actions[1].get("closed")
 
 
 def test_invalid_act_is_dropped_but_the_choice_kept():
@@ -312,7 +308,7 @@ def test_only_the_chosen_feature_guide_is_sent(tmp_path, mock_index):
     )
     bot.ask("영업시간 바꿀래요")
     system = fake.requests[0][0][0]["content"]
-    assert "이 기능의 순서" in system and "update_business_hours(entries=" in system
+    assert "이 기능의 순서" in system and "update_business_hours(days=" in system
     assert "upsert_menu(" not in system and "create_coupon(" not in system
     bot.ask("부재중 전화 있어요?")
     assert "이 기능의 순서" not in fake.requests[1][0][0]["content"]

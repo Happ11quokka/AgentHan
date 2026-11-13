@@ -48,15 +48,10 @@ class FakeChat:
     def __init__(self, *replies):
         self.replies = iter(replies)
         self.requests = []
-        self.choices = []  # tool_choice of each request (None when not forced).
 
-    def __call__(self, messages, *, tools, tool_choice=None):
+    def __call__(self, messages, *, tools):
         self.requests.append(copy.deepcopy((messages, tools)))
-        self.choices.append(tool_choice)
-        reply = next(self.replies)
-        if isinstance(reply, Exception):
-            raise reply
-        return reply
+        return next(self.replies)
 
 
 def fake_embed(_):

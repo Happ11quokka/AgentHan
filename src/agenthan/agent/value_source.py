@@ -12,8 +12,6 @@ import re
 import unicodedata
 from datetime import date, timedelta
 
-from agenthan.tools.feature_tools import HOURS_ENTRY
-
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 DAY_WORDS = {
     "mon": r"월요일|월욜|monday|\bmon\b",
@@ -328,10 +326,6 @@ def _day_said(value: object, said: str, today: date) -> bool:
     )
 
 
-# Fields of each entry of an entry-list input, as (id, kind, enum, label).
-ENTRY_FIELDS = {"entries": [(p.id, p.kind, p.enum, p.label) for p in HOURS_ENTRY]}
-
-
 def check(
     params: list[tuple[str, str, tuple[str, ...], str]],
     arguments: dict,
@@ -349,26 +343,6 @@ def check(
         if param_id not in arguments:
             continue
         value = arguments[param_id]
-        if kind == "entry_list":
-            # Each entry (월 10~21시, 금 쉼) is checked field by field; a missing label names
-            # the field (여는 시간), not the whole list.
-            fields = ENTRY_FIELDS.get(param_id, [])
-            if not isinstance(value, list) or not value or not fields:
-                unconfirmed.append(label)
-                continue
-            missing: list[str] = []
-            for entry in value:
-                inner = (
-                    check(fields, entry, said, store, today=today)[1]
-                    if isinstance(entry, dict)
-                    else [label]
-                )
-                missing += [m for m in inner if m not in missing]
-            if missing:
-                unconfirmed += [m for m in missing if m not in unconfirmed]
-            else:
-                sources[param_id] = "owner"
-            continue
         if param_id == "closed" and value is False and arguments.get("open_time"):
             source = "rule"  # Opening hours given: the day is open.
         else:
