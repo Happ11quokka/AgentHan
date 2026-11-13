@@ -14,6 +14,15 @@ __all__ = ["READ_ONLY_TOOLS", "needs_approval"]
 FEATURE_TO_TOOL = {feature: tool for tool, feature in TOOL_FEATURES.items()}
 
 
+def current_args(tool: str | None, args: dict | None) -> dict | None:
+    """Gold arguments in the tool's current shape. Labels written for the old hours tool
+    (one `days` list and one set of hours) become one entry of `entries` (#53); the label
+    files stay as they are, because the S1 gate compares the dataset file hash."""
+    if tool == "update_business_hours" and isinstance(args, dict) and "entries" not in args:
+        return {"entries": [args]} if args else args
+    return args
+
+
 class Expect(BaseModel):
     """Per-turn expectations. An omitted field is not scored (see eval.flow)."""
 
@@ -67,6 +76,9 @@ class Case(BaseModel):
             self.turns = [
                 Turn(say=self.text, expect=Expect(tool=self.expected_tool, args=self.expected_args))
             ]
+        self.expected_args = current_args(self.expected_tool, self.expected_args)
+        for turn in self.turns:
+            turn.expect.args = current_args(turn.expect.tool, turn.expect.args)
         self.needs_approval = needs_approval(self.expected_tool or self.near_tool)
         return self
 

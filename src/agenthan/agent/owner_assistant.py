@@ -1105,9 +1105,6 @@ class OwnerAssistant:
                     # A read question answered in words is finished; a held task resumes.
                     self.ledger.close(task, "done")
                 return self._finish(message["content"], saved, missing)
-            # 월·금 packed into one call (closed=[true, false]): one call per item, so each is
-            # checked and previewed on its own (two-hours-while-pending, 4 of 5 runs).
-            calls = message["tool_calls"] = self._unpack_items(feature_id, calls)
             self.history.append(message)
             over_limit = count + len(calls) > self.max_tool_calls
             for call in calls:
@@ -1179,50 +1176,6 @@ class OwnerAssistant:
                 return self._finish(
                     self._approval_question(feature_id, self.pending_action["actions"]), saved, []
                 )
-
-    @staticmethod
-    def _unpack_items(feature_id: str, calls: list[dict]) -> list[dict]:
-        """A call that packs several items into one ("days": [mon, fri] with "closed":
-        [true, false], …) becomes one call per item. Only when the tool has one list input
-        (the items) and every packed value lines up with it; anything else is left as it is
-        (and refused by _propose as one_value_per_call)."""
-        params = tool_params(feature_id) if feature_id in TOOLS else []
-        lists = [p[0] for p in params if p[1].endswith("list")]
-        scalars = [p[0] for p in params if not p[1].endswith("list")]
-        if len(lists) != 1:
-            return calls
-        out = []
-        for call in calls:
-            fn = call["function"]
-            try:
-                raw = fn.get("arguments")
-                args = json.loads(raw) if isinstance(raw, str) else raw
-            except ValueError:
-                args = None
-            items = args.get(lists[0]) if isinstance(args, dict) else None
-            packed = [
-                k for k in scalars if isinstance(args, dict) and isinstance(args.get(k), list)
-            ]
-            if (
-                not packed
-                or not isinstance(items, list)
-                or len(items) < 2
-                or any(len(args[k]) != len(items) for k in packed)
-            ):
-                out.append(call)
-                continue
-            for i, item in enumerate(items):
-                one = {k: v for k, v in args.items() if k not in packed and k != lists[0]}
-                one[lists[0]] = [item]
-                one.update({k: args[k][i] for k in packed if args[k][i] not in (None, "")})
-                if one.get("closed") is True:  # A closed day has no hours (guide step 2).
-                    for key in ("open_time", "close_time", "break_start", "break_end"):
-                        one.pop(key, None)
-                arguments = json.dumps(one, ensure_ascii=False)
-                out.append(
-                    {**call, "id": f"{call['id']}-{i}", "function": {**fn, "arguments": arguments}}
-                )
-        return out
 
     @staticmethod
     def _read_needs_nothing_new(feature_id: str, schema: dict, text: str) -> bool:
@@ -1462,12 +1415,12 @@ class OwnerAssistant:
             p[3] for p in params if not p[1].endswith("list") and isinstance(given.get(p[0]), list)
         ]
         if packed:
-            # Several items packed into one call (closed=[true, false] for 월·금): one value
-            # per call, so each item is checked and previewed on its own.
+            # Several values packed into one input (price=[5000, 5500]): one value per
+            # call, so each change is checked and previewed on its own.
             return raw, {
                 "ok": False,
                 "error": "one_value_per_call",
-                "message": "값이 목록이면 안 됩니다. 항목(요일 묶음)마다 값이 다르면 항목마다 따로 "
+                "message": "값이 목록이면 안 됩니다. 항목마다 값이 다르면 항목마다 따로 "
                 "호출하세요. 이미 보여 준 변경은 다시 넣지 마세요.",
                 "fields": packed,
             }
@@ -1486,6 +1439,9 @@ class OwnerAssistant:
                 continue
             newer = "\n".join(task.said[slot.said_at :])
             spec = [p for p in params if p[0] == name]
+            if spec and spec[0][1] == "entry_list":
+                merged[name] = self._keep_entries(name, slot.value, value, newer, store)
+                continue
             if newer and spec:
                 ok, _ = value_source.check(spec, {name: value}, newer, store, today=self.today)
                 if ok:
@@ -1558,6 +1514,52 @@ class OwnerAssistant:
         if merged == arguments:
             return raw, None
         return json.dumps(merged, ensure_ascii=False), None
+
+    def _keep_entries(
+        self, name: str, held: object, given: object, newer: str, store: dict
+    ) -> object:
+        """Entry by entry (same days), a confirmed field changes only when the owner's later
+        words say the new value; a field the model left out keeps the confirmed one. Entries
+        for other days are the model's."""
+        if not isinstance(held, list) or not isinstance(given, list):
+            return given
+        fields = {f[0]: f for f in value_source.ENTRY_FIELDS.get(name, [])}
+        out = []
+        for entry in given:
+            before = next(
+                (
+                    o
+                    for o in held
+                    if isinstance(o, dict)
+                    and isinstance(entry, dict)
+                    and o.get("days") == entry.get("days")
+                ),
+                None,
+            )
+            if before is None:
+                out.append(entry)
+                continue
+            one = dict(entry)
+            for key, value in entry.items():
+                if key not in before or before[key] == value or key not in fields:
+                    continue
+                said = (
+                    newer
+                    and not value_source.check(
+                        [fields[key]], {key: value}, newer, store, today=self.today
+                    )[1]
+                )
+                if not said:
+                    one[key] = before[key]
+                    self.trace.setdefault("kept_slots", []).append(key)
+            closed = one.get("closed") is True
+            for key, value in before.items():
+                times = key in ("open_time", "close_time", "break_start", "break_end")
+                opened = key == "closed" and ("open_time" in one or "close_time" in one)
+                if key not in one and not (closed and times) and not opened:
+                    one[key] = value
+            out.append(one)
+        return out
 
     def _previewed_now(self) -> bool:
         return (

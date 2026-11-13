@@ -57,13 +57,15 @@ HELP_ARTICLES = [
 class Param:
     id: str
     label: str
-    # string | integer | boolean | date | time | day | day_list | string_list
+    # string | integer | boolean | date | time | day | day_list | string_list | entry_list
     kind: str = "string"
     required: bool = True
     enum: tuple[str, ...] = ()
     hint: str = ""
     minimum: int | None = None
     max_items: int | None = None
+    # entry_list: the fields of one entry (an object in the list).
+    fields: tuple["Param", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -74,9 +76,55 @@ class FeatureTool:
     handler: Callable[[DummyStore, dict], dict] = field(repr=False)
 
 
+# One entry of update_business_hours: days that get the same hours, or that close.
+HOURS_ENTRY = (
+    Param(
+        "days",
+        "바꿀 요일·날짜 목록",
+        kind="day_list",
+        max_items=31,
+        hint="임시 휴무 기간은 날짜를 모두 나열",
+    ),
+    Param(
+        "closed",
+        "그날 쉬는지 여부",
+        kind="boolean",
+        required=False,
+        hint="쉬는 날이면 true, 생략하면 영업하는 날",
+    ),
+    Param(
+        "open_time",
+        "여는 시간",
+        kind="time",
+        required=False,
+        hint="쉬지 않으면 필수, 지금 값이 있으면 생략 가능",
+    ),
+    Param(
+        "close_time",
+        "닫는 시간",
+        kind="time",
+        required=False,
+        hint="쉬지 않으면 필수, 지금 값이 있으면 생략 가능",
+    ),
+    Param("break_start", "쉬는 시간(브레이크) 시작", kind="time", required=False),
+    Param("break_end", "쉬는 시간(브레이크) 끝", kind="time", required=False),
+)
+
+
+def _object_schema(params: tuple[Param, ...]) -> dict:
+    return {
+        "type": "object",
+        "properties": {p.id: _json_schema(p) for p in params},
+        "required": [p.id for p in params if p.required],
+        "additionalProperties": False,
+    }
+
+
 def _json_schema(param: Param) -> dict:
     description = param.label + (f" ({param.hint})" if param.hint else "")
-    if param.kind == "integer":
+    if param.kind == "entry_list":
+        spec = {"type": "array", "items": _object_schema(param.fields), "minItems": 1}
+    elif param.kind == "integer":
         spec = {"type": "integer"}
         if param.minimum is not None:
             spec["minimum"] = param.minimum
@@ -104,7 +152,30 @@ def _json_schema(param: Param) -> dict:
     return spec
 
 
+def _invalid(params: tuple[Param, ...], arguments: dict) -> list[str]:
+    """Labels of the given or required values that do not fit; inside an entry list, the
+    labels of the entry fields that do not fit (여는 시간), not the list's own label."""
+    labels: list[str] = []
+    for p in params:
+        value = arguments.get(p.id)
+        if not p.required and value is None:
+            continue
+        if p.kind != "entry_list" or not isinstance(value, list) or not value:
+            if not _valid(p, value):
+                labels.append(p.label)
+            continue
+        for entry in value:
+            if not isinstance(entry, dict) or set(entry) - {f.id for f in p.fields}:
+                inner = [p.label]
+            else:
+                inner = _invalid(p.fields, entry)
+            labels.extend(label for label in inner if label not in labels)
+    return labels
+
+
 def _valid(param: Param, value: object) -> bool:
+    if param.kind == "entry_list":
+        return False  # Checked field by field in _invalid.
     if param.kind == "integer":
         ok = type(value) is int and (param.minimum is None or value >= param.minimum)
     elif param.kind == "boolean":
@@ -266,31 +337,31 @@ def _expand_days(days: list[str]) -> list[str]:
     return out
 
 
-def _business_hours(store, args):
-    break_given = [args.get("break_start"), args.get("break_end")]
+def _hours_entry(hours: dict, entry: dict) -> tuple[list[str], list[str]] | dict:
+    """Apply one entry (days with one set of hours, or closed) to the hours in place.
+    Returns (changed days, closed days kept closed) or a needs-input result."""
+    break_given = [entry.get("break_start"), entry.get("break_end")]
     if any(break_given) and not all(break_given):
         return _needs(["쉬는 시간 시작", "쉬는 시간 끝"])
-    data = store.read()
-    hours = data["shop"].setdefault("hours", {})
-    days = _expand_days(args["days"])
-    grouped = {d for g in args["days"] if g in DAY_GROUPS for d in DAY_GROUPS[g]}
+    days = _expand_days(entry["days"])
+    grouped = {d for g in entry["days"] if g in DAY_GROUPS for d in DAY_GROUPS[g]}
     skipped = []
     for day in days:
         old = hours.get(day) or {}
         if (
             day in grouped
-            and day not in args["days"]
+            and day not in entry["days"]
             and old.get("closed")
-            and not args.get("closed")
-            and not (args.get("open_time") and args.get("close_time"))
+            and not entry.get("closed")
+            and not (entry.get("open_time") and entry.get("close_time"))
         ):
             skipped.append(day)  # 매일 브레이크: a closed day stays closed.
             continue
-        if args.get("closed"):
+        if entry.get("closed"):
             hours[day] = {"closed": True}
             continue
-        open_time = args.get("open_time") or (None if old.get("closed") else old.get("open_time"))
-        close_time = args.get("close_time") or (
+        open_time = entry.get("open_time") or (None if old.get("closed") else old.get("open_time"))
+        close_time = entry.get("close_time") or (
             None if old.get("closed") else old.get("close_time")
         )
         if not open_time or not close_time:
@@ -301,9 +372,25 @@ def _business_hours(store, args):
         elif not old.get("closed") and old.get("break_start"):
             record.update(break_start=old["break_start"], break_end=old.get("break_end"))
         hours[day] = record
+    return [d for d in days if d not in skipped], skipped
+
+
+def _business_hours(store, args):
+    """Each entry gives its days their own hours (월 10~21시, 금 11~22시 in one call); a
+    later entry wins for a day two entries name."""
+    data = store.read()
+    hours = data["shop"].setdefault("hours", {})
+    days: list[str] = []
+    skipped: list[str] = []
+    for entry in args["entries"]:
+        applied = _hours_entry(hours, entry)
+        if isinstance(applied, dict):
+            return applied
+        days += [d for d in applied[0] if d not in days]
+        skipped += [d for d in applied[1] if d not in skipped]
+    skipped = [d for d in skipped if d not in days]
     store.write(data)
     saved = store.read()["shop"]["hours"]
-    days = [d for d in days if d not in skipped]
     result = {
         "ok": True,
         "action": "updated",
@@ -539,35 +626,13 @@ _TOOL_LIST = [
         "update_business_hours",
         (
             Param(
-                "days",
-                "바꿀 요일·날짜 목록",
-                kind="day_list",
-                max_items=31,
-                hint="임시 휴무 기간은 날짜를 모두 나열",
+                "entries",
+                "요일별 영업시간",
+                kind="entry_list",
+                hint="같은 시간을 받는 요일·날짜마다 항목 하나. 요일마다 시간이 다르면 항목을 "
+                "나눈다",
+                fields=HOURS_ENTRY,
             ),
-            Param(
-                "closed",
-                "그날 쉬는지 여부",
-                kind="boolean",
-                required=False,
-                hint="쉬는 날이면 true, 생략하면 영업하는 날",
-            ),
-            Param(
-                "open_time",
-                "여는 시간",
-                kind="time",
-                required=False,
-                hint="쉬지 않으면 필수, 지금 값이 있으면 생략 가능",
-            ),
-            Param(
-                "close_time",
-                "닫는 시간",
-                kind="time",
-                required=False,
-                hint="쉬지 않으면 필수, 지금 값이 있으면 생략 가능",
-            ),
-            Param("break_start", "쉬는 시간(브레이크) 시작", kind="time", required=False),
-            Param("break_end", "쉬는 시간(브레이크) 끝", kind="time", required=False),
         ),
         _business_hours,
     ),
@@ -762,12 +827,7 @@ def feature_tool_schema(feature_id: str) -> dict:
         "function": {
             "name": tool.name,
             "description": f"{feature['name_ko']}: {feature['summary_ko']} {DUMMY_NOTE}",
-            "parameters": {
-                "type": "object",
-                "properties": {p.id: _json_schema(p) for p in tool.params},
-                "required": [p.id for p in tool.params if p.required],
-                "additionalProperties": False,
-            },
+            "parameters": _object_schema(tool.params),
         },
     }
 
@@ -801,11 +861,7 @@ def execute_feature_tool(store: DummyStore, name: str, arguments: object) -> dic
             "unsupported_fields": sorted(set(arguments) - known),
             "message": "이 도구에서 받지 않는 항목이 있습니다.",
         }
-    invalid = [
-        p.label
-        for p in tool.params
-        if (p.required or arguments.get(p.id) is not None) and not _valid(p, arguments.get(p.id))
-    ]
+    invalid = _invalid(tool.params, arguments)
     if invalid:
         return _needs(invalid)
     return tool.handler(store, arguments)

@@ -41,7 +41,9 @@ def check(feature, args, said):
 
 def test_values_the_owner_said_pass():
     assert check("business_info", {"phone": "02-777-8888"}, "새 번호는 02-777-8888")[1] == []
-    hours = {"days": ["sat"], "closed": False, "open_time": "10:00", "close_time": "20:00"}
+    hours = {
+        "entries": [{"days": ["sat"], "closed": False, "open_time": "10:00", "close_time": "20:00"}]
+    }
     assert check("business_hours", hours, "토요일은 10시부터 저녁 8시까지 할게요")[1] == []
     coupon = {
         "title": "겨울 할인 쿠폰",
@@ -84,12 +86,14 @@ def test_values_the_owner_did_not_say_are_refused():
 
 def test_new_tool_inputs_need_the_owners_words():
     # Day groups and date ranges the owner gave by their ends.
-    weekdays = {"days": ["mon", "tue", "wed", "thu", "fri"], "open_time": "10:00"}
+    weekdays = {"entries": [{"days": ["mon", "tue", "wed", "thu", "fri"], "open_time": "10:00"}]}
     assert check("business_hours", weekdays, "평일은 10시에 열어요")[1] == []
-    assert check("business_hours", {"days": ["weekend"], "closed": True}, "주말엔 쉬어요")[1] == []
-    closed = {"days": ["2026-11-20", "2026-11-21", "2026-11-22"], "closed": True}
+    weekend = {"entries": [{"days": ["weekend"], "closed": True}]}
+    assert check("business_hours", weekend, "주말엔 쉬어요")[1] == []
+    closed = {"entries": [{"days": ["2026-11-20", "2026-11-21", "2026-11-22"], "closed": True}]}
     assert check("business_hours", closed, "11월 20일부터 22일까지 쉬어요")[1] == []
-    assert check("business_hours", {"days": ["sat"], "closed": True}, "평일은 쉬어요")[1]
+    sat = {"entries": [{"days": ["sat"], "closed": True}]}
+    assert check("business_hours", sat, "평일은 쉬어요")[1]
     # A menu named by its alias; actions need the owner's words.
     sold = {"name": "메도빅", "action": "sold_out"}
     assert check("menu", sold, "꿀케이크 오늘 다 팔렸어요")[1] == []
@@ -101,5 +105,21 @@ def test_new_tool_inputs_need_the_owners_words():
 
 
 def test_wrong_shapes_are_unconfirmed_not_errors():
-    hours = {"days": ["fri"], "open_time": ["09:00"], "close_time": "23:00"}
+    hours = {"entries": [{"days": ["fri"], "open_time": ["09:00"], "close_time": "23:00"}]}
     assert check("business_hours", hours, "금요일은 9시부터 밤 11시까지요")[1] == ["여는 시간"]
+    assert check("business_hours", {"entries": "fri"}, "금요일은 쉬어요")[1] == ["요일별 영업시간"]
+
+
+def test_each_hours_entry_needs_the_owners_words():
+    two = {
+        "entries": [
+            {"days": ["mon"], "open_time": "10:00", "close_time": "21:00"},
+            {"days": ["fri"], "open_time": "11:00", "close_time": "22:00"},
+        ]
+    }
+    said = "월요일은 10시부터 9시까지, 금요일은 11시부터 10시까지요"
+    sources, missing = check("business_hours", two, said)
+    assert missing == [] and sources == {"entries": "owner"}
+    # A day the owner did not say, in an otherwise said call.
+    made_up = {"entries": [*two["entries"], {"days": ["sun"], "closed": True}]}
+    assert check("business_hours", made_up, said)[1] == ["바꿀 요일·날짜 목록", "그날 쉬는지 여부"]

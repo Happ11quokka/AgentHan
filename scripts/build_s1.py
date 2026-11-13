@@ -27,6 +27,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+from agenthan.eval.cases import current_args
 from agenthan.eval.scenario import MISSING, Scenario, apply_setup, changes, resolve
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import READ_ONLY_TOOLS, TOOL_FEATURES, execute_feature_tool
@@ -119,7 +120,7 @@ def simulate(calls: list[tuple[str, dict]]) -> tuple[dict, dict]:
     store = seed_store()
     before = store.read()
     for name, args in calls:
-        result = execute_feature_tool(store, name, args)
+        result = execute_feature_tool(store, name, current_args(name, args))
         if not result.get("ok"):
             raise ValueError(f"gold call failed: {name} {args} → {result}")
     return before, store.read()

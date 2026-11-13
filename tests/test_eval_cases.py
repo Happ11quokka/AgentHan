@@ -111,3 +111,17 @@ def test_duplicate_ids_fail(tmp_path):
     path.write_text('{"id":"same"}\n{"id":"same"}\n', encoding="utf-8")
     with pytest.raises(ValueError, match="Duplicate case id"):
         load_cases(path)
+
+
+def test_old_hours_labels_are_read_in_the_entries_shape():
+    from agenthan.eval.cases import Case, current_args
+
+    old = {"days": ["mon"], "closed": True}
+    assert current_args("update_business_hours", old) == {"entries": [old]}
+    assert current_args("update_business_hours", {"entries": [old]}) == {"entries": [old]}
+    assert current_args("upsert_menu", {"name": "블린"}) == {"name": "블린"}
+    case = Case(
+        id="x", text="월요일 쉬어요", expected_tool="update_business_hours", expected_args=old
+    )
+    assert case.expected_args == {"entries": [old]}
+    assert case.turns[0].expect.args == {"entries": [old]}

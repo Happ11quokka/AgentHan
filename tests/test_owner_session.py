@@ -96,7 +96,7 @@ def test_store_change_after_preview_asks_again(tmp_path, mock_index):
 
 
 def test_photo_drafts_wait_while_another_request_runs(tmp_path, mock_index):
-    hours = {"days": ["sun"], "open_time": "10:00", "close_time": "18:00"}
+    hours = {"entries": [{"days": ["sun"], "open_time": "10:00", "close_time": "18:00"}]}
     fake = FakeChat(call("update_business_hours", hours))
     path = tmp_path / "store.json"
     bot = owner.OwnerAssistant(
@@ -261,9 +261,10 @@ def test_two_changes_are_shown_and_approved_together(tmp_path, mock_index):
 
 def test_added_item_joins_the_shown_batch(tmp_path, mock_index):
     fake = FakeChat(
-        call("update_business_hours", {"days": ["mon"], "closed": True}),
+        call("update_business_hours", {"entries": [{"days": ["mon"], "closed": True}]}),
         call(
-            "update_business_hours", {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}
+            "update_business_hours",
+            {"entries": [{"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}]},
         ),
     )
     path = tmp_path / "store.json"
@@ -453,18 +454,15 @@ def test_owner_question_needs_no_change_words():
 
 
 def test_packed_values_ask_for_one_call_per_item(tmp_path):
-    # Lengths do not line up with days, so it cannot be split: refused, then called again.
-    packed = {"days": ["mon", "fri"], "closed": [True, False, False], "open_time": "09:00"}
+    packed = {"name": "아메리카노", "price": [5000, 5500]}
     fake = base.FakeChat(
-        base.call("update_business_hours", packed),
-        base.call(
-            "update_business_hours", {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"}
-        ),
+        base.call("upsert_menu", packed),
+        base.call("upsert_menu", {"name": "아메리카노", "price": 5500}),
         base.answer(""),
     )
     bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
-    bot.route = lambda t: owner.Route("business_hours", "select")
-    out = bot.ask("금요일은 9시부터 밤 11시까지요")
+    bot.route = lambda t: owner.Route("menu", "select")
+    out = bot.ask("아메리카노 가격 5500원으로 바꿔 주세요")
     assert bot.trace["results"][0]["error"] == "one_value_per_call"
     assert "바꿀까요" in out and len(bot.pending_action["actions"]) == 1
 
@@ -575,33 +573,22 @@ def test_code_runs_the_read_when_the_model_still_will_not(tmp_path):
     assert args == {"period": "this_week"}
 
 
-def test_items_packed_into_one_call_are_split_per_day(tmp_path):
-    packed = {
-        "days": ["mon", "fri"],
-        "closed": [True, False],
-        "open_time": ["09:00", "09:00"],
-        "close_time": ["21:00", "23:00"],
+def test_two_days_with_different_hours_are_one_call_and_one_preview(tmp_path):
+    two = {
+        "entries": [
+            {"days": ["mon"], "closed": True},
+            {"days": ["fri"], "open_time": "09:00", "close_time": "23:00"},
+        ]
     }
-    fake = base.FakeChat(
-        base.call("update_business_hours", {"days": ["mon"], "closed": True}),
-        base.call("update_business_hours", packed),
-    )
+    fake = base.FakeChat(base.call("update_business_hours", two))
     bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
     bot.route = lambda t: owner.Route("business_hours", "select")
-    assert "바꿀까요" in bot.ask("월요일은 쉬는 걸로 해 주세요")
-    out = bot.ask("그리고 금요일은 9시부터 밤 11시까지요")
-    actions = bot.pending_action["actions"]
-    assert [
-        json.loads(a["arguments"]) if isinstance(a["arguments"], str) else a["arguments"]
-        for a in actions
-    ] == [
-        {"days": ["mon"], "closed": True},
-        {"days": ["fri"], "closed": False, "open_time": "09:00", "close_time": "23:00"},
-    ]
-    assert '"fri"' in out and '"mon"' in out
-    assert bot.ask("둘 다 저장해 주세요").startswith("저장했어요")
+    out = bot.ask("월요일은 쉬고 금요일은 9시부터 밤 11시까지요")
+    assert len(bot.pending_action["actions"]) == 1
+    assert '"fri"' in out and '"mon"' in out and '"23:00"' in out
+    assert bot.ask("네").startswith("저장했어요")
     hours = DummyStore(tmp_path / "store.json").read()["shop"]["hours"]
-    assert hours["mon"]["closed"] is True and hours["fri"]["close_time"] == "23:00"
+    assert hours["mon"] == {"closed": True} and hours["fri"]["close_time"] == "23:00"
 
 
 def test_a_question_about_a_past_change_is_not_a_made_up_save(tmp_path):
@@ -625,3 +612,22 @@ def test_a_read_question_with_its_only_keyword_goes_to_that_read_feature():
     assert pick("오늘 들어온 주문 있어요?", ranked, "coupon") is None  # 주문 writes.
     ranked = place_matcher.rank_features("부재중 전화 기록 지워 줘", None)
     assert pick("부재중 전화 기록 지워 줘", ranked, "talktalk") is None  # Not a question.
+
+
+def test_an_edited_hours_entry_keeps_the_confirmed_fields_it_left_out(tmp_path):
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=base.FakeChat(), embed=base.fake_embed)
+    bot.trace = {}
+    held = [{"days": ["sat"], "open_time": "10:00", "close_time": "20:00"}]
+    edited = [{"days": ["sat"], "close_time": "21:00"}]
+    kept = bot._keep_entries("entries", held, edited, "닫는 건 9시로 할게요", {})
+    assert kept == [{"days": ["sat"], "close_time": "21:00", "open_time": "10:00"}]
+    closed = bot._keep_entries("entries", held, [{"days": ["sat"], "closed": True}], "쉴게요", {})
+    assert closed == [{"days": ["sat"], "closed": True}]
+    reopened = bot._keep_entries(
+        "entries",
+        [{"days": ["sat"], "closed": True}],
+        [{"days": ["sat"], "open_time": "11:00", "close_time": "19:00"}],
+        "11시부터 7시까지 열게요",
+        {},
+    )
+    assert reopened == [{"days": ["sat"], "open_time": "11:00", "close_time": "19:00"}]

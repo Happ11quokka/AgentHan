@@ -12,6 +12,7 @@ from agenthan.tools.feature_tools import (
     TOOLS,
     all_tool_schemas,
     execute_feature_tool,
+    feature_tool_schema,
 )
 
 
@@ -34,10 +35,7 @@ VALID = {
     "upsert_menu": {"name": "시르니키", "price": 6500},
     "update_business_info": {"phone": "02-000-0001"},
     "update_business_hours": {
-        "days": ["fri"],
-        "closed": False,
-        "open_time": "10:00",
-        "close_time": "23:00",
+        "entries": [{"days": ["fri"], "closed": False, "open_time": "10:00", "close_time": "23:00"}]
     },
     "save_talktalk_reply": {"inquiry": "talk-1", "reply_text": "메도빅 홀케이크는 예약 가능해요."},
     "update_order_status": {"order_id": "order-1", "status": "accepted"},
@@ -86,10 +84,11 @@ def test_valid_call_succeeds_and_keeps_seed(store, name):
 
 
 def test_writes_are_persisted(store):
-    opened = {"days": ["mon"], "open_time": "11:00", "close_time": "20:00"}
+    opened = {"entries": [{"days": ["mon"], "open_time": "11:00", "close_time": "20:00"}]}
     result = execute_feature_tool(store, "update_business_hours", opened)
     assert result["record"]["mon"]["closed"] is False
-    execute_feature_tool(store, "update_business_hours", {"days": ["2026-11-08"], "closed": True})
+    closed = {"entries": [{"days": ["2026-11-08"], "closed": True}]}
+    execute_feature_tool(store, "update_business_hours", closed)
     execute_feature_tool(store, "update_order_status", VALID["update_order_status"])
     execute_feature_tool(store, "create_coupon", VALID["create_coupon"])
     data = store.read()
@@ -103,14 +102,22 @@ def test_writes_are_persisted(store):
     [
         ("update_business_info", {}),
         ("update_business_info", {"phone": " "}),
-        ("update_business_hours", {"days": ["monday"], "closed": True}),
-        ("update_business_hours", {"days": []}),
-        ("update_business_hours", {"days": ["2026-11-08"], "closed": False}),
+        ("update_business_hours", {"entries": [{"days": ["monday"], "closed": True}]}),
+        ("update_business_hours", {"entries": [{"days": []}]}),
+        ("update_business_hours", {"entries": []}),
+        ("update_business_hours", {"entries": [{"closed": True}]}),
+        ("update_business_hours", {"entries": [{"days": ["mon"], "closed": [True]}]}),
+        ("update_business_hours", {"entries": [{"days": ["mon"], "note": "x"}]}),
+        ("update_business_hours", {"entries": [{"days": ["2026-11-08"], "closed": False}]}),
         (
             "update_business_hours",
-            {"days": ["mon"], "closed": False, "open_time": "25:00", "close_time": "10:00"},
+            {
+                "entries": [
+                    {"days": ["mon"], "closed": False, "open_time": "25:00", "close_time": "10:00"}
+                ]
+            },
         ),
-        ("update_business_hours", {"days": ["mon"], "break_start": "15:00"}),
+        ("update_business_hours", {"entries": [{"days": ["mon"], "break_start": "15:00"}]}),
         ("upsert_menu", {"name": "없는 메뉴"}),
         ("upsert_menu", {"name": "메도빅", "action": "pause"}),
         ("set_representative_keywords", {}),
@@ -208,10 +215,10 @@ def test_business_info_several_fields(store):
 
 
 def test_hours_groups_breaks_and_dates(store):
-    weekdays = {"days": ["weekdays"], "open_time": "10:00", "close_time": "20:00"}
+    weekdays = {"entries": [{"days": ["weekdays"], "open_time": "10:00", "close_time": "20:00"}]}
     result = execute_feature_tool(store, "update_business_hours", weekdays)
     assert result["days"] == ["mon", "tue", "wed", "thu", "fri"]
-    breaks = {"days": ["everyday"], "break_start": "15:00", "break_end": "16:00"}
+    breaks = {"entries": [{"days": ["everyday"], "break_start": "15:00", "break_end": "16:00"}]}
     result = execute_feature_tool(store, "update_business_hours", breaks)
     hours = store.read()["shop"]["hours"]
     assert hours["mon"] == {
@@ -221,9 +228,63 @@ def test_hours_groups_breaks_and_dates(store):
         "break_start": "15:00",
         "break_end": "16:00",
     }
-    closed = {"days": ["2026-11-20", "2026-11-21"], "closed": True}
+    closed = {"entries": [{"days": ["2026-11-20", "2026-11-21"], "closed": True}]}
     execute_feature_tool(store, "update_business_hours", closed)
     assert store.read()["shop"]["hours"]["2026-11-21"] == {"closed": True}
+
+
+def test_hours_entries_give_each_day_its_own_hours_in_one_call(store):
+    two = {
+        "entries": [
+            {"days": ["mon"], "open_time": "10:00", "close_time": "21:00"},
+            {"days": ["fri"], "open_time": "11:00", "close_time": "22:00"},
+        ]
+    }
+    result = execute_feature_tool(store, "update_business_hours", two)
+    assert result["ok"] and result["days"] == ["mon", "fri"]
+    hours = store.read()["shop"]["hours"]
+    assert (hours["mon"]["open_time"], hours["mon"]["close_time"]) == ("10:00", "21:00")
+    assert (hours["fri"]["open_time"], hours["fri"]["close_time"]) == ("11:00", "22:00")
+
+
+def test_hours_entries_mix_a_closed_day_and_day_groups(store):
+    mixed = {
+        "entries": [
+            {"days": ["weekdays"], "open_time": "09:00", "close_time": "18:00"},
+            {"days": ["weekend"], "open_time": "11:00", "close_time": "17:00"},
+            {"days": ["wed"], "closed": True},
+        ]
+    }
+    result = execute_feature_tool(store, "update_business_hours", mixed)
+    assert result["days"] == ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    hours = store.read()["shop"]["hours"]
+    assert hours["wed"] == {"closed": True}
+    assert hours["thu"]["open_time"] == "09:00" and hours["sun"]["close_time"] == "17:00"
+
+
+def test_hours_schema_is_an_array_of_day_entries():
+    params = feature_tool_schema("business_hours")["function"]["parameters"]
+    assert params["required"] == ["entries"] and list(params["properties"]) == ["entries"]
+    entries = params["properties"]["entries"]
+    assert entries["type"] == "array" and entries["minItems"] == 1
+    item = entries["items"]
+    assert item["type"] == "object" and item["required"] == ["days"]
+    assert item["additionalProperties"] is False
+    assert set(item["properties"]) == {
+        "days",
+        "closed",
+        "open_time",
+        "close_time",
+        "break_start",
+        "break_end",
+    }
+
+
+def test_invalid_entry_names_the_field_inside_it(store):
+    bad = {"entries": [{"days": ["mon"], "open_time": "25:00", "close_time": "10:00"}]}
+    assert execute_feature_tool(store, "update_business_hours", bad)["missing_fields"] == [
+        "여는 시간"
+    ]
 
 
 def test_keywords_add_remove_and_limit(store):
