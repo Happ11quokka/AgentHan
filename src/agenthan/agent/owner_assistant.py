@@ -36,7 +36,7 @@ from agenthan.agent import (
 )
 from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, chat, parse_message
 from agenthan.agent.place_matcher import RELEVANCE_THRESHOLD, get_feature
-from agenthan.agent.task_ledger import QUIET_AFTER, TaskLedger
+from agenthan.agent.task_ledger import QUIET_AFTER, Task, TaskLedger
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError, find_records
@@ -149,6 +149,33 @@ APPROVAL_TEXT = {
     "saved": "저장했어요.",
     "cancel": "취소했어요. 저장한 것은 없어요.",
 }
+
+
+# The four owner texts of a write task come from its ledger state, never from the model:
+# preview with the approval question, saved, and the resume notice of a held task.
+def approval_question(task: Task) -> str:
+    # New-record ids are random; showing them would change the next prompt on every run.
+    previews = [_comparable(a["preview"]) for a in task.preview["actions"]]
+    records = [p.get("record", p.get("records")) for p in previews]
+    return APPROVAL_TEXT["ask"].format(
+        name=get_feature(task.feature)["name_ko"],
+        record="\n".join(json.dumps(r, ensure_ascii=False) for r in records),
+    )
+
+
+def saved_text(task: Task) -> str:
+    """What was saved follows as the reread records (see OwnerAssistant._finish)."""
+    return APPROVAL_TEXT["saved"]
+
+
+def resume_text(task: Task) -> str | None:
+    """Notice for a held task; None when it has nothing waiting on the owner yet."""
+    key = "photo" if task.kind == "photo" else task.held_status or task.status
+    if key not in RESUME_TEXT or (task.kind == "tool" and key == "collecting" and not task.prompt):
+        return None
+    return RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
+
+
 CLARIFY_TEXT = "어떤 걸 도와드릴까요? {options} 중에서 골라 말씀해 주세요."
 DIAGNOSE_TOOL_NAME = "diagnose_search_visibility"  # Read-only tool of search_diagnosis.
 # A text-only answer that imitates the system preview or claims a save that did not happen.
@@ -644,9 +671,8 @@ class OwnerAssistant:
         elif task is not None and not self.ledger.quiet(task):
             if task.paused_at is None:
                 task.paused_at = self.ledger.turn
-            key = "photo" if task.kind == "photo" else task.status
-            if key in RESUME_TEXT and (task.kind != "tool" or key != "collecting" or task.prompt):
-                notice = "\n" + RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
+            text = resume_text(task)
+            notice = "\n" + text if text else ""
         self.history.append({"role": "assistant", "content": answer + notice})
         # Which ledger task each message of this turn worked on (see _finished_task_message).
         self._history_task += [self._turn_task] * (len(self.history) - len(self._history_task))
@@ -852,7 +878,7 @@ class OwnerAssistant:
             renewed = [{**a, "preview": f} for a, f in zip(actions, fresh, strict=True)]
             self.ledger.set_preview(task, {**action, "preview": fresh[0], "actions": renewed})
             self.trace["pending_approval"] = True
-            return self._finish(self._approval_question(task.feature, renewed), [], [])
+            return self._finish(approval_question(task), [], [])
         saved = []
         for item in actions:
             result = execute_feature_tool(self.store, item["name"], item["arguments"])
@@ -861,7 +887,7 @@ class OwnerAssistant:
             if not result["ok"]:
                 return self._finish(result["message"], saved, result.get("missing_fields", []))
             saved.append(result)
-        return self._finish(APPROVAL_TEXT["saved"], saved, [])
+        return self._finish(saved_text(task), saved, [])
 
     def _dry_run_all(self, actions: list[dict]) -> list[dict]:
         """Run a batch of writes in order on one throwaway copy of the current store."""
@@ -869,15 +895,6 @@ class OwnerAssistant:
             copy_store = DummyStore(Path(folder) / "store.json")
             copy_store.write(self.store.read())
             return [execute_feature_tool(copy_store, a["name"], a["arguments"]) for a in actions]
-
-    def _approval_question(self, feature_id: str, actions: list[dict]) -> str:
-        # New-record ids are random; showing them would change the next prompt on every run.
-        previews = [_comparable(a["preview"]) for a in actions]
-        records = [p.get("record", p.get("records")) for p in previews]
-        return APPROVAL_TEXT["ask"].format(
-            name=get_feature(feature_id)["name_ko"],
-            record="\n".join(json.dumps(r, ensure_ascii=False) for r in records),
-        )
 
     def respond(self, text: str, route: Route) -> str:
         """Answer one utterance on an already chosen route (evaluation reuses route())."""
@@ -958,9 +975,7 @@ class OwnerAssistant:
         ):
             # "아까 그거 계속하자" with nothing new: show the held change again, no model call.
             self.trace["pending_approval"] = True
-            return self._finish(
-                self._approval_question(feature_id, task.preview["actions"]), [], []
-            )
+            return self._finish(approval_question(task), [], [])
         task.said.append(text)
         self._targets = self._record_targets(feature_id, task)
         exposed = [self._tool_schema(feature_id)]
@@ -993,12 +1008,8 @@ class OwnerAssistant:
                     # This turn's new task failed; the task it interrupted comes back on top.
                     held = self.ledger.close(task, "failed", "HCX 거절")
                 answer = REJECTED_TEXT.format(name=feature["name_ko"])
-                if held is not None and not self.ledger.quiet(held):
-                    key = "photo" if held.kind == "photo" else held.status
-                    if key in RESUME_TEXT:
-                        answer += "\n" + RESUME_TEXT[key].format(
-                            name=get_feature(held.feature)["name_ko"]
-                        )
+                if held is not None and not self.ledger.quiet(held) and resume_text(held):
+                    answer += "\n" + resume_text(held)
                 return answer
             calls = message.get("tool_calls", [])
             if not calls and tools:
@@ -1037,12 +1048,27 @@ class OwnerAssistant:
                 message["content"] = ""
                 self.trace["code_read"] = True
             if not calls and self._previewed_now():
-                return self._finish(
-                    self._approval_question(feature_id, self.pending_action["actions"]), saved, []
-                )
+                return self._finish(approval_question(task), saved, [])
             # "아까 아메리카노 얼마로 바꿨죠?": the owner only asks, so "4800원으로 바꿨어요" is
             # an answer about a past change, not a made-up save.
             asked_only = bool(OWNER_QUESTION.search(text)) and not CHANGE_WORDS.search(text)
+            if (
+                not calls
+                and task.preview is not None
+                and needs_approval(exposed[0]["function"]["name"])
+                and not ASKS_VALUE.search(message["content"])
+                and (
+                    FAKE_ASK.search(message["content"])
+                    or (
+                        not asked_only
+                        and (FAKE_DONE.search(message["content"]) or "시스템" in message["content"])
+                    )
+                )
+            ):
+                # A change is shown and waiting: the model's own approval question or save
+                # claim is replaced by the shown change's question (same version, still counts).
+                self.trace["code_text"] = "approval"
+                return self._finish(approval_question(task), saved, [])
             if (
                 not calls
                 and not saved
@@ -1173,9 +1199,7 @@ class OwnerAssistant:
                     more = True  # "둘 다": let the model add the other change to the batch.
                     self._adding = True
                     continue
-                return self._finish(
-                    self._approval_question(feature_id, self.pending_action["actions"]), saved, []
-                )
+                return self._finish(approval_question(task), saved, [])
 
     @staticmethod
     def _read_needs_nothing_new(feature_id: str, schema: dict, text: str) -> bool:

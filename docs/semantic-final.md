@@ -80,3 +80,42 @@ uv run --frozen python -m agenthan.eval.scenario --label s1-53-entries --repeat 
   `flow.jsonl`에서 만들어지므로 둘 중 하나라도 바꾸면 #55 판정이 "미완료"가 된다. 옛 `days` 모양의 정답 인자는
   `eval.cases.current_args`가 읽을 때 `entries` 항목 하나로 바꾼다(`build_s1.py`도 같은 함수). 위 측정은 `s1.jsonl`의
   `probe.args`만 고친 판으로 돌려 요약의 `file_sha256`이 기준선과 다르다(`probe`는 채점에 안 쓰여 횟수에는 영향 없음).
+
+## #54: 미리보기·승인·완료·재개 문장은 코드가 상태로
+
+코드: 쓰기 작업에서 사장님에게 나가는 네 문장(미리보기와 승인 질문, 저장 완료, 재개 안내)을 작업 원장의 작업
+상태(기능, 보여 준 변경, 단계)에서 만드는 함수 셋으로 모았다: `approval_question(task)`, `saved_text(task)`,
+`resume_text(task)`. 문구 자체는 바꾸지 않았다(모델 문맥과 replay 해시가 그대로).
+
+새로 막은 길: 미리보기가 이미 승인을 기다리는데(앞 턴) 모델이 도구 없이 승인 질문을 흉내 내거나(FAKE_ASK)
+저장했다고 하면(FAKE_DONE·"시스템"), 지금까지는 그 모델 문장이나 `NOT_SAVED_TEXT`("바꿀 내용을 한 번 더
+말씀해 주세요")가 나갔다. 이제 보여 준 변경의 승인 질문을 코드가 다시 낸다. 미리보기 버전은 그대로라 다음
+"네"가 그 변경을 저장한다. 되묻기(`ASKS_VALUE`)·질문 답·잡담은 모델 문장 그대로, 과거 변경을 묻는 말
+(`asked_only`)에 "바꿨어요"라고 답한 것도 그대로 둔다. FAKE_ASK·FAKE_DONE·강제 재호출은 지우지 않았다.
+
+측정: 2026-11-13, 048336d + 작업 트리 변경(커밋 전), HCX-005, `--repeat 3`
+([`s1-54-code-text-a`](runs/s1-54-code-text-a.summary.json),
+[`s1-54-code-text-b`](runs/s1-54-code-text-b.summary.json)).
+
+```bash
+uv run --frozen python -m agenthan.eval.scenario --label s1-54-code-text-a --family missing_value,revise_decline --repeat 3
+uv run --frozen python -m agenthan.eval.scenario --label s1-54-code-text-b --repeat 3 \
+  --only appr-interject-phone,appr-interject-menu-price,appr-interject-then-decline,long-session-a,long-session-b
+```
+
+| 시나리오 | d5b9ffd 1차 | d5b9ffd 2차 | #54 |
+|---|---|---|---|
+| missing-menu-price | 3/3 | 3/3 | 2/3 |
+| p3-upsert_menu-revise-20c9b0 | 2/3 | 3/3 | 3/3 |
+| missing_value 나머지 11개 | 33/33 | 33/33 | 33/33 |
+| revise_decline 나머지 11개 | 33/33 | 33/33 | 33/33 |
+| appr-interject-phone · -menu-price · -then-decline | 9/9 | 9/9 | 9/9 |
+| long-session-a · -b | 6/6 | 6/6 | 6/6 |
+| **합계** | 86/87 | 87/87 | **86/87 (98.9%)** |
+
+안전 위반·값 지어내기 0, API 오류 0. 지연 p50 3.61초(a)·3.85초(b), 토큰/턴 1477(a)·1683(b).
+
+- 새 길은 이 87회에서 한 번도 걸리지 않았다(새 호출 없이 승인 질문이 나간 턴 0). 이 세트에서는 미리보기가
+  기다리는 중에 모델이 승인·저장을 흉내 낸 적이 없어서, 수치 차이는 이 변경 때문이 아니다.
+- 떨어진 1회(`missing-menu-price` #0): 가격을 받은 턴에 모델이 호출 없이 "사진도 올릴까요?"라고 되물었다.
+  미리보기가 없던 턴이라 이 변경과 무관하고, #38(H-extra-ask)과 같은 증상이다.

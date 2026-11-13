@@ -631,3 +631,45 @@ def test_an_edited_hours_entry_keeps_the_confirmed_fields_it_left_out(tmp_path):
         {},
     )
     assert reopened == [{"days": ["sat"], "open_time": "11:00", "close_time": "19:00"}]
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "예약을 확정 상태로 변경할게요. 저장할까요? 네 / 취소",
+        "예약을 확정으로 변경했습니다.",
+        "시스템이 확정으로 바꿨어요.",
+    ],
+)
+def test_model_approval_talk_over_a_shown_change_becomes_the_code_question(
+    tmp_path, mock_index, said
+):
+    bot, fake, path = reservation_then(tmp_path, mock_index, answer(said))
+    version = bot.ledger.active().version
+    out = bot.ask("그 예약 지금 어떻게 되는 거예요")
+    assert said not in out and owner.NOT_SAVED_TEXT not in out
+    assert out == owner.approval_question(bot.ledger.active())
+    assert bot.ledger.active().version == version  # The same shown change still counts.
+    bot.ask("네")
+    assert read_file(path)["reservations"][0]["status"] == "confirmed"
+
+
+def test_owner_texts_come_from_the_task_state():
+    ledger = TaskLedger()
+    task = ledger.start("business_info")
+    record = {"phone": "02-777-8888"}
+    preview = {"ok": True, "action": "updated", "record": record}
+    action = {"name": "update_business_info", "arguments": record, "preview": preview}
+    assert owner.resume_text(task) is None  # Nothing asked yet in this task.
+    task.prompt = "새 번호를 알려 주세요."
+    assert owner.resume_text(task) == "아까 하던 가게 기본 정보 수정도 이어서 말씀해 주세요."
+    ledger.set_preview(task, {**action, "actions": [action]})
+    question = owner.approval_question(task)
+    assert question.startswith("가게 기본 정보 수정: 아래처럼 바꿀까요?")
+    assert '{"phone": "02-777-8888"}' in question and question.endswith("고칠 내용 말하기")
+    assert owner.resume_text(task) == (
+        "아까 가게 기본 정보 수정 변경은 아직 저장 전이에요. 저장할까요? (네 / 취소)"
+    )
+    assert owner.saved_text(task) == "저장했어요."
+    photo = ledger.start("menu", "photo")
+    assert owner.resume_text(photo).startswith("아까 사진 메뉴 초안도 저장 전이에요.")
