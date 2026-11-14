@@ -94,12 +94,32 @@ id 대신 원문 일부로 보내면 코드가 그 원문을 가진 후보 하�
 않았을 때 모델에게 주는 안내는 "조회 질문이면 후보로 답만 하고, 바꾸려는데 하나로 정해지지 않을 때만 묻기"다.
 한 턴에 같은 도구를 여러 번 부르면 둘째 호출부터는 새 항목이라 앞 호출의 값으로 빈칸을 채우지 않는다.
 
+### 턴 그래프 (LangGraph, ADR-0003)
+
+`ask()` 한 번은 `agent/turn_graph.py`의 `StateGraph`를 한 번 지나간다. 노드는 위 ⓪~④ 메서드를 부르기만 하고 판단은 하지 않는다. 미리보기를 보여 준 턴은 `wait_approval`의 `interrupt()`에서 멈추고, 다음 사장님 말이 `Command(resume=…)`로 이어진다. 승인 대기의 정본은 작업 원장이다. `dispatch`가 매번 원장을 다시 읽기 때문에, 원장에 근거가 없는 멈춤은 동작을 바꾸지 않는다. 체크포인터는 비서 하나당 `InMemorySaver` 하나다. 그림은 `turns.get_graph().draw_mermaid()`로 다시 만든다.
+
+```mermaid
+flowchart TD
+  start([사장님 말]) --> dispatch
+  dispatch -.사진 초안 작업.-> photo_reply
+  dispatch -.미리보기 대기.-> approval
+  dispatch -.그 밖.-> route
+  approval -.네·취소 아님.-> route
+  approval -.다시 확인.-> wait_approval
+  approval -.저장·취소.-> done([답])
+  route --> respond
+  respond -.미리보기 보임.-> wait_approval
+  respond -.-> done
+  photo_reply --> done
+  wait_approval -- 다음 말 --> dispatch
+```
+
 ### PRD 방향과 아직 다른 점
 
 - HCX 호출이 openai SDK(OpenAI 호환 API)다. PRD는 sdk.md 네이티브 REST v3. `core/llm.py`만 바꾸면 되게 모아 뒀다.
-- 오케스트레이터가 LangGraph `StateGraph`가 아니라 직접 짠 루프다. 승인(HITL)도 `interrupt()`가 아니라 대화 턴 확인이다.
+- 승인 판단은 여전히 정규식(`approval_intent`)이 한다. `interrupt()`는 멈추는 지점만 맡는다.
 - 통계 리포트(A-3)는 R1 통계, R2 해석, R4 카드·용어·후속 질문과 R3 검색 노출을 연결했다. 먼저 제안은 아직 없다.
-- A-1 승인은 `interrupt()`가 아니라 다음 턴의 "네/취소/고칠 곳"이다. 웹 폼은 `menu_form()` 값으로 채운다.
+- A-1 메뉴 사진 초안 승인은 `interrupt()`로 멈추지 않는다. `photo_reply` 노드가 다음 턴의 "네/취소/고칠 곳"을 받는다. 웹 폼은 `menu_form()` 값으로 채운다.
 
 더미 플레이스 API 시드(`tools/dummy_store_seed.json`)는 `fixtures/sample_store.json`의
 샘플 러시안 베이커리와 같은 메뉴 4개·리뷰 3개를 쓴다. 메뉴 ID·이름·가격·별칭·원어명·설명과

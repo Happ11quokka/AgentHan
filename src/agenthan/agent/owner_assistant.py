@@ -32,6 +32,7 @@ from agenthan.agent import (
     menu_photo,
     report_explainer,
     review_delegate,
+    turn_graph,
     value_source,
 )
 from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, chat, parse_message
@@ -502,6 +503,14 @@ class OwnerAssistant:
         self.knowledge = knowledge or FakeStoreKnowledge.from_fixture()
         self.clova_v3 = clova_v3 or menu_photo.chat_v3
         self._photo_preview = None
+        # One owner turn runs through the LangGraph turn graph (ADR-0003).
+        self._turn_route: Route | None = None
+        self.turns = turn_graph.build(self)
+
+    @property
+    def awaiting_owner(self) -> bool:
+        """The turn graph is paused at its approval interrupt."""
+        return turn_graph.paused(self.turns)
 
     # ------------------------------------------------------------ ledger views
     # The names below predate the ledger; they read and write the active task.
@@ -811,13 +820,7 @@ class OwnerAssistant:
         text = text.strip()
         if not text:
             return HELP
-        task = self.ledger.active()
-        if task is not None and task.kind == "photo":
-            return self._menu_photo_reply(text)
-        answer = self.reply_to_approval(text)
-        if answer is not None:
-            return answer
-        return self.respond(text, self.route(text))
+        return turn_graph.run(self.turns, text)
 
     def _dry_run(self, name: str, arguments: object) -> dict:
         """Run a write on a throwaway copy of the current store."""
