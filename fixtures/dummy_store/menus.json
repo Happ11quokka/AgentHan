@@ -9,18 +9,7 @@
     "aliases": [
       "Medovik Honey Cake",
       "메도빅 클래식",
-      "Медовик",
-      "꿀케이크",
-      "허니케이크",
-      "메도비크",
-      "Medovik",
-      "메도빅 케이크",
-      "꿀케익",
-      "메도빅크",
-      "Honey Cake",
-      "꿀케잌",
-      "메도빅케잌",
-      "매도빅"
+      "Медовик"
     ],
     "options": [],
     "allergens": [
@@ -41,7 +30,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": "medovik"
     }
   },
   {
@@ -78,7 +68,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": "medovik"
     }
   },
   {
@@ -115,7 +106,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu1.jpg"
-      ]
+      ],
+      "family": "medovik"
     }
   },
   {
@@ -152,7 +144,8 @@
       "size": "지름 18cm, 8조각",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": "medovik"
     }
   },
   {
@@ -190,7 +183,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -227,7 +221,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -264,7 +259,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu1.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -302,7 +298,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -338,7 +335,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -374,7 +372,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -407,7 +406,8 @@
       "price_photo": null,
       "price_naver": 7500,
       "size": "",
-      "photo_file": []
+      "photo_file": [],
+      "family": ""
     }
   },
   {
@@ -440,7 +440,8 @@
       "price_photo": null,
       "price_naver": 7000,
       "size": "",
-      "photo_file": []
+      "photo_file": [],
+      "family": ""
     }
   },
   {
@@ -477,7 +478,8 @@
       "size": "3개",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": "eclair"
     }
   },
   {
@@ -515,7 +517,8 @@
       "size": "25cm",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": "eclair"
     }
   },
   {
@@ -550,7 +553,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu1.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -585,7 +589,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -620,7 +625,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -657,7 +663,8 @@
       "size": "3개",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -693,7 +700,8 @@
       "size": "1개",
       "photo_file": [
         "dummy_menu1.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -750,7 +758,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -796,7 +805,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -843,7 +853,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -885,7 +896,8 @@
       "price_photo": null,
       "price_naver": 5000,
       "size": "",
-      "photo_file": []
+      "photo_file": [],
+      "family": ""
     }
   },
   {
@@ -926,7 +938,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -969,7 +982,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1013,7 +1027,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1060,7 +1075,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu1.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1104,7 +1120,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1146,7 +1163,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu3.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1192,7 +1210,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu4.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1234,7 +1253,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu1.jpg"
-      ]
+      ],
+      "family": ""
     }
   },
   {
@@ -1275,7 +1295,8 @@
       "size": "",
       "photo_file": [
         "dummy_menu2.jpg"
-      ]
+      ],
+      "family": ""
     }
   }
 ]

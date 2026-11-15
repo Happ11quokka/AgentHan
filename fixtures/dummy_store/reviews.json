@@ -54,7 +54,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 234,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -115,7 +116,8 @@
       "view_count": 469,
       "menu_matches": [
         "얼그레이"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -175,7 +177,8 @@
       "view_count": 309,
       "menu_matches": [
         "머랭롤"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -184,9 +187,7 @@
     "created_at": "2026-11-11T00:00:00+09:00",
     "rating": null,
     "author": "s****",
-    "menu_ids": [
-      "medovik"
-    ],
+    "menu_ids": [],
     "extra": {
       "created_raw": "11.11.수",
       "visited_raw": "11.11.수",
@@ -244,6 +245,9 @@
       "view_count": 481,
       "menu_matches": [
         "메도빅"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   },
@@ -302,7 +306,8 @@
       "view_count": 141,
       "menu_matches": [
         "베리타르트"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -367,9 +372,10 @@
       "language": "ko",
       "view_count": 40,
       "menu_matches": [
-        "초코메도빅",
-        "오블레피하차"
-      ]
+        "오블레피하차",
+        "초코메도빅"
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -427,7 +433,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 127,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -487,7 +494,8 @@
       "view_count": 261,
       "menu_matches": [
         "라프커피"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -550,7 +558,8 @@
       "view_count": 123,
       "menu_matches": [
         "당근케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -612,7 +621,8 @@
       "view_count": 591,
       "menu_matches": [
         "미니에클레어"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -621,9 +631,7 @@
     "created_at": "2026-10-26T00:00:00+09:00",
     "rating": null,
     "author": "정****",
-    "menu_ids": [
-      "medovik"
-    ],
+    "menu_ids": [],
     "extra": {
       "created_raw": "10.26.월",
       "visited_raw": "10.26.월",
@@ -666,13 +674,16 @@
         }
       ],
       "media": [],
-      "receipt_item": "Medovik Honey Cake",
+      "receipt_item": "Cake",
       "origin_type": "영수증",
       "owner_reply": null,
       "language": "ko",
       "view_count": 583,
       "menu_matches": [
         "꿀케이크"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   },
@@ -735,7 +746,8 @@
       "view_count": 320,
       "menu_matches": [
         "밀크티"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -793,7 +805,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 53,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -851,7 +864,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 548,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -912,7 +926,8 @@
       "view_count": 277,
       "menu_matches": [
         "프라하케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -977,7 +992,8 @@
       "view_count": 49,
       "menu_matches": [
         "사워베리메도빅"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1044,7 +1060,8 @@
       "view_count": 253,
       "menu_matches": [
         "빅에클레어"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1054,7 +1071,6 @@
     "rating": 4.5,
     "author": "류****",
     "menu_ids": [
-      "medovik",
       "americano"
     ],
     "extra": {
@@ -1105,7 +1121,7 @@
           "url": "https://example.com/dummy/review-53.jpg"
         }
       ],
-      "receipt_item": "Medovik Honey Cake",
+      "receipt_item": "Cake",
       "origin_type": "영수증",
       "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
       "language": "ko",
@@ -1113,6 +1129,9 @@
       "menu_matches": [
         "허니케이크",
         "아메리카노"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   },
@@ -1175,7 +1194,8 @@
       "view_count": 533,
       "menu_matches": [
         "키예프케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1236,7 +1256,8 @@
       "view_count": 35,
       "menu_matches": [
         "라떼"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1297,7 +1318,8 @@
       "view_count": 166,
       "menu_matches": [
         "시르니키"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1363,7 +1385,8 @@
       "view_count": 357,
       "menu_matches": [
         "제브라케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1429,7 +1452,8 @@
       "view_count": 239,
       "menu_matches": [
         "napoleon"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1490,7 +1514,8 @@
       "view_count": 421,
       "menu_matches": [
         "나폴레옹"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1553,7 +1578,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 5,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -1613,7 +1639,8 @@
       "view_count": 50,
       "menu_matches": [
         "파브로바"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1674,7 +1701,8 @@
       "view_count": 416,
       "menu_matches": [
         "오미자에이드"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1745,7 +1773,8 @@
       "view_count": 424,
       "menu_matches": [
         "사워크림케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1805,7 +1834,8 @@
       "view_count": 256,
       "menu_matches": [
         "메도빅홀케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1867,7 +1897,8 @@
       "view_count": 364,
       "menu_matches": [
         "크랜베리에이드"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -1930,7 +1961,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 54,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -1997,7 +2029,8 @@
       "view_count": 411,
       "menu_matches": [
         "버드밀크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2062,7 +2095,8 @@
       "view_count": 598,
       "menu_matches": [
         "치즈케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2072,8 +2106,7 @@
     "rating": 4.5,
     "author": "c****",
     "menu_ids": [
-      "medovik-choco",
-      "medovik"
+      "medovik-choco"
     ],
     "extra": {
       "created_raw": "9.10.목",
@@ -2124,7 +2157,10 @@
       "view_count": 352,
       "menu_matches": [
         "초코꿀케이크",
-        "꿀케이크"
+        "메도빅"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   },
@@ -2187,7 +2223,8 @@
       "view_count": 445,
       "menu_matches": [
         "허니레몬티"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2245,7 +2282,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 431,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -2306,7 +2344,8 @@
       "view_count": 122,
       "menu_matches": [
         "아메리카노"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2368,7 +2407,8 @@
       "view_count": 576,
       "menu_matches": [
         "나폴레옹케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2434,7 +2474,8 @@
       "view_count": 62,
       "menu_matches": [
         "카푸치노"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2496,8 +2537,10 @@
       "language": "ko",
       "view_count": 254,
       "menu_matches": [
-        "베리타르트"
-      ]
+        "베리타르트",
+        "타르트"
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2507,7 +2550,6 @@
     "rating": 5.0,
     "author": "m****",
     "menu_ids": [
-      "medovik",
       "milk-tea"
     ],
     "extra": {
@@ -2565,6 +2607,9 @@
       "menu_matches": [
         "꿀케이크",
         "밀크티"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   },
@@ -2623,7 +2668,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 331,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -2684,7 +2730,8 @@
       "view_count": 79,
       "menu_matches": [
         "오레쉬키"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2745,7 +2792,8 @@
       "view_count": 117,
       "menu_matches": [
         "얼그레이"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2814,7 +2862,8 @@
       "view_count": 553,
       "menu_matches": [
         "당근케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2879,7 +2928,8 @@
       "view_count": 325,
       "menu_matches": [
         "머랭롤"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -2941,7 +2991,8 @@
       "view_count": 117,
       "menu_matches": [
         "자몽에이드"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3007,7 +3058,8 @@
       "view_count": 171,
       "menu_matches": [
         "레몬에이드"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3016,9 +3068,7 @@
     "created_at": "2026-08-10T00:00:00+09:00",
     "rating": null,
     "author": "정****",
-    "menu_ids": [
-      "medovik"
-    ],
+    "menu_ids": [],
     "extra": {
       "created_raw": "8.10.월",
       "visited_raw": "8.7.금",
@@ -3071,6 +3121,9 @@
       "language": "ko",
       "view_count": 50,
       "menu_matches": [
+        "medovik"
+      ],
+      "family_mentions": [
         "medovik"
       ]
     }
@@ -3142,7 +3195,8 @@
       "view_count": 131,
       "menu_matches": [
         "프라하초코케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3202,7 +3256,8 @@
       "view_count": 58,
       "menu_matches": [
         "빅에클레어"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3268,7 +3323,8 @@
       "view_count": 27,
       "menu_matches": [
         "제브라케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3326,7 +3382,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 52,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -3389,7 +3446,8 @@
       "view_count": 460,
       "menu_matches": [
         "오블레피하차"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3454,7 +3512,8 @@
       "view_count": 41,
       "menu_matches": [
         "미니에클레어"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3520,7 +3579,8 @@
       "view_count": 161,
       "menu_matches": [
         "스메타닉"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3580,7 +3640,8 @@
       "view_count": 350,
       "menu_matches": [
         "파블로바"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3642,7 +3703,8 @@
       "view_count": 433,
       "menu_matches": [
         "라떼"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3703,7 +3765,8 @@
       "view_count": 368,
       "menu_matches": [
         "시르니키"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3764,7 +3827,8 @@
       "view_count": 215,
       "menu_matches": [
         "메도빅홀케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3825,7 +3889,8 @@
       "owner_reply": null,
       "language": "ko",
       "view_count": 571,
-      "menu_matches": []
+      "menu_matches": [],
+      "family_mentions": []
     }
   },
   {
@@ -3887,7 +3952,8 @@
       "menu_matches": [
         "초코메도빅",
         "아메리카노"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3949,7 +4015,8 @@
       "view_count": 548,
       "menu_matches": [
         "키예프케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -3958,9 +4025,7 @@
     "created_at": "2026-07-11T00:00:00+09:00",
     "rating": null,
     "author": "s****",
-    "menu_ids": [
-      "medovik"
-    ],
+    "menu_ids": [],
     "extra": {
       "created_raw": "7.11.토",
       "visited_raw": "7.8.수",
@@ -4014,6 +4079,9 @@
       "view_count": 162,
       "menu_matches": [
         "허니케이크"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   },
@@ -4079,7 +4147,8 @@
       "view_count": 63,
       "menu_matches": [
         "모르스"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -4137,7 +4206,8 @@
       "view_count": 204,
       "menu_matches": [
         "버드밀크케이크"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -4199,7 +4269,8 @@
       "view_count": 128,
       "menu_matches": [
         "사워베리메도빅"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -4264,7 +4335,8 @@
       "view_count": 375,
       "menu_matches": [
         "라프커피"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -4328,7 +4400,8 @@
       "view_count": 33,
       "menu_matches": [
         "나폴레옹"
-      ]
+      ],
+      "family_mentions": []
     }
   },
   {
@@ -4337,9 +4410,7 @@
     "created_at": "2026-06-28T00:00:00+09:00",
     "rating": null,
     "author": "s****",
-    "menu_ids": [
-      "medovik"
-    ],
+    "menu_ids": [],
     "extra": {
       "created_raw": "6.28.일",
       "visited_raw": "6.26.금",
@@ -4382,13 +4453,16 @@
         }
       ],
       "media": [],
-      "receipt_item": "Medovik Honey Cake",
+      "receipt_item": "Cake",
       "origin_type": "영수증",
       "owner_reply": null,
       "language": "ko",
       "view_count": 118,
       "menu_matches": [
         "꿀케이크"
+      ],
+      "family_mentions": [
+        "medovik"
       ]
     }
   }

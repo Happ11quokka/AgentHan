@@ -1,5 +1,5 @@
 {
-  "_설명": "더미 가게 메뉴 별칭 사전 (지어낸 데이터). private/make_dummy.py가 합친다. 형식은 data/clean/aliases.json과 같다.",
+  "_설명": "더미 가게 메뉴 별칭 사전 (지어낸 데이터). private/make_dummy.py가 합친다. 형식은 data/clean/aliases.json과 같다. families는 메뉴 묶음: 묶음 별칭으로 물으면 묶음 전체, representative가 대표 메뉴.",
   "review_link_exclude": [
     "아아",
     "뜨아",
@@ -9,24 +9,8 @@
   "menus": {
     "medovik": {
       "name_native": "",
-      "aliases": [
-        "꿀케이크",
-        "허니케이크",
-        "메도비크",
-        "꿀 케이크",
-        "Medovik",
-        "메도빅 케이크",
-        "꿀케익",
-        "메도빅크",
-        "Honey Cake",
-        "꿀케잌",
-        "메도빅케잌",
-        "매도빅"
-      ],
-      "ambiguous": [
-        "꿀케이크",
-        "허니케이크"
-      ]
+      "aliases": [],
+      "ambiguous": []
     },
     "medovik-choco": {
       "name_native": "Шоколадный медовик",
@@ -337,6 +321,46 @@
         "오미자에이드"
       ],
       "ambiguous": []
+    }
+  },
+  "families": {
+    "medovik": {
+      "name_ko": "메도빅",
+      "representative": "medovik",
+      "members": [
+        "medovik",
+        "medovik-choco",
+        "medovik-sour-berry",
+        "medovik-whole"
+      ],
+      "aliases": [
+        "메도빅",
+        "꿀케이크",
+        "꿀 케이크",
+        "허니케이크",
+        "메도비크",
+        "Medovik",
+        "꿀케익",
+        "메도빅 케이크",
+        "꿀케잌",
+        "메도빅케잌",
+        "매도빅",
+        "Honey Cake",
+        "메도빅크"
+      ]
+    },
+    "eclair": {
+      "name_ko": "에클레어",
+      "representative": "big-eclair",
+      "members": [
+        "big-eclair",
+        "mini-eclair"
+      ],
+      "aliases": [
+        "에클레어",
+        "에끌레어",
+        "Eclair"
+      ]
     }
   }
 }
