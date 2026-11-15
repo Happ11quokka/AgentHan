@@ -271,3 +271,31 @@ def test_category_uses_first_part(profile, category):
     queries = candidate_queries(replace(profile, area="이태원동", category=category))
     assert Query("이태원동 베이커리", "area_category") in queries
     assert all("·" not in q.text and "," not in q.text for q in queries)
+
+
+def test_anonymize_replaces_competitor_names_consistently(profile):
+    report = visibility.VisibilityReport(
+        profile,
+        local_results=[
+            visibility.LocalVisibility(
+                Query("메도빅", "menu"),
+                None,
+                [
+                    visibility.Competitor("진짜 빵집", "베이커리"),
+                    visibility.Competitor("진짜 카페", "카페"),
+                ],
+            ),
+            visibility.LocalVisibility(
+                Query("연습동 베이커리", "area_category"),
+                2,
+                [visibility.Competitor("진짜 카페", "카페")],
+            ),
+        ],
+    )
+    masked = visibility.anonymize(report)
+    names = [[c.name for c in row.competitors] for row in masked.local_results]
+    assert names == [["가상 가게 A", "가상 가게 B"], ["가상 가게 B"]]
+    assert [c.category for c in masked.local_results[0].competitors] == ["베이커리", "카페"]
+    assert [row.rank for row in masked.local_results] == [None, 2]
+    assert report.local_results[0].competitors[0].name == "진짜 빵집"  # Input untouched.
+    assert "진짜" not in summarize(masked)

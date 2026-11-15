@@ -54,8 +54,10 @@ from agenthan.tools.place_report import load_report, report_facts
 from agenthan.tools.search_visibility import (
     Query,
     VisibilityReport,
+    anonymize,
     candidate_queries,
     diagnose,
+    native_gaps,
     profile_from_store,
     summarize,
 )
@@ -152,6 +154,24 @@ APPROVAL_TEXT = {
 }
 CLARIFY_TEXT = "어떤 걸 도와드릴까요? {options} 중에서 골라 말씀해 주세요."
 DIAGNOSE_TOOL_NAME = "diagnose_search_visibility"  # Read-only tool of search_diagnosis.
+KEYWORD_TOOL_NAME = "set_representative_keywords"  # Write tool of search_keywords.
+
+
+def _jong(word: str) -> int | None:
+    """The final consonant index of a Hangul last letter (0 = none), None otherwise."""
+    if word and "가" <= word[-1] <= "힣":
+        return (ord(word[-1]) - 0xAC00) % 28
+    return None
+
+
+def _eul(word: str) -> str:
+    return "을" if _jong(word) else "를"
+
+
+def _ro(word: str) -> str:
+    return "으로" if _jong(word) not in (None, 0, 8) else "로"  # 8 = ㄹ
+
+
 # A text-only answer that imitates the system preview or claims a save that did not happen.
 PREVIEW_MARK = "(시스템이 변경 미리보기를 보여 줌)"
 FAKE_ASK = re.compile(
@@ -1628,6 +1648,8 @@ class OwnerAssistant:
             report = diagnose(profile, client, queries)
         except NaverSearchError as error:
             return str(error)
+        if live:  # Real shops never reach the screen; the fixture is fictional already.
+            report = anonymize(report)
         self.last_search = report
         self._detail_subject = "search"
         missing = {compact(r.query.text) for r in report.local_results if r.rank is None}
@@ -1656,21 +1678,53 @@ class OwnerAssistant:
                 or ("없어요" if report.local_results else "확인된 검색어가 없어요")
             ),
         ]
-        # A ranked result reveals the exact number ahead; for missing results R3
-        # retains at most four competitors, so only a lower bound is available.
+        # Demo scene 1: the owner's native menu name against the customers' Korean search.
+        data = self.store.read()
+        gaps = native_gaps(report, data.get("menus", []), data["shop"].get("keywords", []))
+        gap = gaps[0] if gaps else None
+        if gap:
+            area_row = next((r for r in gap.missing if r.query.kind == "area_menu"), None)
+            tail = (
+                f"‘{area_row.query.text}’에는 아직 나오는 가게가 없어요"
+                if area_row and not area_row.competitors
+                else "우리 가게는 상위 5개에 없어요"
+            )
+            lines.append(
+                f"사장님의 ‘{gap.native}’, 손님은 ‘{gap.menu}’{_ro(gap.menu)} 찾아요. {tail}"
+            )
+        # Demo scene 2: who shows up instead, by name. A ranked result lists only the shops
+        # above it; a missing one lists the top shops (R3 keeps at most four).
         ranked = next((row for row in found if row.rank > 1), None)
-        if ranked:
-            lines.append(f"‘{ranked.query.text}’에서 다른 가게 {ranked.rank - 1}곳이 먼저 나와요")
-        else:
+        ahead = next((r for r in (gap.missing if gap else []) if r.competitors), None)
+        if ahead is None and ranked is None:
             ahead = next((row for row in missing_rows if row.competitors), None)
-            if ahead:
-                lines.append(
-                    f"‘{ahead.query.text}’에서 다른 가게가 "
-                    f"최소 {len(ahead.competitors)}곳 먼저 나와요"
-                )
-            else:
-                lines.append("확인한 검색어에서 다른 가게가 먼저 나온 결과가 없어요")
-        if self._missing_search_keyword:
+        if ahead:
+            names = ", ".join(c.name for c in ahead.competitors[:3])
+            lines.append(f"‘{ahead.query.text}’에서 먼저 나오는 가게: {names}")
+        elif ranked:
+            above = ranked.competitors[: ranked.rank - 1]
+            names = ", ".join(c.name for c in above[:3])
+            more = f" 외 {len(above) - 3}곳" if len(above) > 3 else ""
+            lines.append(
+                f"‘{ranked.query.text}’에서 우리 가게({ranked.rank}위)보다 먼저 나오는 가게: "
+                f"{names}{more}"
+            )
+        else:
+            lines.append("확인한 검색어에서 다른 가게가 먼저 나온 결과가 없어요")
+        proposal = None
+        if gap and not gap.registered:
+            # The owner sees a preview and says 네 before anything is saved (HITL).
+            args = {"add": [gap.menu]}
+            if self._dry_run(KEYWORD_TOOL_NAME, args)["ok"]:
+                self._task_for("search_keywords", "tool")
+                if self._preview("search_keywords", KEYWORD_TOOL_NAME, args)["ok"]:
+                    proposal = gap.menu
+        if proposal:
+            action = (
+                f"이번 주 할 일: ‘{proposal}’{_eul(proposal)} 대표키워드에 추가할까요? "
+                "네 / 취소 (더미 저장소, 실제 네이버 반영 없음)"
+            )
+        elif self._missing_search_keyword:
             action = (
                 f"이번 주 할 일: ‘{self._missing_search_keyword}’"
                 f"{report_explainer.subject_particle(self._missing_search_keyword)} "

@@ -150,22 +150,23 @@ def test_search_summary_is_short_and_details_reuse_results(tmp_path, monkeypatch
     assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
     summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
     lines = summary.splitlines()
-    assert len(lines) <= 5
+    assert len(lines) <= 6
     assert "나오는 검색어:" in lines[0] and "위" in lines[0]
     assert "안 나오는 검색어:" in lines[1]
     assert len(lines[0].split(": ", 1)[1].split(", ")) <= 3
     assert len(lines[1].split(": ", 1)[1].split(", ")) <= 3
     assert lines[1].startswith("안 나오는 검색어: 메도빅, 이태원 케이크")
     assert assistant._missing_search_keyword in lines[1]
-    assert "다른 가게" in lines[2] and "곳" in lines[2]
-    assert "가상 구름 빵집" not in summary and "가상 달빛 빵집" not in summary
-    assert "할 일" in lines[3]
+    assert lines[2].startswith("사장님의 ‘Наполеон’, 손님은 ‘나폴레옹’으로 찾아요")
+    assert "먼저 나오는 가게: 가상 구름 빵집, 가상 달빛 빵집" in lines[3]
+    assert "‘나폴레옹’을 대표키워드에 추가할까요?" in lines[4]
     assert lines[-1].startswith("개인화 없는 검색 기준")
     counts = client.local.call_count, client.blog.call_count
-    assert assistant.ask("자세히") == summarize(assistant.last_search)
+    # The keyword proposal stays held, so a reminder follows the details.
+    assert assistant.ask("자세히").startswith(summarize(assistant.last_search))
     assert (client.local.call_count, client.blog.call_count) == counts
     assistant.ask("통계")
-    assert assistant.ask("자세히") == assistant.last_report.text
+    assert assistant.ask("자세히").startswith(assistant.last_report.text)
 
 
 def test_search_summary_without_results(tmp_path, monkeypatch):
@@ -187,6 +188,8 @@ def test_search_action_subject_particle(tmp_path):
     assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
     store = assistant.store.read()
     store["shop"]["keywords"] = []
+    for menu in store["menus"]:  # No native names: the inflow-keyword suggestion speaks.
+        menu.pop("name_native", None)
     assistant.store.read = Mock(return_value=store)
     answer = report.explain("통계", chat=failing_chat)
     keywords = [keyword for keyword in answer.facts.top_keywords if keyword.name == "메도빅"]
@@ -229,3 +232,99 @@ def test_live_search_visibility(monkeypatch):
     result = diagnose(profile, client, [Query(query, "store_name")])
     assert result.local_results[0].rank == 1
     assert f"{query}: 1위" in summarize(result)
+
+
+DEMO_STORE = report.Path(__file__).parent.parent / "fixtures" / "demo_store.json"
+
+
+def demo_assistant(tmp_path, monkeypatch, local):
+    """The fictional demo store, diagnosed against a made-up search result."""
+    from agenthan.agent import owner_assistant
+
+    fixture = tmp_path / "search.json"
+    fixture.write_text(json.dumps({"local": local, "blog": {}}, ensure_ascii=False))
+    factory = owner_assistant.FixtureSearch
+    monkeypatch.setattr(owner_assistant, "FixtureSearch", lambda _path: factory(fixture))
+    monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "0")
+    store = tmp_path / "store.json"
+    store.write_text(DEMO_STORE.read_text(encoding="utf-8"), encoding="utf-8")
+    return OwnerAssistant(store, chat=search_chat)
+
+
+DEMO_LOCAL = {
+    "메도빅": [
+        {"title": "가상 꿀빵집", "category": "베이커리"},
+        {"title": "가상 별빵집", "category": "카페"},
+        {"title": "가상 해빵집", "category": "케이크"},
+        {"title": "가상 달빵집", "category": "케이크"},
+    ],
+}
+
+
+def test_native_menu_gap_asks_to_add_keyword_and_saves_on_yes(tmp_path, monkeypatch):
+    assistant = demo_assistant(tmp_path, monkeypatch, DEMO_LOCAL)
+    answer = assistant.ask("손님이 검색하면 우리 가게 나와?")
+    lines = answer.splitlines()
+    assert len(lines) <= 6
+    # Scene 1: the owner's own word and the customers' word for the same menu.
+    assert "‘Медовик’" in answer and "손님은 ‘메도빅’으로 찾아요" in answer
+    assert "‘이태원동 메도빅’에는 아직 나오는 가게가 없어요" in answer
+    # Scene 2: who shows up instead, by name.
+    assert "‘메도빅’에서 먼저 나오는 가게: 가상 꿀빵집, 가상 별빵집, 가상 해빵집" in answer
+    assert "가상 달빵집" not in answer
+    assert "‘메도빅’을 대표키워드에 추가할까요?" in answer
+    assert "메도빅" not in assistant.store.read()["shop"]["keywords"]
+    assert assistant.ask("네").startswith("저장했어요")
+    assert assistant.store.read()["shop"]["keywords"] == [
+        "러시안 베이커리",
+        "디저트 카페",
+        "메도빅",
+    ]
+
+
+def test_native_menu_gap_declined_saves_nothing(tmp_path, monkeypatch):
+    assistant = demo_assistant(tmp_path, monkeypatch, DEMO_LOCAL)
+    assistant.ask("손님이 검색하면 우리 가게 나와?")
+    assert assistant.ask("취소").startswith("취소했어요")
+    assert assistant.store.read()["shop"]["keywords"] == ["러시안 베이커리", "디저트 카페"]
+
+
+def test_native_menu_gap_skips_registered_menu_and_full_keywords(tmp_path, monkeypatch):
+    assistant = demo_assistant(tmp_path, monkeypatch, DEMO_LOCAL)
+    data = assistant.store.read()
+    data["shop"]["keywords"] = ["메도빅", "나폴레옹", "블린", "러시안 베이커리", "디저트 카페"]
+    assistant.store.write(data)
+    answer = assistant.ask("손님이 검색하면 우리 가게 나와?")
+    assert "손님은 ‘메도빅’으로 찾아요" in answer
+    assert "추가할까요" not in answer
+    assert assistant.pending_action is None
+
+
+def test_native_menu_gap_absent_without_native_names(tmp_path, monkeypatch):
+    assistant = demo_assistant(tmp_path, monkeypatch, DEMO_LOCAL)
+    data = assistant.store.read()
+    for menu in data["menus"]:
+        menu.pop("name_native", None)
+    assistant.store.write(data)
+    answer = assistant.ask("손님이 검색하면 우리 가게 나와?")
+    assert "손님은" not in answer and "추가할까요" not in answer
+    assert "‘메도빅’에서 먼저 나오는 가게: 가상 꿀빵집" in answer
+
+
+def test_live_search_masks_real_competitor_names(tmp_path, monkeypatch):
+    """Demo rule: slides and recordings show only fictional shops (fixtures/README.md)."""
+    from agenthan.agent import owner_assistant
+
+    assistant = demo_assistant(tmp_path, monkeypatch, {})
+    from agenthan.tools.naver_search import FixtureSearch as factory
+
+    real = {"메도빅": [{"title": "진짜 빵집", "category": "베이커리"}]}
+    fixture = tmp_path / "real.json"
+    fixture.write_text(json.dumps({"local": real, "blog": {}}, ensure_ascii=False))
+    monkeypatch.setattr(owner_assistant, "ApiHubSearch", lambda: factory(fixture))
+    monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "1")
+    monkeypatch.setenv("NAVER_API_HUB_CLIENT_ID", "test-id")
+    monkeypatch.setenv("NAVER_API_HUB_CLIENT_SECRET", "test-secret")
+    answer = assistant.ask("손님이 검색하면 우리 가게 나와?")
+    assert "‘메도빅’에서 먼저 나오는 가게: 가상 가게 A" in answer
+    assert "진짜" not in answer and "진짜" not in assistant.ask("자세히")

@@ -170,6 +170,59 @@ def diagnose(
     return report
 
 
+def anonymize(report: VisibilityReport) -> VisibilityReport:
+    """A copy whose competitor names are fictional ("가상 가게 A"), the same shop keeping the
+    same name; categories and ranks stay. Demos show only fictional shops (fixtures/README)."""
+    aliases: dict[str, str] = {}
+
+    def alias(name: str) -> str:
+        if name not in aliases:
+            n = len(aliases)
+            aliases[name] = f"가상 가게 {chr(ord('A') + n) if n < 26 else n + 1}"
+        return aliases[name]
+
+    rows = [
+        LocalVisibility(
+            row.query, row.rank, [Competitor(alias(c.name), c.category) for c in row.competitors]
+        )
+        for row in report.local_results
+    ]
+    return VisibilityReport(report.profile, rows, list(report.blog_results))
+
+
+@dataclass(frozen=True)
+class NativeGap:
+    """A menu the owner knows by its native name whose Korean searches miss the shop."""
+
+    menu: str
+    native: str
+    missing: list[LocalVisibility]  # Its Korean queries outside the top 5, area query first.
+    registered: bool  # The Korean name is already a representative keyword.
+
+
+def native_gaps(
+    report: VisibilityReport, menus: list[dict], keywords: list[str]
+) -> list[NativeGap]:
+    """Menus with a native name, unregistered ones first, in menu order otherwise."""
+    area = _text(report.profile.area)
+    registered = {_normalize(k) for k in keywords}
+    gaps = []
+    for menu in menus:
+        name, native = _text(menu.get("name")), _text(menu.get("name_native"))
+        if not name or not native:
+            continue
+        wanted = {"area_menu": _normalize(f"{area} {name}"), "menu": _normalize(name)}
+        missing = []
+        for kind in ("area_menu", "menu"):
+            for row in report.local_results:
+                hit = row.rank is None and _normalize(row.query.text) == wanted[kind]
+                if hit and all(row is not seen for seen in missing):
+                    missing.append(row)
+        if missing:
+            gaps.append(NativeGap(name, native, missing[:2], _normalize(name) in registered))
+    return sorted(gaps, key=lambda gap: gap.registered)
+
+
 def summarize(report: VisibilityReport) -> str:
     found = [r for r in report.local_results if r.rank is not None]
     missing = [r for r in report.local_results if r.rank is None]
