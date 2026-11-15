@@ -1,0 +1,15 @@
+{"query": "아이 생일인데 통으로 된 케이크 있어요?", "expected_ids": ["medovik-whole"], "primary_id": "medovik-whole", "type": "gift", "channel": "phone"}
+{"query": "회사 간식으로 에클레어 열 개 포장 돼요?", "expected_ids": ["big-eclair", "mini-eclair"], "primary_id": "big-eclair", "type": "family", "channel": "phone"}
+{"query": "커피 말고 따뜻한 차 종류 뭐 있어요?", "expected_ids": ["black-tea", "earl-grey", "milk-tea", "sea-buckthorn-tea", "honey-lemon-tea"], "primary_id": null, "type": "category", "channel": "phone"}
+{"query": "우유 들어간 커피 있어요?", "expected_ids": ["latte", "cappuccino"], "primary_id": null, "type": "description", "channel": "phone"}
+{"query": "라즈베리 음료 있어요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "머랭 들어간 디저트 뭐 있어요?", "expected_ids": ["meringue-roll", "pavlova", "kievsky"], "primary_id": null, "type": "description", "channel": "phone"}
+{"query": "나폴레온 두 조각 포장해 주세요", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "alias", "channel": "phone"}
+{"query": "메도빅 초코로 하나랑 카라멜 마끼아또 하나요", "expected_ids": ["medovik-choco"], "primary_id": "medovik-choco", "type": "alias", "channel": "phone"}
+{"query": "밀크티 말고 얼그레이로 바꿀게요", "expected_ids": ["earl-grey"], "primary_id": "earl-grey", "type": "exact", "channel": "phone"}
+{"query": "슈크림 같은 거 있어요?", "expected_ids": ["big-eclair", "mini-eclair"], "primary_id": null, "type": "description", "channel": "phone"}
+{"query": "Сколько стоит целый медовик?", "expected_ids": ["medovik-whole"], "primary_id": "medovik-whole", "type": "native", "channel": "phone"}
+{"query": "타르트 리뷰 요즘 어때?", "expected_ids": ["berry-tart"], "primary_id": "berry-tart", "type": "alias", "channel": "owner"}
+{"query": "케이크 말고 쿠키 같은 거 있어요?", "expected_ids": ["oreshki"], "primary_id": "oreshki", "type": "category", "channel": "phone"}
+{"query": "젤라또 있어요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "와인 팔아요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
