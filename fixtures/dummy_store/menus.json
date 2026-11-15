@@ -13,7 +13,11 @@
       "꿀케이크",
       "허니케이크",
       "메도비크",
-      "Medovik"
+      "Medovik",
+      "메도빅 케이크",
+      "꿀케익",
+      "메도빅크",
+      "Honey Cake"
     ],
     "options": [],
     "allergens": [
@@ -43,11 +47,14 @@
     "price": 8500,
     "description": "코코아 시트와 다크 초콜릿 크림을 넣은 메도빅",
     "category": "Cake",
-    "name_native": "",
+    "name_native": "Шоколадный медовик",
     "aliases": [
       "Chocolate Medovik",
+      "Шоколадный медовик",
       "초코 꿀케이크",
-      "메도빅 초코"
+      "메도빅 초코",
+      "초콜릿 메도빅",
+      "초코꿀케익"
     ],
     "options": [],
     "allergens": [
@@ -82,7 +89,8 @@
       "Sour Berry Medovik",
       "사워크림 꿀케이크",
       "메도빅 사워베리",
-      "베리 메도빅"
+      "베리 메도빅",
+      "사워베리"
     ],
     "options": [],
     "allergens": [
@@ -117,7 +125,9 @@
       "Medovik Whole Cake",
       "꿀케이크 홀",
       "메도빅 한 판",
-      "홀케이크"
+      "홀케이크",
+      "메도빅 홀",
+      "홀케익"
     ],
     "options": [],
     "allergens": [
@@ -151,7 +161,9 @@
     "aliases": [
       "Napoleon",
       "Наполеон",
-      "나폴레옹 케이크"
+      "나폴레옹 케이크",
+      "나폴레온",
+      "나폴래옹"
     ],
     "options": [],
     "allergens": [
@@ -187,7 +199,8 @@
       "Птичье молоко",
       "버드밀크",
       "새의 우유",
-      "프티치예 몰로코"
+      "프티치예 몰로코",
+      "버드밀크케익"
     ],
     "options": [],
     "allergens": [
@@ -222,7 +235,9 @@
       "Kyiv Cake",
       "Киевский торт",
       "키예프",
-      "헤이즐넛 머랭 케이크"
+      "헤이즐넛 머랭 케이크",
+      "키예프스키",
+      "키이우 케이크"
     ],
     "options": [],
     "allergens": [
@@ -257,7 +272,9 @@
       "Praga Cake",
       "Прага",
       "프라하 케이크",
-      "프라하 초코 케이크"
+      "프라하 초코 케이크",
+      "프라가",
+      "프라하 초코"
     ],
     "options": [],
     "allergens": [
@@ -292,7 +309,8 @@
       "Smetannik",
       "Сметанник",
       "사워크림 케이크",
-      "스메타니크"
+      "스메타니크",
+      "스메타닉 케이크"
     ],
     "options": [],
     "allergens": [
@@ -327,7 +345,8 @@
       "Zebra Cake",
       "Зебра",
       "얼룩말 케이크",
-      "제브라"
+      "제브라",
+      "지브라 케이크"
     ],
     "options": [],
     "allergens": [
@@ -359,7 +378,8 @@
     "category": "Cake",
     "name_native": "",
     "aliases": [
-      "캐럿 케이크"
+      "캐럿 케이크",
+      "당근케익"
     ],
     "options": [],
     "allergens": [
@@ -391,7 +411,8 @@
     "name_native": "",
     "aliases": [
       "치즈케이크",
-      "치케"
+      "치케",
+      "치즈케익"
     ],
     "options": [],
     "allergens": [
@@ -419,11 +440,14 @@
     "price": 7500,
     "description": "한입 크기 슈 세 개에 연유 크림을 채운 세트",
     "category": "Eclair",
-    "name_native": "",
+    "name_native": "Мини-эклеры",
     "aliases": [
       "Mini Eclair",
+      "Мини-эклеры",
       "미니 에끌레어",
-      "작은 에클레어"
+      "작은 에클레어",
+      "미니 에클레르",
+      "미니 슈"
     ],
     "options": [],
     "allergens": [
@@ -453,12 +477,14 @@
     "price": 8000,
     "description": "길이 25cm 슈에 바닐라 휘핑크림을 가득 채운 에클레어",
     "category": "Eclair",
-    "name_native": "",
+    "name_native": "Эклер",
     "aliases": [
       "Big Eclair",
       "빅 에클레어 25cm",
+      "Эклер",
       "빅 에끌레어",
-      "큰 에클레어"
+      "큰 에클레어",
+      "에클레어 클래식"
     ],
     "options": [],
     "allergens": [
@@ -488,10 +514,12 @@
     "price": 8000,
     "description": "바삭한 머랭 시트에 크림과 제철 베리를 말아 낸 롤",
     "category": "Roll",
-    "name_native": "",
+    "name_native": "Меренговый рулет",
     "aliases": [
       "Meringue Roll",
-      "머랭롤 케이크"
+      "Меренговый рулет",
+      "머랭롤 케이크",
+      "머렝롤"
     ],
     "options": [],
     "allergens": [
@@ -524,7 +552,8 @@
     "aliases": [
       "Berry Tart",
       "과일 타르트",
-      "타르트"
+      "타르트",
+      "블루베리 타르트"
     ],
     "options": [],
     "allergens": [
@@ -558,7 +587,8 @@
     "aliases": [
       "Pavlova",
       "Павлова",
-      "파브로바"
+      "파브로바",
+      "파블로바 케이크"
     ],
     "options": [],
     "allergens": [
@@ -593,7 +623,8 @@
       "Сырники",
       "러시아 치즈 팬케이크",
       "치즈 팬케이크",
-      "시르니크"
+      "시르니크",
+      "시르니끼"
     ],
     "options": [],
     "allergens": [
@@ -628,7 +659,8 @@
       "Oreshki",
       "Орешки",
       "호두 쿠키",
-      "오레시키"
+      "오레시키",
+      "오레쉬끼"
     ],
     "options": [],
     "allergens": [
@@ -660,7 +692,11 @@
     "category": "Coffee",
     "name_native": "",
     "aliases": [
-      "Americano"
+      "Americano",
+      "아메",
+      "아아",
+      "뜨아",
+      "아메리까노"
     ],
     "options": [
       {
@@ -714,7 +750,9 @@
     "name_native": "",
     "aliases": [
       "Latte",
-      "라떼"
+      "라떼",
+      "라테",
+      "카페라테"
     ],
     "options": [
       {
@@ -760,7 +798,8 @@
       "Raf Coffee",
       "Раф кофе",
       "라프",
-      "바닐라 크림 커피"
+      "바닐라 크림 커피",
+      "라프 라떼"
     ],
     "options": [
       {
@@ -803,7 +842,8 @@
     "category": "Coffee",
     "name_native": "",
     "aliases": [
-      "카프치노"
+      "카프치노",
+      "카푸치노 커피"
     ],
     "options": [
       {
@@ -844,8 +884,7 @@
     "category": "Tea",
     "name_native": "",
     "aliases": [
-      "Black Tea",
-      "홍차"
+      "Black Tea"
     ],
     "options": [
       {
@@ -887,7 +926,8 @@
     "name_native": "",
     "aliases": [
       "Earl Grey",
-      "얼그레이 티"
+      "얼그레이 티",
+      "얼그래이"
     ],
     "options": [
       {
@@ -976,7 +1016,9 @@
       "Облепиховый чай",
       "오블레피하",
       "비타민나무 차",
-      "산자나무 열매차"
+      "산자나무 열매차",
+      "오블리피하",
+      "씨벅턴 티"
     ],
     "options": [
       {
@@ -1019,7 +1061,8 @@
     "aliases": [
       "Honey Lemon Tea",
       "허니레몬",
-      "꿀레몬차"
+      "꿀레몬차",
+      "레몬티"
     ],
     "options": [
       {
@@ -1060,7 +1103,8 @@
     "category": "Ade",
     "name_native": "",
     "aliases": [
-      "Lemonade"
+      "Lemonade",
+      "레모네이드"
     ],
     "options": [
       {
@@ -1105,7 +1149,8 @@
       "Морс",
       "모르스 에이드",
       "크랜베리 에이드",
-      "베리 음료"
+      "베리 음료",
+      "모르스 음료"
     ],
     "options": [
       {
@@ -1146,7 +1191,8 @@
     "category": "Ade",
     "name_native": "",
     "aliases": [
-      "Grapefruit Ade"
+      "Grapefruit Ade",
+      "그레이프프루트 에이드"
     ],
     "options": [
       {

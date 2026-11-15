@@ -1439,7 +1439,6 @@
     "rating": null,
     "author": "서****",
     "menu_ids": [
-      "black-tea",
       "napoleon"
     ],
     "extra": {
@@ -1490,7 +1489,6 @@
       "language": "ko",
       "view_count": 421,
       "menu_matches": [
-        "홍차",
         "나폴레옹"
       ]
     }
@@ -3961,8 +3959,7 @@
     "rating": null,
     "author": "s****",
     "menu_ids": [
-      "medovik",
-      "black-tea"
+      "medovik"
     ],
     "extra": {
       "created_raw": "7.11.토",
@@ -4016,8 +4013,7 @@
       "language": "ko",
       "view_count": 162,
       "menu_matches": [
-        "허니케이크",
-        "홍차"
+        "허니케이크"
       ]
     }
   },
