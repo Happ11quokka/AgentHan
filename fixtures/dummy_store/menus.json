@@ -3,7 +3,7 @@
     "id": "medovik",
     "name_ko": "메도빅",
     "price": 8000,
-    "description": "꿀을 바른 얇은 시트를 여러 겹 쌓아 사워크림으로 마무리한 대표 케이크",
+    "description": "꿀을 바른 얇은 시트를 여러 겹 쌓아 사워크림으로 마무리한 기본 케이크 (메뉴판 Best 표시)",
     "category": "Cake",
     "name_native": "Медовик",
     "aliases": [
@@ -12,11 +12,7 @@
       "Медовик"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "both",
@@ -31,7 +27,20 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": "medovik"
+      "menu_marks": [
+        "Best"
+      ],
+      "naver_badges": [],
+      "family": "medovik",
+      "popularity": {
+        "best_mark": true,
+        "new_mark": false,
+        "naver_repr": false,
+        "review_mentions": 0,
+        "recent_mentions": 0
+      },
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -50,11 +59,7 @@
       "초코꿀케익"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -69,7 +74,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": "medovik"
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "medovik",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -88,11 +98,7 @@
       "샤워베리 메도빅"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -107,7 +113,12 @@
       "photo_file": [
         "dummy_menu1.jpg"
       ],
-      "family": "medovik"
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "medovik",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -126,11 +137,7 @@
       "홀케익"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -145,14 +152,22 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": "medovik"
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "medovik",
+      "popularity": null,
+      "gift": {
+        "gift_mentions": 3,
+        "takeout_mentions": 2
+      },
+      "taste": null
     }
   },
   {
     "id": "napoleon",
     "name_ko": "나폴레옹",
     "price": 8000,
-    "description": "버터 페이스트리를 겹겹이 굽고 바닐라 커스터드를 채운 케이크",
+    "description": "버터 페이스트리를 겹겹이 굽고 바닐라 커스터드를 채운 케이크 (메뉴판 Best 표시)",
     "category": "Cake",
     "name_native": "Наполеон",
     "aliases": [
@@ -165,11 +180,7 @@
       "나플레옹"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "both",
@@ -184,7 +195,20 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": ""
+      "menu_marks": [
+        "Best"
+      ],
+      "naver_badges": [],
+      "family": "",
+      "popularity": {
+        "best_mark": true,
+        "new_mark": false,
+        "naver_repr": false,
+        "review_mentions": 8,
+        "recent_mentions": 3
+      },
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -203,11 +227,7 @@
       "버드밀크케익"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -222,7 +242,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -241,11 +266,7 @@
       "키이우 케이크"
     ],
     "options": [],
-    "allergens": [
-      "계란",
-      "우유",
-      "견과류"
-    ],
+    "allergens": [],
     "sold_out": true,
     "extra": {
       "source": "photo",
@@ -260,7 +281,12 @@
       "photo_file": [
         "dummy_menu1.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -280,11 +306,7 @@
       "프라하케잌"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -299,7 +321,12 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -317,11 +344,7 @@
       "스메타닉 케이크"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -336,7 +359,12 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -354,11 +382,7 @@
       "지브라 케이크"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -373,7 +397,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -389,12 +418,7 @@
       "당근케잌"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란",
-      "견과류"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "naver",
@@ -407,7 +431,12 @@
       "price_naver": 7500,
       "size": "",
       "photo_file": [],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -424,11 +453,7 @@
       "치즈케잌"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "naver",
@@ -441,7 +466,12 @@
       "price_naver": 7000,
       "size": "",
       "photo_file": [],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -460,11 +490,7 @@
       "미니 슈"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -479,7 +505,12 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": "eclair"
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "eclair",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -499,11 +530,7 @@
       "빅에클러어"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "both",
@@ -518,7 +545,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": "eclair"
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "eclair",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -536,10 +568,7 @@
       "머랭롤케잌"
     ],
     "options": [],
-    "allergens": [
-      "계란",
-      "우유"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "both",
@@ -554,7 +583,18 @@
       "photo_file": [
         "dummy_menu1.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": {
+        "best_mark": false,
+        "new_mark": false,
+        "naver_repr": false,
+        "review_mentions": 6,
+        "recent_mentions": 4
+      },
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -571,11 +611,7 @@
       "블루베리 타르트"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -590,7 +626,12 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -608,10 +649,7 @@
       "파플로파"
     ],
     "options": [],
-    "allergens": [
-      "계란",
-      "우유"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -626,7 +664,16 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": {
+        "label": "단 편",
+        "sweet_mentions": 1,
+        "less_sweet_mentions": 1
+      }
     }
   },
   {
@@ -645,11 +692,7 @@
       "시르니끼"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -664,7 +707,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -682,11 +730,7 @@
       "오레쉬끼"
     ],
     "options": [],
-    "allergens": [
-      "밀",
-      "우유",
-      "계란"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -701,14 +745,22 @@
       "photo_file": [
         "dummy_menu1.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": {
+        "gift_mentions": 2,
+        "takeout_mentions": 0
+      },
+      "taste": null
     }
   },
   {
     "id": "americano",
     "name_ko": "아메리카노",
     "price": 4500,
-    "description": "고소한 원두로 내린 기본 커피",
+    "description": "고소한 원두로 내린 기본 커피 (메뉴판 Best 표시)",
     "category": "Coffee",
     "name_native": "",
     "aliases": [
@@ -759,7 +811,23 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": ""
+      "menu_marks": [
+        "Best"
+      ],
+      "naver_badges": [
+        "repr",
+        "recommend"
+      ],
+      "family": "",
+      "popularity": {
+        "best_mark": true,
+        "new_mark": false,
+        "naver_repr": true,
+        "review_mentions": 3,
+        "recent_mentions": 2
+      },
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -789,9 +857,7 @@
         "note": ""
       }
     ],
-    "allergens": [
-      "우유"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "both",
@@ -806,7 +872,12 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -837,9 +908,7 @@
         "note": ""
       }
     ],
-    "allergens": [
-      "우유"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -854,7 +923,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -882,9 +956,7 @@
         "note": ""
       }
     ],
-    "allergens": [
-      "우유"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "naver",
@@ -897,7 +969,12 @@
       "price_naver": 5000,
       "size": "",
       "photo_file": [],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -939,7 +1016,12 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -983,7 +1065,12 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -1011,9 +1098,7 @@
         "note": ""
       }
     ],
-    "allergens": [
-      "우유"
-    ],
+    "allergens": [],
     "sold_out": false,
     "extra": {
       "source": "photo",
@@ -1028,7 +1113,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -1076,7 +1166,12 @@
       "photo_file": [
         "dummy_menu1.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -1121,7 +1216,12 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -1164,7 +1264,12 @@
       "photo_file": [
         "dummy_menu3.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -1211,7 +1316,12 @@
       "photo_file": [
         "dummy_menu4.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
@@ -1254,14 +1364,19 @@
       "photo_file": [
         "dummy_menu1.jpg"
       ],
-      "family": ""
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "popularity": null,
+      "gift": null,
+      "taste": null
     }
   },
   {
     "id": "omija-ade",
     "name_ko": "오미자 에이드",
     "price": 5500,
-    "description": "오미자청과 탄산수를 섞은 붉은 에이드",
+    "description": "오미자청과 탄산수를 섞은 붉은 에이드 (메뉴판 NEW 표시)",
     "category": "Ade",
     "name_native": "",
     "aliases": [
@@ -1296,7 +1411,20 @@
       "photo_file": [
         "dummy_menu2.jpg"
       ],
-      "family": ""
+      "menu_marks": [
+        "NEW"
+      ],
+      "naver_badges": [],
+      "family": "",
+      "popularity": {
+        "best_mark": false,
+        "new_mark": true,
+        "naver_repr": false,
+        "review_mentions": 0,
+        "recent_mentions": 0
+      },
+      "gift": null,
+      "taste": null
     }
   }
 ]

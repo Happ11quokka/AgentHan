@@ -362,5 +362,8 @@
         "Eclair"
       ]
     }
+  },
+  "taste_labels": {
+    "pavlova": "단 편"
   }
 }
