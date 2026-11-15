@@ -346,7 +346,8 @@
         "메도빅케잌",
         "매도빅",
         "Honey Cake",
-        "메도빅크"
+        "메도빅크",
+        "Медовик"
       ]
     },
     "eclair": {
@@ -365,5 +366,17 @@
   },
   "taste_labels": {
     "pavlova": "단 편"
+  },
+  "tags": {
+    "러시아 전통": [
+      "medovik",
+      "medovik-choco",
+      "medovik-sour-berry",
+      "medovik-whole",
+      "napoleon",
+      "praga",
+      "ptichye-moloko",
+      "kievsky"
+    ]
   }
 }

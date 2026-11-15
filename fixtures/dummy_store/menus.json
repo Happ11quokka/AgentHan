@@ -8,8 +8,7 @@
     "name_native": "Медовик",
     "aliases": [
       "Medovik Honey Cake",
-      "메도빅 클래식",
-      "Медовик"
+      "메도빅 클래식"
     ],
     "options": [],
     "allergens": [],
@@ -32,6 +31,9 @@
       ],
       "naver_badges": [],
       "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": {
         "best_mark": true,
         "new_mark": false,
@@ -77,6 +79,9 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -116,6 +121,9 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -155,6 +163,9 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": null,
       "gift": {
         "gift_mentions": 3,
@@ -200,6 +211,9 @@
       ],
       "naver_badges": [],
       "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": {
         "best_mark": true,
         "new_mark": false,
@@ -245,6 +259,9 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -284,6 +301,9 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -324,6 +344,9 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -362,6 +385,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -400,6 +424,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -434,6 +459,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -469,6 +495,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -508,6 +535,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "eclair",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -548,6 +576,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "eclair",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -586,6 +615,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": {
         "best_mark": false,
         "new_mark": false,
@@ -629,6 +659,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -667,6 +698,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": {
@@ -710,6 +742,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -748,6 +781,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": {
         "gift_mentions": 2,
@@ -819,6 +853,7 @@
         "recommend"
       ],
       "family": "",
+      "tags": [],
       "popularity": {
         "best_mark": true,
         "new_mark": false,
@@ -875,6 +910,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -926,6 +962,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -972,6 +1009,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1019,6 +1057,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1068,6 +1107,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1116,6 +1156,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1169,6 +1210,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1219,6 +1261,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1267,6 +1310,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1319,6 +1363,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1367,6 +1412,7 @@
       "menu_marks": [],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": null,
       "gift": null,
       "taste": null
@@ -1416,6 +1462,7 @@
       ],
       "naver_badges": [],
       "family": "",
+      "tags": [],
       "popularity": {
         "best_mark": false,
         "new_mark": true,
