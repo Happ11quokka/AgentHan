@@ -9,8 +9,12 @@ import pytest
 
 from agenthan.core.contracts import MenuHit, StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
+from agenthan.rag import RagStoreKnowledge
 
-IMPLEMENTATIONS: list[Callable[[], StoreKnowledge]] = [FakeStoreKnowledge.from_fixture]
+IMPLEMENTATIONS: list[Callable[[], StoreKnowledge]] = [
+    FakeStoreKnowledge.from_fixture,
+    RagStoreKnowledge.from_fixture,
+]
 
 
 @pytest.fixture(params=IMPLEMENTATIONS, ids=lambda f: getattr(f, "__qualname__", str(f)))

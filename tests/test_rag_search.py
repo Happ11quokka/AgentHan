@@ -1,0 +1,192 @@
+"""Part B 검색 테스트 (fixtures/dummy_store 더미, 벡터 끔)."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from agenthan.rag import RagStoreKnowledge
+from agenthan.rag.normalize import drop_correction, key, normalize, split_items
+from agenthan.rag.repository import DATA_DIR_ENV, DUMMY_DIR, resolve_data_dir
+
+MEDOVIK_FAMILY = ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"]
+
+
+@pytest.fixture(scope="module")
+def kb() -> RagStoreKnowledge:
+    return RagStoreKnowledge.from_fixture()
+
+
+def ids(kb: RagStoreKnowledge, query: str, k: int = 10) -> list[str]:
+    return [h.item.id for h in kb.search_menu(query, k=k)]
+
+
+# ---------------------------------------------------------------- 전처리
+def test_normalize_spelling_and_spaces() -> None:
+    assert key("꿀 케잌!") == key("꿀케익") == key("꿀캐이크") == "꿀케이크"
+    assert normalize("  Medovik,  Honey  ") == "medovik honey"
+
+
+def test_correction_keeps_last_part() -> None:
+    assert drop_correction("나폴레옹, 아 아니 초코 메도빅으로요") == "초코 메도빅으로요"
+    assert (
+        drop_correction("나폴레옹 하나… 아 잠깐만요, 초코 메도빅으로 할게요")
+        == "초코 메도빅으로 할게요"
+    )
+    assert drop_correction("나폴레옹 말고 프라하요") == "프라하요"
+    assert drop_correction("나폴레옹 있어요?") == "나폴레옹 있어요"
+
+
+def test_split_items() -> None:
+    assert split_items("메도빅 하나랑 아메리카노 두 잔") == ["메도빅 하나", "아메리카노 두 잔"]
+
+
+# ---------------------------------------------------------------- 정확 일치·묶음
+def test_exact_name_only_that_menu(kb: RagStoreKnowledge) -> None:
+    hits = kb.search_menu("나폴레옹 있어요?")
+    assert [h.item.id for h in hits] == ["napoleon"]
+    assert hits[0].matched_by == "exact" and hits[0].score == 1.0
+
+
+def test_alias_and_native_name(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "초코 꿀케이크 하나요") == ["medovik-choco"]
+    assert ids(kb, "Сколько стоит наполеон?") == ["napoleon"]
+    assert ids(kb, "아아 한 잔이요") == ["americano"]
+
+
+def test_family_alias_returns_family_with_representative_first(kb: RagStoreKnowledge) -> None:
+    for q in ["꿀케이크 있어요?", "medovik", "Есть медовик?", "매도빅 하나요"]:
+        got = ids(kb, q)
+        assert got[0] == "medovik", q
+        assert sorted(got) == sorted(MEDOVIK_FAMILY), q
+
+
+def test_family_narrowed_by_distinguishing_word(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "초코로 된 꿀케이크 하나 주세요") == ["medovik-choco"]
+
+
+def test_compare_question_uses_representative(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "메도빅이랑 나폴레옹 차이가 뭐예요?") == ["medovik", "napoleon"]
+
+
+def test_multi_item_order(kb: RagStoreKnowledge) -> None:
+    got = ids(kb, "메도빅 하나랑 아메리카노 두 잔")
+    assert got[:2] == ["medovik", "americano"]
+    assert set(got) == set(MEDOVIK_FAMILY) | {"americano"}
+
+
+def test_correction_sentence(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "나폴레옹, 아 아니 초코 메도빅으로요") == ["medovik-choco"]
+
+
+def test_typo(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "나폴래옹 두 개 되나요?")[0] == "napoleon"
+    assert ids(kb, "호두케잌 있어요?") == ids(kb, "호두케이크 있어요?")
+
+
+# ---------------------------------------------------------------- 빈 목록이 정답
+@pytest.mark.parametrize(
+    "query",
+    [
+        "티라미수 있어요?",
+        "짜장면",
+        "견과류 알레르기 있는데 괜찮은 케이크 있어요?",
+        "비건 케이크 있어요?",
+        "레터링 돼요?",
+        "몇 시까지 해요?",
+        "주차 돼요?",
+        "덜 단 거 있어요?",
+        "마카롱은 안 파세요?",
+    ],
+)
+def test_no_evidence_returns_empty(kb: RagStoreKnowledge, query: str) -> None:
+    assert kb.search_menu(query) == []
+
+
+# ---------------------------------------------------------------- 종류·태그·의도
+def test_category(kb: RagStoreKnowledge) -> None:
+    ades = {m.id for m in kb.list_menu() if m.category == "Ade"}
+    assert set(ids(kb, "에이드 뭐 있어요?")) == ades
+
+
+def test_tag(kb: RagStoreKnowledge) -> None:
+    tagged = {
+        "medovik",
+        "medovik-choco",
+        "medovik-sour-berry",
+        "medovik-whole",
+        "napoleon",
+        "praga",
+        "ptichye-moloko",
+        "kievsky",
+    }
+    assert set(ids(kb, "러시아 전통 케이크 뭐 있는지 정리해 줘")) == tagged
+
+
+def test_intents(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "제일 잘 나가는 거 뭐예요?") == ["medovik", "napoleon"]
+    assert ids(kb, "요즘 리뷰에 많이 나오는 메뉴 뭐야?") == ["medovik", "meringue-roll"]
+    assert ids(kb, "제일 단 메뉴가 뭐야?") == ["pavlova"]
+    assert ids(kb, "제일 싼 케이크 뭐예요?") == ["cheesecake"]
+    assert set(ids(kb, "선물용으로 추천할 만한 메뉴 뭐야?")) == {"medovik-whole", "oreshki"}
+    assert all(
+        m.price <= 8000 for m in (h.item for h in kb.search_menu("8천 원 이하 케이크", k=20))
+    )
+
+
+def test_sold_out_and_options_are_kept(kb: RagStoreKnowledge) -> None:
+    hits = kb.search_menu("키예프 케이크 있어요?")
+    assert hits[0].item.id == "kievsky" and hits[0].item.sold_out
+    americano = kb.search_menu("아메리카노")[0].item
+    assert any(o.name == "디카페인 변경" for o in americano.options)
+
+
+def test_scores_sorted_and_in_range(kb: RagStoreKnowledge) -> None:
+    for q in [
+        "메도빅 하나랑 아메리카노 두 잔",
+        "케이크",
+        "레몬 들어간 음료 뭐뭐 있지?",
+        "제일 싼 케이크",
+    ]:
+        scores = [h.score for h in kb.search_menu(q, k=10)]
+        assert scores == sorted(scores, reverse=True), q
+        assert all(0.0 <= s <= 1.0 for s in scores), q
+
+
+# ---------------------------------------------------------------- 나머지 계약
+def test_recent_reviews_since(kb: RagStoreKnowledge) -> None:
+    newest = kb.recent_reviews(limit=1)[0]
+    since = newest.created_at - timedelta(days=7)
+    rows = kb.recent_reviews(limit=100, since=since)
+    assert rows and all(r.created_at >= since for r in rows)
+    assert kb.recent_reviews(limit=100, since=datetime(2100, 1, 1, tzinfo=UTC)) == []
+
+
+def test_get_menu_unknown(kb: RagStoreKnowledge) -> None:
+    assert kb.get_menu("없는-메뉴") is None
+    assert kb.get_menu("napoleon").name_ko == "나폴레옹"
+
+
+def test_data_dir_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(DATA_DIR_ENV, raising=False)
+    assert resolve_data_dir() == DUMMY_DIR
+    monkeypatch.setenv(DATA_DIR_ENV, "fixtures/dummy_store")
+    assert resolve_data_dir() == DUMMY_DIR
+
+
+def test_vector_is_off_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLOVASTUDIO_API_KEY", raising=False)
+    kb = RagStoreKnowledge.from_dir(DUMMY_DIR)
+    assert not kb.vector.enabled
+    assert ids(kb, "나폴레옹 있어요?") == ["napoleon"]
+
+
+def test_vector_slot_with_fake_embedding() -> None:
+    """가짜 임베딩으로 벡터 단계가 RRF에 들어가는지만 본다 (실제 CLOVA 호출 없음)."""
+
+    def fake_embed(text: str) -> list[float]:
+        return [1.0 if "수플레" in text or "폭신" in text else 0.0, 1.0]
+
+    kb = RagStoreKnowledge.from_dir(DUMMY_DIR, embed=fake_embed)
+    hits = kb.search_menu("폭신한 수플레 같은 거")
+    assert hits and hits[0].item.id == "ptichye-moloko"
+    assert hits[0].matched_by == "hybrid"  # 키워드와 벡터가 같이 찾음
