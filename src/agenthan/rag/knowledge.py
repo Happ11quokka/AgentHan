@@ -1,16 +1,20 @@
 """StoreKnowledge 진짜 구현 (Part B).
 
-search_menu 순서 (자세한 키워드·기준값은 rules.py):
+search_menu 순서 (자세한 키워드·기준값은 rules.py). 한 단계에서 못 찾으면 다음 단계로 넘어간다.
   0. 전처리: 표기 정규화 → 말 바꾸기면 정정 뒤쪽만 → 여러 메뉴면 조각으로 나누기
-  1. 정확 일치: 메뉴명·원어명·별칭 → 그 메뉴만
+  1. 정확 일치: 메뉴명·원어명·별칭 → 그 메뉴만.
+     남은 내용어가 그 메뉴에 없고 같은 종류의 다른 메뉴에 있으면 그 메뉴를 앞에 둔다
+     ("아아 카페인 없이" → 디카페인 메뉴가 있으면 디카페인 먼저)
   2. 묶음 일치: 묶음 별칭 → 묶음 전체(대표 메뉴 1등). '초코' 같은 구분 말이 있으면 그 메뉴만,
      비교 질문('차이')이면 대표 메뉴만
      → 1·2로 찾았으면 여기서 끝 (빠르게)
-  3. 빈 목록이 정답인 질문: 데이터에 없는 정보(견과류·비건…)·가게 정보(몇 시·주차…)
-  4. 의도 규칙: 덜 단 것 / 단 것 / 한 판 / 선물 / 요즘 인기 / 인기 / 가격
-  5. 태그·종류(category): "러시아 전통 케이크", "에이드 뭐 있어요?"
-  6. 오타 허용 일치: "나폴래옹" → 나폴레옹
-  7. 키워드(BM25)·벡터 검색 → RRF로 합치기. 근거 기준 미달이면 빈 목록
+  3. 빈 목록이 정답인 질문: 데이터에 없는 정보·서비스(견과류·초·레터링…)·가게 정보(몇 시·주차…)
+  4. 의도 규칙: 덜 단 것 / 단 것 / 한 판 / 선물 / 요즘 인기 / 인기 / 가격.
+     내용어가 같이 있으면 내용어로 먼저 거르고 그 안에서 순위 ("꿀 들어간 유명한 거")
+  5. 태그: "러시아 전통 케이크", "홍차"
+  6. 종류(category): 종류 자체를 물을 때만 ("에이드 뭐 있어요?"). 다른 내용어가 있으면 건너뜀
+  7. 오타 허용 일치: 글자·자모 단위, 띄어 쓴 두 낱말은 붙여서도 ("프라크 케이크" → 프라하)
+  8. 키워드(BM25)·벡터 검색 → RRF로 합치기. 근거 기준 미달이면 빈 목록
 
 matched_by는 계약 값만 쓴다: 메뉴명·원어명 = exact, 별칭·묶음 별칭·오타 = alias,
 규칙·태그·종류·BM25 = keyword, 벡터만 = vector, BM25와 벡터가 같이 찾은 것 = hybrid.
@@ -27,7 +31,7 @@ from pathlib import Path
 
 from agenthan.core.contracts import MenuHit, MenuItem, Review
 from agenthan.rag import rules
-from agenthan.rag.keyword import KeywordIndex, user_words
+from agenthan.rag.keyword import Analysis, KeywordIndex, user_words
 from agenthan.rag.normalize import contains_any, drop_correction, key, normalize, split_items
 from agenthan.rag.repository import DUMMY_DIR, JsonDirRepository, MenuRepository, StoreData
 from agenthan.rag.vector import Embed, VectorIndex
@@ -36,6 +40,8 @@ _HANGUL = re.compile(r"[가-힣]")
 _LETTER = r"a-z0-9Ѐ-ӿ"  # 라틴·숫자·키릴 글자
 _MASK = "\x00"
 
+Found = list[tuple[str, float, str]]  # (메뉴 id, 점수, matched_by)
+
 
 @dataclass(frozen=True)
 class _Term:
@@ -43,6 +49,7 @@ class _Term:
     target: str  # 메뉴 id 또는 'family:묶음id'
     kind: str  # exact | alias | family
     pattern: re.Pattern
+    jamo: str = ""
 
 
 def _pattern(term_norm: str) -> re.Pattern | None:
@@ -62,6 +69,23 @@ def _pattern(term_norm: str) -> re.Pattern | None:
     return re.compile(rf"(?<![{_LETTER}]){body}{tail}(?![{_LETTER}])")
 
 
+_CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+_JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"
+_JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ"
+
+
+def jamo(text: str) -> str:
+    """한글을 자모로 푼다: '프라크' → 'ㅍㅡㄹㅏㅋㅡ'."""
+    out = []
+    for ch in text:
+        code = ord(ch) - 0xAC00
+        if 0 <= code < 11172:
+            out += [_CHO[code // 588], _JUNG[(code % 588) // 28], _JONG[code % 28].strip()]
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 class RagStoreKnowledge:
     """가게 지식 RAG. 기본은 fixtures/dummy_store, AGENTHAN_DATA_DIR로 실제 데이터(data/clean)."""
 
@@ -74,13 +98,15 @@ class RagStoreKnowledge:
         self._terms = self._build_terms()
         self._fuzzy_terms = [t for t in self._terms if _HANGUL.search(t.key) and len(t.key) >= 3]
         self._family_words = self._build_family_words()
+        self._rule_phrases = self._build_rule_phrases()
         docs = {i: self._doc_text(i) for i in self.records}
+        names = {i: self._name_text(i) for i in self.records}
         dictionary = user_words(
             [r.item.name_ko for r in data.menus]
             + [a for r in data.menus for a in r.item.aliases]
             + [a for f in data.families for a in f.aliases]
         )
-        self.keyword = KeywordIndex(docs, dictionary)
+        self.keyword = KeywordIndex(docs, dictionary, names)
         self.vector = VectorIndex(docs, embed)
 
     # ---------------------------------------------------------------- 만들기
@@ -107,7 +133,7 @@ class RagStoreKnowledge:
             if pat is None:
                 return
             seen[k] = target
-            terms.append(_Term(k, target, kind, pat))
+            terms.append(_Term(k, target, kind, pat, jamo(k)))
 
         for f in self.families.values():
             for a in (f.name_ko, *f.aliases):
@@ -147,12 +173,29 @@ class RagStoreKnowledge:
             }
         return out
 
-    def _doc_text(self, menu_id: str) -> str:
+    def _build_rule_phrases(self) -> list[str]:
+        """규칙을 고르는 말(의도·비교·가격·한 판·종류·태그). 이 말은 '내용어'로 치지 않는다."""
+        phrases = [w for words in rules.INTENT_WORDS.values() for w in words]
+        phrases += rules.COMPARE_WORDS + rules.PRICE_HIGH_WORDS + rules.PRICE_LIMIT_WORDS
+        phrases += rules.WHOLE_MARKERS + [w for ws in rules.CATEGORY_WORDS.values() for w in ws]
+        phrases += [w for ws in rules.TAG_WORDS.values() for w in ws]
+        phrases += [t for r in self.records.values() for t in r.tags]
+        return sorted({key(p) for p in phrases if key(p)})
+
+    def _name_text(self, menu_id: str) -> str:
         r = self.records[menu_id]
         fam = self.families.get(r.family)
-        parts = [r.item.name_ko, r.item.name_native, *r.item.aliases, r.item.description, *r.tags]
+        parts = [r.item.name_ko, r.item.name_native, *r.item.aliases]
         if fam:
-            parts.append(fam.name_ko)
+            parts += [fam.name_ko, *fam.aliases]
+        return " ".join(p for p in parts if p)
+
+    def _doc_text(self, menu_id: str) -> str:
+        """검색 문서 = 이름·별칭(+묶음) + 설명 + 옵션(되는 것과 그 메모) + 태그."""
+        r = self.records[menu_id]
+        options = [o.name for o in r.item.options if o.available]
+        options += [o.note for o in r.item.options if o.note]
+        parts = [self._name_text(menu_id), r.item.description, *options, *r.tags]
         return " ".join(p for p in parts if p)
 
     # ---------------------------------------------------------------- 계약
@@ -184,10 +227,8 @@ class RagStoreKnowledge:
         segments = split_items(text) or [text]
 
         # 1·2. 정확 일치·묶음 일치 (조각마다)
-        per_segment: list[list[tuple[str, float, str]]] = []
         compare = contains_any(text_key, rules.COMPARE_WORDS)
-        for seg in segments:
-            per_segment.append(self._match_terms(seg, compare=compare))
+        per_segment = [self._match_terms(seg, compare=compare) for seg in segments]
         if any(per_segment):
             if len(segments) > 1:
                 # 메뉴 이름이 없는 조각은 키워드 검색으로만 보충한다 ("메도빅 하나랑 오미자차")
@@ -198,28 +239,33 @@ class RagStoreKnowledge:
                 return self._ordered_hits(per_segment)
             return self._hits(per_segment[0])
 
+        analysis = self.keyword.analyze(text)
+
         # 3. 메뉴 데이터로 답할 수 없는 질문
-        if contains_any(text_key, rules.NO_INFO_WORDS) or contains_any(
-            text_key, rules.STORE_INFO_WORDS
-        ):
+        if self._unanswerable(text_key, analysis):
             return []
 
-        # 4·5. 의도 규칙 → 태그·종류
-        ruled = self._intent(text, text_key)
-        if ruled is None:
-            ruled = self._tags_and_categories(text_key, text)
+        # 4. 의도 규칙 (덜 단 것은 근거가 없으면 빈 목록이 정답이라 여기서 끝)
+        ruled = self._intent(text, text_key, analysis)
         if ruled is not None:
-            return self._hits(self._rank_rule_list(ruled, text))
+            ids, final = ruled
+            if ids or final:
+                return self._hits(self._rank_rule_list(ids, text, keep_order=True))
 
-        # 6. 오타 허용
+        # 5. 태그 → 6. 종류 자체를 묻는 질문
+        for ids in (self._tagged(text_key), self._pure_category(text_key, analysis)):
+            if ids:
+                return self._hits(self._rank_rule_list(ids, text))
+
+        # 7. 오타 허용
         fuzzy = self._fuzzy(text)
         if fuzzy:
             return self._hits(fuzzy)
 
-        # 7. 키워드 + 벡터
+        # 8. 키워드 + 벡터
         return self._hits(self._keyword_vector(text))
 
-    def _hits(self, found: list[tuple[str, float, str]]) -> list[MenuHit]:
+    def _hits(self, found: Found) -> list[MenuHit]:
         best: dict[str, tuple[float, str]] = {}
         order: list[str] = []
         for mid, score, how in found:
@@ -236,19 +282,15 @@ class RagStoreKnowledge:
             for m in ranked
         ]
 
-    def _ordered_hits(self, per_segment: list[list[tuple[str, float, str]]]) -> list[MenuHit]:
-        """여러 메뉴 주문: 조각마다 첫 메뉴를 말한 순서대로 먼저, 묶음의 나머지 메뉴는 그 뒤에.
+    def _ordered_hits(self, per_segment: list[Found]) -> list[MenuHit]:
+        """여러 메뉴 주문: 조각마다 첫 메뉴를 말한 순서대로 먼저, 나머지 메뉴는 그 뒤에.
         계약상 점수는 내림차순이어야 해서, 앞 결과보다 높은 점수는 앞 점수로 맞춘다."""
         firsts = [seg[0] for seg in per_segment if seg]
         rest = [hit for seg in per_segment for hit in seg[1:]]
-        hits = self._hits_in_order(firsts + rest)
-        return hits
-
-    def _hits_in_order(self, found: list[tuple[str, float, str]]) -> list[MenuHit]:
         out: list[MenuHit] = []
         seen: set[str] = set()
         ceiling = 1.0
-        for mid, score, how in found:
+        for mid, score, how in firsts + rest:
             if mid in seen or mid not in self.records:
                 continue
             seen.add(mid)
@@ -256,33 +298,64 @@ class RagStoreKnowledge:
             out.append(MenuHit(self.records[mid].item, round(max(ceiling, 0.0), 4), how))
         return out
 
+    # ---- 내용어
+    def _is_rule_word(self, w: str) -> bool:
+        return any(w == p or w in p or (len(p) >= 2 and p in w) for p in self._rule_phrases)
+
+    def _content(self, a: Analysis) -> Analysis:
+        """규칙을 고르는 말과 일반어를 뺀 '내용어'만 남긴다. 예: '꿀 들어간 유명한 거' → ['꿀']"""
+        words = tuple(w for w in a.distinct if not self._is_rule_word(w))
+        return Analysis(words, a.name_only)
+
     # ---- 1·2
-    def _match_terms(self, seg: str, compare: bool) -> list[tuple[str, float, str]]:
+    def _match_terms(self, seg: str, compare: bool) -> Found:
         hay = seg
-        matches: list[tuple[int, _Term, str]] = []
+        matches: list[tuple[int, _Term]] = []
         for term in self._terms:
             m = term.pattern.search(hay)
             if not m:
                 continue
-            matches.append((m.start(), term, hay[m.start() : m.end()]))
+            matches.append((m.start(), term))
             # 찾은 자리는 지워서 더 짧은 말이 그 안에서 또 걸리지 않게 한다
             # ('초코 메도빅' 안의 '메도빅')
             hay = hay[: m.start()] + _MASK * (m.end() - m.start()) + hay[m.end() :]
         matches.sort(key=lambda t: t[0])
-        rest_key = hay.replace(_MASK, " ").replace(" ", "")
-        out: list[tuple[str, float, str]] = []
-        for _, term, _matched in matches:
+        rest = hay.replace(_MASK, " ")
+        rest_key = rest.replace(" ", "")
+        out: Found = []
+        for _, term in matches:
             if term.kind == "exact":
                 out.append((term.target, 1.0, "exact"))
             elif term.kind == "alias":
                 out.append((term.target, 0.95, "alias"))
             else:
                 out += self._expand_family(term.target.split(":", 1)[1], rest_key, compare)
+        if len(matches) == 1 and matches[0][1].kind != "family":
+            # 찾은 말에 붙어 있는 말('크림'+'치즈케이크')은 빼고, 따로 떨어진 낱말만 본다
+            apart = " ".join(w for w in hay.split() if _MASK not in w)
+            out = self._better_with_rest(matches[0][1].target, apart) + out
         return out
 
-    def _expand_family(
-        self, fid: str, rest_key: str, compare: bool
-    ) -> list[tuple[str, float, str]]:
+    def _better_with_rest(self, matched: str, rest: str) -> Found:
+        """정확히 찾은 메뉴 말고 남은 내용어가 있을 때, 그 말이 찾은 메뉴엔 없고 같은 종류의
+        다른 메뉴 이름·별칭엔 다 있으면 그 메뉴를 앞에 둔다. 예: '아아 카페인 없이' → 디카페인 메뉴
+        설명에만 있는 말로는 바꾸지 않는다."""
+        content = self._content(self.keyword.analyze(rest))
+        if not content.words:
+            return []
+        if self.keyword.coverage(matched, list(content.words), content.name_only) >= 1.0:
+            return []  # 찾은 메뉴가 이미 그 말을 덮는다 (예: 디카페인 변경 옵션이 있는 아메리카노)
+        cat = self.records[matched].item.category
+        in_names = Analysis(
+            content.words, frozenset(content.words)
+        )  # 다른 메뉴는 이름·별칭에 있어야
+        return [
+            (mid, 0.96, "keyword")
+            for mid, cov in self.keyword.search(analysis=in_names, k=len(self.records))
+            if cov >= 1.0 and mid != matched and self.records[mid].item.category == cat
+        ]
+
+    def _expand_family(self, fid: str, rest_key: str, compare: bool) -> Found:
         f = self.families[fid]
         if compare:
             return [(f.representative, 0.95, "alias")]
@@ -303,50 +376,97 @@ class RagStoreKnowledge:
             word = word[:2]
         return bool(word) and word in hay_key
 
+    # ---- 3
+    @staticmethod
+    def _unanswerable(text_key: str, a: Analysis) -> bool:
+        """데이터에 없는 정보·서비스·가게 정보 질문. 한 글자 말('초')은 낱말이 그대로 있을 때만."""
+        for w in rules.NO_INFO_WORDS + rules.STORE_INFO_WORDS:
+            k = key(w)
+            if (len(k) == 1 and k in a.words) or (len(k) > 1 and k in text_key):
+                return True
+        return False
+
     # ---- 4
-    def _intent(self, text: str, text_key: str) -> list[str] | None:
-        """의도 규칙에 걸리면 메뉴 id 목록(빈 목록일 수 있음), 안 걸리면 None."""
+    def _intent(self, text: str, text_key: str, a: Analysis) -> tuple[list[str], bool] | None:
+        """의도 규칙에 걸리면 (메뉴 id 목록, 이 결과로 끝낼지), 안 걸리면 None.
+        내용어가 있으면 그 말로 먼저 거른 후보 안에서 순위를 매긴다. 후보가 없으면 거르지 않는다."""
         intent = next(
-            (
-                name
-                for name in rules.INTENT_ORDER
-                if contains_any(text_key, rules.INTENT_WORDS[name])
-            ),
-            None,
+            (n for n in rules.INTENT_ORDER if contains_any(text_key, rules.INTENT_WORDS[n])), None
         )
         amount = _amount_limit(text) if contains_any(text_key, rules.PRICE_LIMIT_WORDS) else None
         if intent is None and amount is not None:
             intent = "price"
         if intent is None:
             return None
+        content = self._content(a)
+        cand = (
+            [i for i, _ in self.keyword.search(analysis=content, k=len(self.records))]
+            if content.words
+            else []
+        )
         cats = self._categories(text_key)
         recs = list(self.records.values())
 
         if intent == "less_sweet":
-            return [r.item.id for r in recs if r.taste and "덜" in (r.taste.get("label") or "")]
+            ids = [r.item.id for r in recs if r.taste and "덜" in (r.taste.get("label") or "")]
+            return ([i for i in ids if i in cand] if cand else ids), True
         if intent == "sweet":
             sweet = [r for r in recs if r.taste and "덜" not in (r.taste.get("label") or "")]
             sweet.sort(key=lambda r: r.taste.get("sweet_mentions", 0), reverse=True)
-            return [r.item.id for r in sweet]
+            ids = [r.item.id for r in sweet]
+            if cand:
+                inside = [i for i in ids if i in cand]
+                return (inside, False) if inside else None
+            return ids, True
         if intent == "whole":
-            return self._whole_ids()
+            ids = self._whole_ids()
+            inside = [i for i in ids if i in cand]
+            return (inside or ids), False
         if intent == "gift":
-            return self._gift_ids()
+            if cand:
+                return sorted(cand, key=self._gift_score, reverse=True), False
+            return self._gift_ids(), False
         if intent in ("recent", "popular"):
             field = "recent_mentions" if intent == "recent" else "review_mentions"
-            return self._popular_ids(field, cats, text_key)
+            if cand:
+                return sorted(cand, key=lambda m: self._pop_score(m, field), reverse=True), False
+            return self._popular_ids(field, cats, text_key), False
         # price
-        pool = [r for r in recs if isinstance(r.item.price, int)]
-        if cats:
+        high = contains_any(text_key, rules.PRICE_HIGH_WORDS)
+        pool = [self.records[i] for i in cand] if cand else recs
+        pool = [r for r in pool if isinstance(r.item.price, int)]
+        if cats and not cand:
             pool = [r for r in pool if r.item.category in cats]
         if amount is not None:
             pool = [r for r in pool if r.item.price <= amount]
-            return [r.item.id for r in sorted(pool, key=lambda r: r.item.price)]
+        if cand or amount is not None:
+            return [
+                r.item.id for r in sorted(pool, key=lambda r: r.item.price, reverse=high)
+            ], False
         if not pool:
-            return []
-        high = contains_any(text_key, rules.PRICE_HIGH_WORDS)
+            return [], False
         edge = max(r.item.price for r in pool) if high else min(r.item.price for r in pool)
-        return [r.item.id for r in pool if r.item.price == edge]
+        return [r.item.id for r in pool if r.item.price == edge], False
+
+    def _pop_score(self, mid: str, field: str) -> tuple[int, bool, bool]:
+        """묶음 메뉴는 묶음 전체 언급 수, 나머지는 메뉴 언급 수. 같으면 Best 표시, 대표 메뉴 순."""
+        r = self.records[mid]
+        fam = self.families.get(r.family)
+        src = fam.popularity if fam and fam.popularity else r.popularity
+        is_rep = bool(fam and fam.representative == mid)
+        if not src:
+            return (0, False, is_rep)
+        return (src.get(field, 0), bool(src.get("best_mark")), is_rep)
+
+    def _gift_score(self, mid: str) -> tuple[int, bool]:
+        r = self.records[mid]
+        own = (r.gift or {}).get("gift_mentions", 0)
+        fam = self.families.get(r.family)
+        fam_gift = (fam.gift or {}).get("gift_mentions", 0) if fam else 0
+        return (
+            own or (fam_gift if fam and fam.representative == mid else 0),
+            mid in self._whole_ids(),
+        )
 
     def _whole_ids(self) -> list[str]:
         marks = [key(w) for w in rules.WHOLE_MARKERS]
@@ -382,19 +502,13 @@ class RagStoreKnowledge:
         units: list[tuple[int, bool, str]] = []
         for f in self.families.values():
             if f.popularity:
-                units.append(
-                    (
-                        f.popularity.get(field, 0),
-                        f.popularity.get("best_mark", False),
-                        f.representative,
-                    )
-                )
+                pop = f.popularity
+                units.append((pop.get(field, 0), pop.get("best_mark", False), f.representative))
         for r in self.records.values():
             if r.family in self.families or not r.popularity:
                 continue
-            units.append(
-                (r.popularity.get(field, 0), r.popularity.get("best_mark", False), r.item.id)
-            )
+            pop = r.popularity
+            units.append((pop.get(field, 0), pop.get("best_mark", False), r.item.id))
         keep = []
         for count, _best, mid in sorted(units, key=lambda t: (t[0], t[1]), reverse=True):
             cat = self.records[mid].item.category
@@ -406,7 +520,7 @@ class RagStoreKnowledge:
                 keep.append(mid)
         return keep[: rules.POPULAR_TOP]
 
-    # ---- 5
+    # ---- 5·6
     def _categories(self, text_key: str) -> set[str]:
         present = {r.item.category for r in self.records.values()}
         return {
@@ -415,39 +529,30 @@ class RagStoreKnowledge:
             if c in present and contains_any(text_key, words)
         }
 
-    def _tags_and_categories(self, text_key: str, text: str) -> list[str] | None:
-        tags = set()
+    def _tagged(self, text_key: str) -> list[str]:
         all_tags = {t for r in self.records.values() for t in r.tags}
-        for tag in all_tags:
-            if contains_any(text_key, [tag, *rules.TAG_WORDS.get(tag, [])]):
-                tags.add(tag)
-        cats = self._categories(text_key)
+        tags = {t for t in all_tags if contains_any(text_key, [t, *rules.TAG_WORDS.get(t, [])])}
+        if not tags:
+            return []
         tagged = [r.item.id for r in self.records.values() if tags & set(r.tags)]
-        in_cat = [r.item.id for r in self.records.values() if r.item.category in cats]
-        if tagged and in_cat:
-            both = [m for m in tagged if m in set(in_cat)]
-            return both or tagged
-        if tagged:
-            return tagged
-        if in_cat:
-            return self._refine_category(in_cat, text)
-        return None
+        cats = self._categories(text_key)
+        both = [m for m in tagged if self.records[m].item.category in cats]
+        return both or tagged
 
-    def _refine_category(self, in_cat: list[str], text: str) -> list[str]:
-        """종류 말 말고 다른 뜻 있는 말이 있으면 그 말로 좁힌다.
-        예: "초코 케이크", "호두 들어간 케이크"
-        종류 안에서 → 없으면 전체 메뉴에서 → 그래도 없으면 빈 목록. 다른 말이 없으면 종류 전체."""
-        if not self.keyword.words(text):
-            return in_cat
-        found = [i for i, _ in self.keyword.search(text, k=len(self.records))]
-        inside = [i for i in found if i in set(in_cat)]
-        return inside or found
+    def _pure_category(self, text_key: str, a: Analysis) -> list[str]:
+        """종류 자체를 묻는 질문일 때만 그 종류 전부. 다른 내용어가 있으면 종류 질문이 아니다."""
+        cats = self._categories(text_key)
+        if not cats or self._content(a).words:
+            return []
+        return [r.item.id for r in self.records.values() if r.item.category in cats]
 
-    def _rank_rule_list(self, ids: list[str], text: str) -> list[tuple[str, float, str]]:
-        """규칙이 고른 목록 안에서만 순서를 다듬는다(키워드 검색과 RRF).
-        목록 밖 메뉴는 넣지 않는다."""
+    def _rank_rule_list(self, ids: list[str], text: str, keep_order: bool = False) -> Found:
+        """규칙이 고른 목록 안에서만 순서를 다듬는다(키워드 검색과 RRF). 목록 밖 메뉴는 넣지 않는다.
+        keep_order=True(의도 규칙: 인기순·가격순 등)면 규칙이 정한 순서를 그대로 쓴다."""
         if not ids:
             return []
+        if keep_order:
+            return [(m, max(0.85 - 0.01 * n, 0.5), "keyword") for n, m in enumerate(ids)]
         allowed = set(ids)
         kw = [i for i, _ in self.keyword.search(text, k=len(self.records)) if i in allowed]
         fused = (
@@ -456,21 +561,39 @@ class RagStoreKnowledge:
         ordered = sorted(ids, key=lambda m: fused.get(m, 0.0), reverse=True)
         return [(m, max(0.85 - 0.01 * n, 0.5), "keyword") for n, m in enumerate(ordered)]
 
-    # ---- 6
-    def _fuzzy(self, text: str) -> list[tuple[str, float, str]]:
-        stop = {key(w) for w in rules.STOPWORDS}
-        out: list[tuple[str, float, str]] = []
-        for word in text.split():
-            if len(word) < rules.FUZZY_MIN_LEN or not _HANGUL.search(word) or word in stop:
+    # ---- 7
+    def _fuzzy(self, text: str) -> Found:
+        """오타 허용. 낱말 하나, 그리고 다음 낱말과 붙인 것을 메뉴 말과 비교한다.
+        글자 단위(FUZZY_MIN_RATIO)나 자모 단위(FUZZY_MIN_JAMO_RATIO) 중 하나만 넘으면 된다.
+        - 메뉴 데이터에 그대로 있는 낱말('마스카포네')은 오타가 아니라서 비교하지 않는다.
+        - 첫 자음(초성)은 같아야 한다: 오타는 보통 첫 글자보다 뒤에서 난다."""
+        skip = {key(w) for w in rules.STOPWORDS + rules.GENERIC_WORDS}
+        known = set(self.keyword.words(text)) & self.keyword.vocab
+        words = text.split()
+        out: Found = []
+        for i, word in enumerate(words):
+            if not _HANGUL.search(word) or key(word) in skip or self._is_rule_word(key(word)):
                 continue
+            if any(w in known for w in self.keyword.words(word)):
+                continue
+            pieces = [word] + ([word + words[i + 1]] if i + 1 < len(words) else [])
             best: tuple[float, _Term] | None = None
-            for term in self._fuzzy_terms:
-                for length in (len(term.key) - 1, len(term.key), len(term.key) + 1):
-                    if length < rules.FUZZY_MIN_LEN or len(word) < length:
-                        continue
-                    ratio = SequenceMatcher(None, word[:length], term.key).ratio()
-                    if ratio >= rules.FUZZY_MIN_RATIO and (best is None or ratio > best[0]):
-                        best = (ratio, term)
+            for piece in pieces:
+                if len(piece) < rules.FUZZY_MIN_LEN:
+                    continue
+                for term in self._fuzzy_terms:
+                    for length in (len(term.key) - 1, len(term.key), len(term.key) + 1):
+                        if length < rules.FUZZY_MIN_LEN or len(piece) < length:
+                            continue
+                        part = piece[:length]
+                        if jamo(part[:1])[:1] != term.jamo[:1]:
+                            continue
+                        syl = SequenceMatcher(None, part, term.key).ratio()
+                        jam = SequenceMatcher(None, jamo(part), term.jamo).ratio()
+                        ok = syl >= rules.FUZZY_MIN_RATIO or jam >= rules.FUZZY_MIN_JAMO_RATIO
+                        score = max(syl, jam)
+                        if ok and (best is None or score > best[0]):
+                            best = (score, term)
             if best:
                 term = best[1]
                 if term.target.startswith("family:"):
@@ -482,8 +605,8 @@ class RagStoreKnowledge:
                     out.append((term.target, 0.75, "alias"))
         return out
 
-    # ---- 7
-    def _keyword_vector(self, text: str) -> list[tuple[str, float, str]]:
+    # ---- 8
+    def _keyword_vector(self, text: str) -> Found:
         kw = self.keyword.search(text, k=10)
         vec = self.vector.search(text, k=10)
         if not kw and not vec:

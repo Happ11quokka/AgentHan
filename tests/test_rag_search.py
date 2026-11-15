@@ -190,3 +190,72 @@ def test_vector_slot_with_fake_embedding() -> None:
     hits = kb.search_menu("폭신한 수플레 같은 거")
     assert hits and hits[0].item.id == "ptichye-moloko"
     assert hits[0].matched_by == "hybrid"  # 키워드와 벡터가 같이 찾음
+
+
+# ---------------------------------------------------------------- 일반 규칙 (holdout과 다른 문장)
+def test_generic_word_alone_is_not_evidence(kb: RagStoreKnowledge) -> None:
+    got = ids(kb, "레몬 들어간 거 있어요?")
+    assert "lemon-ade" in got and "honey-lemon-tea" in got
+    assert "mors" not in got  # '음료'·'베리' 같은 말이 아니라 '레몬'이 맞아야 한다
+
+
+def test_attached_name_is_searched_in_names_only(kb: RagStoreKnowledge) -> None:
+    # 나폴레옹·키예프 설명에 '버터'가 있어도, 붙여 쓴 '버터케이크'는 이름·별칭에서만 찾는다
+    assert kb.search_menu("버터케이크 있어요?") == []
+    assert kb.search_menu("버터 들어간 케이크 있어요?")  # 띄어 쓰면 설명에서도 찾는다
+
+
+def test_category_only_when_category_itself_is_asked(kb: RagStoreKnowledge) -> None:
+    cakes = {m.id for m in kb.list_menu() if m.category == "Cake"}
+    drinks = {m.id for m in kb.list_menu() if m.category in ("Coffee", "Tea", "Ade")}
+    assert set(ids(kb, "케이크 뭐 있어요?", k=50)) == cakes
+    assert set(ids(kb, "음료 뭐 있어요?", k=50)) == drinks
+    choco = ids(kb, "초코 케이크 있어요?", k=50)
+    assert "medovik-choco" in choco and set(choco) != cakes
+
+
+def test_typo_with_spaced_generic_word(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "제부라 케이크 있어요?")[0] == "zebra"
+
+
+def test_intent_filters_by_content_word_first(kb: RagStoreKnowledge) -> None:
+    got = ids(kb, "꿀 들어간 것 중에 인기 있는 거")
+    assert got[0] == "medovik"
+    assert set(MEDOVIK_FAMILY) <= set(got[:4])
+
+
+def test_options_are_searchable(kb: RagStoreKnowledge) -> None:
+    assert ids(kb, "디카페인 되는 커피 있어요?")[0] == "americano"
+
+
+@pytest.mark.parametrize("query", ["초 몇 개 같이 주세요", "포장지 따로 파나요?", "쇼핑백 있어요?"])
+def test_service_only_questions_are_empty(kb: RagStoreKnowledge, query: str) -> None:
+    assert kb.search_menu(query) == []
+
+
+def test_one_char_word_is_kept_but_not_inside_other_words(kb: RagStoreKnowledge) -> None:
+    assert kb.keyword.words("꿀 들어간 거") == ["꿀"]
+    assert kb.search_menu("초코 케이크 있어요?")  # '초코'의 '초'는 서비스 단어 '초'가 아니다
+
+
+def test_rest_words_prefer_matching_menu_in_same_category() -> None:
+    """찾은 메뉴(아메리카노)에 없는 말(카페인)이 같은 종류 다른 메뉴 이름에 있으면
+    그 메뉴를 앞에 둔다."""
+    from agenthan.core.contracts import MenuItem
+    from agenthan.rag.repository import MenuRecord, StoreData
+
+    class Repo:
+        def load(self) -> StoreData:
+            menus = [
+                MenuRecord(
+                    MenuItem("ame", "아메리카노", 4500, category="Coffee", aliases=("아아",))
+                ),
+                MenuRecord(MenuItem("decaf", "디카페인", 5000, category="Coffee")),
+                MenuRecord(MenuItem("cake", "카페인 케이크", 8000, category="Cake")),
+            ]
+            return StoreData(menus, [], [])
+
+    kb = RagStoreKnowledge(Repo(), embed=False)
+    assert ids(kb, "아아 카페인 없이요") == ["decaf", "ame"]  # 다른 종류(cake)는 안 넣는다
+    assert ids(kb, "아아 두 잔이요") == ["ame"]
+    assert ids(kb, "카페인아아 주세요")[0] == "ame"  # 찾은 말에 붙은 말은 보지 않는다
