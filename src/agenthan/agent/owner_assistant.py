@@ -1926,6 +1926,12 @@ class OwnerAssistant:
             return None
         if len(drafts) == 1 and drafts[0].is_food:
             d = drafts[0]
+            if d.possible_menu_name and not d.menu_id:
+                # A guessed match: no price to ask, but the owner must name the menu to attach.
+                return (
+                    f"기존 메뉴 {d.possible_menu_name}에 이 사진을 붙일까요? "
+                    f"맞으면 '{d.possible_menu_name} 사진 바꿔'라고 말해 주세요."
+                )
             if not d.name_ko.strip():
                 return "메뉴 이름과 가격을 알려 주세요."
             if d.price:

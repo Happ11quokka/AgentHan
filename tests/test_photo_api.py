@@ -1,9 +1,13 @@
 """Owner screen backend: menu photos go in over HTTP and come back in pending and place (#63)."""
 
+import cv2
+import numpy as np
 from fastapi.testclient import TestClient
 
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app.server import create_app
+from agenthan.core.contracts import MenuItem
+from agenthan.core.fakes import FakeStoreKnowledge
 from test_food_photo import CAKE, EMPTY, EditChat, FakeV3
 from test_menu_photo import JPEG, KNOWLEDGE, tool_call
 from test_menu_photo import FakeChat as BoardChat
@@ -21,6 +25,10 @@ def client(tmp_path, *, fake=None, chat=None, knowledge=EMPTY):
 
 def start(api):
     return api.post("/assistant/sessions").json()["session_id"]
+
+
+def start_place(api, session_id):
+    return api.get(f"/assistant/sessions/{session_id}/place").json()["place"]
 
 
 def send_photo(api, session_id, image, text=None):
@@ -179,3 +187,36 @@ def test_menu_board_updates_existing_menus_and_adds_new_ones_in_one_yes(tmp_path
         "차이": 3000,
         "펠메니": 10000,
     }
+
+
+def test_food_photo_of_an_existing_menu_attaches_the_photo_without_asking_a_price(tmp_path):
+    medovik = MenuItem(id="m01", name_ko="메도빅", price=7500)
+    api = client(tmp_path, fake=FakeV3(name="메도빅"), knowledge=FakeStoreKnowledge([medovik]))
+    session_id = start(api)
+    count = len(start_place(api, session_id)["menu"])
+
+    body = send_photo(api, session_id, CAKE.read_bytes()).json()
+    [draft] = body["pending"][0]["drafts"]
+    assert (draft["change"], draft["previous_price"]) == ("photo_attach", 7500)
+    question = body["reply"].splitlines()[-1]
+    assert "메도빅" in question and "사진" in question and "가격" not in question
+
+    body = say(api, session_id, "응, 메도빅 사진 바꿔")
+    assert body["pending"] == []
+    [saved] = [m for m in body["place"]["menu"] if m["id"] == "m01"]
+    assert (saved["name"], saved["price"]) == ("메도빅", 7500) and saved["photo_url"]
+    assert len(body["place"]["menu"]) == count
+
+
+def test_a_failed_background_cut_keeps_the_original_photo_and_says_so(tmp_path):
+    _, plain = cv2.imencode(".jpg", np.full((200, 200, 3), 128, np.uint8))
+    api = client(tmp_path)
+    session_id = start(api)
+
+    body = send_photo(api, session_id, plain.tobytes()).json()
+    [draft] = body["pending"][0]["drafts"]
+    assert "cutout_failed" in draft["notes"] and "배경 지우기 실패" in body["reply"]
+    photo = api.get(draft["photo_url"])
+    image = cv2.imdecode(np.frombuffer(photo.content, np.uint8), cv2.IMREAD_COLOR)
+    # The original on a white square, not a cut-out: its gray middle survives.
+    assert image.shape[:2] == (1024, 1024) and abs(int(image[512, 512, 0]) - 128) <= 3

@@ -182,7 +182,14 @@ def store_record(draft: MenuDraft, menus: list[dict]) -> dict | None:
 
 
 def store_change(draft: MenuDraft, menus: list[dict]) -> tuple[str, int | None]:
-    """(new | price_change | unchanged, the saved price) of a draft against the saved menus."""
+    """(new | price_change | unchanged | photo_attach, the saved price) against the saved menus.
+
+    A food photo that matches a saved menu (chosen or still only guessed) attaches its photo.
+    """
+    if draft.is_food:
+        menu_id = draft.menu_id or draft.possible_menu_id
+        record = next((m for m in menus if m["id"] == menu_id), None) if menu_id else None
+        return ("photo_attach", record["price"]) if record else ("new", None)
     record = store_record(draft, menus)
     if record is None:
         return "new", None
