@@ -6,6 +6,7 @@ OwnerAssistant after the owner approves; preview() runs the waiting actions on a
 
 import copy
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from agenthan.tools.dummy_store import DummyStore
@@ -13,13 +14,23 @@ from agenthan.tools.feature_tools import execute_feature_tool
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 MENU_FIELDS = ("id", "name", "price", "description")
+DRAFT_FIELDS = ("name_ko", "name_native", "price", "description", "menu_id")
+
+PhotoUrl = Callable[[dict], str | None]
 
 
-def snapshot(data: dict) -> dict:
+def _no_photo(_record: dict) -> None:
+    return None
+
+
+def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
     """The sections the screen draws, keyed by feature id."""
     hours = data.get("shop", {}).get("hours", {})
     return {
-        "menu": [{k: m.get(k) for k in MENU_FIELDS} for m in data.get("menus", [])],
+        "menu": [
+            {**{k: m.get(k) for k in MENU_FIELDS}, "photo_url": photo_url(m)}
+            for m in data.get("menus", [])
+        ],
         "business_hours": {day: copy.deepcopy(hours[day]) for day in DAYS if day in hours},
         "coupon": copy.deepcopy(data.get("coupons", [])),
     }
@@ -46,7 +57,7 @@ def changes(before: dict, after: dict) -> dict:
     return result
 
 
-def preview(data: dict, feature: str, actions: list[dict]) -> dict:
+def preview(data: dict, feature: str, actions: list[dict], photo_url: PhotoUrl = _no_photo) -> dict:
     """Run the waiting actions on a copy of the store and compare the screen sections."""
     with tempfile.TemporaryDirectory() as folder:
         store = DummyStore(Path(folder) / "store.json")
@@ -56,5 +67,37 @@ def preview(data: dict, feature: str, actions: list[dict]) -> dict:
             if not result.get("ok"):
                 message = result.get("message", "미리보기를 만들지 못했습니다.")
                 return {"feature": feature, "after": None, "changes": {}, "error": message}
-        after = snapshot(store.read())
-    return {"feature": feature, "after": after, "changes": changes(snapshot(data), after)}
+        after = snapshot(store.read(), photo_url)
+    return {
+        "feature": feature,
+        "after": after,
+        "changes": changes(snapshot(data, photo_url), after),
+    }
+
+
+def _save_action(data: dict, draft) -> dict:
+    """The upsert_menu call that saving this complete draft amounts to (photo aside)."""
+    record = next((m for m in data.get("menus", []) if m["id"] == draft.menu_id), None)
+    arguments = {"name": record["name"] if record else draft.name_ko, "price": draft.price}
+    if draft.description:
+        arguments["description"] = draft.description
+    return {"name": "upsert_menu", "arguments": arguments}
+
+
+def photo_preview(
+    data: dict, drafts: list, draft_photo_url: Callable[[int], str], photo_url: PhotoUrl = _no_photo
+) -> dict:
+    """Menu drafts from a photo waiting for a yes, and what saving the complete ones changes.
+
+    `after` leaves the photos out: a new menu has no id until it is saved.
+    """
+    rows = [
+        {
+            **{k: getattr(d, k) for k in DRAFT_FIELDS},
+            "notes": list(d.notes),
+            "photo_url": draft_photo_url(i) if d.photo is not None else None,
+        }
+        for i, d in enumerate(drafts)
+    ]
+    actions = [_save_action(data, d) for d in drafts if d.complete]
+    return {"kind": "photo", "drafts": rows, **preview(data, "menu", actions, photo_url)}

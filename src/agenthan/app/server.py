@@ -9,14 +9,16 @@ import threading
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app import place
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
+DRAFT_PHOTO = "draft-"
 
 
 class Message(BaseModel):
@@ -31,23 +33,65 @@ class Message(BaseModel):
 
 
 class Session:
-    def __init__(self, assistant: OwnerAssistant):
+    def __init__(self, session_id: str, assistant: OwnerAssistant):
+        self.id = session_id
         self.assistant = assistant
         self.lock = threading.Lock()  # OwnerAssistant keeps turn state; one turn at a time.
+
+    def _url(self, name: str) -> str:
+        return f"/assistant/sessions/{self.id}/photos/{name}"
+
+    def _menu_photo_url(self, record: dict) -> str | None:
+        return self._url(record["id"]) if record.get("photo") else None
 
     def view(self) -> dict:
         data = self.assistant.store.read()
         waiting = [t for t in self.assistant.ledger.tasks if t.is_open and t.preview]
-        return {
-            "place": place.snapshot(data),
-            "pending": [
+        pending = [
+            {
+                "task_id": t.id,
+                **place.preview(
+                    data,
+                    t.feature,
+                    t.preview.get("actions") or [t.preview],
+                    self._menu_photo_url,
+                ),
+            }
+            for t in waiting
+        ]
+        photo_task = self.assistant.ledger.find_open(kind="photo")
+        if photo_task is not None and photo_task.data:
+            pending.append(
                 {
-                    "task_id": t.id,
-                    **place.preview(data, t.feature, t.preview.get("actions") or [t.preview]),
+                    "task_id": photo_task.id,
+                    **place.photo_preview(
+                        data,
+                        photo_task.data,
+                        lambda i: self._url(f"{DRAFT_PHOTO}{i}"),
+                        self._menu_photo_url,
+                    ),
                 }
-                for t in waiting
-            ],
-        }
+            )
+        return {"place": place.snapshot(data, self._menu_photo_url), "pending": pending}
+
+    def photo(self, name: str) -> tuple[bytes, str] | None:
+        """A waiting draft's photo or a saved menu's photo, as (bytes, media type)."""
+        if name.startswith(DRAFT_PHOTO):
+            drafts = self.assistant.menu_drafts or []
+            index = name.removeprefix(DRAFT_PHOTO)
+            if not index.isdigit() or int(index) >= len(drafts):
+                return None
+            draft = drafts[int(index)]
+            return (draft.photo, draft.photo_mime) if draft.photo is not None else None
+        folder = self.assistant.store.path.parent.resolve()
+        record = next((m for m in self.assistant.store.read()["menus"] if m["id"] == name), None)
+        if record is None or not record.get("photo"):
+            return None
+        path = (folder / record["photo"]).resolve()
+        if not path.is_relative_to(folder) or not path.is_file():
+            return None
+        mime = "image/png" if path.suffix == ".png" else "image/jpeg"
+        return path.read_bytes(), mime
 
 
 def create_app(
@@ -69,7 +113,7 @@ def create_app(
         session_id = uuid.uuid4().hex
         folder = root / session_id
         folder.mkdir(parents=True)
-        session = sessions[session_id] = Session(make_assistant(folder / "store.json"))
+        session = sessions[session_id] = Session(session_id, make_assistant(folder / "store.json"))
         return {"session_id": session_id, **session.view()}
 
     @app.post("/assistant/sessions/{session_id}/messages")
@@ -78,6 +122,30 @@ def create_app(
         with session.lock:
             reply = session.assistant.ask(message.text)
             return {"reply": reply, **session.view()}
+
+    @app.post("/assistant/sessions/{session_id}/photos")
+    def send_photo(
+        session_id: str,
+        image: Annotated[UploadFile, File()],
+        text: Annotated[str, Form()] = "",
+    ) -> dict:
+        session = get(session_id)
+        data = image.file.read()
+        if not data:
+            raise HTTPException(422, "빈 사진입니다.")
+        with session.lock:
+            reply = session.assistant.ask_photo(data, text)
+            return {"reply": reply, **session.view()}
+
+    @app.get("/assistant/sessions/{session_id}/photos/{name}")
+    def show_photo(session_id: str, name: str) -> Response:
+        session = get(session_id)
+        with session.lock:
+            found = session.photo(name)
+        if found is None:
+            raise HTTPException(404, "없는 사진입니다.")
+        content, mime = found
+        return Response(content, media_type=mime)
 
     @app.get("/assistant/sessions/{session_id}/place")
     def show(session_id: str) -> dict:
