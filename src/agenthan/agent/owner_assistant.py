@@ -27,6 +27,7 @@ from datetime import date
 from pathlib import Path
 
 from agenthan.agent import (
+    actions,
     feature_selector,
     food_photo,
     menu_photo,
@@ -878,6 +879,196 @@ class OwnerAssistant:
             return HELP
         return turn_graph.run(self.turns, text)
 
+    def run_action(self, action_id: str, args: dict, label: str) -> dict:
+        """화면이 선택한 동작을 기능 선택 없이 실행한다."""
+        spec = actions.ACTIONS.get(action_id)
+        if spec is None:
+            raise ValueError("없는 버튼입니다.")
+        if not isinstance(args, dict) or set(args) - set(spec.inputs):
+            raise ValueError("버튼 입력을 확인해 주세요.")
+        values = {**spec.fixed, **args}
+        self._begin_turn()
+        self._adding = False
+        self._act = None
+        self.trace = new_trace(None, "button")
+        label = " ".join(label.splitlines())
+        self.history.append({"role": "user", "content": f"[버튼] {label}"})
+        next_actions = []
+
+        def finish(text):
+            return {"reply": self._end_turn(text), "next_actions": next_actions}
+
+        if action_id in ("task.approve", "task.cancel"):
+            task = self.ledger.get(values.get("task_id"))
+            if task is None or not task.is_open:
+                return finish("열린 작업을 찾을 수 없어요.")
+            if action_id == "task.approve" and (
+                task.preview is None
+                or type(values.get("version")) is not int
+                or values["version"] != task.version
+            ):
+                return finish("미리보기가 바뀌었어요. 현재 내용을 다시 확인해 주세요.")
+            self.ledger.resume(task.id)
+            self._turn_task = task.id
+            if task.kind == "review" and task.preview and task.preview.get("button_review"):
+                return finish(self._finish_button_review(task, action_id == "task.approve"))
+            # 기존 승인 경로는 자체적으로 턴과 기록을 남긴다.
+            self.history.pop()
+            self.ledger.turn -= 1
+            reply = self.reply_to_approval("네" if action_id == "task.approve" else "취소")
+            if reply is None:
+                self.ledger.close(task, "cancelled")
+                self._begin_turn(task.id)
+                self.history.append({"role": "user", "content": f"[버튼] {label}"})
+                reply = self._end_turn("작업을 취소했어요.")
+            else:
+                self.history[-2]["content"] = f"[버튼] {label}"
+            self.trace["via"] = "button"
+            return {"reply": reply, "next_actions": []}
+
+        if action_id.startswith("stats."):
+            question = "오늘 통계" if values["period"] == "day" else "이번 주 통계"
+            self.last_report = report_explainer.explain(
+                question, chat=self.chat, shop=self.store.read()
+            )
+            self._detail_subject = "report"
+            card = report_explainer.make_card(self.last_report, chat=self.chat)
+            return finish(report_headline(self.last_report) + "\n" + card.render())
+
+        if action_id.startswith("review."):
+            if self.review is None:
+                self.review = self._review_factory(self.store, owner_lang=self.owner_lang or "ko")
+            box = self.review.toolbox
+            if action_id == "review.summary":
+                from agenthan.agent.review.analyze import analyze_reviews
+
+                result = analyze_reviews(**box.ctx, period=values["period"])
+                counts = result.get("sentiment", {})
+                rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
+                unanswered = {r["review_id"] for r in rows if not r.get("has_owner_reply")}
+                example = next(
+                    (
+                        e
+                        for e in result.get("examples", [])
+                        if e.get("sentiment") in ("negative", "mixed")
+                        and e["review_id"] in unanswered
+                    ),
+                    None,
+                )
+                if example:
+                    next_actions.append(
+                        {
+                            "action_id": "review.draft_reply",
+                            "label": "불만 리뷰 답글 초안",
+                            "args": {"review_id": example["review_id"]},
+                        }
+                    )
+                names = {"positive": "좋음", "negative": "아쉬움", "mixed": "엇갈림"}
+                parts = [f"{names[k]} {counts[k]}건" for k in names if counts.get(k)]
+                text = f"리뷰 {result['review_count']}건을 살펴봤어요."
+                if parts:
+                    text += " " + ", ".join(parts) + "이에요."
+                return finish(text)
+            review_id = values.get("review_id")
+            if not isinstance(review_id, str) or not review_id:
+                task = self.ledger.start("review", "review")
+                self._turn_task = task.id
+                return finish("어느 리뷰에 답글을 쓸까요? 리뷰를 선택해 주세요.")
+            rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
+            row = next((r for r in rows if r["review_id"] == review_id), None)
+            if row is None or row.get("has_owner_reply"):
+                return finish("답글을 작성할 리뷰를 찾을 수 없어요.")
+            task = self.ledger.start("review", "review")
+            self._turn_task = task.id
+            out = box._draft({}, review_id=review_id)
+            draft = next((d for d in out.get("drafts", []) if d.get("reply_ko")), None)
+            if draft is None:
+                self.ledger.close(task, "failed")
+                return finish("답글 초안을 만들지 못했어요.")
+            sources, missing = value_source.check(
+                [("review_id", "string", (), "리뷰")],
+                {"review_id": review_id},
+                "",
+                self.store.read(),
+                ui=values,
+            )
+            if missing:
+                self.ledger.close(task, "failed")
+                return finish("리뷰를 다시 선택해 주세요.")
+            self.ledger.set_slot(task, "review_id", review_id, sources["review_id"])
+            self.ledger.set_slot(task, "reply", draft["reply_ko"], "ai_draft")
+            self.ledger.set_preview(
+                task,
+                {
+                    "feature_id": "review",
+                    "button_review": True,
+                    "review_id": review_id,
+                    "draft": copy.deepcopy(box.drafts[review_id]),
+                },
+            )
+            self.trace["pending_approval"] = True
+            return finish(
+                f"답글 초안이에요. 내용을 확인해 주세요.\n> {draft['reply_ko']}\n이대로 올릴까요?"
+            )
+
+        feature = "coupon" if action_id == "coupon.create" else "business_hours"
+        entries = [values] if feature == "coupon" else values.get("entries")
+        if (
+            not isinstance(entries, list)
+            or not entries
+            or any(not isinstance(e, dict) for e in entries)
+        ):
+            return finish("필요한 값을 입력해 주세요.")
+        task = self.ledger.start(feature)
+        self._turn_task = task.id
+        params = tool_params(feature)
+        allowed = {p[0] for p in params}
+        for entry in entries:
+            if set(entry) - allowed:
+                self.ledger.close(task, "failed")
+                return finish("입력 항목을 확인해 주세요.")
+            sources, missing = value_source.check(
+                params, entry, "", self.store.read(), today=self.today, ui=entry
+            )
+            if missing:
+                self.ledger.close(task, "failed")
+                return finish("값을 다시 확인해 주세요.")
+            for name, source in sources.items():
+                self.ledger.set_slot(task, name, entry[name], source)
+            result = self._preview(feature, spec.target, entry)
+            if not result.get("ok"):
+                self.ledger.drop_preview(task)
+                self.ledger.close(task, "failed")
+                return finish(result.get("message", "필요한 값을 입력해 주세요."))
+        return finish(self._approval_question(feature, task.preview["actions"]))
+
+    def _finish_button_review(self, task, approve: bool) -> str:
+        from agenthan.agent.review.replies import post_review_reply
+
+        preview = task.preview
+        box = self.review.toolbox
+        rid = preview["review_id"]
+        if not approve:
+            if box.drafts.get(rid) == preview["draft"]:
+                box.drafts.pop(rid, None)
+            self.ledger.close(task, "cancelled")
+            return "작업을 취소했어요."
+        rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
+        row = next((r for r in rows if r["review_id"] == rid), None)
+        if row is None or row.get("has_owner_reply") or box.drafts.get(rid) != preview["draft"]:
+            return "리뷰 또는 초안이 바뀌었어요. 다시 확인해 주세요."
+        result = post_review_reply(
+            drafts={rid: preview["draft"]},
+            store=box.reply_store,
+            utterance="네",
+            allow_bare_yes=True,
+        )
+        if result.get("posted_count") != 1:
+            return "답글을 저장하지 못했어요. 초안을 다시 확인해 주세요."
+        box.drafts.pop(rid, None)
+        self.ledger.close(task, "done")
+        return "답글을 저장했어요. 실제 발송은 하지 않았어요."
+
     def _dry_run(self, name: str, arguments: object) -> dict:
         """Run a write on a throwaway copy of the current store."""
         with tempfile.TemporaryDirectory() as folder:
@@ -897,6 +1088,11 @@ class OwnerAssistant:
         intent = approval_intent(text)
         if intent is None:
             return None
+        if task.kind == "review" and task.preview.get("button_review"):
+            self._begin_turn(task.id)
+            self.history.append({"role": "user", "content": text.strip()})
+            self.trace = new_trace("review", "approval")
+            return self._end_turn(self._finish_button_review(task, intent != "decline"))
         text = text.strip()
         self._begin_turn(task.id)
         action = task.preview

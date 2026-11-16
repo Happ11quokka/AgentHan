@@ -353,6 +353,7 @@ def check(
     store: dict,
     *,
     today: date | None = None,
+    ui: dict | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     """Sources of every given argument, and labels of the ones the owner did not confirm.
 
@@ -363,7 +364,9 @@ def check(
         if param_id not in arguments:
             continue
         value = arguments[param_id]
-        if param_id == "closed" and value is False and arguments.get("open_time"):
+        if ui is not None and param_id in ui and ui[param_id] == value:
+            source = "ui"
+        elif param_id == "closed" and value is False and arguments.get("open_time"):
             source = "rule"  # Opening hours given: the day is open.
         else:
             source = confirmed(param_id, kind, value, said, store, today=today, enum=enum)

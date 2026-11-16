@@ -23,7 +23,7 @@ Status = Literal["collecting", "awaiting_approval", "paused", "done", "cancelled
 OPEN = frozenset({"collecting", "awaiting_approval", "paused"})
 # owner = the owner said it, lookup = confirmed from the store, rule = computed by code,
 # ai_draft = written by a model (needs the owner's approval before it is saved).
-Source = Literal["owner", "lookup", "rule", "ai_draft"]
+Source = Literal["owner", "ui", "lookup", "rule", "ai_draft"]
 QUIET_AFTER = 3
 
 
