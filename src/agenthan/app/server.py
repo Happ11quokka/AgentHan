@@ -15,7 +15,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
-from agenthan.app import place, screens
+from agenthan.app import pilot, place, screens
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
@@ -171,4 +171,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(make_assistant=pilot.assistant)
