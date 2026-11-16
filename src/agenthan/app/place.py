@@ -9,6 +9,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from agenthan.agent import menu_photo
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import execute_feature_tool
 
@@ -77,7 +78,7 @@ def preview(data: dict, feature: str, actions: list[dict], photo_url: PhotoUrl =
 
 def _save_action(data: dict, draft) -> dict:
     """The upsert_menu call that saving this complete draft amounts to (photo aside)."""
-    record = next((m for m in data.get("menus", []) if m["id"] == draft.menu_id), None)
+    record = menu_photo.store_record(draft, data.get("menus", []))
     arguments = {"name": record["name"] if record else draft.name_ko, "price": draft.price}
     if draft.description:
         arguments["description"] = draft.description
@@ -91,13 +92,18 @@ def photo_preview(
 
     `after` leaves the photos out: a new menu has no id until it is saved.
     """
-    rows = [
-        {
-            **{k: getattr(d, k) for k in DRAFT_FIELDS},
-            "notes": list(d.notes),
-            "photo_url": draft_photo_url(i) if d.photo is not None else None,
-        }
-        for i, d in enumerate(drafts)
-    ]
+    menus = data.get("menus", [])
+    rows = []
+    for i, d in enumerate(drafts):
+        change, previous = menu_photo.store_change(d, menus)
+        rows.append(
+            {
+                **{k: getattr(d, k) for k in DRAFT_FIELDS},
+                "change": change,
+                "previous_price": previous,
+                "notes": list(d.notes),
+                "photo_url": draft_photo_url(i) if d.photo is not None else None,
+            }
+        )
     actions = [_save_action(data, d) for d in drafts if d.complete]
     return {"kind": "photo", "drafts": rows, **preview(data, "menu", actions, photo_url)}

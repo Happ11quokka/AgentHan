@@ -439,6 +439,8 @@ PHOTO_TEXT = {
     "skipped": "이름이나 가격이 없어 저장하지 않은 메뉴:",
     "cancel": "메뉴 등록을 취소했어요. 저장한 것은 없어요.",
     "existing": "기존 메뉴",
+    "price_change": "가격 변경 {old:,} → {new:,}",
+    "unchanged": "변경 없음",
     "price_missing": "가격 확인 필요",
     "name_missing": "한국어 이름 확인 필요",
     "generated": "이름·설명은 AI 초안",
@@ -1833,6 +1835,7 @@ class OwnerAssistant:
 
     def _draft_lines(self) -> str:
         t = PHOTO_TEXT
+        menus = self.store.read()["menus"]
         lines = []
         for i, d in enumerate(self.menu_drafts or [], 1):
             name = d.name_ko or "?"
@@ -1842,7 +1845,13 @@ class OwnerAssistant:
             line = f"{i}. {name} · {price}"
             if d.description:
                 line += f" · {d.description}"
-            marks = ([t["existing"]] if d.menu_id else []) + [t[n] for n in d.notes]
+            change, previous = menu_photo.store_change(d, menus)
+            compared = []
+            if change == "price_change":
+                compared = [t["price_change"].format(old=previous, new=d.price)]
+            elif change == "unchanged" and d.price is not None and not d.is_food:
+                compared = [t["unchanged"]]
+            marks = ([t["existing"]] if d.menu_id else []) + compared + [t[n] for n in d.notes]
             if marks:
                 line += f"  [{', '.join(marks)}]"
             if d.is_food and d.candidates:

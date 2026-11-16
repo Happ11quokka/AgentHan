@@ -5,12 +5,15 @@ from fastapi.testclient import TestClient
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app.server import create_app
 from test_food_photo import CAKE, EMPTY, EditChat, FakeV3
+from test_menu_photo import JPEG, KNOWLEDGE, tool_call
+from test_menu_photo import FakeChat as BoardChat
+from test_menu_photo import FakeV3 as BoardV3
 
 
-def client(tmp_path, *, fake=None, chat=None):
+def client(tmp_path, *, fake=None, chat=None, knowledge=EMPTY):
     def make(path):
         return OwnerAssistant(
-            path, knowledge=EMPTY, clova_v3=fake or FakeV3(), chat=chat or EditChat()
+            path, knowledge=knowledge, clova_v3=fake or FakeV3(), chat=chat or EditChat()
         )
 
     return TestClient(create_app(make_assistant=make, root=tmp_path))
@@ -133,3 +136,46 @@ def test_cancel_saves_nothing(tmp_path):
 
     body = say(api, session_id, "취소")
     assert body["pending"] == [] and body["place"] == before
+
+
+BOARD = """[{"name": "Медовик", "price": 8000}, {"name": "Наполеон", "price": 7000},
+ {"name": "Сырники", "price": 8500}, {"name": "Чай", "price": 3000},
+ {"name": "Пельмени", "price": null}]"""
+BOARD_NAMES = {
+    "Сырники": '{"name_ko": "시르니키", "description_ko": "러시아식 치즈 팬케이크."}',
+    "Чай": '{"name_ko": "차이", "description_ko": "러시아식 홍차."}',
+    "Пельмени": '{"name_ko": "펠메니", "description_ko": "러시아식 만두."}',
+}
+
+
+def test_menu_board_updates_existing_menus_and_adds_new_ones_in_one_yes(tmp_path):
+    chat = BoardChat(
+        tool_call({"number": 5, "price": 10000}), {"role": "assistant", "content": "고쳤어요."}
+    )
+    api = client(tmp_path, fake=BoardV3(BOARD, BOARD_NAMES), chat=chat, knowledge=KNOWLEDGE)
+    session_id = start(api)
+
+    body = send_photo(api, session_id, JPEG).json()
+    rows = {d["name_ko"]: d for d in body["pending"][0]["drafts"]}
+    assert (rows["메도빅"]["change"], rows["메도빅"]["previous_price"]) == ("price_change", 7500)
+    assert (rows["나폴레옹"]["change"], rows["나폴레옹"]["previous_price"]) == ("unchanged", 7000)
+    assert rows["시르니키"]["change"] == "new" and rows["시르니키"]["previous_price"] is None
+    assert rows["차이"]["change"] == "new"
+    assert "가격 변경 7,500 → 8,000" in body["reply"] and "변경 없음" in body["reply"]
+    question = body["reply"].splitlines()[-1]
+    assert "5번 펠메니" in question and "가격" in question
+    assert "메도빅" not in question and "시르니키" not in question
+
+    say(api, session_id, "5번 가격 10000원")
+    body = say(api, session_id, "네")
+    assert body["pending"] == []
+    prices = {m["name"]: m["price"] for m in body["place"]["menu"]}
+    assert prices == {
+        "메도빅": 8000,
+        "나폴레옹": 7000,
+        "아메리카노": 4500,
+        "블린": 9000,
+        "시르니키": 8500,
+        "차이": 3000,
+        "펠메니": 10000,
+    }

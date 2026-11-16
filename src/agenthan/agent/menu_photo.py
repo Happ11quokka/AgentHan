@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass, field
 
 from agenthan.core.contracts import MenuItem, StoreKnowledge
 from agenthan.core.llm import ClovaV3Error, chat_v3, image_content
+from agenthan.tools.dummy_store import normalize
 
 VISION_MODEL = "HCX-005"
 TEXT_MODEL = "HCX-005"
@@ -169,6 +170,25 @@ def read_menu_photo(data: bytes, *, call: Call = chat_v3) -> list[tuple[str, int
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text).casefold())
+
+
+def store_record(draft: MenuDraft, menus: list[dict]) -> dict | None:
+    """The saved menu that approving this draft would change, found the way saving finds it:
+    a food photo by its chosen menu id, a menu board line by its name."""
+    if draft.is_food:
+        return next((m for m in menus if m["id"] == draft.menu_id), None) if draft.menu_id else None
+    key = normalize(draft.name_ko)
+    return next((m for m in menus if key and normalize(m["name"]) == key), None)
+
+
+def store_change(draft: MenuDraft, menus: list[dict]) -> tuple[str, int | None]:
+    """(new | price_change | unchanged, the saved price) of a draft against the saved menus."""
+    record = store_record(draft, menus)
+    if record is None:
+        return "new", None
+    if draft.price is None or draft.price == record["price"]:
+        return "unchanged", record["price"]
+    return "price_change", record["price"]
 
 
 def match_known(name: str, knowledge: StoreKnowledge) -> tuple[MenuItem, str] | None:

@@ -196,7 +196,7 @@ def test_photo_shows_drafts_and_saves_nothing_before_approval(tmp_path):
     bot = assistant(tmp_path)
     out = bot.ask_photo(JPEG, "이거 올려 줘")
     assert out.startswith("메뉴판에서 메뉴 3개를 읽었어요.")
-    assert "1. 메도빅 (Медовик) · 7,500원" in out and "[기존 메뉴]" in out
+    assert "1. 메도빅 (Медовик) · 7,500원" in out and "[기존 메뉴, 변경 없음]" in out
     assert "3. ? (Пельмени) · ?" in out and "가격 확인 필요" in out
     assert out.endswith("저장 전에 알려 주세요: 3번 Пельмени 이름·가격")
     assert [f["name_ko"] for f in bot.menu_form()] == ["메도빅", "시르니키", ""]
