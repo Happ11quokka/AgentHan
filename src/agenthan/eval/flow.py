@@ -40,8 +40,10 @@ class Probe:
         self.errors: list[str] = []
         self.tokens: list[int] = []
         self.select_rejected = 0
+        self.model_calls = 0  # chat + select_feature requests of the turn (S2 metric)
 
     def chat(self, messages, *, tools):
+        self.model_calls += 1
         try:
             response = self.backend.chat(messages, tools=tools)
         except ClovaRequestRejected:
@@ -58,6 +60,7 @@ class Probe:
         """HCX-DASH-002 select_feature. A rejection is app behavior (it falls back)."""
         if not hasattr(self.backend, "select"):
             raise ClovaChatError("backend has no select_feature")  # Test fakes: fallback.
+        self.model_calls += 1
         try:
             response = self.backend.select(messages, tools=tools)
         except ClovaRequestRejected:

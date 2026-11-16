@@ -66,6 +66,37 @@ uv run --frozen --offline python -m agenthan.eval.gate --baseline src/agenthan/e
 도구 스키마·카탈로그·임베딩 인덱스 SHA256, repeat, backend, split을 기록한다.
 `by_split`은 `dev`, `holdout`, `null`(미지정) 각각에 두 축의 결과를 담는다.
 
+## S2 실행과 지표
+
+S2(`tests/data/eval/s2.jsonl`, ADR-0006)는 새 계획형 루프가 잘하는 일(다단계·단어 함정·조언·범위 밖·버튼 혼합)을 재는 목표 지표다.
+S1은 그대로 회귀 게이트이고, S2 요약은 `eval.gate`에 넣지 않는다. 채점은 trace·가게 상태가 먼저이고, 조언·거절 문장만
+기준표 채점기(`judge.py`)가 본다(채점기는 인터페이스·기준표까지. 없으면 그 문장은 건너뛰고 "채점기 없음"으로 센다).
+
+```bash
+# 오프라인 배선 확인 (가짜 HCX, 키·네트워크 없음. 숫자는 모델 품질이 아니다)
+uv run --frozen --offline python -m agenthan.eval.scenario --suite s2 --backend fake --judge fake --repeat 1 --label s2-fake
+# 녹화 재생 (--replay-file에 S2 녹화가 있어야 한다. 없으면 ReplayMiss가 API 오류로 잡힌다)
+uv run --frozen --offline python -m agenthan.eval.scenario --suite s2 --backend replay --replay-file <녹화.json>
+# legacy 실측 기준선 (dev만; 정답 단계의 도구 호출은 trace에서 읽는다)
+uv run --frozen --offline --env-file .env python -m agenthan.eval.scenario --suite s2 --split dev --repeat 3 --label s2-legacy
+```
+
+`--suite`(기본 s1)만 바꾸면 기존 동작은 그대로다. `--backend live`(기본)·`replay`·`fake`와 `--judge none`(기본)·`fake`가 새로 생겼다.
+
+| S2 지표 (`results.s2`) | 정의 |
+| --- | --- |
+| 계획 정확도 (`plan_accuracy`) | 실행이 고른 기능 집합 == 정답 기능 집합인 비율. legacy는 라우트가 고른 기능 + 도구를 부른 기능 |
+| 단계 완료율 (`step_completion`) | 정답 단계 중 도구 호출(읽기)·미리보기(쓰기)까지 간 비율 |
+| 불필요 호출 (`unneeded_call_rate`) | 정답 집합에 없는 기능의 도구 호출 비율. 승인 뒤 실행은 세지 않는다 |
+| scope 정확도 (`scope_accuracy`) | 범위 밖 요청에서 가게 도구를 안 부르고 상태도 그대로인 비율 |
+| 예산 소진율 (`budget_exhausted_rate`) | 도구 호출 한도(`tool_limit`)에 걸린 턴 비율 |
+| 턴당 모델 호출 수 (`model_calls_per_turn`) | 비서의 chat·select_feature 호출 수(리뷰 위임·채점기 호출은 제외) |
+| 목표 달성 (`goal_rate`) | S1 판정(상태·안전·조회 답) + 정답 단계 모두 도달 + scope + 채점기가 있으면 문장 통과 |
+
+`per_family`에 family별로 같은 지표가 들어가고 `table.md`에 family별 표가 나온다. 버튼 시나리오는 비서에 `run_action`이 없으면
+러너가 "미지원"으로 건너뛰고(`unsupported_runs`·`unsupported_scenarios`, 실패·미완료로 세지 않음) 있으면 B1 `action` 턴을 그대로 넣는다.
+`OwnerAssistantSubject.run_action`은 `app.run_action(action)`에 턴의 `action` 딕셔너리를 그대로 넘긴다(B1 시그니처가 다르면 이 한 줄을 맞춘다).
+
 ## 케이스
 
 `cases.py`는 케이스 파일을 수정하지 않고 읽는다. 단일 문장 케이스는 턴 한 개로 바뀐다.

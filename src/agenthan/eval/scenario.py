@@ -14,6 +14,12 @@ Scoring is deterministic:
 - answer: for read questions, every required fact (one of its accepted spellings) appears in the
   assistant's reply. Facts come from the dummy store, so read tools are scored in S1 too.
 
+S2 (`--suite s2`, tests/data/eval/s2.jsonl) measures the target of the planner loop: several
+features in one utterance, tool results feeding the next argument, word traps, evidence-based
+advice, out-of-scope refusals and button turns. Its extra, trace-first metrics live in
+metrics.py (plan accuracy, step completion, unneeded calls, scope accuracy, budget, model calls per
+turn); only advice/refusal sentences go to a rubric judge (judge.py). S1 stays the regression gate.
+
 Nothing is sent to Naver. Tokens cover the probed chat/select/embed calls only (the review
 delegate and photo vision calls use their own clients and are not counted).
 """
@@ -32,17 +38,23 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, model_validator
 
-from agenthan.agent import owner_assistant
+from agenthan.agent import owner_assistant, place_matcher
 from agenthan.agent.clova_chat import CHAT_MODEL, ClovaChatError
+from agenthan.agent.review_delegate import REVIEW_FEATURES
 from agenthan.core.embedding import ClovaEmbeddingError
 from agenthan.core.llm import ClovaV3Error
+from agenthan.eval.fake_backend import FakeBackend
 from agenthan.eval.flow import Probe
-from agenthan.eval.metrics import _percentile
-from agenthan.eval.replay import EMBED_MODEL, Live, canonical
-from agenthan.eval.run import BASELINES, ROOT, _git, display_path, sha256
+from agenthan.eval.judge import FakeJudge, Judge
+from agenthan.eval.metrics import _percentile, score_plan, summarize_s2
+from agenthan.eval.replay import EMBED_MODEL, Live, Replay, canonical
+from agenthan.eval.run import BASELINES, REPLAY_PATH, ROOT, _git, display_path, sha256
 from agenthan.tools.dummy_store import DummyStore
+from agenthan.tools.feature_tools import TOOL_FEATURES
 
 SCENARIOS = ROOT / "tests/data/eval/s1.jsonl"  # S1 regression baseline (docs/eval-baseline.md)
+S2_SCENARIOS = ROOT / "tests/data/eval/s2.jsonl"  # S2 planner target (ADR-0006)
+SUITES = {"s1": SCENARIOS, "s2": S2_SCENARIOS}
 # Problem types of the S1 baseline (docs/eval-baseline.md §5).
 ProblemType = Literal["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"]
 OwnerAct = Literal[
@@ -56,6 +68,7 @@ OwnerAct = Literal[
     "other",  # greeting, thanks, summary request
     "photo",  # sends a photo (with optional words)
 ]
+FEATURE_IDS = frozenset(f["id"] for f in place_matcher.load_features())
 # Acts on which any write proposal is unrequested.
 NO_PROPOSAL_ACTS = frozenset({"interject", "unrelated", "other", "decline"})
 
@@ -114,9 +127,87 @@ class Scenario(BaseModel):
     expect: ScenarioExpect
 
 
-def load_scenarios(path: Path = SCENARIOS) -> list[Scenario]:
+# ---------------------------------------------------------------- S2 schema
+# Separate subclasses keep the S1 models (and the hashes of their dumps) unchanged.
+
+S2Family = Literal["multi_step", "chain", "lexical_trap", "advice", "out_of_scope", "button_mix"]
+# B1 button action ids (the turn is {"action": {"action_id", "args", "label"}}).
+ACTION_IDS = frozenset(
+    {
+        "review.summary",
+        "review.draft_reply",
+        "stats.week",
+        "stats.day",
+        "coupon.create",
+        "hours.edit",
+        "task.approve",
+        "task.cancel",
+    }
+)
+
+
+class PlanStep(BaseModel):
+    """One gold step: the feature whose tool must run and how far (read = call, write = preview)."""
+
+    feature: str
+    reach: Literal["call", "preview"]
+
+
+class SentenceJudge(BaseModel):
+    """This turn's reply is an advice or a refusal sentence: graded by the rubric judge."""
+
+    kind: Literal["advice", "refusal"]
+    evidence: dict[str, Any] = Field(default_factory=dict)  # facts from the store, made by code
+
+
+class S2Turn(ScenarioTurn):
+    action: dict[str, Any] | None = None  # button press (B1); `say` defaults to its label
+    judge: SentenceJudge | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def button_words(cls, data):
+        if isinstance(data, dict) and data.get("action") and not data.get("say"):
+            data = {**data, "say": data["action"].get("label", "")}
+        return data
+
+    @model_validator(mode="after")
+    def valid_action(self):
+        if self.action is not None:
+            if set(self.action) - {"action_id", "args", "label"}:
+                raise ValueError("action allows only action_id, args, label")
+            if self.action.get("action_id") not in ACTION_IDS:
+                raise ValueError(f"unknown action_id: {self.action.get('action_id')}")
+            if self.photo:
+                raise ValueError("a button turn has no photo")
+        return self
+
+
+class S2Scenario(Scenario):
+    family: S2Family  # type: ignore[assignment]
+    scope: Literal["in", "out"] = "in"  # out: a polite refusal; no store tool may run
+    steps: list[PlanStep] = Field(default_factory=list)  # gold: feature set and how far each goes
+    turns: list[S2Turn]  # type: ignore[assignment]
+
+    @model_validator(mode="after")
+    def consistent_s2(self):
+        if (self.scope == "out") != (self.family == "out_of_scope"):
+            raise ValueError("scope=out is exactly the out_of_scope family")
+        if bool(self.steps) == (self.scope == "out"):
+            raise ValueError("in-scope scenarios need steps; out-of-scope ones have none")
+        for step in self.steps:
+            if step.feature not in FEATURE_IDS:
+                raise ValueError(f"unknown feature: {step.feature}")
+        return self
+
+    @property
+    def uses_buttons(self) -> bool:
+        return any(t.action for t in self.turns)
+
+
+def load_scenarios(path: Path = SCENARIOS, model: type[Scenario] = Scenario) -> list[Scenario]:
     scenarios = [
-        Scenario.model_validate_json(line)
+        model.model_validate_json(line)
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
@@ -255,7 +346,8 @@ def allowed(path: str, prefixes: list[str]) -> bool:
 
 
 def apply_setup(data: dict, setup: dict[str, Any]) -> dict:
-    """Dot-path patches on the seed; a path ending in `[+]` appends to that list."""
+    """Dot-path patches on the seed; a path ending in `[+]` appends to that list (a list value
+    appends each of its items)."""
     data = copy.deepcopy(data)
     for path, value in setup.items():
         append = path.endswith("[+]")
@@ -264,7 +356,7 @@ def apply_setup(data: dict, setup: dict[str, Any]) -> dict:
         for part in parts[:-1]:
             target = target[part]
         if append:
-            target[parts[-1]].append(copy.deepcopy(value))
+            target[parts[-1]].extend(copy.deepcopy(value if isinstance(value, list) else [value]))
         else:
             target[parts[-1]] = copy.deepcopy(value)
     return data
@@ -286,6 +378,54 @@ class Subject(Protocol):
 
     def rejected(self) -> bool: ...
 
+    # Optional (S2; looked up with getattr, so S1 subjects need none of them):
+    #   trace() -> {"features": [...], "calls": [{"tool", "feature", "action"}], "budget": bool}
+    #     what the last turn did; "action" is pending_approval | read | ok | delegated | error.
+    #   supports_actions: bool, run_action(action: dict) -> str   (B1 button turns)
+
+
+def normalize_trace(trace: dict | None, review_waiting: bool = False) -> dict | None:
+    """The assistant's own turn trace in the shape the S2 metrics read.
+
+    Calls made while executing an approved change are not counted (the preview was). Review
+    and statistics answers are produced without a recorded tool call, so the routed feature
+    stands in as one delegated call (a waiting review draft counts as a preview)."""
+    if trace is None:
+        return None
+    routed = trace.get("feature")
+    calls: list[dict] = []
+    if trace.get("via") != "approval":
+        for call, result in zip(trace["calls"], trace["results"], strict=False):
+            action = result.get("action")
+            calls.append(
+                {
+                    "tool": call["name"],
+                    "feature": TOOL_FEATURES.get(call["name"]),
+                    "action": (
+                        action
+                        if action == "pending_approval"
+                        else "ok"
+                        if result.get("ok")
+                        else "error"
+                    ),
+                }
+            )
+        if not calls and routed in {*REVIEW_FEATURES, "statistics"}:
+            waiting = routed in REVIEW_FEATURES and review_waiting
+            calls.append(
+                {
+                    "tool": routed,
+                    "feature": routed,
+                    "action": "pending_approval" if waiting else "delegated",
+                }
+            )
+    features = [f for f in dict.fromkeys([routed, *(c["feature"] for c in calls)]) if f]
+    return {
+        "features": features,
+        "calls": calls,
+        "budget": any(r.get("error") == "tool_limit" for r in trace["results"]),
+    }
+
 
 class OwnerAssistantSubject:
     """Current OwnerAssistant through its real entry points (ask / ask_photo)."""
@@ -297,8 +437,10 @@ class OwnerAssistantSubject:
             embed=probe.embed,
             select_chat=probe.select,
             today=today,
+            review_session=_review_factory(probe.backend, today),
         )
         self.store = self.app.store
+        self.supports_actions = hasattr(self.app, "run_action")  # B1 button turns
         self._trace: dict | None = None
 
     def _run(self, call):
@@ -313,6 +455,14 @@ class OwnerAssistantSubject:
     def photo(self, image: bytes, text: str) -> str:
         return self._run(lambda: self.app.ask_photo(image, text))
 
+    def run_action(self, action: dict) -> str:
+        """A button press: the B1 {"action_id", "args", "label"} dict, passed as is."""
+        return self._run(lambda: self.app.run_action(action))
+
+    def trace(self) -> dict | None:
+        review = getattr(self.app, "review", None)
+        return normalize_trace(self._trace, bool(review is not None and review.waiting))
+
     def proposals(self) -> list[dict]:
         trace = self._trace
         if not trace or trace["via"] == "approval":
@@ -325,6 +475,12 @@ class OwnerAssistantSubject:
 
     def rejected(self) -> bool:
         return bool(self._trace and self._trace.get("rejected"))
+
+
+def _review_factory(backend, today: date | None):
+    """Offline fake backends bring their own review session; a live run uses the real one."""
+    make = getattr(backend, "review_session", None)
+    return (lambda store, owner_lang="ko": make(store, owner_lang, today)) if make else None
 
 
 SUBJECTS: dict[str, Callable[[Path, Probe, date | None], Subject]] = {
@@ -345,6 +501,9 @@ def _play(subject: Subject, probe: Probe, turn: ScenarioTurn) -> dict:
         if turn.photo:
             record["photo"] = turn.photo
             answer = subject.photo((ROOT / turn.photo).read_bytes(), turn.say)
+        elif getattr(turn, "action", None):
+            record["action"] = turn.action["action_id"]
+            answer = subject.run_action(turn.action)
         else:
             answer = subject.say(turn.say)
         record["answer"] = answer
@@ -352,12 +511,16 @@ def _play(subject: Subject, probe: Probe, turn: ScenarioTurn) -> dict:
             record["api_error"] = "answered_outage"  # A photo call swallowed a rate limit.
         record["proposals"] = subject.proposals()
         record["rejected"] = subject.rejected()
+        trace = getattr(subject, "trace", None)
+        if trace is not None:
+            record["trace"] = trace()
     except API_ERRORS as error:
         record["api_error"] = type(error).__name__
         record["proposals"] = []
     record["latency_sec"] = time.monotonic() - started
     if probe.errors and "api_error" not in record:
         record["api_error"] = "probe"  # A swallowed outage (e.g. selector fallback).
+    record["model_calls"] = probe.model_calls
     if probe.tokens:
         record["tokens"] = sum(probe.tokens)
     if probe.select_rejected:
@@ -366,21 +529,53 @@ def _play(subject: Subject, probe: Probe, turn: ScenarioTurn) -> dict:
     return record
 
 
+def _s2_score(scenario: "S2Scenario", turns: list[dict]) -> dict:
+    """Trace-first S2 score of one run (metrics.score_plan) plus its turn-level counters."""
+    traces = [t.get("trace") or {} for t in turns]
+    score = score_plan(
+        [s.model_dump() for s in scenario.steps],
+        scenario.scope,
+        [f for t in traces for f in t.get("features", [])],
+        [c for t in traces for c in t.get("calls", [])],
+        wrote=any(t["changed"] for t in turns),
+    )
+    return score | {
+        "turns": len(turns),
+        "budget_turns": sum(bool(t.get("budget")) for t in traces),
+    }
+
+
 def run_scenario(
-    scenario: Scenario, make_subject: Callable[[Path, Probe, date | None], Subject], backend=None
+    scenario: Scenario,
+    make_subject: Callable[[Path, Probe, date | None], Subject],
+    backend=None,
+    judge: Judge | None = None,
 ) -> dict:
-    """Play one scenario in a fresh store and score it."""
+    """Play one scenario in a fresh store and score it.
+
+    S2 scenarios with button turns are skipped (`skipped`, not a failure) while the assistant has
+    no run_action. Advice/refusal sentences are graded only when a judge is given."""
     probe = Probe(backend)
+    is_s2 = isinstance(scenario, S2Scenario)
     turns: list[dict] = []
     never_hits: set[int] = set()
     checks: list[bool] = []
     answers: list[bool] = []
+    judged: list[bool] = []
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "store.json"
         seed = DummyStore(path)
         seed.write(apply_setup(seed.read(), scenario.setup))
         today = date.fromisoformat(scenario.today) if scenario.today else None
         subject = make_subject(path, probe, today)
+        if is_s2 and scenario.uses_buttons and not getattr(subject, "supports_actions", False):
+            return {
+                "id": scenario.id,
+                "family": scenario.family,
+                "split": scenario.split,
+                "suite": "s2",
+                "skipped": "unsupported_action",
+            }
         complete = True
         for index, turn in enumerate(scenario.turns):
             attempts = 1 + (turn.again.max if turn.again else 0)
@@ -408,6 +603,19 @@ def run_scenario(
                 ok = answer_holds(turns[-1].get("answer", ""), turn.answer)
                 turns[-1]["answer_ok"] = ok
                 answers.append(ok)
+            sentence = getattr(turn, "judge", None)
+            if sentence:
+                if judge is None:
+                    turns[-1]["judge_skipped"] = True
+                else:
+                    verdict = judge.grade(
+                        sentence.kind, turn.say, turns[-1].get("answer", ""), sentence.evidence
+                    )
+                    turns[-1]["judge_ok"] = verdict.ok
+                    turns[-1]["judge_failed"] = sorted(
+                        k for k, v in verdict.passed.items() if not v
+                    )
+                    judged.append(verdict.ok)
             if turn.check:
                 result = check_all(subject.store.read(), turn.check)
                 turns[-1]["check"] = result
@@ -419,6 +627,8 @@ def run_scenario(
         {p for t in turns for p in t["changed"] if not allowed(p, scenario.expect.writes)}
     )
     safe = not unapproved and not out_of_scope and not never_hits
+    s2 = _s2_score(scenario, turns) if is_s2 else None
+    reached = s2 is None or (all(s["done"] for s in s2["steps"]) and s2["scope_ok"] is not False)
     return {
         "id": scenario.id,
         "family": scenario.family,
@@ -427,12 +637,23 @@ def run_scenario(
         "split": scenario.split,
         "tags": scenario.tags,
         "complete": complete,
-        "goal": complete and all(final.values()) and all(checks) and all(answers) and safe,
+        "goal": complete
+        and all(final.values())
+        and all(checks)
+        and all(answers)
+        and all(judged)
+        and safe
+        and reached,
         "final": final,
         "unapproved_write_turns": unapproved,
         "out_of_scope_writes": out_of_scope,
         "never_hits": sorted(never_hits),
         "turns": turns,
+        **(
+            {"suite": "s2", "s2": s2, "model_calls": sum(t["model_calls"] for t in turns)}
+            if s2
+            else {}
+        ),
     }
 
 
@@ -444,7 +665,40 @@ def _unsafe(run: dict) -> bool:
     return bool(run["unapproved_write_turns"] or run["out_of_scope_writes"] or run["never_hits"])
 
 
+def _s2_results(runs: list[dict], skipped: list[dict]) -> dict:
+    """S2 block: overall and per-family trace metrics, button skips and sentence-judge counts."""
+    turns = [t for r in runs for t in r["turns"]]
+    judged = [t["judge_ok"] for t in turns if "judge_ok" in t]
+    done = [r for r in runs if r["complete"]]
+    per_family = {}
+    for family in sorted({r["family"] for r in runs}):
+        members = [r for r in runs if r["family"] == family]
+        by_id: dict[str, list[dict]] = {}
+        for r in members:
+            by_id.setdefault(r["id"], []).append(r)
+        per_family[family] = {
+            "runs": len(members),
+            "goal_rate": _rate([r["goal"] for r in members if r["complete"]]),
+            "pass_all_rate": _rate(
+                [all(r["complete"] and r["goal"] for r in rs) for rs in by_id.values()]
+            ),
+            **{k: v for k, v in summarize_s2(members).items() if k not in ("runs", "turns")},
+        }
+    return {
+        **summarize_s2(runs),
+        "goal_rate": _rate([r["goal"] for r in done]),
+        "judge_rate": _rate(judged),
+        "judge_scored_turns": len(judged),
+        "judge_unscored_turns": sum(bool(t.get("judge_skipped")) for t in turns),
+        "unsupported_runs": len(skipped),
+        "unsupported_scenarios": sorted({r["id"] for r in skipped}),
+        "per_family": per_family,
+    }
+
+
 def summarize(runs: list[dict]) -> dict:
+    skipped = [r for r in runs if r.get("skipped")]  # S2 button turns with no run_action yet
+    runs = [r for r in runs if not r.get("skipped")]
     done = [r for r in runs if r["complete"]]
     turns = [t for r in runs for t in r["turns"]]
     by_id: dict[str, list[dict]] = {}
@@ -458,7 +712,13 @@ def summarize(runs: list[dict]) -> dict:
     latencies = [t["latency_sec"] for t in turns]
     tokens = [t["tokens"] for t in turns if "tokens" in t]
     families = sorted({r["family"] for r in runs})
+    s2 = (
+        {"s2": _s2_results([r for r in runs if r.get("s2")], skipped)}
+        if any(r.get("suite") == "s2" for r in runs + skipped)
+        else {}
+    )
     return {
+        **s2,
         "runs": len(runs),
         "scenarios": len(by_id),
         "incomplete_runs": len(runs) - len(done),
@@ -571,8 +831,44 @@ def render_table(summary: dict) -> str:
         lines += ["", "| 유형 | 실행 | 목표 달성 |", "| --- | --- | --- |"]
         for kind, row in s["per_type"].items():
             lines.append(f"| {kind} | {row['runs']} | {pct(row['goal_rate'])} |")
+    if s.get("s2"):
+        lines += _render_s2(s["s2"], pct)
     lines += ["", "시나리오별 성공: " + ", ".join(f"{k} {v}" for k, v in s["per_scenario"].items())]
     return "\n".join(lines) + "\n"
+
+
+def _render_s2(s2: dict, pct) -> list[str]:
+    def num(value):
+        return "N/A" if value is None else f"{value:.2f}"
+
+    def row(name, m):
+        return (
+            f"| {name} | {m['runs']} | {pct(m['goal_rate'])} | {pct(m['plan_accuracy'])} | "
+            f"{pct(m['step_completion'])} | {pct(m['unneeded_call_rate'])} | "
+            f"{pct(m['scope_accuracy'])} | {pct(m['budget_exhausted_rate'])} | "
+            f"{num(m['model_calls_per_turn'])} |"
+        )
+
+    lines = [
+        "",
+        "S2 (계획형 루프 목표)",
+        "",
+        "| 가족 | 실행 | 목표 달성 | 계획 정확도 | 단계 완료율 | 불필요 호출 | "
+        "scope 정확도 | 예산 소진율 | 모델 호출/턴 |",
+        "|" + " --- |" * 9,
+        row("전체", s2),
+        *(row(family, m) for family, m in s2["per_family"].items()),
+        "",
+        f"문장 채점: {pct(s2['judge_rate'])} ({s2['judge_scored_turns']}턴 채점, "
+        f"{s2['judge_unscored_turns']}턴 채점기 없음)",
+    ]
+    if s2["unsupported_runs"]:
+        lines.append(
+            f"미지원(run_action 없음)으로 건너뜀: {len(s2['unsupported_scenarios'])}개 시나리오 "
+            f"({s2['unsupported_runs']}회; 실패로 세지 않음): "
+            + ", ".join(s2["unsupported_scenarios"])
+        )
+    return lines
 
 
 def worktree_sha256() -> str:
@@ -585,13 +881,32 @@ def worktree_sha256() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cases", type=Path, default=SCENARIOS)
+    parser.add_argument(
+        "--suite",
+        choices=sorted(SUITES),
+        default="s1",
+        help="s1 = regression gate (default), s2 = planner target (ADR-0006)",
+    )
+    parser.add_argument("--cases", type=Path, help="scenario file (default: the suite's file)")
     parser.add_argument("--subject", choices=sorted(SUBJECTS), default="current")
     parser.add_argument("--only", help="comma-separated scenario IDs")
     parser.add_argument("--family", help="comma-separated families")
     parser.add_argument("--split", choices=["dev", "sealed"])
     parser.add_argument("--repeat", type=int, help="override each scenario's repeat")
-    parser.add_argument("--pause", type=float, default=2.0)
+    parser.add_argument("--pause", type=float, default=2.0, help="live backend only")
+    parser.add_argument(
+        "--backend",
+        choices=["live", "replay", "fake"],
+        default="live",
+        help="live = CLOVA (default); replay = recorded responses; fake = offline wiring check",
+    )
+    parser.add_argument("--replay-file", type=Path, default=REPLAY_PATH)
+    parser.add_argument(
+        "--judge",
+        choices=["none", "fake"],
+        default="none",
+        help="advice/refusal sentence judge; none skips them (a live judge is attached separately)",
+    )
     parser.add_argument("--model", default=CHAT_MODEL)
     parser.add_argument("--label", default="scenario")
     parser.add_argument("--out-dir", type=Path, default=ROOT / "eval_results")
@@ -611,7 +926,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("baseline name must contain only letters, numbers, underscores, or hyphens")
     if args.from_rows:
         return _resummarize(args.from_rows, args.save_baseline)
-    scenarios = load_scenarios(args.cases)
+    args.cases = args.cases or SUITES[args.suite]
+    scenarios = load_scenarios(args.cases, S2Scenario if args.suite == "s2" else Scenario)
     if args.only:
         wanted = set(args.only.split(","))
         if wanted - {s.id for s in scenarios}:
@@ -625,7 +941,12 @@ def main(argv: list[str] | None = None) -> int:
         scenarios = [s for s in scenarios if s.split == args.split]
     if not scenarios:
         parser.error("No scenarios selected")
-    backend = Live(args.model)
+    backend = {
+        "live": lambda: Live(args.model),
+        "replay": lambda: Replay(args.replay_file, args.model),
+        "fake": FakeBackend,
+    }[args.backend]()
+    judge = FakeJudge() if args.judge == "fake" else None
     started = datetime.now(UTC)
     directory = args.out_dir / f"{started:%Y%m%d-%H%M%S}-{args.label}"
     directory.mkdir(parents=True, exist_ok=False)
@@ -633,13 +954,14 @@ def main(argv: list[str] | None = None) -> int:
     with (directory / "rows.jsonl").open("w", encoding="utf-8") as out:
         for scenario in scenarios:
             for round_ in range(args.repeat or scenario.repeat):
-                run = run_scenario(scenario, SUBJECTS[args.subject], backend)
+                run = run_scenario(scenario, SUBJECTS[args.subject], backend, judge)
                 run["round"] = round_
                 runs.append(run)
                 out.write(json.dumps(run, ensure_ascii=False) + "\n")
                 out.flush()
-                print(f"{scenario.id} #{round_}: {'PASS' if run['goal'] else 'FAIL'}", flush=True)
-                if args.pause:
+                verdict = "SKIP" if run.get("skipped") else "PASS" if run["goal"] else "FAIL"
+                print(f"{scenario.id} #{round_}: {verdict}", flush=True)
+                if args.pause and args.backend == "live" and not run.get("skipped"):
                     time.sleep(args.pause)
     summary = {
         "version": 1,
@@ -647,11 +969,14 @@ def main(argv: list[str] | None = None) -> int:
             "git_commit": _git("rev-parse", "HEAD"),
             "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=normal")),
             "worktree_sha256": worktree_sha256(),
-            "transient_retries": backend.retried,
+            "transient_retries": getattr(backend, "retried", 0),
             "date": started.isoformat(),
             "model_id": args.model,
             "embedding_model_id": EMBED_MODEL,
             "subject": args.subject,
+            "suite": args.suite,
+            "backend": args.backend,
+            "judge": args.judge,
             "cases": {
                 "path": display_path(args.cases),
                 "file_sha256": sha256(args.cases.read_bytes()),
