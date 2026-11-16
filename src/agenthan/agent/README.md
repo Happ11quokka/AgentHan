@@ -114,6 +114,8 @@ flowchart TD
   wait_approval -- 다음 말 --> dispatch
 ```
 
+`AGENT_MODE`(기본 `legacy`)가 `shadow`이면 `respond` 뒤에 `plan_shadow` 노드가 하나 붙는다(ADR-0005). 같은 말을 `agent/planner.py`(HCX-007 구조화 출력, 추론 끔)에 한 번 더 보내 `{scope, steps, clarify}` 계획을 `trace["planner"]`에만 남긴다. 답·원장·저장소와 legacy 모델 호출 순서는 바뀌지 않고, 플래너 실패·거부는 `None`으로 로그만 남는다. `planner`(계획 실행)는 아직 없어 고르면 오류가 난다(B5).
+
 ### PRD 방향과 아직 다른 점
 
 - HCX 호출이 openai SDK(OpenAI 호환 API)다. PRD는 sdk.md 네이티브 REST v3. `core/llm.py`만 바꾸면 되게 모아 뒀다.

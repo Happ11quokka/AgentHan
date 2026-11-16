@@ -17,7 +17,7 @@ from agenthan.agent.clova_chat import (
 )
 from agenthan.agent.feature_selector import SELECT_MODEL, TOOL_CHOICE
 from agenthan.core.embedding import ClovaEmbeddingError, embed_text, validate_embedding
-from agenthan.core.llm import tool_call_options
+from agenthan.core.llm import chat_v3, tool_call_options
 
 EMBED_MODEL = "embedding-v2"
 # Recorded in place of a response when HCX answered HTTP 400 (no body is stored).
@@ -94,6 +94,11 @@ class Live:
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._create(select_request(messages, tools))
 
+    def plan(self, model: str, body: dict) -> dict:
+        """The shadow planner's HCX-007 call (native v3). Not retried: it is never on the
+        owner's path, and a failure is logged by the planner, not counted as an outage."""
+        return chat_v3(model, body)
+
     def _create(self, request: dict) -> dict:
         return self._retry(lambda: self._create_once(request), TransientChatError)
 
@@ -157,6 +162,21 @@ class Recorder:
         request = select_request(messages, tools)
         return self._record(request, lambda: self.backend.select(messages, tools=tools))
 
+    def plan(self, model: str, body: dict) -> dict:
+        key = request_hash("plan", {"model": model, "body": body})
+        try:
+            response = self.backend.plan(model, body)
+        except Exception:  # noqa: BLE001 - only the fact of a failure is recorded, never its text
+            self._save(key, REJECTED)
+            raise
+        message = response.get("message") if isinstance(response, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        safe = {"message": {"role": "assistant", "content": content}}
+        usage = response.get("usage") if isinstance(response, dict) else None
+        if isinstance(usage, dict):
+            safe["usage"] = {k: v for k, v in usage.items() if isinstance(v, int)}
+        return self._save(key, safe)
+
     def _record(self, request: dict, call) -> dict:
         key = request_hash("chat", request)
         try:
@@ -196,6 +216,12 @@ class Replay:
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._replay(select_request(messages, tools))
+
+    def plan(self, model: str, body: dict) -> dict:
+        response = self._read("plan", {"model": model, "body": body})
+        if response == REJECTED:
+            raise ClovaRequestRejected("Recorded CLOVA rejection (HTTP 400)")
+        return response
 
     def _replay(self, request: dict) -> dict:
         response = self._read("chat", request)

@@ -31,6 +31,7 @@ from agenthan.agent import (
     feature_selector,
     food_photo,
     menu_photo,
+    planner,
     report_explainer,
     review_delegate,
     turn_graph,
@@ -506,10 +507,18 @@ class OwnerAssistant:
         clova_v3: menu_photo.Call | None = None,
         select_chat: Callable | None = None,
         today: date | None = None,
+        agent_mode: str | None = None,
+        plan_call: planner.Call | None = None,
     ):
         """owner_lang=None detects the language per utterance (review answers only).
         review_session(store, owner_lang=...) builds the review session lazily; tests
-        inject one with a fake client and writer."""
+        inject one with a fake client and writer.
+
+        agent_mode (AGENT_MODE, default legacy): shadow also asks the planner after each free-form
+        turn and records its plan in the trace; the answer never depends on it (ADR-0005).
+        plan_call(model, body) sends that one HCX-007 call (default core.llm.chat_v3)."""
+        self.agent_mode = planner.resolve_mode(agent_mode)
+        self.plan_call = plan_call or planner.default_call
         if type(max_tool_calls) is not int or max_tool_calls < 1:
             raise ValueError("max_tool_calls must be a positive integer")
         self.store = DummyStore(store)
@@ -540,6 +549,7 @@ class OwnerAssistant:
         self._photo_preview = None
         # One owner turn runs through the LangGraph turn graph (ADR-0003).
         self._turn_route: Route | None = None
+        self._turn_plan_input: dict | None = None  # Shadow planner input, read before the turn.
         self.turns = turn_graph.build(self)
 
     @property

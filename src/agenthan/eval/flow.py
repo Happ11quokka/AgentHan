@@ -41,6 +41,7 @@ class Probe:
         self.tokens: list[int] = []
         self.select_rejected = 0
         self.model_calls = 0  # chat + select_feature requests of the turn (S2 metric)
+        self.planner_calls = 0  # shadow planner requests, kept apart from model_calls
 
     def chat(self, messages, *, tools):
         self.model_calls += 1
@@ -73,6 +74,14 @@ class Probe:
         if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
             self.tokens.append(usage["total_tokens"])
         return response
+
+    def plan(self, model, body):
+        """The shadow planner's call. A failure is the planner's to swallow, so it is neither
+        counted in model_calls nor recorded in errors (it must not turn a turn into an outage)."""
+        if not hasattr(self.backend, "plan"):
+            raise ClovaChatError("backend has no planner call")
+        self.planner_calls += 1
+        return self.backend.plan(model, body)
 
     def embed(self, text):
         try:

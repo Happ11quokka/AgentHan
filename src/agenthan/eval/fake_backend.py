@@ -48,6 +48,15 @@ class FakeBackend:
             ],
         }
 
+    def plan(self, model, body):
+        """Shadow planner: always a valid plan that says out of scope (wiring check only)."""
+        return {
+            "message": {
+                "role": "assistant",
+                "content": '{"scope":"out","steps":[],"clarify":""}',
+            }
+        }
+
     def embed(self, text):
         return [1.0] + [0.0] * 1023
 

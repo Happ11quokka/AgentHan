@@ -400,13 +400,16 @@ def test_suite_s2_runs_to_the_end_offline_with_family_table(tmp_path, monkeypatc
         "lexical_trap",
         "advice",
         "out_of_scope",
+        "button_mix",
     }
-    assert s2["unsupported_scenarios"] == ["bm-01", "bm-02", "bm-03", "bm-04", "bm-05"]
-    assert s2["runs"] == 43 and s2["scope_accuracy"] == 1.0  # the fake never calls a store tool
+    # B1's run_action is wired in: button_mix runs to the end instead of being skipped.
+    assert s2["unsupported_scenarios"] == [] and s2["unsupported_runs"] == 0
+    assert s2["runs"] == 48 and s2["scope_accuracy"] == 1.0  # the fake never calls a store tool
     assert s2["model_calls_per_turn"] is not None
-    for family in ("multi_step", "chain", "lexical_trap", "advice", "out_of_scope"):
+    for family in ("multi_step", "chain", "lexical_trap", "advice", "out_of_scope", "button_mix"):
         assert f"| {family} |" in table
-    assert "계획 정확도" in table and "scope 정확도" in table and "미지원" in table
+    assert "계획 정확도" in table and "scope 정확도" in table and "미지원" not in table
+    assert "플래너(shadow)" not in table  # legacy run: plan accuracy reads the routed features
     assert summary["conditions"]["cases"]["path"].endswith("tests/data/eval/s2.jsonl")
 
 
@@ -429,3 +432,163 @@ def test_default_suite_is_still_s1(tmp_path, monkeypatch):
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     assert summary["conditions"]["suite"] == "s1" and "s2" not in summary["results"]
     assert summary["conditions"]["cases"]["path"].endswith("tests/data/eval/s1.jsonl")
+
+
+# ---------------------------------------------------------------- B4: planner (shadow) and buttons
+
+
+def plan(scope, *features):
+    return {
+        "scope": scope,
+        "steps": [{"feature": f, "goal": "g"} for f in features],
+        "clarify": None,
+    }
+
+
+def test_plan_accuracy_reads_planner_steps_in_shadow_and_routed_features_in_legacy():
+    steps = [{"feature": "statistics", "reach": "call"}, {"feature": "coupon", "reach": "preview"}]
+    routed = ["statistics"]  # what legacy chose; the planner knows better
+    legacy = mt.score_plan(steps, "in", routed, [call("statistics", "delegated")])
+    assert legacy["planned"] == ["statistics"] and "planner" not in legacy
+    shadow = mt.score_plan(
+        steps,
+        "in",
+        routed,
+        [call("statistics", "delegated")],
+        plans=[plan("advice", "statistics"), None, plan("store", "coupon")],
+    )
+    assert shadow["planned"] == ["coupon", "statistics"] == shadow["gold_features"]
+    assert shadow["routed"] == ["statistics"]  # kept for comparison
+    assert shadow["planner"] == {"turns": 3, "failed": 1, "scope_ok": True}
+    # A failed plan is no plan: nothing is read from the routed features.
+    assert mt.score_plan(steps, "in", routed, [], plans=[None])["planned"] == []
+
+
+def test_planner_scope_ok_checks_out_of_scope_both_ways():
+    assert mt.score_plan([], "out", [], [], plans=[plan("out")])["planner"]["scope_ok"] is True
+    assert mt.score_plan([], "out", [], [], plans=[plan("store", "menu")])["planner"][
+        "scope_ok"
+    ] is (False)
+    steps = [{"feature": "menu", "reach": "call"}]
+    assert mt.score_plan(steps, "in", [], [], plans=[plan("out")])["planner"]["scope_ok"] is False
+    assert mt.score_plan(steps, "in", [], [], plans=[None])["planner"]["scope_ok"] is None
+
+
+def test_summarize_s2_adds_planner_metrics_only_for_shadow_runs():
+    steps = [{"feature": "menu", "reach": "preview"}]
+    answered = {
+        "s2": mt.score_plan(steps, "in", [], [call("menu")], plans=[plan("store", "menu")])
+        | {"turns": 2, "budget_turns": 0},
+        "model_calls": 2,
+    }
+    failed = {
+        "s2": mt.score_plan(steps, "in", [], [call("menu")], plans=[None, None])
+        | {"turns": 2, "budget_turns": 0},
+        "model_calls": 2,
+    }
+    m = mt.summarize_s2([answered, failed])
+    assert m["planner_runs"] == 2 and m["plan_accuracy"] == 1 / 2
+    assert m["planner_failed_rate"] == 2 / 3 and m["planner_scope_accuracy"] == 1.0
+    legacy = mt.summarize_s2([run(steps, ["menu"], [call("menu")])])
+    assert legacy["planner_runs"] == 0 and legacy["planner_scope_accuracy"] is None
+
+
+def test_normalize_trace_carries_the_shadow_plan():
+    trace = {"feature": None, "via": "none", "calls": [], "results": [], "planner": plan("out")}
+    assert sc.normalize_trace(trace)["planner"] == plan("out")
+    assert sc.normalize_trace({**trace, "planner": None})["planner"] is None  # failed plan kept
+
+
+COUPON_BUTTON = {
+    "action_id": "coupon.create",
+    "args": {
+        "title": "첫 방문 쿠폰",
+        "discount_type": "amount",
+        "discount_value": 1000,
+        "start_date": "2026-11-11",
+        "end_date": "2026-11-20",
+    },
+    "label": "쿠폰 만들기",
+}
+
+
+@pytest.fixture
+def real_subject(tmp_path):
+    from datetime import date
+
+    from agenthan.eval.fake_backend import FakeBackend
+    from agenthan.eval.flow import Probe
+
+    store = tmp_path / "store.json"
+    DummyStore(store).write(DummyStore(store).read())
+    return sc.OwnerAssistantSubject(store, Probe(FakeBackend()), date(2026, 11, 10))
+
+
+def test_subject_runs_buttons_through_the_b1_signature_and_returns_the_reply(real_subject):
+    """run_action(action_id, args, label) takes the scenario's dict; save fills task id/version."""
+    reply = real_subject.run_action(COUPON_BUTTON)
+    assert isinstance(reply, str) and "바꿀까요" in reply
+    # The previewed write stands in for a tool call, and it is a proposal, not a saved record.
+    assert real_subject.trace()["calls"] == [
+        {"tool": "create_coupon", "feature": "coupon", "action": "pending_approval"}
+    ]
+    assert [p["tool"] for p in real_subject.proposals()] == ["create_coupon"]
+    assert real_subject.store.read()["coupons"] == []
+    saved = real_subject.run_action({"action_id": "task.approve", "args": {}, "label": "저장"})
+    assert "저장했어요" in saved
+    assert real_subject.store.read()["coupons"][0]["title"] == "첫 방문 쿠폰"
+    assert real_subject.trace()["calls"] == [] and real_subject.proposals() == []  # approval
+
+
+def test_subject_cancel_button_drops_the_preview(real_subject):
+    real_subject.run_action(COUPON_BUTTON)
+    real_subject.run_action({"action_id": "task.cancel", "args": {}, "label": "취소"})
+    assert real_subject.store.read()["coupons"] == []
+    assert not real_subject.app.awaiting_owner and real_subject.app.pending_action is None
+
+
+def test_read_buttons_trace_their_feature(real_subject):
+    real_subject.run_action({"action_id": "stats.week", "args": {}, "label": "이번 주 통계"})
+    assert real_subject.trace()["features"] == ["statistics"]
+    assert real_subject.trace()["calls"][0]["action"] == "delegated"
+    real_subject.run_action({"action_id": "review.summary", "args": {}, "label": "요즘 리뷰"})
+    assert real_subject.trace()["features"] == ["review"]
+
+
+def test_button_scenarios_run_with_the_real_assistant_not_skipped(tmp_path):
+    from agenthan.eval.fake_backend import FakeBackend
+
+    scenarios = {s.id: s for s in sc.load_scenarios(sc.S2_SCENARIOS, sc.S2Scenario)}
+    for scenario_id in ("bm-01", "bm-02", "bm-03", "bm-04", "bm-05"):
+        out = sc.run_scenario(scenarios[scenario_id], sc.SUBJECTS["current"], FakeBackend())
+        assert "skipped" not in out and out["complete"], scenario_id
+        assert out["turns"][0].get("action") or scenario_id == "bm-05"
+
+
+def test_suite_s2_shadow_offline_reads_the_planner(tmp_path, monkeypatch):
+    monkeypatch.delenv("CLOVASTUDIO_API_KEY", raising=False)
+    args = ["--suite", "s2", "--backend", "fake", "--judge", "fake", "--repeat", "1"]
+    for mode in ("legacy", "shadow"):
+        code = sc.main([*args, "--agent-mode", mode, "--label", mode, "--out-dir", str(tmp_path)])
+        assert code == 0
+    summaries = {
+        mode: json.loads(next(tmp_path.glob(f"*-{mode}")).joinpath("summary.json").read_text())
+        for mode in ("legacy", "shadow")
+    }
+    legacy, shadow = (summaries[m]["results"]["s2"] for m in ("legacy", "shadow"))
+    assert summaries["shadow"]["conditions"]["agent_mode"] == "shadow"
+    assert legacy["planner_runs"] == 0 and shadow["planner_runs"] == 48
+    assert shadow["runs"] == legacy["runs"] == 48 and shadow["unsupported_runs"] == 0
+    # The fake planner always says "out": right for the 5 refusals, wrong for the rest. Plan
+    # accuracy therefore reads the planner (5/48), not what legacy routed.
+    assert shadow["plan_accuracy"] == 5 / 48
+    assert (
+        shadow["planner_failed_rate"] is not None and shadow["planner_scope_accuracy"] is not None
+    )
+    # The answers and the goal are legacy's, whatever the planner said.
+    assert (
+        shadow["goal_rate"] == legacy["goal_rate"]
+        and shadow["step_completion"] == (legacy["step_completion"])
+    )
+    table = next(tmp_path.glob("*-shadow")).joinpath("table.md").read_text(encoding="utf-8")
+    assert "플래너(shadow)" in table

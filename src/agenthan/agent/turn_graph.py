@@ -4,6 +4,11 @@ The graph only wires the existing OwnerAssistant steps; every decision stays in 
 methods. A shown write preview pauses the thread at ``wait_approval`` (``interrupt()``) and
 the owner's next words resume it. The task ledger stays the source of truth: dispatch
 re-reads it on every pass, so a pause the ledger no longer backs changes nothing.
+
+With AGENT_MODE=shadow (ADR-0005) a ``plan_shadow`` node follows ``respond``: it asks the planner
+once for the same utterance, after the legacy answer exists, and only writes the result into
+``assistant.trace["planner"]``. It never changes the answer, the ledger or the store. In legacy
+mode the node is not added, so the graph is the one of ADR-0003.
 """
 
 from __future__ import annotations
@@ -13,6 +18,8 @@ from typing import TYPE_CHECKING, TypedDict
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
+
+from agenthan.agent import planner
 
 if TYPE_CHECKING:
     from agenthan.agent.owner_assistant import OwnerAssistant
@@ -56,14 +63,36 @@ def build(assistant: OwnerAssistant):
         # utterance is an edit or an interjection and goes through route like any other.
         return waits(state) if state["approved"] else "route"
 
+    shadow = assistant.agent_mode == "shadow"
+
     def route(state: Turn) -> dict:
         # Route holds the chosen feature for respond; it is turn-local, not checkpointed.
+        # Shadow reads the ledger before the legacy route: the planner sees it as the owner left it.
+        if shadow:
+            task = assistant._routing_task()
+            tasks = assistant._tasks_summary(task, assistant._held_tasks(task))
         assistant._turn_route = assistant.route(state["text"])
+        if shadow:
+            assistant._turn_plan_input = {
+                "tasks": tasks,
+                "candidates": assistant._turn_route.candidates,
+            }
         return {}
 
     def respond(state: Turn) -> dict:
         chosen, assistant._turn_route = assistant._turn_route, None
         return {"answer": assistant.respond(state["text"], chosen)}
+
+    def plan_shadow(state: Turn) -> dict:
+        given, assistant._turn_plan_input = assistant._turn_plan_input or {}, None
+        result = planner.plan(
+            state["text"],
+            call=assistant.plan_call,
+            candidates=given.get("candidates"),
+            tasks=given.get("tasks"),
+        )
+        assistant.trace["planner"] = result.as_trace() if result is not None else None
+        return {}
 
     def wait_approval(state: Turn) -> dict:
         return {"text": interrupt(state["answer"])}
@@ -80,7 +109,12 @@ def build(assistant: OwnerAssistant):
     graph.add_edge("photo_reply", END)
     graph.add_conditional_edges("approval", approved, ["route", "wait_approval", END])
     graph.add_edge("route", "respond")
-    graph.add_conditional_edges("respond", waits, ["wait_approval", END])
+    if shadow:
+        graph.add_node("plan_shadow", plan_shadow)
+        graph.add_edge("respond", "plan_shadow")
+        graph.add_conditional_edges("plan_shadow", waits, ["wait_approval", END])
+    else:
+        graph.add_conditional_edges("respond", waits, ["wait_approval", END])
     graph.add_edge("wait_approval", "dispatch")
     return graph.compile(checkpointer=InMemorySaver())
 
