@@ -103,11 +103,13 @@ def photo_preview(
     rows = []
     for i, d in enumerate(drafts):
         change, previous = menu_photo.store_change(d, menus)
+        record = menu_photo.store_record(d, menus)
         rows.append(
             {
                 **{k: getattr(d, k) for k in DRAFT_FIELDS},
                 "change": change,
                 "previous_price": previous,
+                "menu_name": record["name"] if record else None,  # the saved menu it matches
                 "notes": list(d.notes),
                 "photo_url": draft_photo_url(i) if d.photo is not None else None,
             }

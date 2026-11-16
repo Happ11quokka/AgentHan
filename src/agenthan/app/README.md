@@ -13,4 +13,4 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `GET /assistant/sessions/{id}/place` | 지금 `place`·`pending` |
 
 - `place`: 메뉴(`photo_url` 포함)·영업시간·쿠폰 스냅샷.
-- `pending`: 승인 대기 변경. 사진 작업은 `kind: "photo"`와 초안 줄(`change`: `new`·`price_change`·`unchanged`·`photo_attach`, 가격을 모르면 null)을 더한다. 실제 저장은 승인 뒤에만.
+- `pending`: 승인 대기 변경. 사진 작업은 `kind: "photo"`와 초안 줄(`change`: `new`·`price_change`·`unchanged`·`photo_attach`, 가격을 모르면 null. `menu_name`: 맞는 저장된 메뉴 이름)을 더한다. 실제 저장은 승인 뒤에만.

@@ -198,6 +198,7 @@ def test_food_photo_of_an_existing_menu_attaches_the_photo_without_asking_a_pric
     body = send_photo(api, session_id, CAKE.read_bytes()).json()
     [draft] = body["pending"][0]["drafts"]
     assert (draft["change"], draft["previous_price"]) == ("photo_attach", 7500)
+    assert draft["menu_name"] == "메도빅"  # The screen answers with "메도빅 사진 바꿔".
     question = body["reply"].splitlines()[-1]
     assert "메도빅" in question and "사진" in question and "가격" not in question
 
