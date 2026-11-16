@@ -105,7 +105,8 @@ def test_full_edit_approve_and_photo(tmp_path):
     )
     preview = Path(assistant.menu_form()[0]["photo"])
     assert preview.exists()
-    assert "가격을 알려 주세요" in assistant.ask("네")
+    assert "가격은 얼마로 올릴까요" in assistant.ask("네")
+    assert assistant.store.read()["menus"] == [] and assistant.menu_drafts
     answer = assistant.ask("이거 메도빅이야")
     assert "메도빅" in answer and "꿀을 넣어 만든 메도빅" in answer
     assistant.ask("가격 8500원")

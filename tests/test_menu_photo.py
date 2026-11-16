@@ -198,21 +198,18 @@ def test_photo_shows_drafts_and_saves_nothing_before_approval(tmp_path):
     assert out.startswith("메뉴판에서 메뉴 3개를 읽었어요.")
     assert "1. 메도빅 (Медовик) · 7,500원" in out and "[기존 메뉴]" in out
     assert "3. ? (Пельмени) · ?" in out and "가격 확인 필요" in out
-    assert out.endswith("고칠 곳 말하기 예: 2번 가격 8000원)")
+    assert out.endswith("저장 전에 알려 주세요: 3번 Пельмени 이름·가격")
     assert [f["name_ko"] for f in bot.menu_form()] == ["메도빅", "시르니키", ""]
     assert not (tmp_path / "store.json").exists()
 
 
-def test_approve_saves_complete_drafts_only(tmp_path):
+def test_approve_waits_until_every_draft_is_filled(tmp_path):
     bot = assistant(tmp_path)
     bot.ask_photo(JPEG)
     out = bot.ask("네 저장해 주세요")
-    assert "- 메도빅 · 7,500원" in out and "- 시르니키 · 8,500원" in out
-    assert out.endswith("이름이나 가격이 없어 저장하지 않은 메뉴: Пельмени")
-    saved = menu_names(tmp_path)
-    assert saved["시르니키"]["description"] == "러시아식 치즈 팬케이크."
-    assert saved["시르니키"]["name_native"] == "Сырники"
-    assert bot.menu_drafts is None and bot.menu_form() == []
+    assert out == "저장 전에 알려 주세요: 3번 Пельмени 이름·가격"
+    assert not (tmp_path / "store.json").exists()
+    assert [f["name_ko"] for f in bot.menu_form()] == ["메도빅", "시르니키", ""]
 
 
 def test_cancel_saves_nothing(tmp_path):

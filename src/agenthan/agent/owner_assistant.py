@@ -1799,7 +1799,7 @@ class OwnerAssistant:
             if drafts[0].is_food
             else t["read"].format(n=len(drafts))
         )
-        return self._end_turn(heading + "\n" + self._draft_lines() + "\n" + t["ask"])
+        return self._end_turn(heading + "\n" + self._draft_lines() + "\n" + self._photo_question())
 
     def _regenerate_food_description(self, draft):
         result = food_photo.text_json(
@@ -1907,7 +1907,29 @@ class OwnerAssistant:
         else:
             note = self._edit_menu_drafts(text)
         answer = (note + "\n" if note else "") + t["edited"] + "\n" + self._draft_lines()
-        return self._finish(answer + "\n" + t["ask"], [], [])
+        return self._finish(answer + "\n" + self._photo_question(), [], [])
+
+    def _missing_question(self) -> str | None:
+        """The one question that fills the drafts' missing names and prices, or None."""
+        drafts = self.menu_drafts or []
+        missing = [(i, d) for i, d in enumerate(drafts, 1) if not d.complete]
+        if not missing:
+            return None
+        if len(drafts) == 1 and drafts[0].is_food:
+            d = drafts[0]
+            if not d.name_ko.strip():
+                return "메뉴 이름과 가격을 알려 주세요."
+            if d.price:
+                return f"메뉴 이름을 알려 주세요. (지금: {d.name_ko})"
+            return f"이름이 '{d.name_ko}' 맞나요? 가격은 얼마로 올릴까요?"
+        parts = []
+        for i, d in missing:
+            need = [w for w, ok in (("이름", d.name_ko.strip()), ("가격", d.price)) if not ok]
+            parts.append(f"{i}번 {d.name_ko or d.name_read} {'·'.join(need)}")
+        return "저장 전에 알려 주세요: " + ", ".join(parts)
+
+    def _photo_question(self) -> str:
+        return self._missing_question() or PHOTO_TEXT["ask"]
 
     def _save_menu_drafts(self) -> str:
         t = PHOTO_TEXT
@@ -1922,14 +1944,11 @@ class OwnerAssistant:
                     [],
                     [],
                 )
-            if not draft.price:
-                return self._finish("가격을 알려 주세요.", [], [])
-            if not draft.name_ko:
-                return self._finish("메뉴 이름을 알려 주세요.", [], [])
+        question = self._missing_question()
+        if question is not None:
+            # A yes does not save half the drafts: the task stays open until all are filled.
+            return self._finish(question, [], [])
         for d in self.menu_drafts or []:
-            if not d.complete:
-                skipped.append(d.name_ko or d.name_read)
-                continue
             try:
                 result = self.store.upsert_menu(
                     d.name_ko,

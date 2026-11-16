@@ -94,3 +94,42 @@ def test_photos_are_only_served_inside_their_own_session(tmp_path):
     assert api.get(draft["photo_url"].replace(mine, other)).status_code == 404
     assert api.get(f"/assistant/sessions/{mine}/photos/m01").status_code == 404
     assert api.get(f"/assistant/sessions/{mine}/photos/draft-9").status_code == 404
+
+
+def test_food_photo_asks_the_name_and_the_price_in_one_question(tmp_path):
+    api = client(tmp_path)
+    session_id = start(api)
+
+    reply = send_photo(api, session_id, CAKE.read_bytes()).json()["reply"]
+    question = reply.splitlines()[-1]
+    assert "밀푀유 케이크" in question and "맞나요" in question and "가격" in question
+    assert "이대로 저장할까요" not in reply
+
+
+def test_a_yes_without_a_price_saves_nothing_and_keeps_asking(tmp_path):
+    api = client(tmp_path, chat=EditChat({"price": 8500}))
+    session_id = start(api)
+    before = send_photo(api, session_id, CAKE.read_bytes()).json()["place"]
+
+    body = say(api, session_id, "네")
+    assert "가격은 얼마로 올릴까요" in body["reply"]
+    assert body["place"] == before
+    [waiting] = body["pending"]
+    assert waiting["kind"] == "photo" and waiting["changes"] == {}
+
+    body = say(api, session_id, "가격 8500원")
+    assert "이대로 저장할까요" in body["reply"]
+    assert body["pending"][0]["changes"]["menu"]["added"]
+
+    body = say(api, session_id, "네")
+    [saved] = [m for m in body["place"]["menu"] if m["name"] == "밀푀유 케이크"]
+    assert saved["price"] == 8500 and saved["photo_url"]
+
+
+def test_cancel_saves_nothing(tmp_path):
+    api = client(tmp_path)
+    session_id = start(api)
+    before = send_photo(api, session_id, CAKE.read_bytes()).json()["place"]
+
+    body = say(api, session_id, "취소")
+    assert body["pending"] == [] and body["place"] == before
