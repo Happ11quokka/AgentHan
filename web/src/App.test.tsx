@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 import App from "./App";
 import {
+  REVIEWS,
   SEED,
   draft,
   fakeApi,
@@ -222,8 +223,10 @@ describe("왼쪽 자주 쓰는 일", () => {
     await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "손님에게 줄 쿠폰을 만들고 싶어요"));
     await user.click(screen.getByRole("button", { name: "요즘 리뷰" }));
     await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "요즘 리뷰 어때?"));
+    expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("button", { name: "이번 주 손님" }));
     await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "이번 주 손님 얼마나 왔어?"));
+    expect(screen.getByRole("tab", { name: "손님 통계" })).toHaveAttribute("aria-selected", "true");
   });
 
   test("메뉴 사진 올리기는 사진 고르기를 열고 [내 가게]를 보여 준다", async () => {
@@ -279,10 +282,10 @@ describe("새 대화와 최근 대화", () => {
 });
 
 describe("고친 흐름", () => {
-  test("탭을 누르면 그 탭이 열리고 리뷰·통계는 준비 중으로 보인다", async () => {
+  test("탭을 누르면 그 탭이 열리고 화살표 키로 옮겨 간다", async () => {
     const { user } = await open();
     await user.click(screen.getByRole("tab", { name: "손님 통계" }));
-    expect(screen.getByRole("tabpanel", { name: "손님 통계" })).toHaveTextContent("준비하고 있어요");
+    expect(await screen.findByRole("tabpanel", { name: "손님 통계" })).toBeInTheDocument();
     await user.keyboard("{ArrowLeft}");
     expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
   });
@@ -335,5 +338,61 @@ describe("고친 흐름", () => {
     await user.dblClick(screen.getByRole("button", { name: "보내기" }));
     await screen.findByText("알겠어요.");
     expect(api.say).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("사이드카 [리뷰]", () => {
+  test("평균 별점·답글 안 단 수와 거른 리뷰를 보여 주고 원문은 눌러야 보인다", async () => {
+    const { user } = await open();
+    await user.click(screen.getByRole("tab", { name: "리뷰" }));
+    const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
+    expect(await within(panel).findByText("3.0")).toBeInTheDocument();
+    expect(within(panel).getByText("답글 안 단 리뷰 1개")).toBeInTheDocument();
+    expect(within(panel).getByText(REVIEWS.reviews[0].text)).toBeInTheDocument();
+    expect(within(panel).queryByText(REVIEWS.reviews[0].original!)).not.toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "원문 보기" }));
+    expect(within(panel).getByText(REVIEWS.reviews[0].original!)).toBeInTheDocument();
+    expect(within(panel).getByText("답글 달림")).toBeInTheDocument();
+  });
+
+  test("답글 초안 받기는 그 리뷰의 답글을 비서에게 부탁한다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "리뷰" }));
+    const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
+    const [first] = await within(panel).findAllByRole("button", { name: "답글 초안 받기" });
+    await user.click(first);
+    expect(api.say).toHaveBeenLastCalledWith("s1", '"빵이 짜요. (거친 표현 가림)" 리뷰에 답글 초안 써 줘');
+  });
+});
+
+describe("사이드카 [손님 통계]", () => {
+  test("요약 카드·유입 채널·키워드·해 볼 일을 보여 주고 일간으로 바꿀 수 있다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "손님 통계" }));
+    const panel = await screen.findByRole("tabpanel", { name: "손님 통계" });
+    expect(await within(panel).findByText("플레이스 조회")).toBeInTheDocument();
+    expect(within(panel).getByText("1,260")).toBeInTheDocument();
+    expect(within(panel).getByText("지난주보다 60 늘었어요")).toBeInTheDocument();
+    expect(within(panel).getByText("지난주보다 6 줄었어요")).toBeInTheDocument();
+    expect(within(panel).getByText("비교할 기록이 없어요")).toBeInTheDocument();
+    expect(within(panel).getByText("네이버 검색")).toBeInTheDocument();
+    expect(within(panel).getByText("가장 붐비는 시간 오후 2시")).toBeInTheDocument();
+    expect(within(panel).getByText("러시아 디저트").closest("li")).toHaveTextContent("새로 뜸");
+    expect(within(panel).getByText("조회는 늘었지만 예약·주문으로 이어지는 비율은 줄었어요")).toBeInTheDocument();
+    await user.click(within(panel).getByRole("radio", { name: "일간" }));
+    expect(api.report).toHaveBeenLastCalledWith("s1", "day");
+    expect(await within(panel).findByText("180")).toBeInTheDocument();
+    expect(within(panel).getByText("어제보다 60 늘었어요")).toBeInTheDocument();
+  });
+
+  test("통계를 못 불러오면 쉬운 말로 알려 주고 다시 불러올 수 있다", async () => {
+    const api = fakeApi();
+    api.report.mockRejectedValueOnce(offline());
+    const { user } = await open(api);
+    await user.click(screen.getByRole("tab", { name: "손님 통계" }));
+    const panel = await screen.findByRole("tabpanel", { name: "손님 통계" });
+    expect(await within(panel).findByText("통계를 불러오지 못했어요.")).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "다시 불러오기" }));
+    expect(await within(panel).findByText("플레이스 조회")).toBeInTheDocument();
   });
 });

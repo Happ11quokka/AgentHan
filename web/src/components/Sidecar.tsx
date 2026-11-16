@@ -1,8 +1,11 @@
 import { useRef } from "react";
 import { CONNECTION_TEXT } from "../labels";
-import type { LogEntry, Pending, Place } from "../types";
+import type { LogEntry, Pending, Period, Place, ReportView, ReviewsView } from "../types";
+import type { Loaded } from "../useLoad";
 import { Icon } from "./Icon";
+import { ReviewsTab } from "./ReviewsTab";
 import { ShopTab } from "./ShopTab";
+import { StatsTab } from "./StatsTab";
 
 export type Tab = "shop" | "reviews" | "stats";
 
@@ -19,20 +22,17 @@ type Props = {
   pending: Pending[];
   log: LogEntry[];
   online: boolean;
+  busy: boolean;
+  reviews: Loaded<ReviewsView>;
+  report: Loaded<ReportView>;
+  period: Period;
+  onPeriod: (period: Period) => void;
+  onAsk: (text: string) => void;
   onClose: () => void;
 };
 
-function ComingSoon({ what }: { what: string }) {
-  return (
-    <div className="soon">
-      <Icon name="clock" size={28} />
-      <strong>{what} 화면을 준비하고 있어요</strong>
-      <p>지금은 왼쪽 버튼이나 대화로 물어보면 비서가 정리해 드려요.</p>
-    </div>
-  );
-}
-
-export function Sidecar({ tab, onTab, place, pending, log, online, onClose }: Props) {
+export function Sidecar(props: Props) {
+  const { tab, onTab, place, pending, log, online, onClose } = props;
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
 
   const moveFocus = (step: number) => {
@@ -88,8 +88,8 @@ export function Sidecar({ tab, onTab, place, pending, log, online, onClose }: Pr
       <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "shop" &&
           (place ? <ShopTab place={place} pending={pending} log={log} /> : <p className="loading">불러오는 중…</p>)}
-        {tab === "reviews" && <ComingSoon what="리뷰" />}
-        {tab === "stats" && <ComingSoon what="손님 통계" />}
+        {tab === "reviews" && <ReviewsTab loaded={props.reviews} busy={props.busy} onAsk={props.onAsk} />}
+        {tab === "stats" && <StatsTab loaded={props.report} period={props.period} onPeriod={props.onPeriod} />}
       </div>
     </aside>
   );

@@ -66,5 +66,41 @@ export type Message =
   | { id: number; role: "agent"; text: string }
   | { id: number; role: "result"; saved: boolean; lines: string[] };
 
+// ── 리뷰·손님 통계 탭 (/reviews, /report) ──
+export type ReviewRow = {
+  id: string;
+  visit_date: string;
+  rating: number;
+  /** 거친 표현을 거른 문장. 거를 게 없으면 원문 그대로. */
+  text: string;
+  softened: boolean;
+  /** 걸렀을 때만 원문. */
+  original: string | null;
+  has_owner_reply: boolean;
+};
+
+export type ReviewsView = {
+  summary: { count: number; average_rating: number | null; unanswered: number };
+  reviews: ReviewRow[];
+};
+
+export type Period = "week" | "day";
+export type MetricKey = "place_views" | "booking_order_requests" | "smartcall_calls";
+
+export type ReportView = {
+  period: Period;
+  end: string;
+  cards: Array<{ key: MetricKey; value: number; change: number | null; change_percent: number | null }>;
+  channels: Array<{ name: string; views: number; share_percent: number; change: number | null }>;
+  hourly: number[];
+  weekday: Array<{ day: string; views: number }>;
+  peak_hour: number | null;
+  quiet_hour: number | null;
+  keywords: Array<{ name: string; views: number; new: boolean }>;
+  conversion_percent: number | null;
+  conversion_change_pp: number | null;
+  tip: string | null;
+};
+
 /** '오늘 한 일' 한 칸: 승인으로 저장된 변경 문장들. */
 export type LogEntry = { at: number; lines: string[] };

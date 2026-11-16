@@ -6,12 +6,12 @@ import type { Tab } from "./Sidecar";
 /**
  * 자주 쓰는 일. 하나를 늘리려면 이 표에만 한 줄 더한다.
  * - ask: 비서에게 보낼 말(없으면 사진 고르기를 연다)
- * - tab: 같이 보여 줄 사이드카 탭(리뷰·통계 탭이 채워지기 전에는 null)
+ * - tab: 같이 보여 줄 사이드카 탭
  */
-export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; tab: Tab | null }> = [
+export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; tab: Tab }> = [
   { key: "photo", label: "메뉴 사진 올리기", hint: "메뉴판·음식 사진", icon: "camera", ask: null, tab: "shop" },
-  { key: "reviews", label: "요즘 리뷰", hint: "손님 반응 정리", icon: "star", ask: "요즘 리뷰 어때?", tab: null },
-  { key: "stats", label: "이번 주 손님", hint: "방문·유입 요약", icon: "chart", ask: "이번 주 손님 얼마나 왔어?", tab: null },
+  { key: "reviews", label: "요즘 리뷰", hint: "손님 반응 정리", icon: "star", ask: "요즘 리뷰 어때?", tab: "reviews" },
+  { key: "stats", label: "이번 주 손님", hint: "방문·유입 요약", icon: "chart", ask: "이번 주 손님 얼마나 왔어?", tab: "stats" },
   {
     key: "coupon",
     label: "쿠폰 만들기",

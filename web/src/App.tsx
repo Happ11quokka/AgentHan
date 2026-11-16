@@ -3,21 +3,28 @@ import { httpApi, type AssistantApi } from "./api";
 import { ChatPane } from "./components/ChatPane";
 import { LeftNav, type Quick } from "./components/LeftNav";
 import { Sidecar, type Tab } from "./components/Sidecar";
+import type { Period } from "./types";
 import { useConversation } from "./useConversation";
+import { useLoad } from "./useLoad";
 
 export default function App({ api = httpApi }: { api?: AssistantApi }) {
   const chat = useConversation(api);
   const [tab, setTab] = useState<Tab>("shop");
+  const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
 
+  // 리뷰·통계는 그 탭이 열려 있을 때만 읽고, 대화가 바뀌거나 비서 답이 오면 다시 읽는다.
+  const id = chat.sessionId;
+  const turn = `${id}:${chat.messages.length}`;
+  const reviews = useLoad(tab === "reviews" && id ? () => api.reviews(id) : null, `${turn}:${tab}`);
+  const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
+
   const quick = (q: Quick) => {
     setNavOpen(false);
-    if (q.tab) {
-      setTab(q.tab);
-      setSideOpen(true); // 좁은 화면에서는 접힌 사이드카를 펼쳐 보여 준다
-    }
+    setTab(q.tab);
+    setSideOpen(true); // 좁은 화면에서는 접힌 사이드카를 펼쳐 보여 준다
     if (q.ask) void chat.send(q.ask);
     else photoInput.current?.click();
   };
@@ -32,9 +39,9 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
           setNavOpen(false);
           void chat.newChat();
         }}
-        onOpen={(id) => {
+        onOpen={(target) => {
           setNavOpen(false);
-          void chat.open(id);
+          void chat.open(target);
         }}
         onQuick={quick}
       />
@@ -52,6 +59,12 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
         pending={chat.pending}
         log={chat.log}
         online={chat.online}
+        busy={chat.busy}
+        reviews={reviews}
+        report={report}
+        period={period}
+        onPeriod={setPeriod}
+        onAsk={(text) => void chat.send(text)}
         onClose={() => setSideOpen(false)}
       />
       <button

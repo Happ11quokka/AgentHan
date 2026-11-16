@@ -1,4 +1,4 @@
-import type { Started, Turn, View } from "./types";
+import type { Period, ReportView, ReviewsView, Started, Turn, View } from "./types";
 
 /** 화면이 서버와 주고받는 유일한 길. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface AssistantApi {
@@ -6,6 +6,8 @@ export interface AssistantApi {
   say(sessionId: string, text: string): Promise<Turn>;
   sendPhoto(sessionId: string, image: File, text: string): Promise<Turn>;
   view(sessionId: string): Promise<View>;
+  reviews(sessionId: string): Promise<ReviewsView>;
+  report(sessionId: string, period: Period): Promise<ReportView>;
 }
 
 export class ApiError extends Error {
@@ -45,4 +47,6 @@ export const httpApi: AssistantApi = {
     return call(`${base(id)}/photos`, { method: "POST", body: form });
   },
   view: (id) => call(`${base(id)}/place`),
+  reviews: (id) => call(`${base(id)}/reviews`),
+  report: (id, period) => call(`${base(id)}/report?period=${period}`),
 };

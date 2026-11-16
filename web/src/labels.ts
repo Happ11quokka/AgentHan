@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, Pending, Place } from "./types";
+import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -40,6 +40,41 @@ export const CONNECTION_TEXT = { online: "연결됨", offline: "연결 끊김" }
 
 const FEATURE_NAMES: Record<string, string> = { menu: "메뉴", business_hours: "영업시간", coupon: "쿠폰" };
 export const featureName = (feature: string) => FEATURE_NAMES[feature] ?? "가게 정보";
+
+// ── 리뷰 탭 ────────────────────────────
+export const ratingText = (avg: number | null) => (avg === null ? "-" : avg.toFixed(1));
+export const unansweredText = (n: number) => (n ? `답글 안 단 리뷰 ${n}개` : "모든 리뷰에 답글을 달았어요");
+export const REPLY_TEXT = { done: "답글 달림", todo: "답글 없음" } as const;
+/** [답글 초안 받기]가 비서에게 하는 말. 비서는 날짜·별점보다 리뷰 문장으로 리뷰를 더 잘 찾는다. */
+export function replyAsk(r: ReviewRow) {
+  const quote = r.text.length > 30 ? `${r.text.slice(0, 30)}…` : r.text;
+  return `"${quote}" 리뷰에 답글 초안 써 줘`;
+}
+export const reviewDate = (iso: string) => monthDay(iso);
+
+// ── 손님 통계 탭 ───────────────────────
+export const PERIOD_TEXT: Record<Period, string> = { week: "주간", day: "일간" };
+export const METRIC_TEXT: Record<MetricKey, string> = {
+  place_views: "플레이스 조회",
+  booking_order_requests: "예약·주문 신청",
+  smartcall_calls: "전화 문의",
+};
+
+/** 지난 기간 대비 한 줄: "지난주보다 60 늘었어요". */
+export function changeText(change: number | null, period: Period) {
+  if (change === null) return "비교할 기록이 없어요";
+  const before = period === "week" ? "지난주보다" : "어제보다";
+  if (change === 0) return `${before} 그대로예요`;
+  return `${before} ${num(Math.abs(change))} ${change > 0 ? "늘었어요" : "줄었어요"}`;
+}
+
+export const hourText = (h: number) => (h === 0 ? "밤 12시" : h < 12 ? `오전 ${h}시` : h === 12 ? "낮 12시" : `오후 ${h - 12}시`);
+export const peakText = (h: number | null) => (h === null ? "붐비는 시간 정보 없음" : `가장 붐비는 시간 ${hourText(h)}`);
+export const quietText = (h: number | null) => (h === null ? "" : `가장 한산한 시간 ${hourText(h)}`);
+export const percentText = (n: number) => `${n.toFixed(1)}%`;
+export const NEW_KEYWORD_TEXT = "새로 뜸";
+export const shortDay = (key: string) => (DAYS.find(([k]) => k === key)?.[1] ?? key).slice(0, 1);
+export { num as countText };
 
 // ── 사진 초안 ──────────────────────────
 export type Tone = "new" | "change" | "same" | "need";

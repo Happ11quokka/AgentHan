@@ -9,13 +9,13 @@ import threading
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
-from agenthan.app import place
+from agenthan.app import place, screens
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
@@ -155,6 +155,18 @@ def create_app(
         session = get(session_id)
         with session.lock:
             return session.view()
+
+    @app.get("/assistant/sessions/{session_id}/reviews")
+    def show_reviews(session_id: str) -> dict:
+        session = get(session_id)
+        with session.lock:
+            return screens.reviews(session.assistant.store.read())
+
+    @app.get("/assistant/sessions/{session_id}/report")
+    def show_report(session_id: str, period: Literal["week", "day"] = "week") -> dict:
+        session = get(session_id)
+        with session.lock:
+            return screens.report(session.assistant.store.read(), period)
 
     return app
 
