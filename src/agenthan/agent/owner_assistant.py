@@ -458,6 +458,11 @@ PHOTO_TEXT = {
 }
 # Posting words while a review reply draft waits for the owner.
 REVIEW_POST = re.compile(r"등록|올려|올리|게시|확정|이대로|그대로")
+# A go-ahead that names another feature's thing is that feature's request, not the reply's
+# ('토요일 4명 예약 확정해 줘' posted the waiting replies, #74).
+OTHER_SUBJECT = re.compile(
+    r"예약|주문|메뉴|가격|쿠폰|톡톡|문의|영업|시간|휴무|쉬|전화|정산|키워드|사진|결제|소개|주소"
+)
 CANCEL = re.compile(r"취소|그만|^\s*(아니요?|아뇨)\s*[.!]?\s*$")
 EDIT_TOOL = {
     "type": "function",
@@ -741,6 +746,7 @@ class OwnerAssistant:
             and self.review.waiting
             and REVIEW_POST.search(text)
             and not CANCEL.search(text)
+            and not OTHER_SUBJECT.search(text)
             and len(text) <= 20  # A short go-ahead, not a new request that says 그대로.
         ):
             # "응 그대로 등록해" while a reply draft waits: the review flow decides.

@@ -95,6 +95,11 @@ def test_review_flow_list_draft_edit_post(tmp_path, mock_index):
     assert not path.exists()  # nothing saved before confirmation
     assert assistant.route("응 그대로 등록해").via == "review_draft"  # no DASH guess needed
     assert assistant.route("영업시간은 그대로 두고 메뉴 가격 바꿔 줘").via != "review_draft"
+    # A short request for another feature is not a go-ahead for the reply (#74:
+    # '토요일 4명 예약 확정해 줘' posted two replies).
+    for other_request in ("토요일 4명 예약 확정해 줘", "새 메뉴 등록해 줘", "쿠폰 이대로 올려 줘"):
+        assert assistant.route(other_request).via != "review_draft", other_request
+    assert assistant.route("답글 이대로 올려 줘").via == "review_draft"
     out = assistant.ask("이대로 올려줘")
     assert out.startswith("답글 1건을 등록했어요") and assistant.pending_feature is None
     assert assistant.route("응 그대로 등록해").via != "review_draft"  # nothing waits now
