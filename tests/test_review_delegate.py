@@ -317,6 +317,36 @@ def test_draft_targets_the_review_the_owner_named(tmp_path, utterance):
     assert session.toolbox.writer.calls[-1]["text"].startswith("주말에 웨이팅")
 
 
+def pilot_store(tmp_path):
+    from agenthan.app.pilot import PILOT_SEED
+
+    path = tmp_path / "store.json"
+    path.write_bytes(PILOT_SEED.read_bytes())
+    return DummyStore(path)
+
+
+def test_draft_targets_the_review_named_by_its_menu(tmp_path):
+    """#80: '보르시 리뷰에 답글 써 줘' went to the 펠메니 review (r19), not the 보르시 one (r18)."""
+    session = factory(SilentHCX())(pilot_store(tmp_path))
+    review_delegate.handle("보르시 리뷰에 답글 써 줘", session)
+    assert [d["review_id"] for d in session.pending_drafts] == ["r18"]
+
+
+def test_menu_named_in_several_reviews_asks_which_one(tmp_path):
+    """메도빅 is in three unanswered reviews: ask instead of taking the first."""
+    session = factory(SilentHCX())(pilot_store(tmp_path))
+    out = review_delegate.handle("메도빅 리뷰에 답글 써 줘", session)
+    assert session.pending_drafts == []
+    assert "어느 리뷰에 답글을 쓸지" in out["text"]
+
+
+def test_a_menu_in_the_reply_instruction_does_not_pick_the_review(tmp_path):
+    """'답글 써줘, 메도빅 서비스 준다고': 메도빅 is what to write, not which review."""
+    session = factory(SilentHCX())(DummyStore(tmp_path / "store.json"))
+    review_delegate.handle("안 좋은 리뷰에 답글 써줘, 다음에 메도빅 서비스 준다고", session)
+    assert [d["review_id"] for d in session.pending_drafts] == ["r03"]
+
+
 def test_draft_without_named_review_keeps_negative_first(tmp_path):
     session = factory(SilentHCX())(DummyStore(tmp_path / "store.json"))
     review_delegate.handle("답글 써줘", session)

@@ -245,21 +245,33 @@ NAMED_DATE = re.compile(
 )
 NAMED_RATING = re.compile(r"(?<!\d)([1-5])\s?점")
 _NONWORD = re.compile(r"[\W_]+")
+REVIEW_WORD = re.compile(r"리뷰|후기")
 
 
 def _norm(s: str) -> str:
     return _NONWORD.sub("", s)
 
 
-def named_reviews(utterance: str, rows: list[dict]) -> list[dict] | None:
+def named_reviews(
+    utterance: str, rows: list[dict], menus: list[dict] | None = None
+) -> list[dict] | None:
     """사장님 말이 지목한 리뷰들. 지목하는 말이 없으면 None, 있는데 맞는 리뷰가 없으면 [].
 
-    인용은 화면에 보인 잘린·가린 인용일 수 있어 문장 조각 하나만 원문에 들어 있어도 맞다고 본다."""
+    인용은 화면에 보인 잘린·가린 인용일 수 있어 문장 조각 하나만 원문에 들어 있어도 맞다고 본다.
+    '보르시 리뷰'처럼 '리뷰' 앞에 말한 메뉴는 그 메뉴가 나오는 리뷰를 지목한다 (#80). 뒤에 오는
+    메뉴('답글 써줘, 메도빅 서비스 준다고')는 쓸 내용이라 지목이 아니다."""
     quotes = [q[1:-1] for q in QUOTED.findall(utterance)]
     rest = QUOTED.sub(" ", utterance)
     dates = [(int(m), int(d)) for m, d in NAMED_DATE.findall(rest)]
     ratings = [int(r) for r in NAMED_RATING.findall(rest)]
-    if not (quotes or dates or ratings):
+    head = REVIEW_WORD.split(rest, maxsplit=1)[0] if REVIEW_WORD.search(rest) else ""
+    named_menus = [
+        names
+        for m in menus or []
+        if (names := [n for n in [m["name"], *m.get("aliases", [])] if len(n) >= 2])
+        and any(n in head for n in names)
+    ]
+    if not (quotes or dates or ratings or named_menus):
         return None
     chunks = [
         c for q in quotes for part in re.split(r"[.!?。…]|\(", q) if len(c := _norm(part)) >= 6
@@ -276,6 +288,8 @@ def named_reviews(utterance: str, rows: list[dict]) -> list[dict] | None:
             if (v.month, v.day) not in dates:
                 continue
         if ratings and r.get("rating") not in ratings:
+            continue
+        if any(not any(n in r.get("text", "") for n in names) for names in named_menus):
             continue
         out.append(r)
     return out
@@ -685,7 +699,9 @@ class ReviewToolbox:
                 for r in self.ctx["repo"].get_reviews(self.ctx["store_id"], None, self.ctx["today"])
                 if r.get("has_owner_reply") is False
             ]
-            named = named_reviews(utterance or "", unanswered)
+            catalog = self.ctx["catalog"]
+            menus = catalog.menus(self.ctx["store_id"]) if catalog else []
+            named = named_reviews(utterance or "", unanswered, menus)
             if not self.listed:  # 목록을 안 본 상태면 먼저 만든다
                 self.listed = get_unanswered_reviews(**self.ctx, priority="negative_first")[
                     "reviews"
@@ -694,8 +710,10 @@ class ReviewToolbox:
             if target == "negative":
                 pool = [x for x in pool if x["sentiment"] in ("negative", "mixed")] or pool
             ids = [x["review_id"] for x in (pool if target == "all_listed" else pool[:1])]
-            if named is not None:  # 지목한 리뷰가 우선. 맞는 리뷰가 없으면 되묻는다 (no_target)
-                ids = [r["review_id"] for r in (named if target == "all_listed" else named[:1])]
+            if named is not None:  # 지목한 리뷰가 우선. 없거나 여럿이면 되묻는다 (no_target)
+                if target != "all_listed" and len(named) > 1:
+                    named = []
+                ids = [r["review_id"] for r in named]
         prev = {rid: d["reply_ko"] for rid, d in self.drafts.items()}
         # 첫 초안에도 사장님 지시를 원어 그대로 넣는다 ('답글 써줘, 다음에 음료 서비스 준다고')
         instruction = None if edit else (self.original_utterance or utterance)
