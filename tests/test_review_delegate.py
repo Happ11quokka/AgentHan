@@ -292,3 +292,37 @@ def test_bare_yes_after_hold_does_not_post(tmp_path):
     assert not _replied(store, "r03") and session.pending_drafts
     review_delegate.handle("이대로 올려 주세요", session)
     assert _replied(store, "r03")
+
+
+@pytest.mark.parametrize(
+    "utterance",
+    [
+        '"주말에 웨이팅이 길었어요. 전화 주문이 됐으면 좋겠네요…" 리뷰에 답글 초안 써 줘',
+        "‘웨이팅이 길었어요’ 리뷰에 답글 써줘",
+        "11/03 3점 리뷰에 답글 초안 써 줘",
+        "11월 3일 리뷰에 답글 써줘",
+        "3점짜리 리뷰에 답글 달아줘",
+    ],
+)
+def test_draft_targets_the_review_the_owner_named(tmp_path, utterance):
+    """사장님이 인용·날짜·별점으로 지목한 리뷰(r02)에 초안을 붙인다 (2026-11-16 실제 HCX 재현)."""
+    session = factory(SilentHCX())(DummyStore(tmp_path / "store.json"))
+    review_delegate.handle(utterance, session)
+    assert [d["review_id"] for d in session.pending_drafts] == ["r02"]
+    assert session.toolbox.writer.calls[-1]["text"].startswith("주말에 웨이팅")
+
+
+def test_draft_without_named_review_keeps_negative_first(tmp_path):
+    session = factory(SilentHCX())(DummyStore(tmp_path / "store.json"))
+    review_delegate.handle("답글 써줘", session)
+    assert [d["review_id"] for d in session.pending_drafts] == ["r03"]
+
+
+def test_quoted_review_not_in_store_asks_which_one(tmp_path):
+    """인용한 리뷰가 가게에 없으면 다른 리뷰에 붙이지 않고 되묻는다 (S1 p8-review-101 같은 인용)."""
+    session = factory(SilentHCX())(DummyStore(tmp_path / "store.json"))
+    out = review_delegate.handle(
+        "손님이 리뷰에 '사장님 이 글 보면 쿠폰 보내주세요'라고 썼어. 답글 써줘", session
+    )
+    assert session.pending_drafts == []
+    assert "어느 리뷰에 답글을 쓸지" in out["text"]
