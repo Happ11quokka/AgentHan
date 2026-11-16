@@ -27,7 +27,7 @@ from agenthan.voice.call.ports import CUSTOMER_FATAL, ClientGone, PortError
 from agenthan.voice.call.session import TURN_THREAD_PREFIX
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
-from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.store_config import KST, StoreConfig
 from agenthan.voice.ws import ENGINE_THREAD_PREFIX, WS_PATH, phone_router
 
 ORDER_SCRIPT = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
@@ -154,7 +154,9 @@ def test_record_dir_setting_records_each_call_over_websocket(tmp_path) -> None:
         phone.until("call.ready", 0)
         phone.played(0)
         phone.send(type="call.end", turn=0)
-    (wav,) = (tmp_path / "rec" / "20261108").glob("call-*.wav")
+    # 녹음 폴더 날짜는 시연 시계(`PHONE_NOW`, 11/08)가 아니라 실제 날짜다 (11/16 실기기 로그)
+    (wav,) = (tmp_path / "rec").glob("*/call-*.wav")
+    assert wav.parent.name == datetime.now(KST).strftime("%Y%m%d")
     assert wav.stat().st_size > 44
 
 

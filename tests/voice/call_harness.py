@@ -120,6 +120,7 @@ class Call:
         record_dir: Path | None = None,
         ask_owner: bool = True,
         config: StoreConfig | None = None,
+        wall_clock: FakeClock | None = None,
     ) -> None:
         """`knowledge`는 보충 지식 읽기 포트(4단계 티켓 13). `no_owner`면 사장님 쪽 없이 띄운다."""
         self.out = RecordingOutbound()
@@ -148,6 +149,7 @@ class Call:
             turn_model=turn_model,
             turn_executor=turn_executor,
             record_dir=record_dir,
+            wall_clock=wall_clock,
         )
 
     async def __aenter__(self) -> Call:

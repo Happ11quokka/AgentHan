@@ -89,10 +89,14 @@ class TurnRecord:
 
 
 class LatencyLog:
-    def __init__(self, log_dir: Path | None, call_id: str, clock: Clock) -> None:
+    def __init__(self, log_dir: Path | None, call_id: str, clock: Clock,
+                 wall: Clock | None = None) -> None:
+        """`wall`은 파일 날짜·`at`에 쓰는 실제 시계. 없으면 `clock`. `PHONE_NOW` 시연 시계는
+        통화마다 같은 시각에서 시작해, 그것으로 이름을 지으면 기록이 한 파일에 계속 쌓였다(11/16)"""
         self._dir = log_dir
         self._call_id = call_id
         self._clock = clock
+        self._wall = wall or clock
         self._t0 = clock.monotonic()
         self._open: dict[int, TurnRecord] = {}
 
@@ -100,14 +104,14 @@ class LatencyLog:
     def path(self) -> Path | None:
         if self._dir is None:
             return None
-        return self._dir / f"phone-{self._clock.now():%Y%m%d}.jsonl"
+        return self._dir / f"phone-{self._wall.now():%Y%m%d}.jsonl"
 
     def ms(self, at: float | None = None) -> int:
         """단조 시각(초) → 통화 시작부터 ms. 없으면 지금."""
         return round(((self._clock.monotonic() if at is None else at) - self._t0) * 1000)
 
     def begin(self, turn: int, **fields: Any) -> TurnRecord:
-        record = TurnRecord(turn, self._clock.now().isoformat(), dict(fields))
+        record = TurnRecord(turn, self._wall.now().isoformat(), dict(fields))
         self._open[turn] = record
         return record
 

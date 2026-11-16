@@ -208,6 +208,7 @@ def phone_router(
             stt=stt,
             tts=tts,
             clock=store_clock(settings),
+            wall_clock=SystemClock(settings.tz),  # 기록 날짜는 실제 날짜로 (PHONE_NOW와 상관없이)
             outbound=WsOutbound(ws),
             order_sink=order_sink,
             owner=owner,

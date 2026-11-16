@@ -406,6 +406,7 @@ class CallSession:
         turn_executor: Executor | None = None,
         record_dir: Path | None = None,
         answerer: Answerer | None = None,
+        wall_clock: Clock | None = None,
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
@@ -414,6 +415,9 @@ class CallSession:
         self._stt = stt
         self._tts = tts
         self._clock = clock
+        # 기록 파일 날짜·시각용 실제 시계. 가게 시계가 `PHONE_NOW` 시연 시계여도 기록은 실제 날짜로
+        # 쌓이고 보관 기한(14일)대로 지워진다. 없으면 가게 시계
+        self._wall = wall_clock or clock
         self._outbound = outbound
         self._sink = order_sink
         self._owner: OwnerChannel = owner or NullOwnerChannel()  # 사장님 쪽 알림 (4단계 티켓 02)
@@ -431,9 +435,9 @@ class CallSession:
         self._ring: bytearray | None = bytearray() if turn_model is not None else None
         self._score: Future[tuple[float, float]] | None = None  # 마지막 말 끝의 점수 작업
         self._model_info: dict[str, Any] | None = None  # 마지막 판정에 쓴 점수의 출처
-        self._log = LatencyLog(log_dir, self.call_id, clock)
+        self._log = LatencyLog(log_dir, self.call_id, clock, wall=self._wall)
         # 통화 녹음 (5단계 티켓 01). `PHONE_RECORD_DIR`이 있을 때만. 시간축은 `self._log.ms()`
-        self._rec_name = f"{clock.now():%Y%m%d}/{self.call_id}.wav"
+        self._rec_name = f"{self._wall.now():%Y%m%d}/{self.call_id}.wav"
         self._rec = CallRecorder(record_dir / self._rec_name) if record_dir is not None else None
         # 진단 기록 (티켓 03): STT 결과 원본·프레임 도착 간격. `log_dir`이 있으면 늘
         self._debug = CallDebugLog()
@@ -721,7 +725,7 @@ class CallSession:
         if self._log_dir is None:
             return
         try:
-            path = self._log_dir / f"stt-{self._clock.now():%Y%m%d}.jsonl"
+            path = self._log_dir / f"stt-{self._wall.now():%Y%m%d}.jsonl"
             self._debug.write(path, self.call_id)
         except Exception:
             log.exception("진단 기록 쓰기 실패 (%s)", self.call_id)
