@@ -16,6 +16,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     # models/baseline.joblib이 1.9.1로 저장됨. 버전을 바꾸면 scripts/train_baseline.py로 재학습
     "scikit-learn>=1.9.1,<1.10",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
