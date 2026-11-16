@@ -215,6 +215,11 @@ def not_in_cart(menu_name: str) -> str:
     return f"주문하신 것 중엔 {i_ga(menu_name)} 없어요."
 
 
+def offer_add(phrase: str) -> str:
+    """장바구니에 없는 메뉴를 빼 달라고 들었을 때 담을지 묻는다. `phrase`는 "블린 하나"."""
+    return f"{phrase} 담아 드릴까요?"
+
+
 def request_noted(menu_name: str, request: str) -> str:
     return f"{menu_name}에 {request}라고 적어 둘게요."
 

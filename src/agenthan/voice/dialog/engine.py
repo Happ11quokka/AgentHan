@@ -1473,6 +1473,18 @@ class DialogEngine:
             if not name:
                 self._on_unhandled(turn, act)
                 return
+            if _names_menu(act) and item is not None and (act.qty or not self._cart.lines):
+                # 11/16 실기기: "블린 하나 주세요"를 STT가 "블린 하나 죽었어"로 들었고 HCX가
+                # 빼기로 읽었다. 없는 메뉴를 수량까지 붙여(또는 빈 장바구니에서) 빼 달라면 주문일
+                # 가능성이 크다.
+                # 담을지 묻는다(네 → 담기, 아니요 → 다시 묻기)
+                add = replace(act, type="add_item", qty=act.qty or 1, free_text="")
+                phrase = templates.line_phrase(item.name_ko, add.qty or 1,
+                                               templates.counter_for(item.category))
+                self._open_menu_clarify(turn, add, (item,), templates.offer_add(phrase),
+                                        notice=templates.not_in_cart(name))
+                turn.changed = True
+                return
             self._say(turn, templates.not_in_cart(name))
             turn.changed = True
             return
