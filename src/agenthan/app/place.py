@@ -79,6 +79,12 @@ def preview(data: dict, feature: str, actions: list[dict], photo_url: PhotoUrl =
 def _save_action(data: dict, draft) -> dict:
     """The upsert_menu call that saving this complete draft amounts to (photo aside)."""
     record = menu_photo.store_record(draft, data.get("menus", []))
+    if record is not None and draft.is_food:
+        # Attaching a photo keeps the saved name and price.
+        return {
+            "name": "upsert_menu",
+            "arguments": {"name": record["name"], "price": record["price"]},
+        }
     arguments = {"name": record["name"] if record else draft.name_ko, "price": draft.price}
     if draft.description:
         arguments["description"] = draft.description
@@ -88,9 +94,10 @@ def _save_action(data: dict, draft) -> dict:
 def photo_preview(
     data: dict, drafts: list, draft_photo_url: Callable[[int], str], photo_url: PhotoUrl = _no_photo
 ) -> dict:
-    """Menu drafts from a photo waiting for a yes, and what saving the complete ones changes.
+    """Menu drafts from a photo waiting for a yes, and what saving them changes.
 
-    `after` leaves the photos out: a new menu has no id until it is saved.
+    Nothing is saved until every draft has a name and a price, so until then `changes` is
+    empty. `after` leaves the photos out: a new menu has no id until it is saved.
     """
     menus = data.get("menus", [])
     rows = []
@@ -105,5 +112,6 @@ def photo_preview(
                 "photo_url": draft_photo_url(i) if d.photo is not None else None,
             }
         )
-    actions = [_save_action(data, d) for d in drafts if d.complete]
+    ready = all(d.complete for d in drafts)
+    actions = [_save_action(data, d) for d in drafts] if ready else []
     return {"kind": "photo", "drafts": rows, **preview(data, "menu", actions, photo_url)}

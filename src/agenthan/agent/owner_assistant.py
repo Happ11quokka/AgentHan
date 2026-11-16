@@ -436,7 +436,14 @@ PHOTO_TEXT = {
     "ask": "이대로 저장할까요? (네 / 취소 / 고칠 곳 말하기 예: 2번 가격 8000원)",
     "none": "사진에서 메뉴를 찾지 못했어요. 메뉴판이 잘 보이게 다시 찍어 주세요.",
     "saved": "저장했어요 (더미 플레이스, 실제 네이버 반영 없음):",
-    "skipped": "이름이나 가격이 없어 저장하지 않은 메뉴:",
+    "save_failed": "사진이나 메뉴를 저장하지 못했어요. 다시 시도해 주세요.",
+    "attach": "기존 메뉴 {name}에 이 사진을 붙일까요? 맞으면 '{name} 사진 바꿔'라고 말해 주세요.",
+    "need_name_price": "메뉴 이름과 가격을 알려 주세요.",
+    "need_name": "메뉴 이름을 알려 주세요. (지금: {name})",
+    "confirm_name_price": "이름이 '{name}' 맞나요? 가격은 얼마로 올릴까요?",
+    "need_lines": "저장 전에 알려 주세요: {lines}",
+    "need_name_word": "이름",
+    "need_price_word": "가격",
     "cancel": "메뉴 등록을 취소했어요. 저장한 것은 없어요.",
     "existing": "기존 메뉴",
     "price_change": "가격 변경 {old:,} → {new:,}",
@@ -1846,12 +1853,12 @@ class OwnerAssistant:
             if d.description:
                 line += f" · {d.description}"
             change, previous = menu_photo.store_change(d, menus)
-            compared = []
+            change_marks = []
             if change == "price_change":
-                compared = [t["price_change"].format(old=previous, new=d.price)]
-            elif change == "unchanged" and d.price is not None and not d.is_food:
-                compared = [t["unchanged"]]
-            marks = ([t["existing"]] if d.menu_id else []) + compared + [t[n] for n in d.notes]
+                change_marks = [t["price_change"].format(old=previous, new=d.price)]
+            elif change == "unchanged":
+                change_marks = [t["unchanged"]]
+            marks = ([t["existing"]] if d.menu_id else []) + change_marks + [t[n] for n in d.notes]
             if marks:
                 line += f"  [{', '.join(marks)}]"
             if d.is_food and d.candidates:
@@ -1919,46 +1926,47 @@ class OwnerAssistant:
         return self._finish(answer + "\n" + self._photo_question(), [], [])
 
     def _missing_question(self) -> str | None:
-        """The one question that fills the drafts' missing names and prices, or None."""
+        """The one question that fills the drafts' missing names and prices, or None.
+
+        A food photo guessed to be a saved menu asks no price: the owner must name the menu
+        to attach the photo (a bare yes is not enough)."""
         drafts = self.menu_drafts or []
+        food = drafts[0] if len(drafts) == 1 and drafts[0].is_food else None
+        if food and food.possible_menu_name and not food.menu_id:
+            return PHOTO_TEXT["attach"].format(name=food.possible_menu_name)
         missing = [(i, d) for i, d in enumerate(drafts, 1) if not d.complete]
         if not missing:
             return None
+        t = PHOTO_TEXT
         if len(drafts) == 1 and drafts[0].is_food:
             d = drafts[0]
-            if d.possible_menu_name and not d.menu_id:
-                # A guessed match: no price to ask, but the owner must name the menu to attach.
-                return (
-                    f"기존 메뉴 {d.possible_menu_name}에 이 사진을 붙일까요? "
-                    f"맞으면 '{d.possible_menu_name} 사진 바꿔'라고 말해 주세요."
-                )
             if not d.name_ko.strip():
-                return "메뉴 이름과 가격을 알려 주세요."
+                return t["need_name_price"]
             if d.price:
-                return f"메뉴 이름을 알려 주세요. (지금: {d.name_ko})"
-            return f"이름이 '{d.name_ko}' 맞나요? 가격은 얼마로 올릴까요?"
+                return t["need_name"].format(name=d.name_ko)
+            return t["confirm_name_price"].format(name=d.name_ko)
         parts = []
         for i, d in missing:
-            need = [w for w, ok in (("이름", d.name_ko.strip()), ("가격", d.price)) if not ok]
+            need = [
+                t[word]
+                for word, ok in (
+                    ("need_name_word", d.name_ko.strip()),
+                    ("need_price_word", d.price),
+                )
+                if not ok
+            ]
             parts.append(f"{i}번 {d.name_ko or d.name_read} {'·'.join(need)}")
-        return "저장 전에 알려 주세요: " + ", ".join(parts)
+        return t["need_lines"].format(lines=", ".join(parts))
 
     def _photo_question(self) -> str:
         return self._missing_question() or PHOTO_TEXT["ask"]
 
     def _save_menu_drafts(self) -> str:
         t = PHOTO_TEXT
-        saved, skipped = [], []
+        saved = []
         draft = self.menu_drafts[0] if self.menu_drafts else None
         if draft and draft.is_food:
             self._refresh_food_match(draft)
-            if draft.possible_menu_name and not draft.menu_id:
-                return self._finish(
-                    f"기존 메뉴 {draft.possible_menu_name}의 사진을 바꿀까요? "
-                    "메뉴 이름과 사진 변경을 확인해 주세요.",
-                    [],
-                    [],
-                )
         question = self._missing_question()
         if question is not None:
             # A yes does not save half the drafts: the task stays open until all are filled.
@@ -1976,20 +1984,15 @@ class OwnerAssistant:
                     create_only=d.is_food and not d.menu_id,
                 )
             except DummyStoreError:
-                if d.is_food:
-                    return self._finish(
-                        "사진이나 메뉴를 저장하지 못했어요. 다시 시도해 주세요.", [], []
-                    )
-                skipped.append(d.name_ko)
-                continue
+                # Stop at the first failure; the drafts stay open, and saving again updates
+                # the menus already saved by name instead of adding them twice.
+                return self._finish(t["save_failed"], [], [])
             saved.append(result)
         self.menu_drafts = None
         self._clear_photo_preview()
         lines = [t["saved"]] + [
             f"- {r['record']['name']} · {r['record']['price']:,}{t['won']}" for r in saved
         ]
-        if skipped:
-            lines.append(t["skipped"] + " " + ", ".join(skipped))
         return self._end_turn("\n".join(lines))
 
     def _edit_menu_drafts(self, text: str) -> str:

@@ -18,7 +18,7 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app import place
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
-DRAFT_PHOTO = "draft-"
+DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
 
 
 class Message(BaseModel):
@@ -38,11 +38,11 @@ class Session:
         self.assistant = assistant
         self.lock = threading.Lock()  # OwnerAssistant keeps turn state; one turn at a time.
 
-    def _url(self, name: str) -> str:
+    def _photo_path(self, name: str) -> str:
         return f"/assistant/sessions/{self.id}/photos/{name}"
 
     def _menu_photo_url(self, record: dict) -> str | None:
-        return self._url(record["id"]) if record.get("photo") else None
+        return self._photo_path(record["id"]) if record.get("photo") else None
 
     def view(self) -> dict:
         data = self.assistant.store.read()
@@ -59,15 +59,18 @@ class Session:
             }
             for t in waiting
         ]
-        photo_task = self.assistant.ledger.find_open(kind="photo")
-        if photo_task is not None and photo_task.data:
+        drafts = self.assistant.menu_drafts
+        photo_task = next(
+            (t for t in self.assistant.ledger.tasks if t.is_open and t.kind == "photo"), None
+        )
+        if photo_task is not None and drafts:
             pending.append(
                 {
                     "task_id": photo_task.id,
                     **place.photo_preview(
                         data,
-                        photo_task.data,
-                        lambda i: self._url(f"{DRAFT_PHOTO}{i}"),
+                        drafts,
+                        lambda i: self._photo_path(f"{DRAFT_PHOTO_PREFIX}{i}"),
                         self._menu_photo_url,
                     ),
                 }
@@ -76,9 +79,9 @@ class Session:
 
     def photo(self, name: str) -> tuple[bytes, str] | None:
         """A waiting draft's photo or a saved menu's photo, as (bytes, media type)."""
-        if name.startswith(DRAFT_PHOTO):
+        if name.startswith(DRAFT_PHOTO_PREFIX):
             drafts = self.assistant.menu_drafts or []
-            index = name.removeprefix(DRAFT_PHOTO)
+            index = name.removeprefix(DRAFT_PHOTO_PREFIX)
             if not index.isdigit() or int(index) >= len(drafts):
                 return None
             draft = drafts[int(index)]

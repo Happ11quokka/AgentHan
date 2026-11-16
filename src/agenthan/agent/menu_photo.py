@@ -22,6 +22,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from typing import Literal
 
 from agenthan.core.contracts import MenuItem, StoreKnowledge
 from agenthan.core.llm import ClovaV3Error, chat_v3, image_content
@@ -172,30 +173,31 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text).casefold())
 
 
+MenuChange = Literal["new", "price_change", "unchanged", "photo_attach"]
+
+
 def store_record(draft: MenuDraft, menus: list[dict]) -> dict | None:
-    """The saved menu that approving this draft would change, found the way saving finds it:
-    a food photo by its chosen menu id, a menu board line by its name."""
+    """이 초안을 승인하면 바뀌는 저장된 메뉴. 음식 사진은 고른(또는 추측한) 메뉴 id로,
+    메뉴판 줄은 이름으로 찾는다. 이름은 저장할 때와 같은 `normalize`로 맞춘다(`_norm`은
+    가게 지식 매칭용)."""
     if draft.is_food:
-        return next((m for m in menus if m["id"] == draft.menu_id), None) if draft.menu_id else None
+        menu_id = draft.menu_id or draft.possible_menu_id
+        return next((m for m in menus if m["id"] == menu_id), None) if menu_id else None
     key = normalize(draft.name_ko)
     return next((m for m in menus if key and normalize(m["name"]) == key), None)
 
 
-def store_change(draft: MenuDraft, menus: list[dict]) -> tuple[str, int | None]:
-    """(new | price_change | unchanged | photo_attach, the saved price) against the saved menus.
-
-    A food photo that matches a saved menu (chosen or still only guessed) attaches its photo.
-    """
-    if draft.is_food:
-        menu_id = draft.menu_id or draft.possible_menu_id
-        record = next((m for m in menus if m["id"] == menu_id), None) if menu_id else None
-        return ("photo_attach", record["price"]) if record else ("new", None)
+def store_change(draft: MenuDraft, menus: list[dict]) -> tuple[MenuChange | None, int | None]:
+    """저장된 메뉴와 비교한 (바뀌는 종류, 저장된 가격). 기존 메뉴인데 가격을 아직 모르면
+    종류는 정할 수 없어 None이다."""
     record = store_record(draft, menus)
     if record is None:
         return "new", None
-    if draft.price is None or draft.price == record["price"]:
-        return "unchanged", record["price"]
-    return "price_change", record["price"]
+    if draft.is_food:
+        return "photo_attach", record["price"]
+    if draft.price is None:
+        return None, record["price"]
+    return ("unchanged" if draft.price == record["price"] else "price_change"), record["price"]
 
 
 def match_known(name: str, knowledge: StoreKnowledge) -> tuple[MenuItem, str] | None:

@@ -145,7 +145,7 @@ def test_existing_requires_explicit_confirmation(tmp_path):
     assistant.store.write(data)
     answer = assistant.ask_photo(CAKE.read_bytes())
     assert "기존 메뉴 밀푀유 케이크의 사진을 바꿀까요" in answer
-    assert "확인해 주세요" in assistant.ask("네")
+    assert assistant.ask("네").endswith("'밀푀유 케이크 사진 바꿔'라고 말해 주세요.")
     assert "photo" not in assistant.store.read()["menus"][0]
     assert "저장했어요" in assistant.ask("응, 밀푀유 케이크 사진 바꿔")
     rows = assistant.store.read()["menus"]

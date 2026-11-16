@@ -201,6 +201,10 @@ def test_food_photo_of_an_existing_menu_attaches_the_photo_without_asking_a_pric
     question = body["reply"].splitlines()[-1]
     assert "메도빅" in question and "사진" in question and "가격" not in question
 
+    body = say(api, session_id, "네")
+    assert body["reply"] == question  # A bare yes asks the same question; nothing is saved.
+    assert not [m for m in body["place"]["menu"] if m["id"] == "m01"][0]["photo_url"]
+
     body = say(api, session_id, "응, 메도빅 사진 바꿔")
     assert body["pending"] == []
     [saved] = [m for m in body["place"]["menu"] if m["id"] == "m01"]
@@ -220,3 +224,25 @@ def test_a_failed_background_cut_keeps_the_original_photo_and_says_so(tmp_path):
     image = cv2.imdecode(np.frombuffer(photo.content, np.uint8), cv2.IMREAD_COLOR)
     # The original on a white square, not a cut-out: its gray middle survives.
     assert image.shape[:2] == (1024, 1024) and abs(int(image[512, 512, 0]) - 128) <= 3
+
+
+def test_an_oversized_photo_is_answered(tmp_path):
+    api = client(tmp_path)
+    session_id = start(api)
+    huge = b"\xff\xd8\xff" + b"0" * (10 * 1024 * 1024)
+
+    body = send_photo(api, session_id, huge).json()
+    assert "10MB" in body["reply"] and body["pending"] == []
+
+
+def test_a_board_line_without_a_price_shows_no_change_until_every_line_is_filled(tmp_path):
+    # A saved menu the store knowledge does not know yet: no known price fills the gap.
+    board = '[{"name": "Медовик", "price": null}, {"name": "Сырники", "price": 8500}]'
+    names = {**BOARD_NAMES, "Медовик": '{"name_ko": "메도빅", "description_ko": ""}'}
+    api = client(tmp_path, fake=BoardV3(board, names), knowledge=EMPTY)
+    session_id = start(api)
+
+    [waiting] = send_photo(api, session_id, JPEG).json()["pending"]
+    rows = {d["name_ko"]: d for d in waiting["drafts"]}
+    assert (rows["메도빅"]["change"], rows["메도빅"]["previous_price"]) == (None, 7500)
+    assert waiting["changes"] == {}  # Nothing is saved while line 1 has no price.
