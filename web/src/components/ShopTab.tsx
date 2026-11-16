@@ -15,7 +15,7 @@ function overlay(place: Place, pending: Pending[]) {
   const removed: Place = { menu: [], business_hours: {}, coupon: [] };
   for (const p of pending) {
     if (!p.after) continue;
-    for (const [section, diff] of Object.entries(p.changes) as Array<[keyof Place, SectionChanges]>) {
+    for (const [section, diff] of Object.entries(p.changes ?? {}) as Array<[keyof Place, SectionChanges]>) {
       view = { ...view, [section]: p.after[section] };
       for (const k of diff.added) marks[section].set(k, "added");
       for (const k of diff.updated) marks[section].set(k, "updated");

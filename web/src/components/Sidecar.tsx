@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { CONNECTION_TEXT } from "../labels";
-import type { LogEntry, Pending, Period, Place, ReportView, ReviewsView } from "../types";
+import type { Action, LogEntry, Pending, Period, Place, ReportView, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { Icon } from "./Icon";
 import { ReviewsTab } from "./ReviewsTab";
@@ -27,7 +27,7 @@ type Props = {
   report: Loaded<ReportView>;
   period: Period;
   onPeriod: (period: Period) => void;
-  onAsk: (text: string) => void;
+  onAction: (action: Action) => void;
   onClose: () => void;
 };
 
@@ -88,7 +88,7 @@ export function Sidecar(props: Props) {
       <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "shop" &&
           (place ? <ShopTab place={place} pending={pending} log={log} /> : <p className="loading">불러오는 중…</p>)}
-        {tab === "reviews" && <ReviewsTab loaded={props.reviews} busy={props.busy} onAsk={props.onAsk} />}
+        {tab === "reviews" && <ReviewsTab loaded={props.reviews} busy={props.busy} onAction={props.onAction} />}
         {tab === "stats" && <StatsTab loaded={props.report} period={props.period} onPeriod={props.onPeriod} />}
       </div>
     </aside>

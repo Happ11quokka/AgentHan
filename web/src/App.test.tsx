@@ -86,6 +86,45 @@ describe("대화", () => {
   });
 });
 
+describe("액션", () => {
+
+  test("시작 화면의 리뷰 버튼은 액션을 보낸다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("button", { name: "요즘 리뷰 어때?" }));
+    expect(api.act).toHaveBeenCalledWith("s1", { action_id: "review.summary", args: {}, label: "요즘 리뷰 어때?" });
+    expect(api.say).not.toHaveBeenCalled();
+  });
+  test("응답의 칩과 승인 카드는 인자와 버전을 그대로 보낸다", async () => {
+    const pending = { task_id: "t2", version: 3, feature: "coupon", after: SEED, changes: {} };
+    const api = fakeApi([
+      { reply: "고르세요", place: SEED, pending: [], next_actions: [{ action_id: "stats.day", label: "오늘 통계", args: { period: "day" } }] },
+      { reply: "저장할까요?", place: SEED, pending: [pending] },
+      { reply: "저장했어요", place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await user.click(screen.getByRole("button", { name: "요즘 리뷰" }));
+    await user.click(await screen.findByRole("button", { name: "오늘 통계" }));
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "stats.day", label: "오늘 통계", args: { period: "day" } });
+    const card = await screen.findByRole("region", { name: "저장 전 확인" });
+    await user.click(within(card).getByRole("button", { name: "저장" }));
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "task.approve", label: "저장", args: { task_id: "t2", version: 3 } });
+    expect(api.say).not.toHaveBeenCalled();
+    expect(chatArea().getByText("오늘 통계", { selector: "p" })).toBeInTheDocument();
+  });
+
+  test("승인 카드 취소는 해당 작업을 지정한다", async () => {
+    const pending = { task_id: "t3", version: 2, feature: "review", kind: "review" as const, reply: "감사합니다" };
+    const api = fakeApi([{ reply: "확인해 주세요", place: SEED, pending: [pending] }]);
+    const { user } = await open(api);
+    await user.click(screen.getByRole("button", { name: "요즘 리뷰" }));
+    const card = await screen.findByRole("region", { name: "저장 전 확인" });
+    expect(within(card).getByText("감사합니다")).toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "취소" }));
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "task.cancel", label: "취소", args: { task_id: "t3" } });
+    expect(api.say).not.toHaveBeenCalled();
+  });
+});
+
 describe("사진과 승인 카드", () => {
   test("사진을 올리면 글과 함께 보내고 내 말풍선에 사진이 보인다", async () => {
     const api = fakeApi([
@@ -244,15 +283,15 @@ describe("사이드카 [내 가게]", () => {
 });
 
 describe("왼쪽 자주 쓰는 일", () => {
-  test("쿠폰 만들기·요즘 리뷰·이번 주 손님은 질문을 보낸다", async () => {
+  test("요즘 리뷰·이번 주 손님은 액션을, 쿠폰 만들기는 대화를 보낸다", async () => {
     const { user, api } = await open();
     await user.click(screen.getByRole("button", { name: "쿠폰 만들기" }));
     await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "손님에게 줄 쿠폰을 만들고 싶어요"));
     await user.click(screen.getByRole("button", { name: "요즘 리뷰" }));
-    await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "요즘 리뷰 어때?"));
+    await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", args: {}, label: "요즘 리뷰" }));
     expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("button", { name: "이번 주 손님" }));
-    await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "이번 주 손님 얼마나 왔어?"));
+    await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "stats.week", args: {}, label: "이번 주 손님" }));
     expect(screen.getByRole("tab", { name: "손님 통계" })).toHaveAttribute("aria-selected", "true");
   });
 
@@ -388,7 +427,8 @@ describe("사이드카 [리뷰]", () => {
     const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
     const [first] = await within(panel).findAllByRole("button", { name: "답글 초안 받기" });
     await user.click(first);
-    expect(api.say).toHaveBeenLastCalledWith("s1", '"빵이 짜요. (거친 표현 가림)" 리뷰에 답글 초안 써 줘');
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.draft_reply", args: { review_id: "r04" }, label: "답글 초안 받기" });
+    expect(api.say).not.toHaveBeenCalled();
   });
 });
 

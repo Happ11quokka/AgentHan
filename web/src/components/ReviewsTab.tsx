@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ratingText, REPLY_TEXT, replyAsk, reviewDate, unansweredText } from "../labels";
-import type { ReviewRow, ReviewsView } from "../types";
+import { ratingText, REPLY_TEXT, reviewDate, unansweredText } from "../labels";
+import type { Action, ReviewRow, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
 
@@ -13,7 +13,7 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function Review({ review, busy, onAsk }: { review: ReviewRow; busy: boolean; onAsk: (text: string) => void }) {
+function Review({ review, busy, onAction }: { review: ReviewRow; busy: boolean; onAction: (action: Action) => void }) {
   const [showOriginal, setShowOriginal] = useState(false);
   return (
     <li className="review" data-replied={review.has_owner_reply}>
@@ -33,16 +33,16 @@ function Review({ review, busy, onAsk }: { review: ReviewRow; busy: boolean; onA
           {showOriginal && <p className="review-original">{review.original}</p>}
         </>
       )}
-      <button type="button" className="ghost small" disabled={busy} onClick={() => onAsk(replyAsk(review))}>
+      <button type="button" className="ghost small" disabled={busy} onClick={() => onAction({ action_id: "review.draft_reply", args: { review_id: review.id }, label: "답글 초안 받기" })}>
         답글 초안 받기
       </button>
     </li>
   );
 }
 
-type Props = { loaded: Loaded<ReviewsView>; busy: boolean; onAsk: (text: string) => void };
+type Props = { loaded: Loaded<ReviewsView>; busy: boolean; onAction: (action: Action) => void };
 
-export function ReviewsTab({ loaded, busy, onAsk }: Props) {
+export function ReviewsTab({ loaded, busy, onAction }: Props) {
   const { data, failed, reload } = loaded;
   if (failed) return <LoadFailed message="리뷰를 불러오지 못했어요." onRetry={reload} />;
   if (!data) return <p className="loading">불러오는 중…</p>;
@@ -61,7 +61,7 @@ export function ReviewsTab({ loaded, busy, onAsk }: Props) {
       ) : (
         <ul className="review-list">
           {reviews.map((r) => (
-            <Review key={r.id} review={r} busy={busy} onAsk={onAsk} />
+            <Review key={r.id} review={r} busy={busy} onAction={onAction} />
           ))}
         </ul>
       )}

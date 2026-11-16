@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { RESULT_TEXT } from "../labels";
-import type { Message } from "../types";
+import type { Action, Message } from "../types";
 import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
@@ -17,7 +17,7 @@ type Props = {
   onToggleSide: () => void;
 };
 
-function Bubble({ message }: { message: Message }) {
+function Bubble({ message, onAction, busy }: { message: Message; onAction: (action: Action) => void; busy: boolean }) {
   if (message.role === "result") {
     return (
       <div className="result" data-saved={message.saved}>
@@ -51,6 +51,13 @@ function Bubble({ message }: { message: Message }) {
       <img className="avatar" src="/agent.png" alt="" />
       <div className="bubble agent">
         <ReplyText text={message.text} />
+        {message.nextActions && message.nextActions.length > 0 && (
+          <div className="suggestions">
+            {message.nextActions.map((action, i) => (
+              <button key={i} type="button" disabled={busy} onClick={() => onAction(action)}>{action.label}</button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -113,7 +120,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               <p>메뉴 등록, 영업시간, 쿠폰, 리뷰까지 말로 하면 제가 대신 해 드려요.</p>
               <div className="suggestions">
                 {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" onClick={() => void chat.send(s)} disabled={!chat.sessionId}>
+                  <button key={s} type="button" onClick={() => void (s === "요즘 리뷰 어때?" ? chat.act({ action_id: "review.summary", args: {}, label: s }) : chat.send(s))} disabled={!chat.sessionId}>
                     {s}
                   </button>
                 ))}
@@ -121,7 +128,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
             </section>
           )}
           {chat.messages.map((m) => (
-            <Bubble key={m.id} message={m} />
+            <Bubble key={m.id} message={m} onAction={(action) => void chat.act(action)} busy={chat.busy} />
           ))}
           {!chat.busy &&
             chat.place &&
@@ -131,6 +138,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
                 place={chat.place!}
                 pending={p}
                 onAnswer={(text) => void chat.send(text)}
+                onAction={(action) => void chat.act(action)}
               />
             ))}
           {chat.busy && (

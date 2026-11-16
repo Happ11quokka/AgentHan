@@ -8,16 +8,16 @@ import type { Tab } from "./Sidecar";
  * - ask: 비서에게 보낼 말(없으면 사진 고르기를 연다)
  * - tab: 같이 보여 줄 사이드카 탭
  */
-export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; tab: Tab }> = [
+export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; action_id?: string; tab: Tab }> = [
   { key: "photo", label: "메뉴 사진 올리기", hint: "메뉴판·음식 사진", icon: "camera", ask: null, tab: "shop" },
-  { key: "reviews", label: "요즘 리뷰", hint: "손님 반응 정리", icon: "star", ask: "요즘 리뷰 어때?", tab: "reviews" },
-  { key: "stats", label: "이번 주 손님", hint: "방문·유입 요약", icon: "chart", ask: "이번 주 손님 얼마나 왔어?", tab: "stats" },
+  { key: "reviews", label: "요즘 리뷰", hint: "손님 반응 정리", icon: "star", ask: "요즘 리뷰 어때?", action_id: "review.summary", tab: "reviews" },
+  { key: "stats", label: "이번 주 손님", hint: "방문·유입 요약", icon: "chart", ask: "이번 주 손님 얼마나 왔어?", action_id: "stats.week", tab: "stats" },
   {
     key: "coupon",
     label: "쿠폰 만들기",
     hint: "할인으로 손님 부르기",
     icon: "ticket",
-    ask: "손님에게 줄 쿠폰을 만들고 싶어요",
+    ask: "손님에게 줄 쿠폰을 만들고 싶어요", // 쿠폰 폼이 생기기 전까지는 대화로 값을 묻는다
     tab: "shop",
   },
 ];

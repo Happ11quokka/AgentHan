@@ -25,7 +25,8 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
     setNavOpen(false);
     setTab(q.tab);
     setSideOpen(true); // 좁은 화면에서는 접힌 사이드카를 펼쳐 보여 준다
-    if (q.ask) void chat.send(q.ask);
+    if (q.action_id) void chat.act({ action_id: q.action_id, args: {}, label: q.label });
+    else if (q.ask) void chat.send(q.ask);
     else photoInput.current?.click();
   };
 
@@ -64,7 +65,7 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
         report={report}
         period={period}
         onPeriod={setPeriod}
-        onAsk={(text) => void chat.send(text)}
+        onAction={(action) => void chat.act(action)}
         onClose={() => setSideOpen(false)}
       />
       <button

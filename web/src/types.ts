@@ -46,24 +46,29 @@ export type DraftRow = {
 
 export type Pending = {
   task_id: string;
+  version?: number;
+  reply?: string;
+  review_id?: string;
   feature: string;
-  after: Place | null;
-  changes: Partial<Record<keyof Place, SectionChanges>>;
+  after?: Place | null;
+  changes?: Partial<Record<keyof Place, SectionChanges>>;
   error?: string;
-  kind?: "photo";
+  kind?: "photo" | "review";
   drafts?: DraftRow[];
 };
 
 export type View = { place: Place; pending: Pending[] };
 
-export type Turn = View & { reply: string };
+export type Action = { action_id: string; label: string; args: Record<string, unknown> };
+
+export type Turn = View & { reply: string; next_actions?: Action[] };
 
 export type Started = View & { session_id: string };
 
 /** 대화창에 쌓이는 것: 사장님 말, 비서 답, 승인 카드가 끝난 결과. */
 export type Message =
   | { id: number; role: "owner"; text: string; image?: string; hadImage?: boolean }
-  | { id: number; role: "agent"; text: string }
+  | { id: number; role: "agent"; text: string; nextActions?: Action[] }
   | { id: number; role: "result"; saved: boolean; lines: string[] };
 
 // ── 리뷰·손님 통계 탭 (/reviews, /report) ──

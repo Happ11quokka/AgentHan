@@ -4,10 +4,10 @@ import { ApiError, type AssistantApi } from "./api";
 import { describeChanges } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
-import type { LogEntry, Message, Pending, Place, Turn, View } from "./types";
+import type { Action, LogEntry, Message, Pending, Place, Turn, View } from "./types";
 
 /** 실패했을 때 [다시 시도]가 되풀이할 일. */
-type Retryable = { kind: "send"; text: string; image?: File } | { kind: "open"; id: string } | { kind: "start" };
+type Retryable = { kind: "action"; action: Action } | { kind: "send"; text: string; image?: File } | { kind: "open"; id: string } | { kind: "start" };
 
 export type Conversation = {
   sessionId: string | null;
@@ -20,6 +20,7 @@ export type Conversation = {
   online: boolean;
   error: string | null;
   send: (text: string, image?: File) => Promise<void>;
+  act: (action: Action) => Promise<void>;
   retry: () => void;
   newChat: () => Promise<void>;
   open: (id: string) => Promise<void>;
@@ -108,8 +109,9 @@ export function useConversation(api: AssistantApi): Conversation {
     const before = latest.current;
     const resolved = before.pending.length > 0 && turn.pending.length === 0;
     const lines = resolved && before.place ? describeChanges(before.place, turn.place) : [];
-    const added: Message[] = [{ id: newId(), role: "agent", text: turn.reply }];
-    if (resolved) added.push({ id: newId(), role: "result", saved: lines.length > 0, lines });
+    const added: Message[] = [{ id: newId(), role: "agent", text: turn.reply, nextActions: turn.next_actions }];
+    if (resolved && before.pending.some((p) => p.kind !== "review"))
+      added.push({ id: newId(), role: "result", saved: lines.length > 0, lines });
     if (lines.length) setLog((l) => [...l, { at: Date.now(), lines }]);
     setMessages((m) => [...m, ...added]);
     setPlace(turn.place);
@@ -141,12 +143,29 @@ export function useConversation(api: AssistantApi): Conversation {
     [perform, sessionId],
   );
 
+  const performAction = useCallback(async (action: Action) => {
+    if (!sessionId) return;
+    const turn = await attempt({ kind: "action", action }, () => api.act(sessionId, action));
+    if (turn) applyTurn(turn);
+  }, [api, applyTurn, attempt, sessionId]);
+
+  const act = useCallback(async (action: Action) => {
+    if (!sessionId || inFlight.current) return;
+    if (!latest.current.messages.some((m) => m.role === "owner")) {
+      storage.rememberRecent({ id: sessionId, title: action.label, at: Date.now() });
+      setRecent(storage.loadRecent());
+    }
+    setMessages((m) => [...m, { id: newId(), role: "owner", text: action.label }]);
+    await performAction(action);
+  }, [performAction, sessionId]);
+
   const retry = useCallback(() => {
     const job = toRetry.current;
     if (!job || job.kind === "start") void newChat();
     else if (job.kind === "open") void open(job.id);
+    else if (job.kind === "action") void performAction(job.action);
     else void perform(job.text, job.image);
-  }, [newChat, open, perform]);
+  }, [newChat, open, perform, performAction]);
 
   const started = useRef(false);
   useEffect(() => {
@@ -156,5 +175,5 @@ export function useConversation(api: AssistantApi): Conversation {
     void (last ? open(last.id) : newChat());
   }, [newChat, open]);
 
-  return { sessionId, messages, place, pending, log, recent, busy, online, error, send, retry, newChat, open };
+  return { sessionId, messages, place, pending, log, recent, busy, online, error, send, act, retry, newChat, open };
 }
