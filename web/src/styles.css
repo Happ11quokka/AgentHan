@@ -382,6 +382,25 @@ p {
   border-bottom-left-radius: 6px;
 }
 
+.bubble.agent > * + * {
+  margin-top: 8px;
+}
+
+.bubble.agent ul,
+.bubble.agent ol {
+  padding-left: 20px;
+  word-break: keep-all;
+}
+
+.bubble.agent blockquote {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--green);
+  background: var(--surface);
+  border-radius: 8px;
+  word-break: keep-all;
+}
+
 .bubble.owner {
   background: var(--green);
   color: #fff;

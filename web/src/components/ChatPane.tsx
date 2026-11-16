@@ -5,6 +5,7 @@ import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
+import { ReplyText } from "./ReplyText";
 
 const SUGGESTIONS = ["메뉴판 사진으로 메뉴 올리고 싶어요", "일요일에도 10시부터 6시까지 열래요", "요즘 리뷰 어때?"];
 
@@ -49,7 +50,7 @@ function Bubble({ message }: { message: Message }) {
     <div className="row agent">
       <img className="avatar" src="/agent.png" alt="" />
       <div className="bubble agent">
-        <p>{message.text}</p>
+        <ReplyText text={message.text} />
       </div>
     </div>
   );

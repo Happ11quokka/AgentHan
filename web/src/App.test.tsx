@@ -48,6 +48,33 @@ describe("대화", () => {
     expect(screen.queryByRole("status", { name: "비서가 답을 쓰는 중" })).not.toBeInTheDocument();
   });
 
+  test("비서 답의 시스템 줄(JSON·더미 안내)은 숨기고 굵게·목록·인용은 모양으로 보인다", async () => {
+    const saved =
+      '저장했어요.\n더미 저장 확인 (실제 발송 없음): [{"ok": true, "action": "updated", "record": {"id": "m01"}}]';
+    const asked =
+      '메뉴 등록·수정: 아래처럼 바꿀까요? (더미 저장소, 실제 네이버 반영 없음)\n{"id": "m01", "price": 9000}\n네 / 취소 / 고칠 내용 말하기';
+    const draftReply =
+      '초안을 만들었어요.\n**답글 초안** · 리뷰: "웨이팅이 길었어요."\n> 기다리게 해서 죄송해요.\n- 첫째 줄\n1. 둘째 줄';
+    const api = fakeApi([
+      { reply: saved, place: SEED, pending: [] },
+      { reply: asked, place: SEED, pending: [] },
+      { reply: draftReply, place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await say(user, "메도빅 9000원");
+    expect(await chatArea().findByText("저장했어요.")).toBeInTheDocument();
+    await say(user, "메도빅 9000원으로");
+    expect(await chatArea().findByText("메뉴 등록·수정: 아래처럼 바꿀까요?")).toBeInTheDocument();
+    await say(user, "웨이팅 리뷰 답글");
+    const bold = await chatArea().findByText("답글 초안");
+    expect(bold.tagName).toBe("STRONG");
+    expect(chatArea().getByText("기다리게 해서 죄송해요.").closest("blockquote")).not.toBeNull();
+    expect(chatArea().getByText("첫째 줄").tagName).toBe("LI");
+    expect(chatArea().getByText("둘째 줄").tagName).toBe("LI");
+    const all = screen.getByRole("main", { name: "비서와 대화" }).textContent ?? "";
+    for (const hidden of ["더미", "{", "**", "네 / 취소"]) expect(all).not.toContain(hidden);
+  });
+
   test("서버가 실패하면 쉬운 말로 알리고 다시 시도하면 같은 말을 보낸다", async () => {
     const api = fakeApi([offline(), { reply: "다시 왔어요.", place: SEED, pending: [] }]);
     const { user } = await open(api);
