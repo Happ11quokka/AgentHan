@@ -335,3 +335,25 @@ def test_guide_examples_are_not_evaluation_cases():
         for say, _ in guide["examples"]:
             for quoted in re.findall(r'"([^"]+)"', say):
                 assert re.sub(r"\W", "", quoted) not in norm, quoted
+
+
+def test_held_values_do_not_jump_to_other_days(tmp_path, mock_index):
+    """#76: a refused '이번 주 일요일 쉬어' (the model's day was wrong) left closed=true held,
+    and the next '평일 마감 10시로' previewed Mon-Fri as closed."""
+    select = Select(picked("business_hours"), picked("business_hours"))
+    fake = FakeChat(
+        call("update_business_hours", {"days": ["2026-11-22"], "closed": True}),
+        answer("이번 주 일요일이 언제인가요?"),
+        call(
+            "update_business_hours",
+            {"days": ["mon", "tue", "wed", "thu", "fri"], "close_time": "22:00"},
+            "c2",
+        ),
+    )
+    bot = bot_with(tmp_path, mock_index, fake, select, "business_hours")
+    bot.today = date(2026, 11, 9)
+    bot.ask("이번 주 일요일 쉬어")
+    bot.ask("평일 마감 10시로")
+    arguments = json.loads(bot.pending_action["arguments"])
+    assert "closed" not in arguments
+    assert arguments["close_time"] == "22:00"

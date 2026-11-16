@@ -789,12 +789,33 @@ class OwnerAssistant:
             # "메도빅 가격 지금 얼마죠?" while another change waits: DASH tends to say none,
             # but a menu of this shop by name plus a price word is the menu feature.
             return Route("menu", "menu_name", candidates=choice.candidates, act=choice.act)
+        named = self._named_over_open_task(text, ranked, choice.feature_id, pending)
+        if named is not None:
+            # An open task pulls DASH to it or to none: '오늘 예약 보여 줘' stayed in reviews,
+            # '답 안 한 톡톡 있어?' went nowhere (#76). A write still waits for approval.
+            return Route(named, "keyword", candidates=choice.candidates)
         read_feature = self._only_read_keyword(text, ranked, choice.feature_id)
         if read_feature is not None:
             # "부재중 전화 몇 통이에요?" sent to 톡톡 while a reservation waits (1 of 6): the only
             # keyword hit is a read feature and DASH picked one with no hit. Reads write nothing.
             return Route(read_feature, "keyword", candidates=choice.candidates)
         return Route(choice.feature_id, "select", candidates=choice.candidates, act=choice.act)
+
+    @staticmethod
+    def _named_over_open_task(
+        text: str, ranked, chosen: str | None, pending: str | None
+    ) -> str | None:
+        """The feature the owner named outright instead of the open task, or None.
+
+        Only while a task is open, when exactly one feature's keyword is in the words, that
+        feature is not the open one, and DASH stayed with the open task or chose none."""
+        if pending is None or chosen not in (None, pending):
+            return None
+        hits = {m.feature_id for m in ranked if m.matched_terms}
+        if len(hits) != 1:
+            return None
+        (only,) = hits
+        return None if only == pending else only
 
     @staticmethod
     def _only_read_keyword(text: str, ranked, chosen: str | None) -> str | None:
@@ -1147,7 +1168,8 @@ class OwnerAssistant:
                 return self._finish(message["content"], saved, missing)
             # 월·금 packed into one call (closed=[true, false]): one call per item, so each is
             # checked and previewed on its own (two-hours-while-pending, 4 of 5 runs).
-            calls = message["tool_calls"] = self._unpack_items(feature_id, calls)
+            calls = self._merge_items(feature_id, self._unpack_items(feature_id, calls))
+            message["tool_calls"] = calls
             self.history.append(message)
             over_limit = count + len(calls) > self.max_tool_calls
             for call in calls:
@@ -1263,6 +1285,40 @@ class OwnerAssistant:
                     {**call, "id": f"{call['id']}-{i}", "function": {**fn, "arguments": arguments}}
                 )
         return out
+
+    @staticmethod
+    def _merge_items(feature_id: str, calls: list[dict]) -> list[dict]:
+        """Calls of one tool that differ only in their items become one call (#76: '평일 마감
+        10시로' came back as five one-day calls, over the call limit)."""
+        params = tool_params(feature_id) if feature_id in TOOLS else []
+        lists = [p[0] for p in params if p[1].endswith("list")]
+        if len(lists) != 1 or len(calls) < 2:
+            return calls
+        groups: dict[str, list] = {}
+        for call in calls:
+            fn = call["function"]
+            try:
+                raw = fn.get("arguments")
+                args = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError:
+                return calls
+            if not isinstance(args, dict) or not isinstance(args.get(lists[0]), list):
+                return calls
+            rest = {k: v for k, v in args.items() if k != lists[0]}
+            key = fn["name"] + json.dumps(rest, ensure_ascii=False, sort_keys=True)
+            groups.setdefault(key, [call, rest, []])[2].extend(args[lists[0]])
+        if len(groups) == len(calls):
+            return calls
+        return [
+            {
+                **first,
+                "function": {
+                    **first["function"],
+                    "arguments": json.dumps({lists[0]: items, **rest}, ensure_ascii=False),
+                },
+            }
+            for first, rest, items in groups.values()
+        ]
 
     @staticmethod
     def _read_needs_nothing_new(feature_id: str, schema: dict, text: str) -> bool:
@@ -1500,6 +1556,13 @@ class OwnerAssistant:
         # Held values fill in the change being collected, not a new item of a batch. A second
         # call in the turn that already previewed one is a new item (월요일 휴무 + 금요일 9시).
         slots = {} if self._adding or self._previewed_now() else dict(task.slots)
+        items = [p[0] for p in params if p[1].endswith("list")]
+        if len(items) == 1 and items[0] in given:
+            held = slots.get(items[0])
+            if held is None or held.value != given[items[0]]:
+                # Other days are another change: a refused '이번 주 일요일 쉬어' must not
+                # close the weekdays of the next '평일 마감 10시로' (#76).
+                slots = {}
         merged = {**{k: s.value for k, s in slots.items()}, **given}
         store = self.store.read()
         if feature_id == "search_keywords":

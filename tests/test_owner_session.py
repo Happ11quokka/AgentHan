@@ -610,3 +610,48 @@ def test_a_read_question_with_its_only_keyword_goes_to_that_read_feature():
     assert pick("오늘 들어온 주문 있어요?", ranked, "coupon") is None  # 주문 writes.
     ranked = place_matcher.rank_features("부재중 전화 기록 지워 줘", None)
     assert pick("부재중 전화 기록 지워 줘", ranked, "talktalk") is None  # Not a question.
+
+
+def test_a_feature_named_outright_wins_over_the_open_task():
+    """#76: with a review draft open, '답 안 한 톡톡 있어?' went nowhere and '오늘 예약 보여 줘'
+    stayed in reviews; with a reservation open, '들어온 주문 접수해 줘' stayed in reservations."""
+    from agenthan.agent import place_matcher
+
+    pick = owner.OwnerAssistant._named_over_open_task
+
+    def case(text, chosen, pending):
+        return pick(text, place_matcher.rank_features(text, None), chosen, pending)
+
+    assert case("답 안 한 톡톡 있어?", None, "review") == "talktalk"
+    assert case("오늘 예약 보여 줘", "review", "review") == "reservation"
+    assert case("들어온 주문 접수해 줘", "reservation", "reservation") == "order"
+    # Nothing open, the open task itself, or a go-ahead with no feature named: DASH stands.
+    assert case("오늘 예약 보여 줘", None, None) is None
+    assert case("예약 확정해 줘", "reservation", "reservation") is None
+    assert case("네 확정해 주세요", "reservation", "reservation") is None
+    # DASH chose a third feature: not this rule's call.
+    assert case("오늘 예약 보여 줘", "order", "review") is None
+
+
+def test_one_call_per_weekday_is_merged_into_one_change():
+    """#76: '평일 마감 10시로' came back as five calls (one per weekday), over the three-call
+    limit, so the turn failed with '도구 호출 한도'. Calls that differ only by day become one."""
+
+    def call(i, args):
+        return {
+            "id": f"c{i}",
+            "type": "function",
+            "function": {"name": "update_business_hours", "arguments": json.dumps(args)},
+        }
+
+    days = ["mon", "tue", "wed", "thu", "fri"]
+    calls = [call(i, {"days": [d], "close_time": "22:00"}) for i, d in enumerate(days)]
+    merged = owner.OwnerAssistant._merge_items("business_hours", calls)
+    assert len(merged) == 1
+    assert json.loads(merged[0]["function"]["arguments"]) == {"days": days, "close_time": "22:00"}
+    # Different hours per day stay separate calls.
+    mixed = [
+        call(0, {"days": ["mon"], "close_time": "22:00"}),
+        call(1, {"days": ["sat"], "closed": True}),
+    ]
+    assert owner.OwnerAssistant._merge_items("business_hours", mixed) == mixed
