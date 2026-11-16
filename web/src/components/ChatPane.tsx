@@ -135,7 +135,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
             ))}
           {chat.busy && (
             <div className="row agent" role="status" aria-label="비서가 답을 쓰는 중">
-              <img className="avatar" src="/agent.png" alt="" />
+              <img className="avatar working" src="/agent.png" alt="" />
               <div className="bubble agent typing">
                 <span />
                 <span />

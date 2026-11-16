@@ -1560,3 +1560,18 @@ p {
     animation: none !important;
   }
 }
+
+/* 비서가 일하는 동안 로봇이 위아래로 통통 뛴다. */
+@keyframes hop {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  15% { transform: translateY(0) scale(1.06, 0.94); }
+  45% { transform: translateY(-22%) scale(0.97, 1.04); }
+  75% { transform: translateY(0) scale(1.04, 0.96); }
+}
+img.working {
+  animation: hop 0.8s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  img.working { animation: none; }
+}

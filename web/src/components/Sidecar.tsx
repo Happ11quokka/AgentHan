@@ -47,7 +47,7 @@ export function Sidecar(props: Props) {
         <Icon name="close" />
       </button>
       <section className="profile">
-        <img src="/agent.png" alt="비서 프로필" />
+        <img src="/agent.png" alt="비서 프로필" className={props.busy ? "working" : undefined} />
         <div>
           <strong>사장님 비서</strong>
           <span className="online" data-online={online}>
