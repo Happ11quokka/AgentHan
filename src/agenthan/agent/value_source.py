@@ -121,10 +121,30 @@ def _dates(text: str, today: date) -> set[str]:
                 out.add(date(year, month, day).isoformat())
             except ValueError:
                 pass
-    for word, delta in (("오늘", 0), ("내일", 1), ("모레", 2), ("글피", 3)):
+    for word, delta in RELATIVE_DAYS:
         if word in text:
             out.add((today + timedelta(days=delta)).isoformat())
+    # Week-relative (#75): '이번 주 일요일' is one day; '이번 주(까지)' is every day of that week.
+    monday = today - timedelta(days=today.weekday())
+    for m in re.finditer(
+        rf"(?<![가-힣])({WEEK_WORDS})\s*주(?=$|[\s\d?.!,]|에|엔|까지|부터|는|도|중|내)"
+        rf"\s*(?:({DAY_SYLLABLES})(?:요일|욜))?",
+        text,
+    ):
+        start = monday + timedelta(weeks=WEEK_OFFSETS[m.group(1)])
+        if m.group(2):
+            out.add((start + timedelta(days=DAY_SYLLABLES.index(m.group(2)) // 2)).isoformat())
+        else:
+            out.update((start + timedelta(days=i)).isoformat() for i in range(7))
     return out
+
+
+RELATIVE_DAYS = (
+    ("그저께", -2), ("그제", -2), ("어제", -1), ("오늘", 0), ("내일", 1), ("모레", 2), ("글피", 3)
+)  # fmt: skip
+WEEK_OFFSETS = {"지난": -1, "저번": -1, "이번": 0, "다음": 1, "담": 1, "다다음": 2}
+WEEK_WORDS = "다다음|지난|저번|이번|다음|담"
+DAY_SYLLABLES = "월|화|수|목|금|토|일"  # index // 2 is the weekday number
 
 
 def _times(text: str) -> set[str]:

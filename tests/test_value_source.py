@@ -103,3 +103,29 @@ def test_new_tool_inputs_need_the_owners_words():
 def test_wrong_shapes_are_unconfirmed_not_errors():
     hours = {"days": ["fri"], "open_time": ["09:00"], "close_time": "23:00"}
     assert check("business_hours", hours, "금요일은 9시부터 밤 11시까지요")[1] == ["여는 시간"]
+
+
+def test_week_relative_dates_count_as_the_owners_words():
+    """#75: '이번 주 일요일 쉬어', '이번 주까지' were asked back although today fixes them."""
+    monday = date(2026, 11, 9)
+
+    def missing(feature, args, said):
+        return vs.check(tool_params(feature), args, said, STORE, today=monday)[1]
+
+    def closed(day):
+        return {"days": [day], "closed": True}
+
+    assert missing("business_hours", closed("2026-11-15"), "이번 주 일요일 쉬어") == []
+    assert missing("business_hours", closed("2026-11-14"), "이번 주 토요일 쉬어") == []
+    assert missing("business_hours", closed("2026-11-16"), "다음 주 월요일 쉬어") == []
+    coupon = {
+        "title": "메도빅 10% 할인",
+        "discount_type": "percent",
+        "discount_value": 10,
+        "start_date": "2026-11-09",
+        "end_date": "2026-11-15",
+    }
+    assert missing("coupon", coupon, "메도빅 10% 할인 쿠폰 이번 주까지 만들어 줘") == []
+    # Still refused: a day of another week, or a week the owner did not name.
+    assert missing("business_hours", closed("2026-11-22"), "이번 주 일요일 쉬어")
+    assert missing("coupon", coupon | {"end_date": "2026-11-22"}, "메도빅 10% 쿠폰 이번 주까지")
