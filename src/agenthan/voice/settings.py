@@ -24,7 +24,7 @@
 | `PHONE_CONT_WAIT_S` | 이어질 모양("-하고", "음")이면 마지막 말 끝부터 기다리는 초 | `2.0` |
 | `PHONE_MORE_NO_WAIT_S` | "더 필요하신 거?" 뒤 맨 "아니요"를 말 끝부터 기다림(초). 0은 끔 | `1.2` |
 | `PHONE_MIC_CLOSE` | 반이중 마이크 닫기: `playback`(실제 재생 시작) · `state`(전처럼) | 앞의 것 |
-| `PHONE_TURN_REWIND` | `on`이면 첫 소리 전에 이어 한 말을 앞 턴에 합쳐 다시 처리(되감기) | `off` |
+| `PHONE_TURN_REWIND` | `on`이면 첫 소리 전에 이어 한 말을 앞 턴에 합쳐 다시 처리(되감기) | `on` |
 | `PHONE_GATE_MAX_S` | 되감기 문지기가 글 없는 소리를 기다리는 상한(초) | `3.0` |
 | `PHONE_ACK_FIRST` | `on`이면 받아들인 대답 앞에 고정 문장 "네."를 따로 낸다 | `off` |
 | `PHONE_SMOKE_KEY` | 스모크 통화 열쇠. 같은 값을 보낸 통화는 사장님 화면·주문에 안 간다 | 없음 |
@@ -146,7 +146,9 @@ class VoiceSettings:
     more_no_wait_s: float = MORE_NO_WAIT_S
     # 반이중에서 마이크를 닫는 때 (6단계 티켓 02). playback: 실제 재생 시작, state: 전처럼
     mic_close: MicCloseName = "playback"
-    # 첫 소리 문지기 + 앞 턴 되감기 (6단계 티켓 02 추천안). 기본 끔. 실기기 확인 뒤 켠다
+    # 첫 소리 문지기 + 앞 턴 되감기 (6단계 티켓 02 추천안). 11/16 실기기 통화 2건에서 쪼개진 턴
+    # 7개가 모두 앞 턴 첫 소리 전에 시작한 말이라 서버(`from_env`)는 기본으로 켠다. 이 필드 기본은
+    # 세션 기본(`SessionSettings`)과 같이 끔: 세션 테스트들이 꺼진 동작(다음 턴으로 쌓기)을 본다
     turn_rewind: bool = False
     gate_max_s: float = 3.0  # 문지기 상한: 글 없는 소리는 여기까지만 기다린다
     # 받아들인 대답 앞에 고정 문장 "네." (6단계 품질). 억양을 들어 보기 전이라 기본 끔
@@ -314,7 +316,7 @@ class VoiceSettings:
             more_no_wait_s=_number("PHONE_MORE_NO_WAIT_S", get("PHONE_MORE_NO_WAIT_S", ""),
                                    MORE_NO_WAIT_S, allow_zero=True),
             mic_close=get("PHONE_MIC_CLOSE", "playback"),  # type: ignore[arg-type]
-            turn_rewind=_switch("PHONE_TURN_REWIND", get("PHONE_TURN_REWIND", "off")),
+            turn_rewind=_switch("PHONE_TURN_REWIND", get("PHONE_TURN_REWIND", "on")),
             gate_max_s=_number("PHONE_GATE_MAX_S", get("PHONE_GATE_MAX_S", ""), 3.0),
             ack_first=_switch("PHONE_ACK_FIRST", get("PHONE_ACK_FIRST", "off")),
             smoke_key=get("PHONE_SMOKE_KEY", ""),

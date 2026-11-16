@@ -100,15 +100,15 @@ def test_the_mic_closes_at_playback_start_by_default_and_can_go_back_to_the_stat
         VoiceSettings.from_env({"PHONE_MIC_CLOSE": "never"}, env_file=None)
 
 
-def test_turn_rewind_is_off_by_default_and_turned_on_by_name() -> None:
-    # 6단계 티켓 02 추천안. 실기기 확인 전이라 기본은 꺼짐
+def test_turn_rewind_is_on_by_default_and_turned_off_by_name() -> None:
+    # 6단계 티켓 02 추천안. 11/16 실기기 통화에서 쪼개진 턴이 모두 첫 소리 전 말이라 기본으로 켬
     default = VoiceSettings.from_env({}, env_file=None)
-    assert default.turn_rewind is False
-    assert default.session_settings().turn_rewind is False
+    assert default.turn_rewind is True
+    assert default.session_settings().turn_rewind is True
     assert default.session_settings().gate_max_s == 3.0
-    s = VoiceSettings.from_env({"PHONE_TURN_REWIND": "on", "PHONE_GATE_MAX_S": "2"},
+    s = VoiceSettings.from_env({"PHONE_TURN_REWIND": "off", "PHONE_GATE_MAX_S": "2"},
                                env_file=None)
-    assert s.session_settings().turn_rewind is True
+    assert s.session_settings().turn_rewind is False
     assert s.session_settings().gate_max_s == 2.0
     for name, wrong in (("PHONE_TURN_REWIND", "true"), ("PHONE_GATE_MAX_S", "0")):
         with pytest.raises(SettingsError, match=name):

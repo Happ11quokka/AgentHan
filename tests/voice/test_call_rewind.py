@@ -560,3 +560,25 @@ def test_the_thinking_cue_is_not_played_over_the_customer_who_is_still_talking(t
     c = run(call())
     assert c.out.of("bot.thinking", 2) == []
     assert finals(c)[-1] == (3, "아니요 그게 다예요")
+
+
+def test_device_1116_a_time_said_right_after_okay_joins_it(tmp_path) -> None:
+    # 11/16 실기기(아이폰): "몇 시쯤 오세요?"에 "오케이" … "6시". 꺼져 있을 때는 "오케이"에 되묻고
+    # "6시"는 다음 턴이 됐다. "6시"는 앞 턴 첫 소리 0.3초 전에 시작했다. 켜면 한 턴으로 읽는다
+    stt = FakeSttStream(replies=["메도빅 하나요", "그게 다예요", "오케이", "6시"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, tts=slow(SORRY, PICKUP_Q), settings=on()) as c:
+            await c.start()
+            await c.turn(1)
+            await c.turn(2)
+            await speak_again_while_thinking(c, 3)  # "오케이" … "6시"
+            await c.out.wait_for("bot.done", turn=4)
+            await c.played(4)
+            return c
+
+    c = run(call())
+    assert finals(c)[-1] == (4, "오케이 6시")
+    assert said(c, 3) == []
+    assert SORRY not in said(c, 4)
+    assert c.out.of("state")[-1]["dialog"] == "confirm"

@@ -155,7 +155,7 @@
 | 규칙 (`dialog/rules.py`) | 켬 | 없음 | "아니요/아뇨 + 끝 표현"(그게 다예요·그게 다요·그게 끝이에요·됐어요·없어요·괜찮아요, STT 표기 흔들림 포함)과 "없어요"를 NLU 없이 `[no, done_ordering]`으로 읽는다. 합친 말이 HCX(약 1초)를 안 탄다 |
 | 맨 "아니요" 짧은 대기 (`call/turn_end.py`) | 켬, 1.2초 | `PHONE_MORE_NO_WAIT_S` (0이면 끔) | 추가 주문 질문("더 필요하신 거 있으세요?") 뒤 맨 "아니요"는 말 끝부터 1.2초까지만 이어짐으로 기다린다. 그 안에 덧붙이면 한 턴 |
 | 마이크 닫는 때 (`call/session.py`, 웹) | 실제 재생 시작 | `PHONE_MIC_CLOSE=playback\|state` | 브라우저가 `state: speaking`이 아니라 봇 소리가 실제로 재생되기 시작할 때 0 프레임으로 바꾼다. 서버 반이중 경계도 같은 때 |
-| 첫 소리 문지기 + 앞 턴 되감기 (`call/session.py`, `dialog/engine.py`) | **끔** | `PHONE_TURN_REWIND=on`, `PHONE_GATE_MAX_S`(3.0) | 봇 답의 첫 소리 전에 손님이 말을 이으면 그 답을 버리고 엔진을 턴 전으로 되돌려 합친 말로 다시 처리한다 |
+| 첫 소리 문지기 + 앞 턴 되감기 (`call/session.py`, `dialog/engine.py`) | **켬** (11/16 실기기 뒤) | `PHONE_TURN_REWIND=off`로 끔, `PHONE_GATE_MAX_S`(3.0) | 봇 답의 첫 소리 전에 손님이 말을 이으면 그 답을 버리고 엔진을 턴 전으로 되돌려 합친 말로 다시 처리한다 |
 
 - **규칙**: 발화 전체가 그 꼴일 때만 건다. "아니요 아메리카노도 하나요"처럼 내용 있는 뒷말, 머리말 없는 "그게 다예요"·"괜찮아요"(다른 질문의 답일 수 있다)는 전처럼 NLU로 간다. 낸 act가 NLU와 같은 모양이라 상태별 뜻은 엔진이 그대로 정한다: "더 필요하신 거?" 뒤면 주문 끝, 복창("…맞으세요?") 중이면 확정도 확정 거부도 아니다("죄송해요, 제가 잘 못 알아들었어요" + 복창 다시). 맨 "아니요"는 전처럼 확정 거부("어떤 걸 고쳐 드릴까요?"). 엔진은 이 규칙을 주문 받는 중과 복창 중에만 쓴다(`_takes_no_and_done`). 메뉴 확인("맞으세요?")·시각 제안("괜찮으세요?")·취소 확인을 기다리는 중에는 "아니요"가 그 질문의 답일 수 있어 전처럼 NLU가 읽는다
 - **맨 "아니요" 짧은 대기**: 직전 질문 종류에 `more`(주문 받는 중 + 끝말 "있으세요?"·"없으세요?")를 뒀다. STT 글이 말 끝 + 0.8~1.0초에 오므로 실제로 더 기다리는 것은 약 0.2~0.4초다. 턴 모델(Smart Turn)은 짧은 "아니요"를 끝으로 보므로 이 판정은 모델보다 앞선다(`firm`). 맨 "네"는 건드리지 않는다(엔진이 "어떤 걸로 드릴까요?"로 받는다). 확인 질문 뒤 "네"·"아니요"는 전처럼 바로 끝이다. 턴 기록: 근거 `no_after_more`(뒷말과 합쳐짐) · `cap:no_after_more`(혼자 넘어감)
@@ -164,7 +164,7 @@
   - 브라우저: 그 턴 첫 조각의 **재생 예약 시각**에 닫는다. 재생 시작 타이머가 늦어도(바쁜 메인 스레드·뒤로 간 탭) 마이크 프레임을 올릴 때마다 오디오 시계(`AudioContext.currentTime`)로 다시 봐서, 예약 시각에 닿은 뒤의 프레임은 0이다. 스피커는 예약 시각보다 `outputLatency`만큼 더 늦게 소리를 내므로 봇 소리가 나간 뒤의 구간은 열려 있지 않다. 말 끊기 버튼도 소리가 난 뒤부터 보인다
   - 서버: 그 턴 첫 문장의 `playback.started`를 받은 오디오 시각으로 반이중 경계를 옮긴다(뒤로만, 첫 소리 송신 + `play_start_cap_ms` 2초까지). 보고가 없으면 전처럼 첫 소리를 보낸 때다. 복창 앞 "네" 거르기도 같은 경계를 쓴다. 턴 기록 `mic_open_extra_ms`가 더 열어 둔 시간이다
   - 실기기에서 봇 목소리가 손님 말로 잡히면(턴 기록의 `stt.final`에 봇 문장) `PHONE_MIC_CLOSE=state`로 돌린다
-- **첫 소리 문지기 + 앞 턴 되감기** (`PHONE_TURN_REWIND=on`일 때만. 꺼져 있으면 전과 똑같다)
+- **첫 소리 문지기 + 앞 턴 되감기** (기본 켬, `PHONE_TURN_REWIND=off`면 전과 똑같다)
   - 걸기: 손님 턴을 넘긴 뒤(thinking) 무음 감지가 새 말 구간을 보거나 늦은 STT 글이 오면 문지기를 건다. 아무것도 끊지 않는다. 엔진·TTS는 그대로 돈다
   - 기다리기: 첫 소리를 보내기 직전에 문지기가 걸려 있으면 그 말의 결과를 기다린다. 걸려 있지 않은 턴은 바로 지나간다(평소 턴의 지연 0)
   - 풀기: 내용 있는 글이 왔으면 되감는다. 남은 TTS를 취소하고, 엔진을 턴 전 스냅숏으로 되돌리고(`DialogEngine.snapshot()`/`restore()`), 앞 말 + 뒷말을 합쳐 말 끝 판정부터 다시 탄다(새 턴 번호). 빈 글(기침)·맞장구·필러뿐이면 원래 답을 말한다(헛 문지기. 그 맞장구는 다음 턴으로 넘기지 않고 `dropped`에 `gate`로 남긴다). 글 없는 소리는 `PHONE_GATE_MAX_S`(3초)까지만 기다린다
@@ -222,7 +222,7 @@
 - 설정: 환경 변수 → `.env`(지금 폴더). 변수 표는 `settings.py` 머리 주석
   - `PHONE_NLU` fake|hcx, `PHONE_STT` fake|clova, `PHONE_TTS` fake|clova (기본 전부 fake)
   - `PHONE_TZ`(기본 Asia/Seoul), `PHONE_LOG_DIR`(기본 `logs/`, gitignore), `PHONE_NOW`(가게 시작 시각, 시연용. 그 뒤 실제 시간만큼 간다. 멈춘 시계면 질문 카드 마감이 화면 카운트다운과 어긋난다, 리뷰 C2), `PHONE_STORE_FIXTURE`, `PHONE_WEB_DIST`
-  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초), 사장님 질문 답 대기 `PHONE_OWNER_WAIT_S`(20초, 4단계). 늦은 조각(6단계): `PHONE_MORE_NO_WAIT_S`(1.2초, 0이면 끔)·`PHONE_MIC_CLOSE`(playback|state)·`PHONE_TURN_REWIND`(off|on, 기본 off)·`PHONE_GATE_MAX_S`(3초). 품질(6단계): `PHONE_ACK_FIRST`(off|on, 기본 off)·`PHONE_SMOKE_KEY`(스모크 통화 표시 열쇠). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
+  - 통화 한도: `PHONE_MAX_CALLS`(동시 통화, 기본 10. 넘으면 `error{code: "busy"}`), `PHONE_MAX_CALL_S`(통화 하나, 기본 600초). 이어짐 대기 `PHONE_CONT_WAIT_S`(기본 2.0초, 3단계), 무응답 대기 `PHONE_NO_INPUT_S`(6초)·`PHONE_WAIT_REQUEST_S`(15초), 사장님 질문 답 대기 `PHONE_OWNER_WAIT_S`(20초, 4단계). 늦은 조각(6단계): `PHONE_MORE_NO_WAIT_S`(1.2초, 0이면 끔)·`PHONE_MIC_CLOSE`(playback|state)·`PHONE_TURN_REWIND`(off|on, 기본 on)·`PHONE_GATE_MAX_S`(3초). 품질(6단계): `PHONE_ACK_FIRST`(off|on, 기본 off)·`PHONE_SMOKE_KEY`(스모크 통화 표시 열쇠). `PHONE_VAD_*`는 양수만 받고 말 끝 무음은 100ms 이상
   - 엔진 스레드: 라우터 하나가 엔진 전용 스레드 풀(`phone-engine-*`, `PHONE_MAX_CALLS` × 2개)을 갖고 NLU 만들기·엔진 생성·턴을 거기서 돌린다. 루프 기본 풀(2 vCPU에서 6개)은 DNS 조회 등과 같이 쓰고, 시간을 넘긴 엔진 스레드는 취소되지 않고 남기 때문이다(티켓 09)
   - 배포(NCP + Caddy + DuckDNS): 저장소 루트 `deploy/phone/README.md`
   - 키: `CLOVASTUDIO_API_KEY`(hcx), `CLOVA_SPEECH_SECRET_KEY`·`CLOVA_SPEECH_GRPC_ENDPOINT`(STT), `CLOVA_VOICE_CLIENT_ID`·`CLOVA_VOICE_CLIENT_SECRET`(TTS)
