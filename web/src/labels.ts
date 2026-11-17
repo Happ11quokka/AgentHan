@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, ReviewRow } from "./types";
+import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RedraftHint, ReplyError, ReplyOpName, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -109,6 +109,68 @@ export const REVIEW_CARD_TEXT = {
 } as const;
 /** 답글을 올린 뒤 결과 칩·'오늘 한 일'에 남는 한 줄. */
 export const REVIEW_POSTED_TEXT = "리뷰 답글 올림";
+
+// ── 답글 대기함 (리뷰 탭) ──────────────
+export const INBOX_TEXT = {
+  filter: "리뷰 보기",
+  filterWaiting: "기다림",
+  filterAll: "전체",
+  mustRead: "꼭 읽어 보세요",
+  draft: "답글 초안",
+  posted: "올린 답글",
+  post: "올리기",
+  edit: "고치기",
+  skip: "건너뛰기",
+  editBox: "답글 고치기",
+  postEdited: "이대로 올리기",
+  cancel: "취소",
+  redraft: "다시 쓰기",
+  writing: "초안 쓰는 중…",
+  empty: "답글 기다리는 리뷰가 없어요.",
+  simulate: "새 리뷰 도착 (데모)",
+} as const;
+export const waitingText = (n: number) => `답글 기다리는 리뷰 ${n}개`;
+/** 왼쪽 자주 쓰는 일 배지를 읽어 줄 말. */
+export const quickBadgeText = (key: string, n: number) => (key === "reviews" ? waitingText(n) : `${n}개`);
+export const preparingText = (n: number) => `초안 쓰는 중 ${n}개`;
+export const issuesText = (issues: string[]) => `확인이 필요해요: ${issues.join(", ")}`;
+/** 카드 머리의 상태 칩. 답글이 달린 리뷰는 상태와 상관없이 '답글 달림'. */
+export function draftChip(r: ReviewRow): { text: string; tone: Tone } {
+  if (r.has_owner_reply) return { text: REPLY_TEXT.done, tone: "same" };
+  switch (r.draft?.status) {
+    case "ready":
+      return { text: "초안 준비됨", tone: "new" };
+    case "needs_check":
+      return { text: "확인 필요", tone: "need" };
+    case "skipped":
+      return { text: "건너뜀", tone: "same" };
+    case "failed":
+      return { text: "초안 못 씀", tone: "need" };
+    default:
+      return { text: REPLY_TEXT.todo, tone: "need" };
+  }
+}
+export const REDRAFT_HINTS: Array<[RedraftHint, string]> = [
+  ["shorter", "더 짧게"],
+  ["more_apologetic", "더 정중하게"],
+  ["warmer", "더 따뜻하게"],
+];
+/** 카드 버튼을 누른 뒤 그 카드에만 보이는 '하는 중'. 대화창에는 아무것도 남기지 않는다. */
+export const INBOX_WORKING_TEXT: Record<ReplyOpName, string> = {
+  post: "올리는 중…",
+  skip: "건너뛰는 중…",
+  redraft: "다시 쓰는 중…",
+};
+/** 카드 안에 보일 실패 이유. 검사에 걸렸으면 걸린 항목, 아니면 서버가 준 문구. */
+export const replyErrorText = (e: ReplyError) => (e.reason === "checks" && e.issues.length ? issuesText(e.issues) : e.message);
+/** 서버에 닿지 못했을 때(연결 끊김·서버 오류) 카드와 알림에 쓸 이유. */
+export const REPLY_SERVER_ERROR: ReplyError = { reason: "server", message: "서버 오류로 처리하지 못했어요", issues: [] };
+/** 채팅에 올리는 짧은 알림(서버 대화 기록에는 넣지 않는다). */
+export function replyNoticeText(r: Pick<ReviewRow, "visit_date" | "rating">, e: ReplyError) {
+  const why = e.reason === "checks" && e.issues.length ? e.issues.join(", ") : e.message;
+  return `${reviewDate(r.visit_date)} 별점 ${r.rating}점 리뷰 답글을 올리지 못했어요: ${why}`;
+}
+export const REPLY_NOTICE_VIEW = "리뷰 탭에서 보기";
 
 // ── 손님 통계 탭 ───────────────────────
 export const PERIOD_TEXT: Record<Period, string> = { week: "주간", day: "일간" };

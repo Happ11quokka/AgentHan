@@ -1,4 +1,4 @@
-import { whenText } from "../labels";
+import { quickBadgeText, whenText } from "../labels";
 import type { Recent } from "../storage";
 import { Icon, type IconName } from "./Icon";
 import type { Tab } from "./Sidecar";
@@ -34,9 +34,11 @@ type Props = {
   onNew: () => void;
   onOpen: (id: string) => void;
   onQuick: (q: Quick) => void;
+  /** 자주 쓰는 일 옆 숫자 배지(예: reviews → 답글 기다리는 리뷰 수). 0이면 안 보인다. */
+  badges?: Partial<Record<string, number>>;
 };
 
-export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick }: Props) {
+export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges = {} }: Props) {
   return (
     <nav className="nav" aria-label="대화 목록">
       <div className="brand">
@@ -65,6 +67,11 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick }: Props
                 <strong>{q.label}</strong>
                 <small id={`quick-${q.key}`}>{q.hint}</small>
               </span>
+              {Boolean(badges[q.key]) && (
+                <span className="quick-badge" aria-label={quickBadgeText(q.key, badges[q.key] ?? 0)}>
+                  {badges[q.key]}
+                </span>
+              )}
             </button>
           </li>
         ))}

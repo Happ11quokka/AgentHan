@@ -43,6 +43,8 @@ export type Conversation = {
   retry: () => void;
   newChat: () => Promise<void>;
   open: (id: string) => Promise<void>;
+  addLog: (lines: string[]) => void;
+  notify: (text: string, reviewId: string) => void;
 };
 
 let nextId = 1;
@@ -202,6 +204,13 @@ export function useConversation(api: AssistantApi): Conversation {
     if (action.action_id === COUPON_ACTION && sent && action.label === couponActionLabel(sent) && !turn.pending.some((p) => p.feature === "coupon")) setCouponForm(sent);
   }, [api, applyTurn, attempt, sessionId]);
 
+  /** 대화 턴 밖에서 한 일(예: 대기함 [올리기])을 '오늘 한 일'에만 남긴다. */
+  const addLog = useCallback((lines: string[]) => setLog((l) => [...l, { at: Date.now(), lines }]), []);
+  /** 화면에서만 만든 짧은 알림을 대화창에 올린다. 서버 대화 기록에는 넣지 않는다. */
+  const notify = useCallback((text: string, reviewId: string) => {
+    setMessages((m) => [...m, { id: newId(), role: "notice", text, reviewId }]);
+  }, []);
+
   const openCoupon = useCallback((initial?: CouponInput) => setCouponForm(initial ?? blankCoupon()), []);
   const closeCoupon = useCallback(() => setCouponForm(null), []);
 
@@ -257,6 +266,6 @@ export function useConversation(api: AssistantApi): Conversation {
   return {
     sessionId, messages, place, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
-    send, act, retry, newChat, open,
+    send, act, retry, newChat, open, addLog, notify,
   };
 }

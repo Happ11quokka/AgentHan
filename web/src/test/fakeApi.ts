@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { ApiError, type AssistantApi } from "../api";
-import type { Action, DraftRow, Pending, Period, Place, ReportView, ReviewsView, Turn, View } from "../types";
+import type { Action, DraftRow, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, Turn, View } from "../types";
 
 export const SEED: Place = {
   menu: [
@@ -58,7 +58,7 @@ export const withCake: Place = {
 };
 
 export const REVIEWS: ReviewsView = {
-  summary: { count: 2, average_rating: 3, unanswered: 1 },
+  summary: { count: 2, average_rating: 3, unanswered: 1, waiting: 0, preparing: 0 },
   reviews: [
     {
       id: "r04",
@@ -68,6 +68,7 @@ export const REVIEWS: ReviewsView = {
       softened: true,
       original: "빵이 존나 짜요. 사장 인성 쓰레기.",
       has_owner_reply: false,
+      draft: null,
     },
     {
       id: "r01",
@@ -77,9 +78,65 @@ export const REVIEWS: ReviewsView = {
       softened: false,
       original: null,
       has_owner_reply: true,
+      draft: null,
     },
   ],
 };
+
+/** 답글 대기함: 초안 셋(1점 리뷰는 확인 필요, 5점 둘은 준비됨)과 답글 달린 리뷰 하나. */
+export const INBOX: ReviewsView = {
+  summary: { count: 4, average_rating: 3.8, unanswered: 3, waiting: 3, preparing: 0 },
+  reviews: [
+    {
+      id: "r20",
+      visit_date: "2026-11-08",
+      rating: 5,
+      text: "메도빅 최고예요.",
+      softened: false,
+      original: null,
+      has_owner_reply: false,
+      draft: { text: "맛있게 드셔 주셔서 감사합니다.", status: "ready", issues: [] },
+    },
+    {
+      id: "r19",
+      visit_date: "2026-11-07",
+      rating: 1,
+      text: "케이크가 너무 달아요.",
+      softened: false,
+      original: null,
+      has_owner_reply: false,
+      draft: { text: "연락 주시면 010-1234-5678로 안내드릴게요.", status: "needs_check", issues: ["전화번호 등 개인정보"] },
+    },
+    {
+      id: "r18",
+      visit_date: "2026-11-06",
+      rating: 5,
+      text: "커피가 맛있어요.",
+      softened: false,
+      original: null,
+      has_owner_reply: false,
+      draft: { text: "다음에도 찾아 주세요.", status: "ready", issues: [] },
+    },
+    {
+      id: "r01",
+      visit_date: "2026-11-01",
+      rating: 4,
+      text: "자리가 편해요.",
+      softened: false,
+      original: null,
+      has_owner_reply: true,
+      draft: null,
+    },
+  ],
+};
+
+/** INBOX에서 한 리뷰만 바꾼 화면(올림·건너뜀 뒤 다시 읽은 모양). */
+export function inboxWith(id: string, over: Partial<ReviewsView["reviews"][number]>, summary: Partial<ReviewsView["summary"]> = {}): ReviewsView {
+  return {
+    summary: { ...INBOX.summary, ...summary },
+    reviews: INBOX.reviews.map((r) => (r.id === id ? { ...r, ...over } : r)),
+  };
+}
 
 export function report(period: Period = "week"): ReportView {
   const views = period === "week" ? 1260 : 180;
@@ -131,6 +188,12 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
       return view;
     }),
     reviews: vi.fn(async (_id: string) => REVIEWS),
+    simulateReview: vi.fn(async (_id: string) => ({ ...REVIEWS, review_id: "sim-01" })),
+    // 기본: 그 리뷰를 그대로 돌려준다(테스트마다 mockResolvedValue로 결과를 정한다).
+    replyToReview: vi.fn(async (_id: string, reviewId: string, _op: ReplyOp): Promise<ReplyResult> => {
+      const review = INBOX.reviews.find((r) => r.id === reviewId) ?? INBOX.reviews[0];
+      return { review, summary: INBOX.summary };
+    }),
     report: vi.fn(async (_id: string, period: Period) => report(period)),
   } satisfies AssistantApi;
   return api;

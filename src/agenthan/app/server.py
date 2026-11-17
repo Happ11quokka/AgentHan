@@ -15,6 +15,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
+from agenthan.agent.review import inbox
 from agenthan.app import pilot, place, screens
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
@@ -36,6 +37,14 @@ class ButtonAction(BaseModel):
     action_id: str
     args: dict = {}
     label: str
+
+
+class ReplyOp(BaseModel):
+    """답글 대기함 카드 버튼. text: 사장님이 고친 문장(post), hint: inbox.HINTS 값(redraft)."""
+
+    op: Literal["post", "skip", "redraft"]
+    text: str | None = None
+    hint: str | None = None
 
 
 class Session:
@@ -118,10 +127,24 @@ class Session:
         return path.read_bytes(), mime
 
 
+def claim_drafts(session: Session, review_ids: list[str] | None = None) -> Callable[[], None]:
+    """답글 대기함: 대상을 먼저 '생성 중'으로 잡고(그 사이 /reviews가 preparing을 보게) 초안을 쓸
+    함수를 돌려준다. 세션 잠금 안에서 부르고, 돌려받은 함수는 잠금 밖 백그라운드에서 돌린다."""
+    box = inbox.inbox_of(session.assistant)
+    claimed = box.claim_all(review_ids if review_ids is not None else box.targets())
+    return lambda: box.write_claimed(claimed)
+
+
+def in_background(job: Callable[[], None]) -> None:
+    threading.Thread(target=job, daemon=True).start()
+
+
 def create_app(
     make_assistant: Callable[[Path], OwnerAssistant] = OwnerAssistant,
     root: str | Path = DEFAULT_ROOT,
+    prepare_on_start: bool = False,
 ) -> FastAPI:
+    """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -138,6 +161,10 @@ def create_app(
         folder = root / session_id
         folder.mkdir(parents=True)
         session = sessions[session_id] = Session(session_id, make_assistant(folder / "store.json"))
+        if prepare_on_start:
+            with session.lock:
+                job = claim_drafts(session)
+            in_background(job)
         return {"session_id": session_id, **session.view()}
 
     @app.post("/assistant/sessions/{session_id}/messages")
@@ -191,7 +218,52 @@ def create_app(
     def show_reviews(session_id: str) -> dict:
         session = get(session_id)
         with session.lock:
-            return screens.reviews(session.assistant.store.read())
+            view = screens.reviews(session.assistant.store.read())
+            return inbox.annotate(session.assistant, view)
+
+    @app.post("/assistant/sessions/{session_id}/reviews/simulate")
+    def simulate_review(session_id: str) -> dict:
+        """데모: 더미 리뷰 한 건을 더하고 그 리뷰의 초안만 백그라운드로 쓴다."""
+        session = get(session_id)
+        with session.lock:
+            store = session.assistant.store
+            review_id = inbox.inbox_of(session.assistant).simulate_review(store)
+            job = claim_drafts(session, [review_id])
+            view = inbox.annotate(session.assistant, screens.reviews(store.read()))
+        in_background(job)
+        return {"review_id": review_id, **view}
+
+    @app.post("/assistant/sessions/{session_id}/reviews/{review_id}/reply")
+    def reply_to_review(session_id: str, review_id: str, body: ReplyOp) -> dict:
+        """답글 대기함 카드: 올리기·건너뛰기·다시 쓰기. 대화 턴이 아니다: 비서의 대화 기록·작업
+        원장·trace·planner를 거치지 않고 review/inbox.py와 답글 저장 경로만 쓴다.
+        → {review: 그 리뷰(+draft), summary, error?: {reason, message, issues}}"""
+        session = get(session_id)
+        if body.op == "redraft" and body.hint not in inbox.HINTS:
+            raise HTTPException(400, "다시 쓰기 방식을 확인해 주세요.")
+        if body.op != "post" and body.text is not None:
+            raise HTTPException(400, "고친 문장은 올리기에만 보낼 수 있어요.")
+        with session.lock:
+            box = inbox.inbox_of(session.assistant)
+            if not box.has_review(review_id):
+                raise HTTPException(404, "없는 리뷰입니다.")
+            if body.op == "post":
+                outcome = box.post(review_id, body.text)
+            elif body.op == "skip":
+                outcome = box.skip(review_id)
+            else:
+                outcome, job = box.begin_redraft(review_id, body.hint)
+        if body.op == "redraft" and outcome is None:
+            outcome = job()  # HCX 호출은 세션 잠금 밖에서 (그 리뷰는 inbox가 잡아 둠)
+        with session.lock:
+            view = inbox.annotate(
+                session.assistant, screens.reviews(session.assistant.store.read())
+            )
+        row = next(r for r in view["reviews"] if r["id"] == review_id)
+        result = {"review": row, "summary": view["summary"]}
+        if not outcome["ok"]:
+            result["error"] = {k: outcome[k] for k in ("reason", "message", "issues")}
+        return result
 
     @app.get("/assistant/sessions/{session_id}/report")
     def show_report(session_id: str, period: Literal["week", "day"] = "week") -> dict:
@@ -202,4 +274,4 @@ def create_app(
     return app
 
 
-app = create_app(make_assistant=pilot.assistant)
+app = create_app(make_assistant=pilot.assistant, prepare_on_start=True)

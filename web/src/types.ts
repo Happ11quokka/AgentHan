@@ -70,7 +70,9 @@ export type Message =
   | { id: number; role: "owner"; text: string; image?: string; hadImage?: boolean }
   /** cardFor: 이 답이 띄운 승인 카드의 task_id. 카드가 떠 있는 동안 말풍선은 첫 줄만 보인다. */
   | { id: number; role: "agent"; text: string; nextActions?: Action[]; cardFor?: string }
-  | { id: number; role: "result"; saved: boolean; lines: string[] };
+  | { id: number; role: "result"; saved: boolean; lines: string[] }
+  /** 화면에서만 만든 알림(서버 대화 기록에 없음). reviewId: [리뷰 탭에서 보기]가 열 카드. */
+  | { id: number; role: "notice"; text: string; reviewId: string };
 
 // ── 리뷰·손님 통계 탭 (/reviews, /report) ──
 export type ReviewRow = {
@@ -83,10 +85,26 @@ export type ReviewRow = {
   /** 걸렀을 때만 원문. */
   original: string | null;
   has_owner_reply: boolean;
+  /** 답글 대기함이 미리 써 둔 초안(review/inbox.py). 아직 없으면 null. */
+  draft: ReplyDraft | null;
 };
 
+export type DraftStatus = "ready" | "needs_check" | "posted" | "skipped" | "failed";
+/** issues: needs_check일 때 걸린 검사 항목. */
+export type ReplyDraft = { text: string; status: DraftStatus; issues: string[] };
+/** [다시 쓰기] 칩이 보낼 수 있는 값(서버 inbox.HINTS와 같은 것만). */
+export type RedraftHint = "shorter" | "more_apologetic" | "warmer";
+
+/** 답글 대기함 카드 버튼 (POST /reviews/{id}/reply). 대화 턴이 아니다. */
+export type ReplyOpName = "post" | "skip" | "redraft";
+export type ReplyOp = { op: "post"; text?: string } | { op: "skip" } | { op: "redraft"; hint: RedraftHint };
+/** reason: checks(검사 거절) | replied | busy | empty | save_failed | draft_failed | server(화면: 서버에 닿지 못함). */
+export type ReplyError = { reason: string; message: string; issues: string[] };
+export type ReplyResult = { review: ReviewRow; summary: ReviewsView["summary"]; error?: ReplyError };
+
 export type ReviewsView = {
-  summary: { count: number; average_rating: number | null; unanswered: number };
+  /** waiting: 올리기만 기다리는 초안 수(ready+needs_check), preparing: 지금 쓰는 중인 초안 수. */
+  summary: { count: number; average_rating: number | null; unanswered: number; waiting: number; preparing: number };
   reviews: ReviewRow[];
 };
 

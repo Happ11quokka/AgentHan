@@ -1,6 +1,18 @@
-import { useState } from "react";
-import { ratingText, REPLY_TEXT, reviewDate, unansweredText } from "../labels";
-import type { Action, ReviewRow, ReviewsView } from "../types";
+import { useEffect, useState } from "react";
+import {
+  draftChip,
+  INBOX_TEXT,
+  INBOX_WORKING_TEXT,
+  issuesText,
+  preparingText,
+  ratingText,
+  REDRAFT_HINTS,
+  replyErrorText,
+  reviewDate,
+  unansweredText,
+  waitingText,
+} from "../labels";
+import type { Action, ReplyError, ReplyOp, ReplyOpName, ReviewRow, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
 
@@ -13,15 +25,78 @@ export function Stars({ rating }: { rating: number }) {
   );
 }
 
-function Review({ review, busy, onAction }: { review: ReviewRow; busy: boolean; onAction: (action: Action) => void }) {
+type Filter = "waiting" | "all";
+
+/** 별점 1~2점에 아직 답글이 없으면 맨 위로 올리고 '꼭 읽어 보세요'를 붙인다. */
+const mustRead = (r: ReviewRow) => r.rating <= 2 && !r.has_owner_reply;
+/** 사장님이 고를 초안이 있는 카드(올리기·고치기·건너뛰기). */
+const decidable = (r: ReviewRow) => !r.has_owner_reply && Boolean(r.draft?.text) && r.draft?.status !== "failed";
+/** [기다림]에 보일 카드: 답글 없는 리뷰(건너뛴 것 빼고)와 이번에 올린 답글. */
+const inWaiting = (r: ReviewRow) =>
+  (!r.has_owner_reply && r.draft?.status !== "skipped") || r.draft?.status === "posted";
+
+/** 카드 버튼 하나를 서버에 보낸다. 실패하면 카드에 보일 이유, 성공하면 null. */
+export type OnReply = (review: ReviewRow, op: ReplyOp) => Promise<ReplyError | null>;
+
+type ReviewProps = {
+  review: ReviewRow;
+  busy: boolean;
+  preparing: boolean;
+  focused: boolean;
+  onAction: (action: Action) => void;
+  onReply: OnReply;
+};
+
+function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewProps) {
   const [showOriginal, setShowOriginal] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  // 카드 단위 로딩·오류: 대화 입력(busy)은 잠그지 않는다.
+  const [working, setWorking] = useState<ReplyOpName | null>(null);
+  const [error, setError] = useState<ReplyError | null>(null);
+  const { draft } = review;
+  const chip = draftChip(review);
+  const act = (action_id: string, label: string) => onAction({ action_id, label, args: { review_id: review.id } });
+  const reply = async (op: ReplyOp) => {
+    if (working) return;
+    setWorking(op.op);
+    setError(null);
+    const failed = await onReply(review, op);
+    setWorking(null);
+    setError(failed);
+    if (!failed && op.op === "post") setEditing(null);
+  };
+  const open = decidable(review);
+  const postedText = review.has_owner_reply && draft?.status === "posted" ? draft.text : null;
+  const errorLine = error && (
+    <p className="inbox-error" role="alert">
+      {replyErrorText(error)}
+    </p>
+  );
+  const workingLine = working && (
+    <p className="inbox-working" role="status">
+      {INBOX_WORKING_TEXT[working]}
+    </p>
+  );
+
   return (
-    <li className="review" data-replied={review.has_owner_reply}>
+    <li
+      className="review"
+      id={`review-${review.id}`}
+      data-replied={review.has_owner_reply}
+      data-must-read={mustRead(review)}
+      data-focused={focused || undefined}
+      aria-busy={Boolean(working)}
+    >
       <div className="review-head">
         <Stars rating={review.rating} />
         <time>{reviewDate(review.visit_date)}</time>
-        <span className="chip" data-tone={review.has_owner_reply ? "same" : "need"}>
-          {review.has_owner_reply ? REPLY_TEXT.done : REPLY_TEXT.todo}
+        {mustRead(review) && (
+          <span className="chip must-read" data-tone="need">
+            {INBOX_TEXT.mustRead}
+          </span>
+        )}
+        <span className="chip" data-tone={chip.tone}>
+          {chip.text}
         </span>
       </div>
       <p className="review-text">{review.text}</p>
@@ -33,20 +108,113 @@ function Review({ review, busy, onAction }: { review: ReviewRow; busy: boolean; 
           {showOriginal && <p className="review-original">{review.original}</p>}
         </>
       )}
-      <button type="button" className="ghost small" disabled={busy} onClick={() => onAction({ action_id: "review.draft_reply", args: { review_id: review.id }, label: "답글 초안 받기" })}>
-        답글 초안 받기
-      </button>
+
+      {postedText && (
+        <section className="inbox-draft" data-status="posted" aria-label={INBOX_TEXT.posted}>
+          <h4>{INBOX_TEXT.posted}</h4>
+          <p>{postedText}</p>
+        </section>
+      )}
+
+      {open && draft && editing === null && (
+        <section className="inbox-draft" data-status={draft.status} aria-label={INBOX_TEXT.draft}>
+          <h4>{INBOX_TEXT.draft}</h4>
+          <p>{draft.text}</p>
+          {draft.status === "needs_check" && draft.issues.length > 0 && <p className="inbox-issues">{issuesText(draft.issues)}</p>}
+          <div className="inbox-redraft" role="group" aria-label={INBOX_TEXT.redraft}>
+            {REDRAFT_HINTS.map(([hint, label]) => (
+              <button key={hint} type="button" className="chip-button" disabled={Boolean(working)} onClick={() => void reply({ op: "redraft", hint })}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="inbox-buttons">
+            <button type="button" className="primary" disabled={Boolean(working) || draft.status === "needs_check"} onClick={() => void reply({ op: "post" })}>
+              {INBOX_TEXT.post}
+            </button>
+            <button type="button" className="ghost" disabled={Boolean(working)} onClick={() => setEditing(draft.text)}>
+              {INBOX_TEXT.edit}
+            </button>
+            {draft.status !== "skipped" && (
+              <button type="button" className="ghost" disabled={Boolean(working)} onClick={() => void reply({ op: "skip" })}>
+                {INBOX_TEXT.skip}
+              </button>
+            )}
+          </div>
+          {workingLine}
+          {errorLine}
+        </section>
+      )}
+
+      {open && editing !== null && (
+        <section className="inbox-draft" data-status="editing" aria-label={INBOX_TEXT.editBox}>
+          <textarea aria-label={INBOX_TEXT.editBox} value={editing} rows={4} onChange={(e) => setEditing(e.target.value)} />
+          <div className="inbox-buttons">
+            <button
+              type="button"
+              className="primary"
+              disabled={Boolean(working) || !editing.trim()}
+              onClick={() => void reply({ op: "post", text: editing.trim() })}
+            >
+              {INBOX_TEXT.postEdited}
+            </button>
+            <button type="button" className="ghost" disabled={Boolean(working)} onClick={() => setEditing(null)}>
+              {INBOX_TEXT.cancel}
+            </button>
+          </div>
+          {workingLine}
+          {errorLine}
+        </section>
+      )}
+      {!open && errorLine}
+
+      {!open && !review.has_owner_reply && !draft && preparing && <p className="inbox-writing">{INBOX_TEXT.writing}</p>}
+      {!open && !review.has_owner_reply && !(preparing && !draft) && (
+        <button type="button" className="ghost small" disabled={busy} onClick={() => act("review.draft_reply", "답글 초안 받기")}>
+          답글 초안 받기
+        </button>
+      )}
     </li>
   );
 }
 
-type Props = { loaded: Loaded<ReviewsView>; busy: boolean; onAction: (action: Action) => void };
+type Props = {
+  loaded: Loaded<ReviewsView>;
+  busy: boolean;
+  onAction: (action: Action) => void;
+  onReply: OnReply;
+  /** 채팅 알림의 [리뷰 탭에서 보기]가 가리키는 카드. 그 카드로 스크롤한다. */
+  focus?: { id: string; at: number } | null;
+  /** 개발 모드에서만: [새 리뷰 도착 (데모)]. */
+  onSimulate?: () => void;
+};
 
-export function ReviewsTab({ loaded, busy, onAction }: Props) {
+export function ReviewsTab({ loaded, busy, onAction, onReply, focus, onSimulate }: Props) {
   const { data, failed, reload } = loaded;
+  const [chosen, setChosen] = useState<Filter | null>(null);
+  const focusId = focus?.id;
+  const focusAt = focus?.at;
+  const hasData = Boolean(data);
+  // 가리킨 카드가 지금 필터에 없으면 [전체]로 바꾼 뒤 그 카드로 스크롤한다.
+  useEffect(() => {
+    if (!focusId || !data) return;
+    const row = data.reviews.find((r) => r.id === focusId);
+    if (row && !inWaiting(row)) setChosen("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, focusAt, hasData]);
+  useEffect(() => {
+    if (!focusId) return;
+    document.getElementById(`review-${focusId}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [focusId, focusAt, hasData, chosen]);
   if (failed) return <LoadFailed message="리뷰를 불러오지 못했어요." onRetry={reload} />;
   if (!data) return <p className="loading">불러오는 중…</p>;
   const { summary, reviews } = data;
+  // 사장님이 고르기 전에는 기다리는 게 있을 때만 [기다림]으로 연다.
+  const filter: Filter = chosen ?? (summary.waiting > 0 || summary.preparing > 0 ? "waiting" : "all");
+  const shown = (filter === "waiting" ? reviews.filter(inWaiting) : reviews)
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => Number(mustRead(b.r)) - Number(mustRead(a.r)) || a.i - b.i)
+    .map(({ r }) => r);
   return (
     <div className="reviews">
       <section className="review-summary">
@@ -56,14 +224,51 @@ export function ReviewsTab({ loaded, busy, onAction }: Props) {
         </div>
         <p data-todo={summary.unanswered > 0}>{unansweredText(summary.unanswered)}</p>
       </section>
+      <section className="inbox-bar" aria-label={waitingText(summary.waiting)}>
+        <div>
+          <h3>{waitingText(summary.waiting)}</h3>
+          {summary.preparing > 0 && (
+            <p className="inbox-preparing" role="status">
+              {preparingText(summary.preparing)}
+            </p>
+          )}
+        </div>
+        <div className="segmented" role="radiogroup" aria-label={INBOX_TEXT.filter}>
+          {(
+            [
+              ["waiting", INBOX_TEXT.filterWaiting],
+              ["all", INBOX_TEXT.filterAll],
+            ] as Array<[Filter, string]>
+          ).map(([key, label]) => (
+            <button key={key} type="button" role="radio" aria-checked={filter === key} onClick={() => setChosen(key)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
       {reviews.length === 0 ? (
         <p className="empty">아직 리뷰가 없어요.</p>
+      ) : shown.length === 0 ? (
+        <p className="empty">{INBOX_TEXT.empty}</p>
       ) : (
         <ul className="review-list">
-          {reviews.map((r) => (
-            <Review key={r.id} review={r} busy={busy} onAction={onAction} />
+          {shown.map((r) => (
+            <Review
+              key={r.id}
+              review={r}
+              busy={busy}
+              preparing={summary.preparing > 0}
+              focused={r.id === focusId}
+              onAction={onAction}
+              onReply={onReply}
+            />
           ))}
         </ul>
+      )}
+      {onSimulate && (
+        <button type="button" className="ghost small inbox-simulate" disabled={busy} onClick={onSimulate}>
+          {INBOX_TEXT.simulate}
+        </button>
       )}
     </div>
   );

@@ -18,7 +18,13 @@ def test_reviews_tab_lists_the_session_reviews_newest_first_with_a_summary(tmp_p
     session_id = start(api)
 
     body = reviews(api, session_id).json()
-    assert body["summary"] == {"count": 3, "average_rating": 4.0, "unanswered": 2}
+    assert body["summary"] == {
+        "count": 3,
+        "average_rating": 4.0,
+        "unanswered": 2,
+        "waiting": 0,
+        "preparing": 0,
+    }
     assert [r["id"] for r in body["reviews"]] == ["r03", "r02", "r01"]
     newest = body["reviews"][0]
     assert newest == {
@@ -29,6 +35,7 @@ def test_reviews_tab_lists_the_session_reviews_newest_first_with_a_summary(tmp_p
         "softened": False,
         "original": None,
         "has_owner_reply": False,
+        "draft": None,
     }
 
 
