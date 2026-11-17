@@ -25,9 +25,16 @@ def client(tmp_path, index, *replies, feature="menu"):
     return TestClient(create_app(make_assistant=make, root=tmp_path))
 
 
-def test_snapshot_has_the_three_sections():
+def test_snapshot_has_the_place_and_record_sections():
     view = place.snapshot(SEED)
-    assert set(view) == {"menu", "business_hours", "coupon"}
+    assert set(view) == {
+        "menu",
+        "business_hours",
+        "coupon",
+        "keywords",
+        *owner.RECORD_TARGETS,
+    }
+    assert view["keywords"] == SEED["shop"].get("keywords", [])
     assert view["menu"][0] == {
         "id": "m01",
         "name": "메도빅",
@@ -69,6 +76,102 @@ def test_preview_of_a_coupon_lists_the_new_coupon():
     result = place.preview(SEED, "coupon", [{"name": "create_coupon", "arguments": args}])
     assert result["changes"]["coupon"] == {"added": ["coupon-1"], "updated": [], "removed": []}
     assert result["after"]["coupon"][0]["title"] == "오픈 기념"
+
+
+def test_preview_of_keywords_lists_added_and_removed_words():
+    data = json.loads(json.dumps(SEED))
+    data["shop"]["keywords"] = ["러시안 베이커리", "이태원 케이크"]
+    actions = [
+        {
+            "name": "set_representative_keywords",
+            "arguments": {"add": ["메도빅"], "remove": ["이태원 케이크"]},
+        }
+    ]
+    result = place.preview(data, "search_keywords", actions)
+    assert result["changes"]["keywords"] == {
+        "added": ["메도빅"],
+        "updated": [],
+        "removed": ["이태원 케이크"],
+    }
+    assert "메도빅" in result["after"]["keywords"]
+
+
+def test_snapshot_splits_records_into_label_and_other_fields():
+    talk = place.snapshot(SEED)["talktalk"][0]
+    record = SEED["talktalk"][0]
+    assert talk == {
+        "id": record["id"],
+        "label": {"message": record["message"], "status": record["status"]},
+        "fields": {"reply_text": record["reply_text"]},
+    }
+
+
+def test_preview_of_a_talktalk_reply_shows_the_inquiry_and_the_reply():
+    record = SEED["talktalk"][0]
+    actions = [
+        {
+            "name": "save_talktalk_reply",
+            "arguments": {"inquiry": record["id"], "reply_text": "네, 하루 전에 말씀해 주세요"},
+        }
+    ]
+    result = place.preview(SEED, "talktalk", actions)
+    assert result["changes"] == {
+        "talktalk": {"added": [], "updated": [record["id"]], "removed": []}
+    }
+    [after] = [r for r in result["after"]["talktalk"] if r["id"] == record["id"]]
+    assert after["label"]["message"] == record["message"]
+    assert after["fields"]["reply_text"] == "네, 하루 전에 말씀해 주세요"
+    assert after["label"]["status"] == "saved_not_sent"
+    assert SEED["talktalk"][0]["reply_text"] == ""  # The seed is not touched.
+
+
+def test_preview_of_an_order_status_lists_only_that_order():
+    order = SEED["orders"][0]
+    actions = [
+        {
+            "name": "update_order_status",
+            "arguments": {"order_id": order["id"], "status": "rejected", "reason": "재료 소진"},
+        }
+    ]
+    result = place.preview(SEED, "order", actions)
+    assert result["changes"] == {"order": {"added": [], "updated": [order["id"]], "removed": []}}
+    after = result["after"]["order"][0]
+    assert after["label"] == {"items": order["items"], "type": order["type"], "status": "rejected"}
+    assert after["fields"] == {"reason": "재료 소진"}
+
+
+def test_preview_of_a_reservation_status_lists_that_reservation():
+    resv = SEED["reservations"][1]
+    actions = [
+        {
+            "name": "update_reservation_status",
+            "arguments": {"reservation_id": resv["id"], "status": "confirmed"},
+        }
+    ]
+    result = place.preview(SEED, "reservation", actions)
+    assert result["changes"] == {
+        "reservation": {"added": [], "updated": [resv["id"]], "removed": []}
+    }
+
+
+def test_preview_of_two_features_lists_both_sections():
+    actions = [
+        {
+            "name": "update_business_hours",
+            "arguments": {
+                "days": ["sun"],
+                "closed": False,
+                "open_time": "10:00",
+                "close_time": "18:00",
+            },
+        },
+        {
+            "name": "save_talktalk_reply",
+            "arguments": {"inquiry": SEED["talktalk"][0]["id"], "reply_text": "가능해요"},
+        },
+    ]
+    result = place.preview(SEED, "business_hours", actions)
+    assert set(result["changes"]) == {"business_hours", "talktalk"}
 
 
 def test_preview_that_fails_validation_has_no_after():

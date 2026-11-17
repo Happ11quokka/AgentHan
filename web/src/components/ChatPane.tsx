@@ -50,8 +50,8 @@ function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
         </span>
         {message.lines.length > 0 && (
           <ul>
-            {message.lines.map((line) => (
-              <li key={line}>{line}</li>
+            {message.lines.map((line, i) => (
+              <li key={`${i}-${line}`}>{line}</li>
             ))}
           </ul>
         )}
@@ -73,7 +73,7 @@ function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
     <div className="row agent">
       <img className="avatar" src="/agent.png" alt="" />
       <div className="bubble agent">
-        <ReplyText text={message.text} lead={lead} />
+        <ReplyText text={message.text} lead={lead} previews={message.previews} />
         {message.nextActions && message.nextActions.length > 0 && (
           <div className="suggestions">
             {message.nextActions.map((action, i) => (
@@ -86,11 +86,26 @@ function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
   );
 }
 
+/**
+ * 한 번에 저장되는 변경 카드들. 변경 카드가 둘 이상이고 마지막 비서 답의 승인 칩([모두 저장])이
+ * 그중 하나를 가리키면, 그 칩 하나가 묶음 전체를 저장·취소한다. 이때 카드마다 [저장]을 두면
+ * 카드 하나만 저장되는 것처럼 보이므로 카드 버튼은 숨긴다.
+ */
+function bundledCards(chat: Conversation): Set<string> {
+  const cards = chat.pending.filter((p) => !p.kind);
+  if (cards.length < 2) return new Set();
+  const last = [...chat.messages].reverse().find((m) => m.role === "agent");
+  const ids = new Set(cards.map((p) => p.task_id));
+  const chip = last?.role === "agent" && last.nextActions?.some((a) => a.action_id === "task.approve" && ids.has(String(a.args.task_id)));
+  return chip ? ids : new Set();
+}
+
 export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
   const open = new Set(chat.pending.map((p) => p.task_id));
+  const bundled = bundledCards(chat);
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
@@ -168,6 +183,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
                 key={p.task_id}
                 place={chat.place!}
                 pending={p}
+                bundled={bundled.has(p.task_id)}
                 review={chat.reviewOf(p.review_id)}
                 onAnswer={(text) => void chat.send(text)}
                 onAction={(action) => void chat.act(action)}

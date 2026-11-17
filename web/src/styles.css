@@ -675,6 +675,12 @@ p {
   font-size: 14px;
 }
 
+.approval-bundled {
+  margin: 4px 16px 14px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
 .approval footer {
   display: flex;
   justify-content: flex-end;
@@ -1253,6 +1259,20 @@ p {
 }
 
 .hours .mark {
+  position: static;
+  margin-left: 8px;
+}
+
+.keywords .shop-row {
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.keyword {
+  font-weight: 600;
+}
+
+.keywords .mark {
   position: static;
   margin-left: 8px;
 }

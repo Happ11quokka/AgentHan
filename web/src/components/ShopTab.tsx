@@ -7,16 +7,18 @@ type Mark = RowMark | undefined;
 /** 승인 대기 변경을 덮어 그린 화면과, 줄마다 표시할 강조. */
 function overlay(place: Place, pending: Pending[]) {
   let view = place;
-  const marks: Record<keyof Place, Map<string, Mark>> = {
+  const marks: Record<"menu" | "business_hours" | "coupon" | "keywords", Map<string, Mark>> = {
     menu: new Map(),
     business_hours: new Map(),
     coupon: new Map(),
+    keywords: new Map(),
   };
-  const removed: Place = { menu: [], business_hours: {}, coupon: [] };
+  const removed: Place = { menu: [], business_hours: {}, coupon: [], keywords: [] };
   for (const p of pending) {
     if (!p.after) continue;
-    for (const [section, diff] of Object.entries(p.changes ?? {}) as Array<[keyof Place, SectionChanges]>) {
-      view = { ...view, [section]: p.after[section] };
+    for (const [section, diff] of Object.entries(p.changes ?? {}) as Array<[keyof typeof marks, SectionChanges]>) {
+      if (!(section in marks)) continue; // 톡톡·주문·예약 같은 기록은 이 탭에 그리지 않는다(승인 카드가 보여 준다).
+      view ={ ...view, [section]: p.after[section] };
       for (const k of diff.added) marks[section].set(k, "added");
       for (const k of diff.updated) marks[section].set(k, "updated");
       for (const k of diff.removed) marks[section].set(k, "removed");
@@ -24,6 +26,7 @@ function overlay(place: Place, pending: Pending[]) {
   }
   for (const m of place.menu) if (marks.menu.get(m.id) === "removed") removed.menu.push(m);
   for (const c of place.coupon) if (marks.coupon.get(c.id) === "removed") removed.coupon.push(c);
+  for (const k of place.keywords ?? []) if (marks.keywords.get(k) === "removed") removed.keywords?.push(k);
   return { view, marks, removed };
 }
 
@@ -112,6 +115,22 @@ export function ShopTab({ place, pending, log }: { place: Place; pending: Pendin
           </ul>
         )}
       </Section>
+
+      {view.keywords !== undefined && (
+        <Section title="대표키워드" count={view.keywords.length}>
+          {view.keywords.length + (removed.keywords?.length ?? 0) === 0 ? (
+            <p className="empty">아직 대표키워드가 없어요.</p>
+          ) : (
+            <ul className="keywords" aria-label="대표키워드">
+              {[...view.keywords, ...(removed.keywords ?? [])].map((k) => (
+                <Row key={k} mark={marks.keywords.get(k)}>
+                  <span className="keyword">{k}</span>
+                </Row>
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
 
       <Section title="오늘 한 일">
         {today.length === 0 ? (
