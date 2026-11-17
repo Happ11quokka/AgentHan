@@ -34,7 +34,7 @@ from agenthan.rag import rules
 from agenthan.rag.keyword import Analysis, KeywordIndex, user_words
 from agenthan.rag.normalize import contains_any, drop_correction, key, normalize, split_items
 from agenthan.rag.repository import DUMMY_DIR, JsonDirRepository, MenuRepository, StoreData
-from agenthan.rag.vector import Embed, VectorIndex
+from agenthan.rag.vector import Embed, VectorIndex, default_cache_path
 
 _HANGUL = re.compile(r"[가-힣]")
 _LETTER = r"a-z0-9Ѐ-ӿ"  # 라틴·숫자·키릴 글자
@@ -89,7 +89,14 @@ def jamo(text: str) -> str:
 class RagStoreKnowledge:
     """가게 지식 RAG. 기본은 fixtures/dummy_store, AGENTHAN_DATA_DIR로 실제 데이터(data/clean)."""
 
-    def __init__(self, repository: MenuRepository, embed: Embed | None | bool = None) -> None:
+    def __init__(
+        self,
+        repository: MenuRepository,
+        embed: Embed | None | bool = None,
+        cache_path: Path | None = None,
+    ) -> None:
+        """embed: None=키가 있으면 CLOVA 임베딩, False=벡터 끔, 함수=그 함수(테스트용).
+        cache_path: 임베딩 캐시 파일 (None이면 캐시 없이 메모리만)."""
         data: StoreData = repository.load()
         self.records = {r.item.id: r for r in data.menus}
         self.families = {f.id: f for f in data.families}
@@ -107,13 +114,24 @@ class RagStoreKnowledge:
             + [a for f in data.families for a in f.aliases]
         )
         self.keyword = KeywordIndex(docs, dictionary, names)
-        self.vector = VectorIndex(docs, embed)
+        embed_docs = {i: self._embed_text(i) for i in self.records}
+        self.vector = VectorIndex(embed_docs, embed, cache_path)
 
     # ---------------------------------------------------------------- 만들기
     @classmethod
-    def from_dir(cls, path: str | Path | None = None, embed: Embed | None | bool = None):
-        """path → 환경변수 AGENTHAN_DATA_DIR → 더미 순서. 벡터는 키가 있을 때만."""
-        return cls(JsonDirRepository(path), embed)
+    def from_dir(
+        cls,
+        path: str | Path | None = None,
+        embed: Embed | None | bool = None,
+        cache_path: Path | None = None,
+    ):
+        """path → 환경변수 AGENTHAN_DATA_DIR → 더미 순서. 벡터는 CLOVASTUDIO_API_KEY가 있을 때만.
+        CLOVA 임베딩을 쓸 때 캐시는 기본 data/cache/<폴더 이름>_embeddings.json.
+        가짜 임베딩 함수를 넘기면 캐시를 쓰지 않는다(진짜 캐시가 섞이지 않게)."""
+        repo = JsonDirRepository(path)
+        if cache_path is None and embed is None:
+            cache_path = default_cache_path(repo.path)
+        return cls(repo, embed, cache_path)
 
     @classmethod
     def from_fixture(cls) -> RagStoreKnowledge:
@@ -189,6 +207,16 @@ class RagStoreKnowledge:
         if fam:
             parts += [fam.name_ko, *fam.aliases]
         return " ".join(p for p in parts if p)
+
+    def _embed_text(self, menu_id: str) -> str:
+        """임베딩할 글 = 한국어 이름 + 원어명 + 별칭 + 설명 + 옵션(되는 것과 메모)."""
+        r = self.records[menu_id]
+        options = [o.name for o in r.item.options if o.available]
+        options += [o.note for o in r.item.options if o.note]
+        parts = [r.item.name_ko, r.item.name_native, ", ".join(r.item.aliases), r.item.description]
+        if options:
+            parts.append("옵션: " + ", ".join(options))
+        return " / ".join(p for p in parts if p)
 
     def _doc_text(self, menu_id: str) -> str:
         """검색 문서 = 이름·별칭(+묶음) + 설명 + 옵션(되는 것과 그 메모) + 태그."""

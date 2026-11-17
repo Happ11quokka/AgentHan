@@ -259,3 +259,40 @@ def test_rest_words_prefer_matching_menu_in_same_category() -> None:
     assert ids(kb, "아아 카페인 없이요") == ["decaf", "ame"]  # 다른 종류(cake)는 안 넣는다
     assert ids(kb, "아아 두 잔이요") == ["ame"]
     assert ids(kb, "카페인아아 주세요")[0] == "ame"  # 찾은 말에 붙은 말은 보지 않는다
+
+
+# ------------------------------------------- 벡터 캐시·실패 (가짜 임베딩, 네트워크 없음)
+def _fake_vec(text: str) -> list[float]:
+    return [1.0 if "수플레" in text or "폭신" in text else 0.0, 1.0, 0.5]
+
+
+def test_embedding_cache_skips_repeat_calls(tmp_path) -> None:
+    cache = tmp_path / "emb.json"
+    calls = []
+
+    def embed(text: str) -> list[float]:
+        calls.append(text)
+        return _fake_vec(text)
+
+    kb = RagStoreKnowledge.from_dir(DUMMY_DIR, embed=embed, cache_path=cache)
+    first = kb.vector.warm()
+    assert first == len(kb.records) and cache.exists()
+    kb2 = RagStoreKnowledge.from_dir(DUMMY_DIR, embed=embed, cache_path=cache)
+    assert kb2.vector.warm() == 0  # 내용이 같으면 다시 부르지 않는다
+    assert len(calls) == len(kb.records)
+
+
+def test_embedding_text_has_name_native_aliases_description_options(kb: RagStoreKnowledge) -> None:
+    text = kb._embed_text("americano")
+    for part in ["아메리카노", "Americano", "고소한 원두", "디카페인 변경"]:
+        assert part in text
+
+
+def test_vector_failure_falls_back_and_pauses() -> None:
+    def broken(text: str) -> list[float]:
+        raise RuntimeError("429")
+
+    kb = RagStoreKnowledge.from_dir(DUMMY_DIR, embed=broken)
+    assert ids(kb, "나폴레옹 있어요?") == ["napoleon"]  # 정확 일치는 벡터를 안 탄다
+    assert kb.search_menu("폭신한 수플레 같은 거")  # 벡터가 실패해도 BM25로 답한다
+    assert kb.vector.paused

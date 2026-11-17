@@ -21,12 +21,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
-from collections import defaultdict
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 
 from agenthan.rag import RagStoreKnowledge
+from agenthan.rag.env import load_env_file
 from agenthan.rag.repository import resolve_data_dir
+from agenthan.rag.vector import default_cache_path
 
 SEARCH_K = 10
 METRICS = ("R@1", "R@3", "MRR")
@@ -63,13 +67,58 @@ def fmt(m: dict[str, float]) -> str:
     return "  ".join(f"{k} {v:.3f}" for k, v in m.items())
 
 
-def evaluate(kb: RagStoreKnowledge, path: Path) -> list[dict]:
+class PacedEmbed:
+    """채점용: CLOVA 임베딩을 1분에 per_minute번 이하로 부르고, 429면 기다렸다 다시 부른다.
+    기다린 시간은 waited_ms에 모아서 검색 시간에서 뺀다. (서비스 코드는 실패하면 벡터를 끈다)"""
+
+    def __init__(self, per_minute: int = 40) -> None:
+        from agenthan.core.embedding import embed_text
+
+        self.embed_text = embed_text
+        self.per_minute = per_minute
+        self.stamps: deque[float] = deque()
+        self.waited_ms = 0.0
+        self.api_ms: list[float] = []
+
+    def _wait(self, seconds: float) -> None:
+        time.sleep(seconds)
+        self.waited_ms += seconds * 1000
+
+    def __call__(self, text: str) -> list[float]:
+        from agenthan.core.embedding import ClovaEmbeddingError
+
+        while self.stamps and time.monotonic() - self.stamps[0] > 60:
+            self.stamps.popleft()
+        if len(self.stamps) >= self.per_minute:
+            self._wait(60.5 - (time.monotonic() - self.stamps[0]))
+        for attempt in range(3):
+            start = time.perf_counter()
+            try:
+                v = self.embed_text(text)
+            except ClovaEmbeddingError:
+                if attempt == 2:
+                    raise
+                self.waited_ms += (time.perf_counter() - start) * 1000
+                self._wait(30)
+                continue
+            self.api_ms.append((time.perf_counter() - start) * 1000)
+            self.stamps.append(time.monotonic())
+            return v
+        raise RuntimeError("unreachable")
+
+
+def evaluate(kb: RagStoreKnowledge, path: Path, paced: PacedEmbed | None = None) -> list[dict]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         row = json.loads(line)
+        waited = paced.waited_ms if paced else 0.0
+        start = time.perf_counter()
         got = [h.item.id for h in kb.search_menu(row["query"], k=SEARCH_K)]
+        row["ms"] = (time.perf_counter() - start) * 1000 - (
+            (paced.waited_ms - waited) if paced else 0
+        )
         row["got"] = got
         row["score"] = score(row, got)
         rows.append(row)
@@ -82,6 +131,8 @@ def report(name: str, rows: list[dict]) -> list[str]:
     lines = [
         f"== {name}: {len(rows)}개 (uncertain {len(unsure)}개 따로)",
         f"  전체      {fmt(mean(main))}",
+        f"  검색 시간 평균 {sum(r['ms'] for r in rows) / len(rows):.1f}ms, "
+        f"최대 {max(r['ms'] for r in rows):.1f}ms",
     ]
     if unsure:
         lines.append(f"  uncertain {fmt(mean(unsure))}")
@@ -109,21 +160,43 @@ def main() -> None:
     ap.add_argument(
         "--data", help="데이터 폴더 (기본: AGENTHAN_DATA_DIR, 없으면 fixtures/dummy_store)"
     )
-    ap.add_argument("--files", nargs="*", default=["goldset.jsonl", "holdout.jsonl"])
-    ap.add_argument("--vector", action="store_true", help="CLOVA 임베딩 벡터 검색도 켠다")
+    ap.add_argument(
+        "--files", nargs="*", default=["goldset.jsonl", "holdout.jsonl", "holdout2.jsonl"]
+    )
+    ap.add_argument(
+        "--vector", action="store_true", help="CLOVA 임베딩 벡터 검색도 켠다 (.env의 키 사용)"
+    )
+    ap.add_argument("--dump", help="질문별 결과를 JSON으로 저장할 경로 (전후 비교용)")
     args = ap.parse_args()
 
     data_dir = resolve_data_dir(args.data)
-    kb = RagStoreKnowledge.from_dir(data_dir, embed=None if args.vector else False)
     sys.stdout.reconfigure(encoding="utf-8")
+    paced = None
+    if args.vector:
+        load_env_file()
+        if os.environ.get("CLOVASTUDIO_API_KEY"):
+            paced = PacedEmbed()
+    if paced:
+        kb = RagStoreKnowledge.from_dir(
+            data_dir, embed=paced, cache_path=default_cache_path(data_dir)
+        )
+    else:
+        kb = RagStoreKnowledge.from_dir(data_dir, embed=False)
+    if args.vector:
+        if not kb.vector.enabled:
+            print("벡터: 키가 없어 끈 상태로 채점합니다")
+        else:
+            print(f"벡터: 켬 (메뉴 임베딩 준비 호출 {kb.vector.warm()}번)")
     print(f"데이터: {data_dir}")
+    dump: dict[str, list[dict]] = {}
     summary = []
     for name in args.files:
         path = Path(name) if Path(name).is_absolute() else data_dir / name
         if not path.exists():
             print(f"(없음: {path})")
             continue
-        rows = evaluate(kb, path)
+        rows = evaluate(kb, path, paced)
+        dump[name] = rows
         main_rows = [r for r in rows if not r.get("uncertain")]
         summary.append((name, len(rows), mean(main_rows)))
         print("\n".join(report(name, rows)))
@@ -131,6 +204,16 @@ def main() -> None:
         print("== 요약 (uncertain 제외)")
         for name, n, m in summary:
             print(f"  {name:<16} {n:>3}개  {fmt(m)}")
+    if args.vector and kb.vector.enabled:
+        print(f"임베딩 API 호출: 이번 실행에서 {kb.vector.calls}번 (나머지는 캐시)")
+        if paced and paced.api_ms:
+            api = sorted(paced.api_ms)
+            print(
+                f"  임베딩 1회 응답 시간: 평균 {sum(api) / len(api):.0f}ms, "
+                f"최대 {api[-1]:.0f}ms (기다린 시간 {paced.waited_ms / 1000:.0f}초는 뺌)"
+            )
+    if args.dump:
+        Path(args.dump).write_text(json.dumps(dump, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":
