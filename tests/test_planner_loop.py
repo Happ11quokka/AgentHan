@@ -1098,15 +1098,19 @@ def test_wall_clock_stops_before_executing_a_late_model_answer(tmp_path, monkeyp
     assert not app.pending_action and app.store.read() == before
 
 
-def test_rejection_does_not_retry_and_runs_the_next_step(tmp_path):
+def test_rejection_retries_once_then_runs_the_next_step(tmp_path):
     hcx = HCX(
         ["menu", "business_hours"],
+        ClovaRequestRejected("40009"),
         ClovaRequestRejected("40009"),
         call("update_business_hours", days=["mon"], closed=True),
     )
     app = assistant(tmp_path, hcx)
     app.ask("연습 차 5000원 등록하고 월요일 휴무로 해 줘")
-    assert len(hcx.requests) == 2
+    # 같은 단계는 도구를 지정해 한 번만 다시 묻고, 그래도 거절이면 건너뛴다.
+    assert len(hcx.requests) == 3
+    assert hcx.requests[1][2]["tool_choice"]["function"]["name"] == "upsert_menu"
+    assert app.trace["rejected_retry"] is True
     assert app.pending_action["feature_id"] == "business_hours"
     assert not any(m["name"] == "연습 차" for m in app.store.read()["menus"])
 
