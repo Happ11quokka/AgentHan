@@ -25,7 +25,7 @@ PLAN = {
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
     monkeypatch.delenv("CLOVASTUDIO_API_KEY", raising=False)
-    monkeypatch.delenv("AGENT_MODE", raising=False)
+    monkeypatch.setenv("AGENT_MODE", "legacy")  # the shadow baseline is legacy
 
     def no_network(*args, **kwargs):
         pytest.fail("shadow tests must not use the network")
@@ -194,11 +194,10 @@ def test_shadow_adds_one_node_and_draws(tmp_path, menu_embed):
     assert "plan_shadow" in graph.draw_mermaid()
 
 
-def test_mode_comes_from_the_environment_and_planner_mode_is_not_available(tmp_path, monkeypatch):
+def test_mode_comes_from_the_environment_and_planner_mode_is_available(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_MODE", "shadow")
     assert owner.OwnerAssistant(tmp_path / "e.json").agent_mode == "shadow"
-    with pytest.raises(NotImplementedError):
-        owner.OwnerAssistant(tmp_path / "p.json", agent_mode="planner")
+    assert owner.OwnerAssistant(tmp_path / "p.json", agent_mode="planner").agent_mode == "planner"
     monkeypatch.setenv("AGENT_MODE", "nonsense")
     with pytest.raises(ValueError):
         owner.OwnerAssistant(tmp_path / "x.json")

@@ -167,7 +167,9 @@ def final_of(before: dict, after: dict) -> tuple[dict, list[str]]:
     return final, sorted(writes)
 
 
-def scenario(id_, kind, *, area, source, lang, split, turns, final, writes, never=()):
+def scenario(
+    id_, kind, *, area, source, lang, split, turns, final, writes, never=(), final_any_of=()
+):
     data = {
         "id": id_,
         "family": TYPE_FAMILY.get(kind, kind),
@@ -182,6 +184,8 @@ def scenario(id_, kind, *, area, source, lang, split, turns, final, writes, neve
         "turns": turns,
         "expect": {"final": final, "writes": writes, "never": list(never)},
     }
+    if final_any_of:
+        data["expect"]["final_any_of"] = list(final_any_of)
     Scenario.model_validate(data)
     return data
 
@@ -469,7 +473,10 @@ def one_turn(cases: list[dict], kind: str, act: str, prefix: str, missing=False)
 
 
 def p9(goldset: list[dict]) -> list[dict]:
-    """Reply flows moved onto the dummy shop: unanswered r02·r03, the negative one is r03."""
+    """Reply flows moved onto the dummy shop: unanswered r02 (3점, 웨이팅) and r03 (4점, 양).
+
+    Both carry a complaint, so a "negative review" reply may land on either one, but on
+    exactly one (ADR-0007)."""
     acts = {"get_unanswered_reviews": "request", "draft_review_reply": "request"}
     out = []
     for c in goldset:
@@ -498,9 +505,14 @@ def p9(goldset: list[dict]) -> list[dict]:
             turns.append(
                 {"say": t["say"], "act": act, "probe": {"feature": "review", "tool": tool}}
             )
+        either = ()
         if posts:
-            final = {"reviews[r03].has_owner_reply": True, "reviews[r02].has_owner_reply": False}
-            writes = ["reviews[r03]"]
+            final = {}
+            either = (
+                {"reviews[r03].has_owner_reply": True, "reviews[r02].has_owner_reply": False},
+                {"reviews[r02].has_owner_reply": True, "reviews[r03].has_owner_reply": False},
+            )
+            writes = ["reviews[r02]", "reviews[r03]"]
         else:
             final = {"reviews[r03].has_owner_reply": False, "reviews[r02].has_owner_reply": False}
             writes = []
@@ -515,6 +527,7 @@ def p9(goldset: list[dict]) -> list[dict]:
                 turns=turns,
                 final=final,
                 writes=writes,
+                final_any_of=either,
             )
         )
     return out

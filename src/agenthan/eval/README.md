@@ -75,6 +75,8 @@ S1은 그대로 회귀 게이트이고, S2 요약은 `eval.gate`에 넣지 않�
 ```bash
 # 오프라인 배선 확인 (가짜 HCX, 키·네트워크 없음. 숫자는 모델 품질이 아니다)
 uv run --frozen --offline python -m agenthan.eval.scenario --suite s2 --backend fake --judge fake --repeat 1 --label s2-fake
+# 계획 모드의 오프라인 전체 경로 확인(dev만, 모델 품질 수치로 해석하지 않는다)
+uv run --frozen --offline --no-sync python -m agenthan.eval.scenario --suite s2 --split dev --backend fake --agent-mode planner --judge fake --repeat 1 --label s2-planner-fake
 # 녹화 재생 (--replay-file에 S2 녹화가 있어야 한다. 없으면 ReplayMiss가 API 오류로 잡힌다)
 uv run --frozen --offline python -m agenthan.eval.scenario --suite s2 --backend replay --replay-file <녹화.json>
 # legacy 실측 기준선 (dev만; 정답 단계의 도구 호출은 trace에서 읽는다)
@@ -89,13 +91,15 @@ uv run --frozen --offline --env-file .env python -m agenthan.eval.scenario --sui
 | 단계 완료율 (`step_completion`) | 정답 단계 중 도구 호출(읽기)·미리보기(쓰기)까지 간 비율 |
 | 불필요 호출 (`unneeded_call_rate`) | 정답 집합에 없는 기능의 도구 호출 비율. 승인 뒤 실행은 세지 않는다 |
 | scope 정확도 (`scope_accuracy`) | 범위 밖 요청에서 가게 도구를 안 부르고 상태도 그대로인 비율 |
-| 예산 소진율 (`budget_exhausted_rate`) | 도구 호출 한도(`tool_limit`)에 걸린 턴 비율 |
-| 턴당 모델 호출 수 (`model_calls_per_turn`) | 비서의 chat·select_feature 호출 수(리뷰 위임·채점기 호출은 제외) |
+| 예산 소진율 (`budget_exhausted_rate`) | 도구 한도(`tool_limit`) 또는 계획 모드의 `budget_exhausted`(모델·도구·시간·반복 제한)에 걸린 턴 비율 |
+| 턴당 모델 호출 수 (`model_calls_per_turn`) | legacy·shadow는 기존 chat·select_feature 수. planner는 `loop_budget.models`의 계획·실행·답변·리뷰 내부 모델 호출 수 + 예산 밖 `legacy_model_calls`. 채점기는 제외 |
 | 목표 달성 (`goal_rate`) | S1 판정(상태·안전·조회 답) + 정답 단계 모두 도달 + scope + 채점기가 있으면 문장 통과 |
 
 `per_family`에 family별로 같은 지표가 들어가고 `table.md`에 family별 표가 나온다. 버튼 시나리오는 비서에 `run_action`이 없으면
 러너가 "미지원"으로 건너뛰고(`unsupported_runs`·`unsupported_scenarios`, 실패·미완료로 세지 않음) 있으면 B1 `action` 턴을 그대로 넣는다.
 `OwnerAssistantSubject.run_action`은 `app.run_action(action)`에 턴의 `action` 딕셔너리를 그대로 넘긴다(B1 시그니처가 다르면 이 한 줄을 맞춘다).
+
+계획 모드에서 승인 뒤 남은 단계를 실행한 턴은 `approved`가 붙은 저장 호출만 단계 지표에서 제외한다. 새 조회·미리보기는 계속 센다. 기본 fake 계획은 항상 `out`이고 기능 선택도 `none`이므로 CLI 완료는 배선 검증이며, 다단계·값 출처·예산·강제 호출의 행동 검증은 `tests/test_planner_loop.py`의 가짜 HCX 응답으로 한다.
 
 ## 케이스
 

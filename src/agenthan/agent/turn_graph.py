@@ -35,6 +35,11 @@ class Turn(TypedDict):
 
 def build(assistant: OwnerAssistant):
     """Compile the turn graph over one assistant, with its own in-memory checkpointer."""
+    if assistant.agent_mode == "planner":
+        from agenthan.agent.planner_loop import PlannerLoop
+
+        assistant.planner_loop = PlannerLoop(assistant)
+        return assistant.planner_loop.build()
 
     def waits(_: Turn) -> str:
         task = assistant.ledger.active()

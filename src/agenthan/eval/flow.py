@@ -43,10 +43,10 @@ class Probe:
         self.model_calls = 0  # chat + select_feature requests of the turn (S2 metric)
         self.planner_calls = 0  # shadow planner requests, kept apart from model_calls
 
-    def chat(self, messages, *, tools):
+    def chat(self, messages, *, tools, **options):
         self.model_calls += 1
         try:
-            response = self.backend.chat(messages, tools=tools)
+            response = self.backend.chat(messages, tools=tools, **options)
         except ClovaRequestRejected:
             raise  # The app answers the owner; scored as a failed turn, not an outage.
         except ClovaChatError as error:

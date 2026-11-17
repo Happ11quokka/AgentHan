@@ -33,7 +33,7 @@ class FakeBackend:
     model = CHAT_MODEL
     retried = 0
 
-    def chat(self, messages, *, tools):
+    def chat(self, messages, *, tools, **options):
         return {"role": "assistant", "content": DUMMY_ANSWER}
 
     def select(self, messages, *, tools):

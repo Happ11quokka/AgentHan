@@ -17,6 +17,24 @@ class Insight:
     priority: int
 
 
+def reply_insight(shop: dict) -> Insight | None:
+    """계획 모드 조언용: 실제 낮은 별점·미답글 신호만 사용한다. 기존 R2는 그대로다."""
+    rows = [
+        r
+        for r in shop.get("reviews", [])
+        if r.get("rating", 5) <= 3 and not r.get("has_owner_reply")
+    ]
+    if not rows:
+        return None
+    return Insight(
+        "reply_gap",
+        "답글이 없는 낮은 별점 리뷰가 있어요",
+        {"count": len(rows), "review_ids": [r["review_id"] for r in rows]},
+        "review",
+        35,
+    )
+
+
 def _minutes(value: str) -> int:
     hour, minute = map(int, value.split(":"))
     if not (0 <= hour <= 24 and 0 <= minute < 60 and (hour < 24 or minute == 0)):

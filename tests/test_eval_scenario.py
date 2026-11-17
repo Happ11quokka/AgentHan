@@ -256,3 +256,19 @@ def test_read_turn_without_the_fact_fails_the_goal(tmp_path):
     assert not bad["goal"] and bad["turns"][0]["answer_ok"] is False
     ok = sc.run_scenario(s, lambda *a: AnswerSubject(tmp_path / "t.json", "116,400원이에요"))
     assert ok["goal"] and ok["turns"][0]["answer_ok"]
+
+
+def test_final_any_of_accepts_either_fair_target_but_not_none():
+    turns = [{"say": "바꿔", "act": "request"}, {"say": "네", "act": "approve"}]
+    either = [{"shop.phone": "02-123-4567"}, {"shop.phone": "02-999-9999"}]
+    s = sc.Scenario.model_validate(
+        {
+            "id": "t",
+            "family": "f",
+            "tags": [],
+            "turns": turns,
+            "expect": {"final": {}, "final_any_of": either, "writes": ["shop.phone"]},
+        }
+    )
+    assert sc.run_scenario(s, subject({"바꿔": "propose", "네": "approve"}))["goal"]
+    assert not sc.run_scenario(s, subject({"바꿔": "propose", "네": "no"}))["goal"]
