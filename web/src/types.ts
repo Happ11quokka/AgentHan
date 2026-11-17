@@ -20,11 +20,23 @@ export type Coupon = {
   status?: string;
 };
 
+/**
+ * 하나씩 골라 바꾸는 기록(톡톡 문의·주문·예약, place.py _record_rows).
+ * label: 기록을 서로 구별하는 필드, fields: 나머지 필드. 화면은 필드 이름을 몰라도
+ * before/after 값이 다른 필드만 골라 보여 준다.
+ */
+export type RecordRow = { id: string; label: Record<string, unknown>; fields: Record<string, unknown> };
+
+/** 기록 섹션 이름(기능 id). 예전 서버 응답에는 없을 수 있다. */
+export type RecordSection = "talktalk" | "order" | "reservation";
+
 export type Place = {
   menu: MenuRow[];
   business_hours: Record<string, DayHours>;
   coupon: Coupon[];
-};
+  /** 대표키워드(검색어). 예전 서버 응답에는 없을 수 있다. */
+  keywords?: string[];
+} & Partial<Record<RecordSection, RecordRow[]>>;
 
 export type SectionChanges = { added: string[]; updated: string[]; removed: string[] };
 
@@ -69,7 +81,8 @@ export type Started = View & { session_id: string };
 export type Message =
   | { id: number; role: "owner"; text: string; image?: string; hadImage?: boolean }
   /** cardFor: 이 답이 띄운 승인 카드의 task_id. 카드가 떠 있는 동안 말풍선은 첫 줄만 보인다. */
-  | { id: number; role: "agent"; text: string; nextActions?: Action[]; cardFor?: string }
+  /** previews: 이 답이 띄운 승인 카드마다 바뀌는 줄(카드 순서). 말풍선의 "…아래처럼 바꿀까요?" 밑에 보인다. */
+  | { id: number; role: "agent"; text: string; nextActions?: Action[]; cardFor?: string; previews?: string[][] }
   | { id: number; role: "result"; saved: boolean; lines: string[] }
   /** 화면에서만 만든 알림(서버 대화 기록에 없음). reviewId: [리뷰 탭에서 보기]가 열 카드. */
   | { id: number; role: "notice"; text: string; reviewId: string };

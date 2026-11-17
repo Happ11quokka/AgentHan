@@ -55,6 +55,7 @@ class Batch:
     asked: list[str] = field(default_factory=list)
     write_features: set[str] = field(default_factory=set)
     recovering_write: bool = False
+    steps: list[planner.Step] = field(default_factory=list)  # 마지막 계획의 새 단계 전체
 
 
 class ReviewClient:
@@ -174,6 +175,60 @@ SYSTEM = (
 )
 
 
+FOLLOW_UP = "\n사장님 후속 답: "
+# 절 경계: 문장부호와 앞뒤가 띄어진 접속어. 따옴표 안(사장님이 불러 준 문구)은 나누지 않는다.
+CLAUSE_BREAK = re.compile(
+    r"[,.!?;。，\n]+|\s(?:그리고|그리고요|그다음에?|그\s다음에?|다음으로|또|또한|및)\s"
+)
+QUOTED = re.compile(r"['‘“\"][^'’”\"]*['’”\"]")
+
+
+def clauses(text: str) -> list[str]:
+    """사장님 말을 절로 나눈다(따옴표 문구는 한 절 안에 그대로 둔다)."""
+    quoted: list[str] = []
+
+    def mask(match):
+        quoted.append(match.group())
+        return f"\x00{len(quoted) - 1}\x00"
+
+    masked = QUOTED.sub(mask, text)
+    parts = [p.strip() for p in CLAUSE_BREAK.split(masked) if p.strip()]
+    return [re.sub(r"\x00(\d+)\x00", lambda m: quoted[int(m.group(1))], p) for p in parts]
+
+
+def _bigrams(text: str) -> set[str]:
+    norm = value_source._norm(text)
+    return {norm[i : i + 2] for i in range(len(norm) - 1)}
+
+
+def _overlap(text: str, goal: str) -> int:
+    return len(_bigrams(text) & _bigrams(goal))
+
+
+def step_portion(text: str, step: planner.Step, steps: list[planner.Step]) -> str:
+    """사장님 말 가운데 이 단계 몫. 다른 단계의 말이 대상 후보를 좁히지 않게 한다.
+
+    각 절은 계획 단계 goal과 글자(2-gram) 겹침이 가장 큰 단계의 몫이다(같으면 함께 둔다). 남긴
+    절에서도 이 단계 goal과는 안 겹치고 다른 단계 goal에만 겹치는 어절은 뺀다(한 절에 두 일이
+    섞인 말). 후속 답은 지금 단계의 질문에 대한 답이므로 그대로 둔다. 단계가 하나면 말 전체다."""
+    original, *follow = text.split(FOLLOW_UP)
+    others = list(dict.fromkeys(s.goal for s in steps if s.identity != step.identity and s.goal))
+    if not others:
+        return text
+    kept = []
+    for clause in clauses(original):
+        if _overlap(clause, step.goal) < max(_overlap(clause, g) for g in others):
+            continue  # 다른 단계의 절
+        words = [
+            w
+            for w in clause.split()
+            if _overlap(w, step.goal) or not any(_overlap(w, g) for g in others)
+        ]
+        if words:
+            kept.append(" ".join(words))
+    return FOLLOW_UP.join(["\n".join(kept), *follow])
+
+
 def summary(feature: str, result: dict) -> str:
     """다음 모델에는 원시 JSON 대신 실제 값이 남는 한두 줄만 준다."""
     parts = []
@@ -227,6 +282,9 @@ class PlannerLoop:
         self.review_sentiments: dict[str, str] = {}
         self.transient_retries = 0
         self.proposals: list[dict] = []
+        # 단계 실패의 1회 재시도 기록: {(단계 identity, 종류)}. 턴마다 비운다.
+        self.retried: set[tuple] = set()
+        self.plan_retried = False
 
     def button(self, action_id, values, label):
         """계획 묶음 승인·재개 버튼도 모델 없이 코드 경로로 실행한다."""
@@ -395,6 +453,8 @@ class PlannerLoop:
         self.review_step = None
         self.transient_retries = 0
         self.proposals = []
+        self.retried = set()
+        self.plan_retried = False
         self.a._ref_lookup = None
         self.a.trace = new_trace(None, "planner")
         task = self.a.ledger.active()
@@ -633,11 +693,18 @@ class PlannerLoop:
             return {"next": "respond"}
         self.a.trace["planner"] = result.as_trace() if result else None
         if result is None:
+            errored = len(self.a.trace.get("loop_errors", [])) != errors_before
             if (
                 not self.budget.reason
-                and len(self.a.trace.get("loop_errors", [])) == errors_before
-                and self.budget.replan()
+                and not self.plan_retried
+                and (errored or self.budget.replan())
             ):
+                # 쓸 수 없는 계획은 재계획 한도로, 호출 오류는 별도로 한 번만 다시 계획한다.
+                # 단일 기능 안전망으로 떨어지면 여러 단계가 사라진다. 모델 횟수·마감은 같은 예산.
+                self.plan_retried = True
+                if errored:
+                    self.a.trace["plan_retry"] = True
+                    self.budget.check()
                 return {"next": "plan"}
             if not self.started and not self.budget.reason:
                 pending = self.last_preview()
@@ -717,6 +784,7 @@ class PlannerLoop:
             and any(s.feature in {"statistics", "review"} for s in steps)
         )
         completed = {s.identity for s in self.batch.completed_steps}
+        self.batch.steps = list(steps)
         self.batch.remaining = [
             s
             for s in steps
@@ -1406,21 +1474,45 @@ class PlannerLoop:
         return {"answer": self.a._end_turn(answer)}
 
     def exposed(self):
+        from agenthan.agent.owner_assistant import RECORD_TARGETS, target_schema
+
         features = list(dict.fromkeys(s.feature for s in self.batch.remaining))[:8]
+        current = self.batch.remaining[0].feature if self.batch.remaining else None
+        targets = self.step_targets() if current in RECORD_TARGETS else None
         return [
-            REVIEW if f == "review" else feature_tool_schema(f)
+            REVIEW if f == "review" else target_schema(f, targets if f == current else None)
             for f in features
             if f == "review" or f in TOOLS
         ] + [ASK_OWNER]
+
+    def step_said(self, step=None):
+        """이 단계 몫의 사장님 말(다른 단계의 말은 뺀다)."""
+        step = step or self.batch.remaining[0]
+        return step_portion(self.batch.text, step, self.batch.steps or [step])
+
+    def step_targets(self, step=None):
+        """현재 단계의 대상 후보. 모델 호출 전 노출·실행·값 출처 게이트가 같은 집합을 쓴다.
+
+        좁히는 말은 단계 goal과 이 단계 몫의 사장님 말이다(문장 전체가 아니다)."""
+        from agenthan.agent.owner_assistant import RECORD_TARGETS
+
+        step = step or self.batch.remaining[0]
+        if step.feature not in RECORD_TARGETS:
+            return None
+        task = self.a.ledger.find_open(step.feature)
+        said = "\n".join(filter(None, [step.goal, self.step_said(step)]))
+        return self.a._record_targets(step.feature, task, said=said)
 
     def messages(self):
         step = self.batch.remaining[0]
         task = self.a.ledger.find_open(step.feature)
         context = self.a._tasks_summary(task, self.a._held_tasks(task)) or "없음"
         # 읽을 수 있는 실제 가게 값도 계획 기능 범위로만 제공한다.
-        from agenthan.agent.owner_assistant import store_slice
+        from agenthan.agent.owner_assistant import store_slice, targets_line
 
         values = store_slice(step.feature, self.a.store.read())
+        targets = self.step_targets(step)
+        candidates = ("\n" + targets_line(targets)) if targets is not None else ""
         return [
             {"role": "system", "content": SYSTEM},
             {
@@ -1429,13 +1521,21 @@ class PlannerLoop:
                     planner.today_context(self.a.today) + "\n"
                     f"사장님 말: {self.batch.text}\n범위: {self.batch.scope}\n"
                     f"현재 단계: {step.feature} / {step.goal}\n열린 작업: {context}\n"
-                    f"가게 자료: {json.dumps(values, ensure_ascii=False)}\n"
+                    f"가게 자료: {json.dumps(values, ensure_ascii=False)}{candidates}\n"
                     + self.completed_context()
                     + "\n"
-                    "관찰:\n" + "\n".join(self.batch.observations[-8:])
+                    "관찰:\n" + "\n".join(self.step_observations(step))
                 ),
             },
         ]
+
+    def step_observations(self, step):
+        """거절(40009) 뒤 재요청은 다른 단계의 관찰을 뺀다. 앞 단계 미리보기 관찰이 있으면
+        HCX가 목록에 없는 함수를 고르려다 거절하는 일이 잦다(열린 작업 줄에 상태는 남는다).
+        선행 조회가 필요한 단계는 그 관찰이 근거이므로 그대로 준다."""
+        if (step.identity, "rejected") in self.retried and not step.needs:
+            return []
+        return self.batch.observations[-8:]
 
     def act(self, state):
         self.begin_loop(state["text"])
@@ -1455,6 +1555,11 @@ class PlannerLoop:
             return {"next": "respond"}
         except ClovaRequestRejected:
             self.a.trace["rejected"] = True
+            if self.retry_step("rejected"):
+                # 같은 단계를 도구를 지정해 한 번만 다시 묻는다(다른 단계 관찰은 뺀다).
+                self.forced = True
+                self.a.trace["rejected_retry"] = True
+                return {"next": "act"}
             return self.skip()
         except ClovaChatError:
             return self.skip()
@@ -1466,6 +1571,16 @@ class PlannerLoop:
                 return {"next": "act"}
             return self.skip()
         return {"next": "gate"}
+
+    def retry_step(self, kind):
+        """현재 단계의 같은 종류 실패는 한 번만 다시 시도한다(모델 예산·마감 안에서)."""
+        if not self.batch.remaining or self.budget.reason:
+            return False
+        key = (self.batch.remaining[0].identity, kind)
+        if key in self.retried:
+            return False
+        self.retried.add(key)
+        return True
 
     def skip(self):
         step = self.batch.remaining.pop(0)
@@ -1602,6 +1717,22 @@ class PlannerLoop:
                 if not following or following[0]["function"]["name"] != name:
                     self.batch.completed_steps.append(self.batch.remaining.pop(0))
             else:
+                if (
+                    result.get("error") in ("not_a_candidate", "ambiguous_target")
+                    and result.get("candidates")
+                    and not self.question
+                    and self.retry_step("candidates")
+                ):
+                    # 후보를 관찰로 주고 같은 단계를 한 번 더 실행한다. 사장님 말로 하나가
+                    # 정해지지 않으면 값 출처 게이트가 다시 막고 그때 묻는다.
+                    self.results.pop()
+                    self.batch.observations.append(
+                        f"{feature} 대상 후보(id 중에서 고를 것): "
+                        + json.dumps(result["candidates"], ensure_ascii=False)[:600]
+                    )
+                    self.a.trace["candidate_retry"] = True
+                    self.forced = False
+                    return {"next": "act"}
                 self.question = self.question or self.ask_text(result.get("missing_fields", []))
                 break
         return {"next": "observe"}
@@ -1682,7 +1813,12 @@ class PlannerLoop:
             task.said.append(self.batch.text)
         self.batches[task.id] = self.batch
         self.a._adding = task.id in self.batch.tasks or bool(ADD_HINT.search(self.batch.text))
-        self.a._targets = self.a._record_targets(feature, task)
+        step = self.batch.remaining[0]
+        self.a._targets = (
+            self.step_targets(step)
+            if step.feature == feature
+            else self.a._record_targets(feature, task)
+        )
         lookup = self.lookup(feature, args)
         arguments, refused = self.a._propose(task, feature, args, lookup=lookup)
         result = refused or self.a._preview(feature, name, arguments)
@@ -1753,7 +1889,7 @@ class PlannerLoop:
 
     def lookup(self, feature, args):
         """참조 해석은 모델이 맡고, 코드는 실제 조회 필드·형식·값만 대조한다."""
-        from agenthan.agent.owner_assistant import store_slice, tool_params
+        from agenthan.agent.owner_assistant import RECORD_TARGETS, store_slice, tool_params
 
         fields = []
 
@@ -1797,6 +1933,16 @@ class PlannerLoop:
                 compatible = source == name or (kind == "date" and source.endswith("date"))
                 if compatible and value == args[name] and type(value) is type(args[name]):
                     lookup[name] = value
+        targets = self.a._targets if feature in RECORD_TARGETS else None
+        if targets and self.batch.remaining and self.batch.remaining[0].feature == feature:
+            # 대상 id는 이 단계 몫의 사장님 말(goal 제외)이 하나로 가리킬 때만 확인된 값이다.
+            value = args.get(targets["param"])
+            records = store.get(RECORD_TARGETS[feature][0], [])
+            said = self.step_said()
+            if value in targets["ids"] and value_source._pointed(
+                records, value, said, self.a.today
+            ):
+                lookup[targets["param"]] = value
         if feature == "menu":
             counts = {
                 name: count

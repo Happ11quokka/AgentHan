@@ -1,7 +1,7 @@
 // 대화 상태 한곳: 메시지·가게 화면·승인 대기·오늘 한 일·연결 상태. 사이드카와 승인 카드가 같은 상태를 본다.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type AssistantApi } from "./api";
-import { couponActionLabel, describeChanges, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
+import { couponActionLabel, describeChanges, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
 import type { Action, LogEntry, Message, Pending, Place, ReviewRow, Turn, View } from "./types";
@@ -158,8 +158,19 @@ export function useConversation(api: AssistantApi): Conversation {
       resolved && answered && before.pending.some((p) => p.kind === "review" && p.task_id === answered.args.task_id);
     if (answeredReview && answered.action_id === "task.approve") lines.push(REVIEW_POSTED_TEXT);
     const card = turn.pending.find((p) => p.kind === "review" && !before.pending.some((b) => b.task_id === p.task_id));
+    // 이 답이 새로 띄운 변경 카드의 줄. 말풍선의 승인 질문 줄 밑에 같은 내용을 보인다.
+    const previews = turn.pending
+      .filter((p) => !p.kind && !before.pending.some((b) => b.task_id === p.task_id))
+      .map((p) => pendingLines(turn.place, p));
     const added: Message[] = [
-      { id: newId(), role: "agent", text: turn.reply, nextActions: turn.next_actions, ...(card && { cardFor: card.task_id }) },
+      {
+        id: newId(),
+        role: "agent",
+        text: turn.reply,
+        nextActions: turn.next_actions,
+        ...(card && { cardFor: card.task_id }),
+        ...(previews.length && { previews }),
+      },
     ];
     if (resolved && (answeredReview || before.pending.some((p) => p.kind !== "review")))
       added.push({ id: newId(), role: "result", saved: lines.length > 0, lines });

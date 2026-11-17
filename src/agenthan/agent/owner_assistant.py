@@ -344,6 +344,32 @@ def record_view(record: dict, fields: tuple[str, ...]) -> dict:
     return view
 
 
+def targets_line(targets: dict) -> str:
+    """The candidate records line of a model prompt (legacy system prompt, planner step)."""
+    if not targets["stated"]:
+        note = (
+            "사장님이 대상을 아직 가리키지 않음. 조회 질문이면 후보로 답만 하고, "
+            "상태를 바꾸려는데 하나로 정해지지 않을 때만 어느 건인지 물을 것"
+        )
+    elif not targets["views"]:
+        note = "사장님 말에 맞는 건이 없음. 그렇다고 알리고 다시 물을 것"
+    else:
+        note = "사장님 말에 맞는 건"
+    return (
+        f"대상 후보 ({note}, 전체 {targets['total']}건 중 {len(targets['views'])}건): "
+        + json.dumps(targets["views"], ensure_ascii=False)
+    )
+
+
+def target_schema(feature_id: str, targets: dict | None) -> dict:
+    """The feature's tool; a record id may only be one of the candidates (none: no enum)."""
+    schema = feature_tool_schema(feature_id)
+    if targets and targets["ids"]:
+        prop = schema["function"]["parameters"]["properties"][targets["param"]]
+        prop["enum"] = list(targets["ids"])
+    return schema
+
+
 def tool_params(feature_id: str) -> list[tuple[str, str, tuple[str, ...], str]]:
     """(id, kind, enum, label) of the feature's write tool parameters."""
     return [(p.id, p.kind, p.enum, p.label) for p in TOOLS[feature_id].params]
@@ -1708,21 +1734,8 @@ class OwnerAssistant:
             "가게 데이터: "
             + json.dumps(store_slice(feature_id, self.store.read()), ensure_ascii=False),
         ]
-        targets = self._targets
-        if targets is not None:
-            if not targets["stated"]:
-                note = (
-                    "사장님이 대상을 아직 가리키지 않음. 조회 질문이면 후보로 답만 하고, "
-                    "상태를 바꾸려는데 하나로 정해지지 않을 때만 어느 건인지 물을 것"
-                )
-            elif not targets["views"]:
-                note = "사장님 말에 맞는 건이 없음. 그렇다고 알리고 다시 물을 것"
-            else:
-                note = "사장님 말에 맞는 건"
-            lines.append(
-                f"대상 후보 ({note}, 전체 {targets['total']}건 중 {len(targets['views'])}건): "
-                + json.dumps(targets["views"], ensure_ascii=False)
-            )
+        if self._targets is not None:
+            lines.append(targets_line(self._targets))
         lines.append("현재 작업: " + json.dumps(state, ensure_ascii=False))
         guide = guide_text(feature_id)
         if guide:
@@ -1734,14 +1747,17 @@ class OwnerAssistant:
             lines.append(self.planner_loop.completed_context())
         return "\n".join(lines)
 
-    def _record_targets(self, feature_id: str, task) -> dict | None:
+    def _record_targets(self, feature_id: str, task, said: str | None = None) -> dict | None:
         """Records the owner's words in this task point at (all of them, capped, when the
-        owner has not pointed yet). Only the owner's words narrow it; nothing is assumed."""
+        owner has not pointed yet). Only the owner's words narrow it; nothing is assumed.
+
+        said: the words to narrow by instead of the whole task (a planner step's share)."""
         if feature_id not in RECORD_TARGETS:
             return None
         collection, param, fields = RECORD_TARGETS[feature_id]
         records = self.store.read().get(collection, [])
-        fits, stated = value_source.candidates(records, "\n".join(task.said), self.today)
+        said = "\n".join(task.said) if said is None else said
+        fits, stated = value_source.candidates(records, said, self.today)
         fits = fits[:MAX_TARGETS]
         return {
             "param": param,
@@ -1753,12 +1769,7 @@ class OwnerAssistant:
 
     def _tool_schema(self, feature_id: str) -> dict:
         """The feature's tool; a record id may only be one of this turn's candidates."""
-        schema = feature_tool_schema(feature_id)
-        targets = self._targets
-        if targets and targets["ids"]:
-            prop = schema["function"]["parameters"]["properties"][targets["param"]]
-            prop["enum"] = list(targets["ids"])
-        return schema
+        return target_schema(feature_id, self._targets)
 
     def _context(self, turn_start: int, feature: str | None = None) -> list[dict]:
         """This turn in full plus the last CONTEXT_TURNS earlier messages as plain text.

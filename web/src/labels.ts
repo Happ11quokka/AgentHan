@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RedraftHint, ReplyError, ReplyOpName, ReviewRow } from "./types";
+import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -81,10 +81,21 @@ export const couponActionLabel = (c: CouponInput) => `쿠폰 만들기: ${c.titl
 export type RowMark = "added" | "updated" | "removed";
 export const MARK_TEXT: Record<RowMark, string> = { added: "추가 예정", updated: "바뀔 예정", removed: "내릴 예정" };
 
+/** 여러 변경 카드가 한 번에 저장될 때 카드 버튼 대신 보이는 안내. */
+export const BUNDLED_TEXT = "위의 [모두 저장]·[모두 취소]로 함께 저장하거나 취소해요.";
+
 export const RESULT_TEXT = { saved: "저장 완료", skipped: "저장 안 함" } as const;
 export const CONNECTION_TEXT = { online: "연결됨", offline: "연결 끊김" } as const;
 
-const FEATURE_NAMES: Record<string, string> = { menu: "메뉴", business_hours: "영업시간", coupon: "쿠폰" };
+const FEATURE_NAMES: Record<string, string> = {
+  menu: "메뉴",
+  business_hours: "영업시간",
+  coupon: "쿠폰",
+  search_keywords: "대표키워드",
+  talktalk: "톡톡 답장",
+  order: "주문 상태",
+  reservation: "예약 상태",
+};
 export const featureName = (feature: string) => FEATURE_NAMES[feature] ?? "가게 정보";
 
 // ── 리뷰 탭 ────────────────────────────
@@ -272,8 +283,104 @@ export function describeChanges(before: Place, after: Place): string[] {
   }
 
   const oldCoupons = new Set(before.coupon.map((c) => c.id));
-  for (const c of after.coupon) if (!oldCoupons.has(c.id)) lines.push(`새 쿠폰 ${c.title} ${discountText(c)}`);
+  for (const c of after.coupon) if (!oldCoupons.has(c.id)) lines.push(couponLine(c));
+
+  const oldWords = before.keywords ?? [];
+  const newWords = after.keywords ?? oldWords; // 키워드가 없는 응답은 바뀐 것이 없다.
+  for (const k of newWords) if (!oldWords.includes(k)) lines.push(`대표키워드 추가 ${k}`);
+  for (const k of oldWords) if (!newWords.includes(k)) lines.push(`대표키워드 뺌 ${k}`);
+  lines.push(...recordChanges(before, after));
   return lines;
+}
+
+// ── 기록(톡톡·주문·예약) 바뀐 것 ─────────
+/** 기록 섹션이 한 줄 머리에 붙이는 이름. 없는 섹션은 섹션 id 그대로. */
+const RECORD_NAMES: Record<string, string> = { talktalk: "톡톡 문의", order: "주문", reservation: "예약" };
+/** 필드 이름. 없는 필드는 필드 id 그대로. */
+const FIELD_NAMES: Record<string, string> = {
+  message: "문의",
+  reply_text: "답장",
+  status: "상태",
+  items: "주문",
+  type: "받는 방식",
+  date: "날짜",
+  time: "시간",
+  people: "인원",
+  reason: "사유",
+};
+/** 서버 코드 값(상태·방식). 없는 값은 그대로. */
+const VALUE_TEXT: Record<string, string> = {
+  unanswered: "답장 전",
+  saved_not_sent: "답장 저장(아직 안 보냄)",
+  new: "새 주문",
+  accepted: "접수",
+  rejected: "거절",
+  ready: "준비 완료",
+  completed: "전달 완료",
+  requested: "예약 신청",
+  confirmed: "확정",
+  cancelled: "취소",
+  no_show: "노쇼",
+  pickup: "포장",
+  delivery: "배달",
+};
+const KNOWN_SECTIONS = new Set(["menu", "business_hours", "coupon", "keywords"]);
+
+const isRecordRows = (value: unknown): value is RecordRow[] =>
+  Array.isArray(value) && value.every((r) => r && typeof r === "object" && "id" in r && "label" in r && "fields" in r);
+
+function valueText(field: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (field === "people" && typeof value === "number") return `${value}명`;
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return VALUE_TEXT[text] ?? text;
+}
+
+/** 기록 한 개를 구별하는 머리줄: "톡톡 문의 · 주차 가능한가요?". 바뀌는 필드는 머리에서 뺀다. */
+function recordHead(section: string, row: RecordRow, changed: Set<string>) {
+  const parts = Object.entries(row.label)
+    .filter(([k]) => !changed.has(k))
+    .map(([k, v]) => valueText(k, v))
+    .filter(Boolean);
+  return [RECORD_NAMES[section] ?? section, ...parts].join(" · ");
+}
+
+/** 기록 섹션마다 before/after 값이 다른 필드를 "답장: 근처 … " / "상태: 답장 전 → 확정"으로. */
+function recordChanges(before: Place, after: Place): string[] {
+  const lines: string[] = [];
+  const sections = after as unknown as Record<string, unknown>;
+  const olds = before as unknown as Record<string, unknown>;
+  for (const [section, rows] of Object.entries(sections)) {
+    if (KNOWN_SECTIONS.has(section) || !isRecordRows(rows)) continue;
+    const previous = isRecordRows(olds[section]) ? (olds[section] as RecordRow[]) : null;
+    if (!previous) continue; // 예전 응답과 비교할 기록이 없으면 바뀐 것을 알 수 없다.
+    const oldRows = new Map(previous.map((r) => [r.id, r]));
+    for (const row of rows) {
+      const old = oldRows.get(row.id);
+      const now = { ...row.label, ...row.fields };
+      const was: Record<string, unknown> = old ? { ...old.label, ...old.fields } : {};
+      const changed = Object.keys(now).filter((k) => JSON.stringify(now[k]) !== JSON.stringify(was[k]));
+      if (!changed.length) continue;
+      lines.push(old ? recordHead(section, row, new Set(changed)) : `${recordHead(section, row, new Set())} 새로 생김`);
+      if (!old) continue;
+      for (const k of changed) {
+        const name = FIELD_NAMES[k] ?? k;
+        const a = valueText(k, was[k]);
+        const b = valueText(k, now[k]);
+        lines.push(a ? `${name}: ${a} → ${b || "비움"}` : `${name}: ${b}`);
+      }
+    }
+    const newIds = new Set(rows.map((r) => r.id));
+    for (const old of previous) if (!newIds.has(old.id)) lines.push(`${recordHead(section, old, new Set())} 지움`);
+  }
+  return lines;
+}
+
+const squash = (text: string) => text.replace(/\s+/g, "");
+/** 새 쿠폰 한 줄. 쿠폰 이름에 이미 할인 문구가 들어 있으면 다시 붙이지 않는다. */
+function couponLine(c: Coupon) {
+  const discount = discountText(c);
+  return squash(c.title).includes(squash(discount)) ? `새 쿠폰 ${c.title}` : `새 쿠폰 ${c.title} ${discount}`;
 }
 
 const hasHangul = (text: string) => /[가-힣]/.test(text);

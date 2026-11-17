@@ -1,10 +1,12 @@
-import { approval, draftStatus, featureName, noteBadges, pendingLines, REVIEW_CARD_TEXT, reviewDate, won } from "../labels";
+import { approval, BUNDLED_TEXT, draftStatus, featureName, noteBadges, pendingLines, REVIEW_CARD_TEXT, reviewDate, won } from "../labels";
 import type { Action, Pending, Place, ReviewRow } from "../types";
 import { Stars } from "./ReviewsTab";
 
 type Props = {
   place: Place;
   pending: Pending;
+  /** 다른 카드와 함께 말풍선의 [모두 저장]·[모두 취소]로만 저장한다(카드 버튼 없음). */
+  bundled?: boolean;
   /** 리뷰 답글 카드가 가리키는 원래 리뷰(못 찾으면 없음). */
   review?: ReviewRow;
   onAnswer: (text: string) => void;
@@ -33,7 +35,7 @@ function ReviewReply({ reply, review }: { reply: string; review?: ReviewRow }) {
 }
 
 /** 저장 전 변경. [저장]·[취소]는 비서에게 그 답을 말한 것과 같다. */
-export function ApprovalCard({ place, pending, review, onAnswer, onAction }: Props) {
+export function ApprovalCard({ place, pending, bundled = false, review, onAnswer, onAction }: Props) {
   const photo = pending.kind === "photo";
   const isReview = pending.kind === "review";
   const { blocked, answer, need } = approval(pending);
@@ -83,22 +85,26 @@ export function ApprovalCard({ place, pending, review, onAnswer, onAction }: Pro
         <ReviewReply reply={pending.reply ?? ""} review={review} />
       ) : (
         <ul className="changes">
-          {pendingLines(place, pending).map((line) => (
-            <li key={line}>{line}</li>
+          {pendingLines(place, pending).map((line, i) => (
+            <li key={`${i}-${line}`}>{line}</li>
           ))}
         </ul>
       )}
 
       {need && <p className="approval-question">{need}</p>}
 
-      <footer>
-        <button type="button" className="ghost" onClick={() => act(false)}>
-          {isReview ? REVIEW_CARD_TEXT.cancel : "취소"}
-        </button>
-        <button type="button" className="primary" disabled={blocked || (!photo && pending.version === undefined)} onClick={() => act(true)}>
-          {approveLabel}
-        </button>
-      </footer>
+      {bundled ? (
+        <p className="approval-bundled">{BUNDLED_TEXT}</p>
+      ) : (
+        <footer>
+          <button type="button" className="ghost" onClick={() => act(false)}>
+            {isReview ? REVIEW_CARD_TEXT.cancel : "취소"}
+          </button>
+          <button type="button" className="primary" disabled={blocked || (!photo && pending.version === undefined)} onClick={() => act(true)}>
+            {approveLabel}
+          </button>
+        </footer>
+      )}
     </section>
   );
 }
