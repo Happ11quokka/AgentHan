@@ -7,8 +7,9 @@ import type { Tab } from "./Sidecar";
  * 자주 쓰는 일. 하나를 늘리려면 이 표에만 한 줄 더한다.
  * - ask: 비서에게 보낼 말(없으면 사진 고르기를 연다)
  * - tab: 같이 보여 줄 사이드카 탭
+ * - inChat: 대화 영역에 입력 블록이 뜨는 일. 좁은 화면에서 사이드카를 펼쳐 가리지 않는다.
  */
-export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; action_id?: string; tab: Tab }> = [
+export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; action_id?: string; tab: Tab; inChat?: boolean }> = [
   { key: "photo", label: "메뉴 사진 올리기", hint: "메뉴판·음식 사진", icon: "camera", ask: null, tab: "shop" },
   { key: "reviews", label: "요즘 리뷰", hint: "손님 반응 정리", icon: "star", ask: "요즘 리뷰 어때?", action_id: "review.summary", tab: "reviews" },
   { key: "stats", label: "이번 주 손님", hint: "방문·유입 요약", icon: "chart", ask: "이번 주 손님 얼마나 왔어?", action_id: "stats.week", tab: "stats" },
@@ -17,8 +18,10 @@ export const QUICK: Array<{ key: string; label: string; hint: string; icon: Icon
     label: "쿠폰 만들기",
     hint: "할인으로 손님 부르기",
     icon: "ticket",
-    ask: "손님에게 줄 쿠폰을 만들고 싶어요", // 쿠폰 폼이 생기기 전까지는 대화로 값을 묻는다
+    ask: null,
+    action_id: "coupon.create", // 값 없이 보내면 대화 영역에 쿠폰 입력 블록이 뜬다
     tab: "shop",
+    inChat: true,
   },
 ];
 

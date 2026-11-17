@@ -26,11 +26,57 @@ export const DAYS: Array<[string, string]> = [
 export const hoursText = (h: DayHours | undefined) =>
   !h ? "정보 없음" : h.closed ? "쉬는 날" : `${h.open_time} ~ ${h.close_time}`;
 
-export const discountText = (c: Coupon) =>
+export const discountText = (c: Pick<Coupon, "discount_type" | "discount_value">) =>
   c.discount_type === "percent" ? `${c.discount_value}% 할인` : `${won(c.discount_value)} 할인`;
 
 const monthDay = (iso: string) => iso.slice(5).replace("-", "/");
-export const periodText = (c: Coupon) => `${monthDay(c.start_date)} ~ ${monthDay(c.end_date)}`;
+export const periodText = (c: Pick<Coupon, "start_date" | "end_date">) => `${monthDay(c.start_date)} ~ ${monthDay(c.end_date)}`;
+
+// ── 쿠폰 입력 블록 ─────────────────────
+/** 블록 칸의 값. discount_value는 입력칸 글자 그대로 둔다(비운 칸을 0과 구별). */
+export type CouponInput = {
+  title: string;
+  discount_type: Coupon["discount_type"];
+  discount_value: string;
+  start_date: string;
+  end_date: string;
+};
+
+export const COUPON_FORM_TEXT = {
+  heading: "쿠폰 만들기",
+  title: "쿠폰 이름",
+  titlePlaceholder: "예: 겨울 맞이 할인",
+  type: "할인 방식",
+  amount: "원",
+  percent: "%",
+  value: "할인 값",
+  start: "시작일",
+  end: "종료일",
+  cancel: "취소",
+  submit: "미리 보기",
+} as const;
+
+/** [미리 보기]를 막는 이유 한 줄. 막을 게 없으면 null. */
+export function couponProblem(c: CouponInput): string | null {
+  if (!c.title.trim()) return "쿠폰 이름을 적어 주세요.";
+  const value = Number(c.discount_value);
+  if (!c.discount_value.trim() || !Number.isInteger(value) || value < 1) return "할인 값을 1 이상의 숫자로 적어 주세요.";
+  if (c.discount_type === "percent" && value > 100) return "% 할인은 1~100 사이로 적어 주세요.";
+  if (!c.start_date || !c.end_date) return "시작일과 종료일을 골라 주세요.";
+  if (c.end_date < c.start_date) return "종료일이 시작일보다 빨라요.";
+  return null;
+}
+
+/** 블록 아래 미리보기 한 줄: "겨울 할인 · 10% 할인 · 11/17 ~ 12/01". */
+export function couponPreview(c: CouponInput): string {
+  const parts = [c.title.trim() || COUPON_FORM_TEXT.title];
+  const value = Number(c.discount_value);
+  if (c.discount_value.trim() && Number.isFinite(value)) parts.push(discountText({ discount_type: c.discount_type, discount_value: value }));
+  if (c.start_date && c.end_date) parts.push(periodText(c));
+  return parts.join(" · ");
+}
+
+export const couponActionLabel = (c: CouponInput) => `쿠폰 만들기: ${c.title.trim()}`;
 
 export type RowMark = "added" | "updated" | "removed";
 export const MARK_TEXT: Record<RowMark, string> = { added: "추가 예정", updated: "바뀔 예정", removed: "내릴 예정" };
@@ -51,6 +97,18 @@ export function replyAsk(r: ReviewRow) {
   return `"${quote}" 리뷰에 답글 초안 써 줘`;
 }
 export const reviewDate = (iso: string) => monthDay(iso);
+
+// ── 리뷰 답글 확인 카드 ────────────────
+export const REVIEW_CARD_TEXT = {
+  title: "리뷰 답글 올리기",
+  source: "원래 리뷰",
+  reply: "올릴 답글",
+  hint: "고치고 싶으면 대화로 말해 주세요.",
+  approve: "답글 올리기",
+  cancel: "취소",
+} as const;
+/** 답글을 올린 뒤 결과 칩·'오늘 한 일'에 남는 한 줄. */
+export const REVIEW_POSTED_TEXT = "리뷰 답글 올림";
 
 // ── 손님 통계 탭 ───────────────────────
 export const PERIOD_TEXT: Record<Period, string> = { week: "주간", day: "일간" };

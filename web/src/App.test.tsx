@@ -1,15 +1,18 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 import App from "./App";
 import {
   REVIEWS,
+  REVIEW_DRAFT_REPLY,
+  REVIEW_POSTED_REPLY,
   SEED,
   draft,
   fakeApi,
   gone,
   offline,
   photoPending,
+  reviewPending,
   withCake,
 } from "./test/fakeApi";
 
@@ -283,10 +286,12 @@ describe("사이드카 [내 가게]", () => {
 });
 
 describe("왼쪽 자주 쓰는 일", () => {
-  test("요즘 리뷰·이번 주 손님은 액션을, 쿠폰 만들기는 대화를 보낸다", async () => {
+  test("요즘 리뷰·이번 주 손님은 액션을 보내고, 쿠폰 만들기는 입력 블록을 연다", async () => {
     const { user, api } = await open();
     await user.click(screen.getByRole("button", { name: "쿠폰 만들기" }));
-    await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "손님에게 줄 쿠폰을 만들고 싶어요"));
+    expect(chatArea().getByRole("form", { name: "쿠폰 만들기" })).toBeInTheDocument();
+    expect(api.say).not.toHaveBeenCalled();
+    expect(api.act).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "요즘 리뷰" }));
     await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", args: {}, label: "요즘 리뷰" }));
     expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
@@ -429,6 +434,122 @@ describe("사이드카 [리뷰]", () => {
     await user.click(first);
     expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.draft_reply", args: { review_id: "r04" }, label: "답글 초안 받기" });
     expect(api.say).not.toHaveBeenCalled();
+  });
+});
+
+describe("쿠폰 입력 블록", () => {
+  async function openCoupon(api = fakeApi()) {
+    const opened = await open(api);
+    await opened.user.click(screen.getByRole("button", { name: "쿠폰 만들기" }));
+    const form = chatArea().getByRole("form", { name: "쿠폰 만들기" });
+    return { ...opened, form: within(form) };
+  }
+  const setDate = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } });
+
+  test("값을 넣고 [미리 보기]를 누르면 coupon.create 액션에 그 값을 그대로 보내고 블록이 닫힌다", async () => {
+    const pending = { task_id: "t7", version: 1, feature: "coupon", after: SEED, changes: {} };
+    const { user, api, form } = await openCoupon(fakeApi([{ reply: "이 쿠폰을 만들까요?", place: SEED, pending: [pending] }]));
+    await user.type(form.getByLabelText("쿠폰 이름"), "겨울 할인");
+    await user.type(form.getByLabelText("할인 값"), "10");
+    setDate(form.getByLabelText("시작일"), "2026-12-01");
+    setDate(form.getByLabelText("종료일"), "2026-12-15");
+    expect(form.getByText("겨울 할인 · 10% 할인 · 12/01 ~ 12/15")).toBeInTheDocument();
+    await user.click(form.getByRole("radio", { name: "원" }));
+    await user.clear(form.getByLabelText("할인 값"));
+    await user.type(form.getByLabelText("할인 값"), "2000");
+    expect(form.getByText("겨울 할인 · 2,000원 할인 · 12/01 ~ 12/15")).toBeInTheDocument();
+    await user.click(form.getByRole("button", { name: "미리 보기" }));
+    expect(api.act).toHaveBeenCalledWith("s1", {
+      action_id: "coupon.create",
+      label: "쿠폰 만들기: 겨울 할인",
+      args: { title: "겨울 할인", discount_type: "amount", discount_value: 2000, start_date: "2026-12-01", end_date: "2026-12-15" },
+    });
+    expect(api.say).not.toHaveBeenCalled();
+    expect(chatArea().queryByRole("form", { name: "쿠폰 만들기" })).not.toBeInTheDocument();
+    expect(chatArea().getByText("쿠폰 만들기: 겨울 할인")).toBeInTheDocument();
+  });
+
+  test("기본 기간은 오늘부터 14일이고, 빈 칸·범위 밖 값·거꾸로 된 기간이면 [미리 보기]가 막히고 이유가 보인다", async () => {
+    const { user, form } = await openCoupon();
+    const start = form.getByLabelText<HTMLInputElement>("시작일").value;
+    const end = form.getByLabelText<HTMLInputElement>("종료일").value;
+    expect((Date.parse(end) - Date.parse(start)) / 86_400_000).toBe(14);
+    const submit = form.getByRole("button", { name: "미리 보기" });
+    expect(submit).toBeDisabled();
+    expect(form.getByText("쿠폰 이름을 적어 주세요.")).toBeInTheDocument();
+    await user.type(form.getByLabelText("쿠폰 이름"), "오픈 기념");
+    expect(submit).toBeDisabled();
+    expect(form.getByText("할인 값을 1 이상의 숫자로 적어 주세요.")).toBeInTheDocument();
+    await user.type(form.getByLabelText("할인 값"), "150");
+    expect(submit).toBeDisabled();
+    expect(form.getByText("% 할인은 1~100 사이로 적어 주세요.")).toBeInTheDocument();
+    await user.clear(form.getByLabelText("할인 값"));
+    await user.type(form.getByLabelText("할인 값"), "15");
+    expect(submit).toBeEnabled();
+    setDate(form.getByLabelText("종료일"), "2020-01-01");
+    expect(submit).toBeDisabled();
+    expect(form.getByText("종료일이 시작일보다 빨라요.")).toBeInTheDocument();
+    await user.click(form.getByRole("button", { name: "취소" }));
+    expect(chatArea().queryByRole("form", { name: "쿠폰 만들기" })).not.toBeInTheDocument();
+  });
+
+  test("비서 답의 값 없는 쿠폰 만들기 칩은 블록을 열고, 서버가 값을 거절하면 넣은 값 그대로 다시 연다", async () => {
+    const api = fakeApi([
+      { reply: "쿠폰을 만들어 볼까요?", place: SEED, pending: [], next_actions: [{ action_id: "coupon.create", label: "쿠폰 만들기", args: {} }] },
+      { reply: "값을 다시 확인해 주세요.", place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await say(user, "손님이 줄었어");
+    await user.click(await chatArea().findByRole("button", { name: "쿠폰 만들기" }));
+    expect(api.act).not.toHaveBeenCalled();
+    const form = within(chatArea().getByRole("form", { name: "쿠폰 만들기" }));
+    await user.type(form.getByLabelText("쿠폰 이름"), "단골 할인");
+    await user.type(form.getByLabelText("할인 값"), "5");
+    await user.click(form.getByRole("button", { name: "미리 보기" }));
+    expect(await chatArea().findByText("값을 다시 확인해 주세요.")).toBeInTheDocument();
+    const again = within(chatArea().getByRole("form", { name: "쿠폰 만들기" }));
+    expect(again.getByLabelText("쿠폰 이름")).toHaveValue("단골 할인");
+    expect(again.getByLabelText("할인 값")).toHaveValue(5);
+  });
+});
+
+describe("리뷰 답글 확인 카드", () => {
+  test("원래 리뷰와 올릴 답글을 보여 주고, 말풍선에서는 카드와 겹치는 인용·질문을 숨긴다", async () => {
+    const api = fakeApi([{ reply: REVIEW_DRAFT_REPLY, place: SEED, pending: [reviewPending()] }]);
+    const { user } = await open(api);
+    await say(user, "짜다는 리뷰에 답글 써 줘");
+    const card = within(await screen.findByRole("region", { name: "저장 전 확인" }));
+    expect(await card.findByText(REVIEWS.reviews[0].text)).toBeInTheDocument();
+    expect(card.getByLabelText("별점 1점")).toBeInTheDocument();
+    expect(card.getByText("11/06")).toBeInTheDocument();
+    expect(card.getByText("불편을 드려 죄송합니다. 간을 다시 맞추겠습니다.")).toBeInTheDocument();
+    expect(card.getByText("고치고 싶으면 대화로 말해 주세요.")).toBeInTheDocument();
+    expect(card.getByRole("button", { name: "답글 올리기" })).toBeEnabled();
+    expect(card.getByRole("button", { name: "취소" })).toBeInTheDocument();
+    expect(chatArea().getByText("답글 초안이에요. 내용을 확인해 주세요.")).toBeInTheDocument();
+    expect(chatArea().getAllByText("불편을 드려 죄송합니다. 간을 다시 맞추겠습니다.")).toHaveLength(1);
+    expect(chatArea().queryByText("이대로 올릴까요?")).not.toBeInTheDocument();
+    expect(screen.getByRole("main", { name: "비서와 대화" }).querySelector(".bubble blockquote")).toBeNull();
+  });
+
+  test("[답글 올리기]는 task.approve를 보내고, 더미 안내 없이 '리뷰 답글 올림'을 결과와 오늘 한 일에 남긴다", async () => {
+    const api = fakeApi([
+      { reply: REVIEW_DRAFT_REPLY, place: SEED, pending: [reviewPending()] },
+      { reply: REVIEW_POSTED_REPLY, place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await say(user, "짜다는 리뷰에 답글 써 줘");
+    const card = await screen.findByRole("region", { name: "저장 전 확인" });
+    await user.click(within(card).getByRole("button", { name: "답글 올리기" }));
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "task.approve", label: "답글 올리기", args: { task_id: "t5", version: 1 } });
+    expect(await chatArea().findByText("답글을 저장했어요.")).toBeInTheDocument();
+    expect(screen.getByRole("main", { name: "비서와 대화" }).textContent).not.toContain("실제 발송");
+    const result = chatArea().getByText("저장 완료").closest(".result") as HTMLElement;
+    expect(within(result).getByText("리뷰 답글 올림")).toBeInTheDocument();
+    const today = screen.getByRole("list", { name: "오늘 한 일" });
+    expect(within(today).getByText("리뷰 답글 올림")).toBeInTheDocument();
+    // 카드가 사라지면 처음 말풍선은 다시 초안 인용까지 보인다.
+    expect(chatArea().getByText("불편을 드려 죄송합니다. 간을 다시 맞추겠습니다.").closest("blockquote")).not.toBeNull();
   });
 });
 

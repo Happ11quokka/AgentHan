@@ -68,7 +68,8 @@ export type Started = View & { session_id: string };
 /** 대화창에 쌓이는 것: 사장님 말, 비서 답, 승인 카드가 끝난 결과. */
 export type Message =
   | { id: number; role: "owner"; text: string; image?: string; hadImage?: boolean }
-  | { id: number; role: "agent"; text: string; nextActions?: Action[] }
+  /** cardFor: 이 답이 띄운 승인 카드의 task_id. 카드가 떠 있는 동안 말풍선은 첫 줄만 보인다. */
+  | { id: number; role: "agent"; text: string; nextActions?: Action[]; cardFor?: string }
   | { id: number; role: "result"; saved: boolean; lines: string[] };
 
 // ── 리뷰·손님 통계 탭 (/reviews, /report) ──

@@ -42,6 +42,13 @@ export function photoPending(drafts: DraftRow[], after: Place | null = null): Pe
   };
 }
 
+/** 버튼 경로의 리뷰 답글 초안 카드와 그 답(서버가 돌려주는 모양 그대로). */
+export function reviewPending(over: Partial<Pending> = {}): Pending {
+  return { task_id: "t5", version: 1, feature: "review", kind: "review", review_id: "r04", reply: "불편을 드려 죄송합니다. 간을 다시 맞추겠습니다.", ...over };
+}
+export const REVIEW_DRAFT_REPLY = "답글 초안이에요. 내용을 확인해 주세요.\n> 불편을 드려 죄송합니다. 간을 다시 맞추겠습니다.\n이대로 올릴까요?";
+export const REVIEW_POSTED_REPLY = "답글을 저장했어요. 실제 발송은 하지 않았어요.";
+
 export const withCake: Place = {
   ...SEED,
   menu: [

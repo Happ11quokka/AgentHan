@@ -4,15 +4,25 @@
 import { Fragment, type ReactNode } from "react";
 
 const DUMMY_NOTE = /\s*\((?:더미 저장소|실제 연동 없음|실제 발송 없음)[^)]*\)/g;
+// 괄호 없이 문장으로 붙는 더미 안내("… 저장했어요. 실제 발송은 하지 않았어요.").
+const DUMMY_SENTENCE = /\s*실제 (?:발송|반영|연동)은 하지 않았어요\.?/g;
 const SYSTEM_LINE = /^(?:더미 (?:저장 확인|조회 결과)|네 \/ 취소)/;
 const JSON_LINE = /^\s*(?:[[{]|true$|false$)/;
 
-/** 보여 줄 줄만. 승인 질문 아래 레코드 줄과 저장·조회 결과 JSON을 뺀다. */
-export function visibleLines(text: string): string[] {
-  return text
+/**
+ * 보여 줄 줄만. 승인 질문 아래 레코드 줄과 저장·조회 결과 JSON을 뺀다.
+ * lead: 첫 문단만. 같은 내용을 승인 카드가 보여 주고 있을 때 말풍선에서 인용·뒤따르는 질문을 뺀다.
+ */
+export function visibleLines(text: string, { lead = false }: { lead?: boolean } = {}): string[] {
+  const lines = text
     .split("\n")
     .filter((line) => !SYSTEM_LINE.test(line.trim()) && !JSON_LINE.test(line))
-    .map((line) => line.replace(DUMMY_NOTE, "").trimEnd());
+    .map((line) => line.replace(DUMMY_NOTE, "").replace(DUMMY_SENTENCE, "").trimEnd());
+  if (!lead) return lines;
+  const start = lines.findIndex((line) => line.trim());
+  if (start < 0) return lines;
+  const stop = lines.findIndex((line, i) => i > start && (!line.trim() || /^\s*>/.test(line)));
+  return lines.slice(start, stop < 0 ? undefined : stop);
 }
 
 function inline(text: string): ReactNode[] {
@@ -68,8 +78,8 @@ function lineBreaks(lines: string[]) {
   ));
 }
 
-export function ReplyText({ text }: { text: string }) {
-  const shown = blocks(visibleLines(text));
+export function ReplyText({ text, lead = false }: { text: string; lead?: boolean }) {
+  const shown = blocks(visibleLines(text, { lead }));
   if (!shown.length) return <p>{text.trim() ? "확인했어요." : ""}</p>;
   return (
     <>
