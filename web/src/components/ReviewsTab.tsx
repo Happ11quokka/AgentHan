@@ -4,7 +4,7 @@ import type { Action, ReviewRow, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
 
-function Stars({ rating }: { rating: number }) {
+export function Stars({ rating }: { rating: number }) {
   return (
     <span className="stars" aria-label={`별점 ${rating}점`}>
       {"★★★★★".slice(0, rating)}

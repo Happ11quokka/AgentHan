@@ -4,6 +4,7 @@ import type { Action, Message } from "../types";
 import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
+import { CouponForm } from "./CouponForm";
 import { Icon } from "./Icon";
 import { ReplyText } from "./ReplyText";
 
@@ -17,7 +18,15 @@ type Props = {
   onToggleSide: () => void;
 };
 
-function Bubble({ message, onAction, busy }: { message: Message; onAction: (action: Action) => void; busy: boolean }) {
+type BubbleProps = {
+  message: Message;
+  onAction: (action: Action) => void;
+  busy: boolean;
+  /** 이 답이 띄운 승인 카드가 아직 떠 있다: 카드와 겹치는 인용·질문은 빼고 첫 줄만 보인다. */
+  lead: boolean;
+};
+
+function Bubble({ message, onAction, busy, lead }: BubbleProps) {
   if (message.role === "result") {
     return (
       <div className="result" data-saved={message.saved}>
@@ -50,7 +59,7 @@ function Bubble({ message, onAction, busy }: { message: Message; onAction: (acti
     <div className="row agent">
       <img className="avatar" src="/agent.png" alt="" />
       <div className="bubble agent">
-        <ReplyText text={message.text} />
+        <ReplyText text={message.text} lead={lead} />
         {message.nextActions && message.nextActions.length > 0 && (
           <div className="suggestions">
             {message.nextActions.map((action, i) => (
@@ -67,10 +76,11 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
+  const open = new Set(chat.pending.map((p) => p.task_id));
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
-  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error]);
+  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error, chat.couponForm === null]);
 
   return (
     <main
@@ -128,7 +138,13 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
             </section>
           )}
           {chat.messages.map((m) => (
-            <Bubble key={m.id} message={m} onAction={(action) => void chat.act(action)} busy={chat.busy} />
+            <Bubble
+              key={m.id}
+              message={m}
+              onAction={(action) => void chat.act(action)}
+              busy={chat.busy}
+              lead={m.role === "agent" && Boolean(m.cardFor) && open.has(m.cardFor!)}
+            />
           ))}
           {!chat.busy &&
             chat.place &&
@@ -137,10 +153,20 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
                 key={p.task_id}
                 place={chat.place!}
                 pending={p}
+                review={chat.reviewOf(p.review_id)}
                 onAnswer={(text) => void chat.send(text)}
                 onAction={(action) => void chat.act(action)}
               />
             ))}
+          {chat.couponForm && (
+            <CouponForm
+              key={JSON.stringify(chat.couponForm)}
+              initial={chat.couponForm}
+              busy={chat.busy}
+              onCancel={chat.closeCoupon}
+              onSubmit={(values) => void chat.submitCoupon(values)}
+            />
+          )}
           {chat.busy && (
             <div className="row agent" role="status" aria-label="비서가 답을 쓰는 중">
               <img className="avatar working" src="/agent.png" alt="" />
