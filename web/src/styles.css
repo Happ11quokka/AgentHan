@@ -1407,6 +1407,189 @@ p {
   font-size: 13px;
 }
 
+/* ── 답글 대기함 ──────────────────────── */
+.inbox-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inbox-bar h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.inbox-preparing {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.review[data-must-read="true"] {
+  border-color: var(--amber);
+}
+
+.review-head .chip + .chip {
+  margin-left: 0;
+}
+
+.inbox-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.inbox-draft h4 {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.inbox-draft p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+.inbox-draft[data-status="posted"] {
+  background: var(--green-soft);
+}
+
+.inbox-draft .inbox-issues {
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.inbox-draft textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.inbox-redraft {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip-button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip-button:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.inbox-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inbox-buttons button {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.inbox-writing {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.inbox-simulate {
+  align-self: center;
+  opacity: 0.8;
+}
+
+/* 카드 버튼은 대화와 따로: 하는 중·실패 이유는 그 카드 안에만 */
+.inbox-working {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.inbox-error {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.review[aria-busy="true"] .inbox-draft > p:not(.inbox-working):not(.inbox-error) {
+  opacity: 0.55;
+}
+
+.review[data-focused="true"] {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* 대화창의 화면 알림 (서버 대화 기록에는 없음) */
+.notice {
+  align-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  max-width: 520px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border: 1px solid #f3c7c7;
+  border-radius: 14px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 13px;
+}
+
+.notice p {
+  flex: 1 1 200px;
+  margin: 0;
+  color: var(--ink);
+}
+
+.quick-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
 /* ── 손님 통계 탭 ──────────────────────── */
 .stats {
   display: flex;

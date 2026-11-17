@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { RESULT_TEXT } from "../labels";
+import { REPLY_NOTICE_VIEW, RESULT_TEXT } from "../labels";
 import type { Action, Message } from "../types";
 import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
@@ -16,17 +16,31 @@ type Props = {
   sideOpen: boolean;
   onToggleNav: () => void;
   onToggleSide: () => void;
+  /** 화면 알림의 [리뷰 탭에서 보기]: 사이드카 리뷰 탭을 열고 그 카드로 스크롤. */
+  onShowReview: (reviewId: string) => void;
 };
 
 type BubbleProps = {
   message: Message;
   onAction: (action: Action) => void;
+  onShowReview: (reviewId: string) => void;
   busy: boolean;
   /** 이 답이 띄운 승인 카드가 아직 떠 있다: 카드와 겹치는 인용·질문은 빼고 첫 줄만 보인다. */
   lead: boolean;
 };
 
-function Bubble({ message, onAction, busy, lead }: BubbleProps) {
+function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
+  if (message.role === "notice") {
+    return (
+      <div className="notice" role="status">
+        <Icon name="close" size={14} />
+        <p>{message.text}</p>
+        <button type="button" className="ghost small" onClick={() => onShowReview(message.reviewId)}>
+          {REPLY_NOTICE_VIEW}
+        </button>
+      </div>
+    );
+  }
   if (message.role === "result") {
     return (
       <div className="result" data-saved={message.saved}>
@@ -72,7 +86,7 @@ function Bubble({ message, onAction, busy, lead }: BubbleProps) {
   );
 }
 
-export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide }: Props) {
+export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
@@ -142,6 +156,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               key={m.id}
               message={m}
               onAction={(action) => void chat.act(action)}
+              onShowReview={onShowReview}
               busy={chat.busy}
               lead={m.role === "agent" && Boolean(m.cardFor) && open.has(m.cardFor!)}
             />

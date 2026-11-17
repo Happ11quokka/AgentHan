@@ -3,7 +3,7 @@ import { CONNECTION_TEXT } from "../labels";
 import type { Action, LogEntry, Pending, Period, Place, ReportView, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { Icon } from "./Icon";
-import { ReviewsTab } from "./ReviewsTab";
+import { ReviewsTab, type OnReply } from "./ReviewsTab";
 import { ShopTab } from "./ShopTab";
 import { StatsTab } from "./StatsTab";
 
@@ -28,6 +28,12 @@ type Props = {
   period: Period;
   onPeriod: (period: Period) => void;
   onAction: (action: Action) => void;
+  /** 리뷰 탭의 [새 리뷰 도착 (데모)]. 없으면 버튼도 없다. */
+  onSimulateReview?: () => void;
+  /** 대기함 카드 버튼. 실패하면 카드에 보일 이유를 돌려준다. */
+  onReply: OnReply;
+  /** [리뷰 탭에서 보기]가 가리키는 카드(at: 누른 때, 같은 카드를 다시 눌러도 다시 스크롤). */
+  focusReview: { id: string; at: number } | null;
   onClose: () => void;
 };
 
@@ -88,7 +94,16 @@ export function Sidecar(props: Props) {
       <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "shop" &&
           (place ? <ShopTab place={place} pending={pending} log={log} /> : <p className="loading">불러오는 중…</p>)}
-        {tab === "reviews" && <ReviewsTab loaded={props.reviews} busy={props.busy} onAction={props.onAction} />}
+        {tab === "reviews" && (
+          <ReviewsTab
+            loaded={props.reviews}
+            busy={props.busy}
+            onAction={props.onAction}
+            onReply={props.onReply}
+            focus={props.focusReview}
+            onSimulate={props.onSimulateReview}
+          />
+        )}
         {tab === "stats" && <StatsTab loaded={props.report} period={props.period} onPeriod={props.onPeriod} />}
       </div>
     </aside>

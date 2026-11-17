@@ -1,4 +1,4 @@
-import type { Action, Period, ReportView, ReviewsView, Started, Turn, View } from "./types";
+import type { Action, Period, ReplyOp, ReplyResult, ReportView, ReviewsView, Started, Turn, View } from "./types";
 
 /** 화면이 서버와 주고받는 유일한 길. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface AssistantApi {
@@ -8,6 +8,10 @@ export interface AssistantApi {
   sendPhoto(sessionId: string, image: File, text: string): Promise<Turn>;
   view(sessionId: string): Promise<View>;
   reviews(sessionId: string): Promise<ReviewsView>;
+  /** 데모: 더미 리뷰 한 건을 더하고 그 리뷰의 초안을 쓰기 시작한다. */
+  simulateReview(sessionId: string): Promise<ReviewsView & { review_id: string }>;
+  /** 답글 대기함 카드 버튼: 대화 턴이 아니라 그 리뷰만 바꾼다(대화 기록에 남지 않음). */
+  replyToReview(sessionId: string, reviewId: string, op: ReplyOp): Promise<ReplyResult>;
   report(sessionId: string, period: Period): Promise<ReportView>;
 }
 
@@ -55,5 +59,12 @@ export const httpApi: AssistantApi = {
   },
   view: (id) => call(`${base(id)}/place`),
   reviews: (id) => call(`${base(id)}/reviews`),
+  simulateReview: (id) => call(`${base(id)}/reviews/simulate`, { method: "POST" }),
+  replyToReview: (id, reviewId, op) =>
+    call(`${base(id)}/reviews/${encodeURIComponent(reviewId)}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(op),
+    }),
   report: (id, period) => call(`${base(id)}/report?period=${period}`),
 };
