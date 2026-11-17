@@ -33,7 +33,17 @@ ACTIONS = {
             inputs=("title", "discount_type", "discount_value", "start_date", "end_date"),
         ),
         Action("hours.edit", "영업시간 수정", "update_business_hours", inputs=("entries",)),
+        Action(
+            "keywords.edit", "대표키워드 수정", "set_representative_keywords", inputs=("keywords",)
+        ),
         Action("task.approve", "저장", "approve", inputs=("task_id", "version")),
         Action("task.cancel", "취소", "cancel", inputs=("task_id",)),
+        Action(
+            "task.continue",
+            "남은 작업 이어하기",
+            "continue",
+            inputs=("feature",),
+            missing="conversation",
+        ),
     )
 }

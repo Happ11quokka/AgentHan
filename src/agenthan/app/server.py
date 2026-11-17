@@ -89,6 +89,19 @@ class Session:
             for t in self.assistant.ledger.tasks
             if t.is_open and t.preview and t.preview.get("button_review")
         )
+        pending.extend(
+            {
+                "task_id": t.id,
+                "version": t.version,
+                "feature": "review",
+                "kind": "settings",
+                "after": None,
+                "changes": {},
+                "settings": {"before": t.preview["before"], "after": t.preview["after"]},
+            }
+            for t in self.assistant.ledger.tasks
+            if t.is_open and t.preview and t.preview.get("report_settings")
+        )
         drafts = self.assistant.menu_drafts
         photo_task = next(
             (t for t in self.assistant.ledger.tasks if t.is_open and t.kind == "photo"), None
@@ -172,7 +185,10 @@ def create_app(
         session = get(session_id)
         with session.lock:
             reply = session.assistant.ask(message.text)
-            return {"reply": reply, **session.view()}
+            result = {"reply": reply, **session.view()}
+            if session.assistant.agent_mode == "planner":
+                result["next_actions"] = session.assistant.next_actions
+            return result
 
     @app.post("/assistant/sessions/{session_id}/actions")
     def run_action(session_id: str, action: ButtonAction) -> dict:

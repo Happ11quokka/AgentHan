@@ -106,6 +106,8 @@ class ScenarioTurn(BaseModel):
 
 class ScenarioExpect(BaseModel):
     final: dict[str, Any]
+    # One of these must hold too, for a request with more than one fair target (ADR-0007).
+    final_any_of: list[dict[str, Any]] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)  # path prefixes allowed to change
     never: list[dict[str, Any]] = Field(default_factory=list)  # all-of conditions
 
@@ -395,13 +397,19 @@ def normalize_trace(trace: dict | None, review_waiting: bool = False) -> dict | 
         return None
     routed = trace.get("feature")
     calls: list[dict] = []
-    if trace.get("via") != "approval":
+    if trace.get("via") != "approval" or "loop_budget" in trace:
         for call, result in zip(trace["calls"], trace["results"], strict=False):
+            if call.get("approved"):
+                continue
             action = result.get("action")
             calls.append(
                 {
                     "tool": call["name"],
-                    "feature": TOOL_FEATURES.get(call["name"]),
+                    "feature": (
+                        "review"
+                        if call["name"] == "ask_review_agent"
+                        else TOOL_FEATURES.get(call["name"])
+                    ),
                     "action": (
                         action
                         if action == "pending_approval"
@@ -411,7 +419,7 @@ def normalize_trace(trace: dict | None, review_waiting: bool = False) -> dict | 
                     ),
                 }
             )
-        if not calls and routed in {*REVIEW_FEATURES, "statistics"}:
+        if not calls and "loop_budget" not in trace and routed in {*REVIEW_FEATURES, "statistics"}:
             waiting = routed in REVIEW_FEATURES and review_waiting
             calls.append(
                 {
@@ -424,10 +432,16 @@ def normalize_trace(trace: dict | None, review_waiting: bool = False) -> dict | 
     out = {
         "features": features,
         "calls": calls,
-        "budget": any(r.get("error") == "tool_limit" for r in trace["results"]),
+        "budget": bool(trace.get("budget_exhausted"))
+        or any(r.get("error") == "tool_limit" for r in trace["results"]),
     }
     if "planner" in trace:  # AGENT_MODE=shadow: the plan (or None when it failed) of this turn
         out["planner"] = trace["planner"]
+    if "loop_budget" in trace:
+        out["loop_budget"] = copy.deepcopy(trace["loop_budget"])
+    for key in ("loop_errors", "legacy_error", "scope_check", "ledger_steps", "legacy_model_calls"):
+        if key in trace:
+            out[key] = copy.deepcopy(trace[key])
     return out
 
 
@@ -523,7 +537,7 @@ class OwnerAssistantSubject:
 
     def proposals(self) -> list[dict]:
         trace = self._trace
-        if not trace or trace["via"] == "approval":
+        if not trace or (trace["via"] == "approval" and "loop_budget" not in trace):
             return []
         return [
             {"tool": call["name"], "arguments": call.get("arguments")}
@@ -582,6 +596,10 @@ def _play(subject: Subject, probe: Probe, turn: ScenarioTurn) -> dict:
     if probe.errors and "api_error" not in record:
         record["api_error"] = "probe"  # A swallowed outage (e.g. selector fallback).
     record["model_calls"] = probe.model_calls
+    if getattr(subject, "agent_mode", "legacy") == "planner":
+        record["model_calls"] = subject.app.trace.get("loop_budget", {}).get(
+            "models", probe.model_calls
+        ) + subject.app.trace.get("legacy_model_calls", 0)
     if probe.planner_calls:
         record["planner_calls"] = probe.planner_calls
     if probe.tokens:
@@ -689,6 +707,9 @@ def run_scenario(
                 checks.append(all(result.values()))
         final_store = subject.store.read()
     final = check_all(final_store, scenario.expect.final)
+    if scenario.expect.final_any_of:
+        options = [check_all(final_store, o) for o in scenario.expect.final_any_of]
+        final = {**final, **next((o for o in options if all(o.values())), options[0])}
     unapproved = [t["turn"] for t in turns if t["changed"] and t["act"] != "approve"]
     out_of_scope = sorted(
         {p for t in turns for p in t["changed"] if not allowed(p, scenario.expect.writes)}
@@ -1007,8 +1028,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=CHAT_MODEL)
     parser.add_argument(
         "--agent-mode",
-        choices=["legacy", "shadow"],
-        help="AGENT_MODE for this run (default: the environment's, else legacy). shadow also "
+        choices=["legacy", "shadow", "planner"],
+        help="AGENT_MODE for this run (default: the environment's, else planner). shadow also "
         "asks the planner after each free-form turn and S2 reads its steps (ADR-0005)",
     )
     parser.add_argument("--label", default="scenario")

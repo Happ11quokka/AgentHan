@@ -550,6 +550,9 @@ class OwnerAssistant:
         # One owner turn runs through the LangGraph turn graph (ADR-0003).
         self._turn_route: Route | None = None
         self._turn_plan_input: dict | None = None  # Shadow planner input, read before the turn.
+        self.next_actions: list[dict] = []
+        # planner 모드에서 "최근 보여 준 것"(ref)으로 고른 대상. 값 출처는 lookup으로 남는다.
+        self._ref_lookup: dict | None = None
         self.turns = turn_graph.build(self)
 
     @property
@@ -670,6 +673,16 @@ class OwnerAssistant:
             answer = headline + "\n" + answer
         if missing:
             answer += "\n확인할 항목: " + ", ".join(missing)
+        sentence = None
+        if saved and self.agent_mode == "planner" and all(r.get("action") == "read" for r in saved):
+            # 계획 모드의 단일 조회는 실제 결과로 코드가 만든 한국어 문장을 쓴다(덤프 금지).
+            # 문장 틀이 없는 기능은 아래 기존 경로 그대로다.
+            sentence = self.planner_loop.read_sentence(self.trace["feature"], saved[-1])
+        if sentence:
+            task = self.ledger.get(self._turn_task)
+            if task and task.is_open and task.preview is None:
+                self.ledger.close(task, "done")
+            return self._end_turn(sentence)
         if saved:
             # Always show the actual reread records even if the model omits them.
             label = (
@@ -689,13 +702,16 @@ class OwnerAssistant:
                 summary = (
                     "저장함 " + json.dumps(written, ensure_ascii=False)[:160] if written else ""
                 )
-                self.ledger.close(task, "done", summary)
+                self.ledger.close(task, "done", summary, values=written or None)
         return self._end_turn(answer)
 
     def _end_turn(self, answer: str, blocks: str = "") -> str:
         """Remember what the turn's task asked, add a resume notice for a held task.
 
         blocks (rendered originals/drafts) go to the owner but not into the history."""
+        if self.agent_mode == "planner" and not answer.strip() and not blocks.strip():
+            self.trace["empty_answer_fallback"] = True
+            answer = self.planner_loop.fallback_answer()
         notice = ""
         task = self.ledger.active()
         if task is not None and task.id == self._turn_task:
@@ -706,9 +722,20 @@ class OwnerAssistant:
             key = "photo" if task.kind == "photo" else task.status
             if key in RESUME_TEXT and (task.kind != "tool" or key != "collecting" or task.prompt):
                 notice = "\n" + RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
+        if self.agent_mode == "planner":
+            photo = self.ledger.find_open(kind="photo")
+            if (
+                photo is not None
+                and photo is not task
+                and photo.id != self._turn_task
+                and not self.ledger.quiet(photo)
+            ):
+                notice += "\n" + RESUME_TEXT["photo"]
         self.history.append({"role": "assistant", "content": answer + notice})
         # Which ledger task each message of this turn worked on (see _finished_task_message).
         self._history_task += [self._turn_task] * (len(self.history) - len(self._history_task))
+        if self.agent_mode == "planner":
+            self.planner_loop.remember_reply()
         return answer + (f"\n{blocks}" if blocks else "") + notice
 
     def _task_for(self, feature_id: str, kind: str):
@@ -896,7 +923,13 @@ class OwnerAssistant:
             raise ValueError("없는 버튼입니다.")
         if not isinstance(args, dict) or set(args) - set(spec.inputs):
             raise ValueError("버튼 입력을 확인해 주세요.")
+        if action_id == "task.continue" and self.agent_mode != "planner":
+            raise ValueError("계획 모드의 남은 작업 버튼입니다.")
         values = {**spec.fixed, **args}
+        if self.agent_mode == "planner":
+            result = self.planner_loop.button(action_id, values, label)
+            if result is not None:
+                return result
         self._begin_turn()
         self._adding = False
         self._act = None
@@ -906,6 +939,8 @@ class OwnerAssistant:
         next_actions = []
 
         def finish(text):
+            if self.agent_mode == "planner":
+                self.next_actions = next_actions
             return {"reply": self._end_turn(text), "next_actions": next_actions}
 
         if action_id in ("task.approve", "task.cancel"):
@@ -978,6 +1013,9 @@ class OwnerAssistant:
                 text = f"리뷰 {result['review_count']}건을 살펴봤어요."
                 if parts:
                     text += " " + ", ".join(parts) + "이에요."
+                if self.agent_mode == "planner":
+                    # 계획 모드는 이 버튼이 보여 준 리뷰를 다음 말의 ref 후보로 기억한다.
+                    self.planner_loop.remember_reviews(rows)
                 return finish(text)
             review_id = values.get("review_id")
             if not isinstance(review_id, str) or not review_id:
@@ -1017,12 +1055,24 @@ class OwnerAssistant:
                 },
             )
             self.trace["pending_approval"] = True
+            if self.agent_mode == "planner":
+                next_actions.extend(
+                    [
+                        {
+                            "action_id": "task.approve",
+                            "label": "저장",
+                            "args": {"task_id": task.id, "version": task.version},
+                        },
+                        {"action_id": "task.cancel", "label": "취소", "args": {"task_id": task.id}},
+                    ]
+                )
+                return finish(self.planner_loop.review_preview(task.preview))
             return finish(
                 f"답글 초안이에요. 내용을 확인해 주세요.\n> {draft['reply_ko']}\n이대로 올릴까요?"
             )
 
-        feature = "coupon" if action_id == "coupon.create" else "business_hours"
-        entries = [values] if feature == "coupon" else values.get("entries")
+        feature = TOOL_FEATURES[spec.target]
+        entries = values.get("entries") if feature == "business_hours" else [values]
         if (
             not isinstance(entries, list)
             or not entries
@@ -1431,6 +1481,12 @@ class OwnerAssistant:
                     missing = []
                 elif result.get("missing_fields"):
                     missing = result["missing_fields"]
+                    if self.agent_mode == "planner" and result.get("error") == "unconfirmed_value":
+                        # 거절된 인자를 모델이 같은 턴에 되풀이하지 않게 코드 질문으로 끝낸다.
+                        self.trace["missing"] = missing
+                        self.planner_loop.batch.asked = list(missing)
+                        self.planner_loop.batches[task.id] = self.planner_loop.batch
+                        return self._finish(self.planner_loop.ask_text(missing), saved, missing)
             if over_limit:
                 self.ledger.close(task, "failed", "도구 호출 한도")
                 return self._finish(TOOL_LIMIT_MESSAGE, saved, missing)
@@ -1576,6 +1632,8 @@ class OwnerAssistant:
 
     def _chat_once_more_if_rejected(self, messages: list[dict], tools: list[dict]) -> dict:
         """HCX sometimes rejects (HTTP 400) a request it accepts on the next try: ask twice."""
+        if self.agent_mode == "planner":
+            return parse_message(self.chat(copy.deepcopy(messages), tools=copy.deepcopy(tools)))
         for attempt in range(2):
             try:
                 return parse_message(self.chat(copy.deepcopy(messages), tools=copy.deepcopy(tools)))
@@ -1672,6 +1730,8 @@ class OwnerAssistant:
         done = self.ledger.log(feature_id, last=5)
         if done:
             lines.append("앞서 끝난 작업: " + "; ".join(done))
+        if self.agent_mode == "planner":
+            lines.append(self.planner_loop.completed_context())
         return "\n".join(lines)
 
     def _record_targets(self, feature_id: str, task) -> dict | None:
@@ -1730,7 +1790,9 @@ class OwnerAssistant:
         task = self.ledger.get(task_id) if task_id else None
         return task is not None and not task.is_open and task.feature == feature
 
-    def _propose(self, task, feature_id: str, raw: object) -> tuple[object, dict | None]:
+    def _propose(
+        self, task, feature_id: str, raw: object, *, lookup: dict | None = None
+    ) -> tuple[object, dict | None]:
         """The model proposes values; code keeps them per task and decides what may run.
 
         Empty values are treated as not given (nullable slots). Values the owner confirmed
@@ -1782,7 +1844,14 @@ class OwnerAssistant:
             newer = "\n".join(task.said[slot.said_at :])
             spec = [p for p in params if p[0] == name]
             if newer and spec:
-                ok, _ = value_source.check(spec, {name: value}, newer, store, today=self.today)
+                confirmed_lookup = (
+                    self.planner_loop.lookup(feature_id, given)
+                    if self.agent_mode == "planner"
+                    else None
+                )
+                ok, _ = value_source.check(
+                    spec, {name: value}, newer, store, today=self.today, lookup=confirmed_lookup
+                )
                 if ok:
                     continue
             merged[name] = slot.value
@@ -1803,8 +1872,12 @@ class OwnerAssistant:
                 "message": "대상 후보에 없는 id입니다. 후보 중에서 고르거나 사장님께 물어보세요.",
                 "candidates": targets["views"],
             }
+        if lookup is None:
+            lookup = self._ref_lookup
+        if self.agent_mode == "planner":
+            lookup = {**(lookup or {}), **self.planner_loop.lookup(feature_id, merged)}
         sources, unconfirmed = value_source.check(
-            params, merged, "\n".join(task.said), store, today=self.today
+            params, merged, "\n".join(task.said), store, today=self.today, lookup=lookup
         )
         extras = [p for p in params if p[0] in DROPPABLE and p[3] in unconfirmed]
         if extras:
@@ -2356,6 +2429,8 @@ class OwnerAssistant:
         return {"ok": True, "draft": {"number": number, **d.to_form()}}
 
     def _delegate_review(self, feature_id: str, text: str) -> str:
+        if self.agent_mode == "planner":
+            return self.planner_loop.legacy_review(text)
         lang = self.owner_lang or review_delegate.detect_lang(text)
         if self.review is None:
             self.review = self._review_factory(self.store, owner_lang=lang)

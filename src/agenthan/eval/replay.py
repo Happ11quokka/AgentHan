@@ -17,7 +17,13 @@ from agenthan.agent.clova_chat import (
 )
 from agenthan.agent.feature_selector import SELECT_MODEL, TOOL_CHOICE
 from agenthan.core.embedding import ClovaEmbeddingError, embed_text, validate_embedding
-from agenthan.core.llm import chat_v3, tool_call_options
+from agenthan.core.llm import (
+    call_deadline,
+    call_managed,
+    chat_v3,
+    remaining_time,
+    tool_call_options,
+)
 
 EMBED_MODEL = "embedding-v2"
 # Recorded in place of a response when HCX answered HTTP 400 (no body is stored).
@@ -39,7 +45,7 @@ def request_hash(operation: str, payload: dict) -> str:
 
 
 def chat_request(
-    messages: list[dict], tools: list[dict], model: str, tool_choice: dict | None = None
+    messages: list[dict], tools: list[dict], model: str, tool_choice: str | dict | None = None
 ) -> dict:
     request = {
         "model": model,
@@ -60,6 +66,8 @@ def select_request(messages: list[dict], tools: list[dict]) -> dict:
 
 class TransientChatError(ClovaChatError):
     """A live eval chat failure other than HTTP 400 or truncation: worth retrying."""
+
+    retryable = True
 
 
 class ReplayMiss(ClovaChatError, ClovaEmbeddingError):
@@ -82,14 +90,16 @@ class Live:
             except ClovaRequestRejected:
                 raise
             except transient:
+                if call_deadline.get() is not None or call_managed.get():
+                    raise
                 if attempt == self.retries:
                     raise
                 self.retried += 1
                 time.sleep(LIVE_RETRY_DELAY * 2**attempt)  # 2, 4, 8, 16, 32 s
         raise AssertionError("unreachable")  # pragma: no cover
 
-    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        return self._create(chat_request(messages, tools, self.model))
+    def chat(self, messages: list[dict], *, tools: list[dict], tool_choice=None) -> dict:
+        return self._create(chat_request(messages, tools, self.model, tool_choice))
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._create(select_request(messages, tools))
@@ -111,7 +121,10 @@ class Live:
             if not request["tools"]:
                 request.pop("tools")
                 request.pop("tool_choice", None)
-            response = self.client.chat.completions.create(**request)
+            client = self.client
+            if call_deadline.get() is not None or call_managed.get():
+                client = client.with_options(timeout=remaining_time(20), max_retries=0)
+            response = client.chat.completions.create(**request)
             choice = response.choices[0]
             if choice.finish_reason == "length":
                 truncated = True
@@ -152,9 +165,10 @@ class Recorder:
         self.path.write_text(canonical(self.data) + "\n", encoding="utf-8")
         return response
 
-    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        request = chat_request(messages, tools, self.model)
-        return self._record(request, lambda: self.backend.chat(messages, tools=tools))
+    def chat(self, messages: list[dict], *, tools: list[dict], tool_choice=None) -> dict:
+        request = chat_request(messages, tools, self.model, tool_choice)
+        options = {"tool_choice": tool_choice} if tool_choice is not None else {}
+        return self._record(request, lambda: self.backend.chat(messages, tools=tools, **options))
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         if not hasattr(self.backend, "select"):
@@ -211,8 +225,8 @@ class Replay:
             raise ReplayMiss(f"Missing replay {operation}: {key}")
         return copy.deepcopy(self.data["entries"][key])
 
-    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
-        return self._replay(chat_request(messages, tools, self.model))
+    def chat(self, messages: list[dict], *, tools: list[dict], tool_choice=None) -> dict:
+        return self._replay(chat_request(messages, tools, self.model, tool_choice))
 
     def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
         return self._replay(select_request(messages, tools))
