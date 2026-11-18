@@ -1,0 +1,23 @@
+{
+  "_about": "2026-11-11 아이폰 실기기 통화에서 CLOVA STT가 실제로 받아 적은 손님 말(샘플 베이커리). 학습 데이터 틀과 무관한 자연 발화로 튜닝 전후를 잰다(5단계 티켓 08). 문맥은 그 통화의 직전 질문·장바구니.",
+  "menu_names": ["메도빅", "나폴레옹", "아메리카노", "블린"],
+  "items": [
+    {"id": "d01", "text": "메이크로이 두 개랑 아이스 아메리 카노 하나에", "expect": [{"type": "add_item", "qty": 2}, {"type": "add_item", "menu_text": "아메리", "qty": 1}]},
+    {"id": "d02", "text": "아니요", "ctx": {"cart_summary": "아메리카노 차갑게 한 잔", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "done_ordering"}], "also_ok": [["no"]]},
+    {"id": "d03", "text": "맥도비 두 개랑 아이스 아메리카노 하나요", "expect": [{"type": "add_item", "menu_text": "맥도비", "qty": 2}, {"type": "add_item", "menu_text": "아메리카노", "qty": 1}]},
+    {"id": "d04", "text": "아니요 그게 다예요.", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 차갑게 한 잔", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "done_ordering"}]},
+    {"id": "d05", "text": "한 6시 반쯤 갈게요", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 차갑게 한 잔", "last_question": "몇 시쯤 오세요?", "state": "ASK_PICKUP"}, "expect": [{"type": "set_pickup_time"}]},
+    {"id": "d06", "text": "네 맞아요.", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 차갑게 한 잔", "last_question": "메도빅 두 개, 아메리카노 차갑게 한 잔, 6시 반 픽업, 총 19,500원이에요. 맞으세요?", "state": "CONFIRM"}, "expect": [{"type": "yes"}]},
+    {"id": "d07", "text": "음맥도미 두 개랑 아이스아메리카노 하나요", "expect": [{"type": "add_item", "menu_text": "맥도미", "qty": 2}, {"type": "add_item", "menu_text": "아메리카노", "qty": 1}]},
+    {"id": "d08", "text": "아이스로 주세요", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 한 잔", "last_question": "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?", "state": "CLARIFY"}, "expect": [{"type": "set_option"}]},
+    {"id": "d09", "text": "차갑게 줘.", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 한 잔", "last_question": "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?", "state": "CLARIFY"}, "expect": [{"type": "set_option"}]},
+    {"id": "d10", "text": "6시 반쯤 갈게요", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 차갑게 한 잔", "last_question": "몇 시쯤 오세요?", "state": "ASK_PICKUP"}, "expect": [{"type": "set_pickup_time"}]},
+    {"id": "d11", "text": "응 맞아", "ctx": {"cart_summary": "메도빅 두 개, 아메리카노 차갑게 한 잔", "last_question": "메도빅 두 개, 아메리카노 차갑게 한 잔, 6시 반 픽업, 총 19,500원이에요. 맞으세요?", "state": "CONFIRM"}, "expect": [{"type": "yes"}]},
+    {"id": "d12", "text": "음 블린 하나요 샤워 크림 빼주세요.", "expect": [{"type": "add_item", "menu_text": "블린", "qty": 1}]},
+    {"id": "d13", "text": "아니 블리크림에 빼달라고", "ctx": {"cart_summary": "블린 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "set_option"}]},
+    {"id": "d14", "text": "맥도빅 많이 달아요.", "expect": [{"type": "ask_menu_info", "menu_text": "맥도빅"}]},
+    {"id": "d15", "text": "맥도빅", "expect": [{"type": "add_item", "menu_text": "맥도빅"}], "also_ok": [["ask_menu_info"]]},
+    {"id": "d16", "text": "그게 다예요.", "ctx": {"cart_summary": "메도빅 두 개", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "done_ordering"}]},
+    {"id": "d17", "text": "메도비", "ctx": {"cart_summary": "", "last_question": "어떤 걸로 드릴까요?"}, "expect": [{"type": "add_item", "menu_text": "메도비"}]}
+  ]
+}

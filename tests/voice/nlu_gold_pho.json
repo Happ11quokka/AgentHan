@@ -1,0 +1,27 @@
+{
+  "_about": "쌀국수집(fixtures/phone/sample_pho_store.json) NLU 정답셋. 튜닝 학습에 없는 가게로 범용성을 잰다(5단계 티켓 08). 형식은 nlu_gold.json과 같다.",
+  "fixture": "fixtures/phone/sample_pho_store.json",
+  "menu_names": ["소고기 쌀국수", "분짜", "반미", "연유 커피"],
+  "items": [
+    {"id": "p01", "text": "쌀국수 하나 주세요", "expect": [{"type": "add_item", "menu_text": "쌀국수", "qty": 1}]},
+    {"id": "p02", "text": "퍼보 두 개랑 반미 하나요", "expect": [{"type": "add_item", "menu_text": "퍼보", "qty": 2}, {"type": "add_item", "menu_text": "반미", "qty": 1}]},
+    {"id": "p03", "text": "분자 하나 주세요", "expect": [{"type": "add_item", "menu_text": "분자", "qty": 1}]},
+    {"id": "p04", "text": "아이스 연유커피 두 잔이요", "expect": [{"type": "add_item", "menu_text": "연유커피", "qty": 2}]},
+    {"id": "p05", "text": "쌀국수 곱빼기로 하나 고수 빼 주세요", "expect": [{"type": "add_item", "menu_text": "쌀국수", "qty": 1}]},
+    {"id": "p06", "text": "반미 계란 추가해서 하나요", "expect": [{"type": "add_item", "menu_text": "반미", "qty": 1}]},
+    {"id": "p07", "text": "떡볶이 하나요", "expect": [{"type": "add_item", "menu_text": "떡볶이", "qty": 1}]},
+    {"id": "p08", "text": "고수는 빼 주세요", "ctx": {"cart_summary": "분짜 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "set_option"}]},
+    {"id": "p09", "text": "차갑게요", "ctx": {"cart_summary": "연유 커피 한 잔", "last_question": "연유 커피는 따뜻하게 드릴까요, 차갑게 드릴까요?", "state": "CLARIFY"}, "expect": [{"type": "set_option"}]},
+    {"id": "p10", "text": "곱빼기로 해 주세요", "ctx": {"cart_summary": "소고기 쌀국수 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "set_option"}]},
+    {"id": "p11", "text": "세 개요", "ctx": {"cart_summary": "반미 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "change_qty", "qty": 3}]},
+    {"id": "p12", "text": "분짜는 빼 주세요", "ctx": {"cart_summary": "분짜 하나, 반미 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "remove_item", "menu_text": "분짜"}]},
+    {"id": "p13", "text": "그게 다예요", "ctx": {"cart_summary": "반미 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "done_ordering"}]},
+    {"id": "p14", "text": "일곱 시 반에 찾으러 갈게요", "ctx": {"cart_summary": "반미 하나", "last_question": "몇 시쯤 오세요?", "state": "ASK_PICKUP"}, "expect": [{"type": "set_pickup_time"}]},
+    {"id": "p15", "text": "분짜 많이 셔요?", "expect": [{"type": "ask_menu_info", "menu_text": "분짜"}]},
+    {"id": "p16", "text": "반미에 뭐 들어가요?", "expect": [{"type": "ask_menu_info", "menu_text": "반미"}]},
+    {"id": "p17", "text": "포장 용기 따로 주세요", "ctx": {"cart_summary": "소고기 쌀국수 하나", "last_question": "더 필요하신 거 있으세요?"}, "expect": [{"type": "set_request"}]},
+    {"id": "p18", "text": "주차 돼요?", "expect": [{"type": "ask_other"}]},
+    {"id": "p19", "text": "네 맞아요", "ctx": {"cart_summary": "반미 하나", "last_question": "반미 하나, 7시 픽업, 총 7,000원이에요. 맞으세요?", "state": "CONFIRM"}, "expect": [{"type": "yes"}]},
+    {"id": "p20", "text": "어 그러니까", "expect": [{"type": "unknown"}]}
+  ]
+}

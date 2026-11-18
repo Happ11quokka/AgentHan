@@ -1,0 +1,30 @@
+{
+  "_note": "범용성 시험용 두 번째 더미 가게(5단계 티켓 05). 실제 데이터가 아니다. 업종·메뉴·옵션이 샘플 베이커리와 겹치지 않게 만들었다.",
+  "store": {"id": "sample-pho", "name": "샘플 쌀국수집", "owner_language": "vi"},
+  "menu": [
+    {"id": "p01", "name_ko": "소고기 쌀국수", "name_native": "Phở bò", "price": 11000, "category": "면",
+     "description": "소고기 육수에 쌀국수와 양지를 올린 베트남 국수",
+     "aliases": ["쌀국수", "퍼보"],
+     "options": [{"name": "고수 빼기", "available": true}],
+     "allergens": ["소고기"]},
+    {"id": "p02", "name_ko": "분짜", "name_native": "Bún chả", "price": 12000, "category": "면",
+     "description": "숯불 돼지고기와 쌀국수를 새콤한 소스에 찍어 먹는 요리",
+     "options": [{"name": "고수 빼기", "available": true}], "allergens": ["돼지고기", "생선"]},
+    {"id": "p03", "name_ko": "반미", "name_native": "Bánh mì", "price": 7000, "category": "빵",
+     "description": "바게트에 고기와 채소 절임을 넣은 샌드위치",
+     "options": [{"name": "고수 빼기", "available": true}, {"name": "계란 추가", "available": true, "extra_price": 1000}],
+     "allergens": ["밀", "계란"]},
+    {"id": "p04", "name_ko": "연유 커피", "name_native": "Cà phê sữa", "price": 5000, "category": "음료",
+     "description": "진한 베트남 커피에 연유를 넣은 커피", "aliases": ["카페 쓰어"], "allergens": ["우유"]}
+  ],
+  "phone": {
+    "prep_minutes": 20,
+    "open": "11:00",
+    "close": "22:00",
+    "required_options": {
+      "p01": [{"name": "양", "choices": ["보통", {"name": "곱빼기", "extra_price": 2000}], "default": "보통"}],
+      "p04": [{"name": "온도", "choices": ["따뜻하게", "차갑게"]}]
+    }
+  },
+  "reviews": []
+}

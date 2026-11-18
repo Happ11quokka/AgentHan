@@ -147,6 +147,7 @@ p {
 }
 
 .quick button,
+.quick a,
 .recent button {
   width: 100%;
   display: flex;
@@ -161,8 +162,14 @@ p {
 }
 
 .quick button:hover:not(:disabled),
+.quick a:hover,
 .recent button:hover:not(:disabled) {
   background: var(--surface-3);
+}
+
+.quick a {
+  color: inherit;
+  text-decoration: none;
 }
 
 .quick-icon {

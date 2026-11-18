@@ -7,18 +7,35 @@
 - 도구 이름·세션 id·영문 코드는 화면에 보이지 않는다. 승인 카드의 [저장]·[취소]는 비서에게 그 답을 말한 것과 같다.
 - 리뷰·손님 통계 탭은 그 탭이 열려 있을 때만 읽기 API(`reviews`·`report`)로 불러오고, 비서 답이 오면 다시 읽는다.
 
+## 화면 경로
+
+| 주소 | 화면 | 백엔드 |
+|---|---|---|
+| `/` | 사장님 비서 (이 문서의 나머지) | `/assistant` |
+| `/phone` | 손님 전화 주문 통화 화면 (Part C) | `/api/phone/ws` |
+| `/owner?key=…` | 사장님 전화 주문 카드 (Part C, 언어 기본 ru) | `/api/owner/*` SSE |
+
+`src/main.tsx`가 주소를 보고 둘 중 한 쪽만 불러온다. 전역 CSS가 달라서(`styles.css` / `index.css`) 섞지 않는다.
+Part C 화면은 `src/screens/`(`PhoneApp.tsx`·`phone/`·`owner/`)에 있고, 왼쪽 메뉴 "전화 주문"에서 새 탭으로 연다.
+
 ## 실행
 
 ```bash
-uv run --env-file .env uvicorn agenthan.app.server:app   # 레포 루트, :8000
-cd web && npm install && npm run dev                      # :5173, /assistant는 :8000으로 프록시
+# 레포 루트, :8000. 전화 서버가 /assistant도 같이 낸다(발표 서버와 같은 모양)
+uv run --env-file .env python -m agenthan.voice.server --port 8000
+# 비서만 볼 때는 이것만 띄워도 된다
+uv run --env-file .env uvicorn agenthan.app.server:app
+cd web && npm install && npm run dev   # :5173, /assistant·/api는 :8000으로 프록시
 ```
+
+Node `^20.19.0 || >=22.12.0`(Vite 8), TypeScript 7.
 
 ## 테스트
 
 ```bash
 cd web && npm test        # Vitest: App을 가짜 API에 붙여 사장님 흐름 확인
 npm run typecheck
+npm run lint      # oxlint
 ```
 
 ## 구조

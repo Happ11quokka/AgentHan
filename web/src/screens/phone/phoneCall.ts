@@ -1,0 +1,551 @@
+// 통화 1건을 맡는 컨트롤러: 마이크·AudioContext·워클릿·재생기·WS·Wake Lock을 묶는다.
+// 화면 상태는 callReducer로 만들고 subscribe/getState로 React에 내준다.
+//
+// 순서(verify-web D10·D12): "전화 받기" 탭 핸들러 안에서 AudioContext를 먼저 만들고
+// (재생 잠금 해제), 그다음 getUserMedia를 기다린다.
+
+import {
+  type CallAction,
+  type CallState,
+  type MicFailure,
+  SLOW_LINK_BYTES,
+  type ServerEvent,
+  callReducer,
+  canInterrupt,
+  initialCallState,
+  micLive,
+} from './callState.ts'
+import { uaHints, voiceBargeInCapable } from './bargeIn.ts'
+import captureWorkletUrl from './capture.worklet.ts?worker&url'
+import { parseAudioFrame } from './frames.ts'
+import { CAPTURE_PROCESSOR, FRAME_SAMPLES, WIRE_RATE } from './pcm.ts'
+import { Player } from './player.ts'
+import { micReopenDelayMs } from './schedule.ts'
+import { openTextStream } from './textStream.ts'
+import { ThinkingCue } from './thinkingCue.ts'
+import { TurnPlayback } from './turnPlayback.ts'
+
+export const WS_PATH = '/api/phone/ws'
+
+const MIC_CONSTRAINTS: MediaTrackConstraints = {
+  // 크롬 141+는 "all"(시스템 재생음 전부 제거). 모르는 브라우저는 true로 받아들인다(D11).
+  echoCancellation: { ideal: 'all' },
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+}
+
+const SILENT_FRAME = new ArrayBuffer(FRAME_SAMPLES * 2) // 반이중 중 보내는 0 프레임(100ms)
+
+type CaptureMode = 'context-16k' | 'downsample'
+
+/**
+ * 실기기 시험용 선택(3단계 티켓 06, 순서표 T4·T5). 주소 뒤 `?mic_first=1`·`?agc=0`으로 켠다.
+ * - micFirst: 재생용 AudioContext를 마이크 허용 뒤에 만든다. 기본(거짓)은 2단계 순서대로 "전화 받기"
+ *   탭 안에서 먼저 만든다. 안드로이드는 출력 스트림을 만들 때 통화 모드면 통화용으로 열어서, 순서가
+ *   에코 제거와 음량 버튼에 영향을 줄 수 있다(s3-barge-in Q1-1). 제스처 밖이라 소리가 멈춰 있으면
+ *   "소리 다시 켜기" 버튼이 뜬다
+ * - agc: 마이크 자동 음량. 끄면 봇 말 중 잔여 에코가 덜 커질 수 있다(T5)
+ */
+export interface PhoneOptions {
+  micFirst: boolean
+  agc: boolean
+}
+
+export const DEFAULT_OPTIONS: PhoneOptions = { micFirst: false, agc: true }
+
+export function phoneOptions(search: string): PhoneOptions {
+  const q = new URLSearchParams(search)
+  return { micFirst: q.get('mic_first') === '1', agc: q.get('agc') !== '0' }
+}
+
+interface TurnClock {
+  thinking?: number // 생각 중 효과음을 시작한 때
+  firstAudio?: number
+  playStart?: number
+  playEnd?: number
+}
+
+export class PhoneCall {
+  private state: CallState = initialCallState
+  private readonly listeners = new Set<() => void>()
+
+  private ctx: AudioContext | null = null
+  private stream: MediaStream | null = null
+  private node: AudioWorkletNode | null = null
+  private ws: WebSocket | null = null
+  private player: Player | null = null
+  private cue: ThinkingCue | null = null
+  private playback = new TurnPlayback()
+  private wakeLock: WakeLockSentinel | null = null
+  private timers = new Set<number>()
+  private clocks = new Map<number, TurnClock>()
+  private generation = 0 // 다시 걸기 뒤 이전 통화의 늦은 콜백을 버린다
+  private closeTexts: (() => void) | null = null // 통화 뒤 "받은 문자" 스트림 (티켓 07)
+  private readonly options: PhoneOptions
+
+  constructor(options: PhoneOptions = DEFAULT_OPTIONS) {
+    this.options = options
+  }
+
+  getState = (): CallState => this.state
+
+  subscribe = (fn: () => void): (() => void) => {
+    this.listeners.add(fn)
+    return () => this.listeners.delete(fn)
+  }
+
+  /** "전화 받기"·"다시 걸기". 반드시 클릭 핸들러에서 동기로 부른다. */
+  dial(): void {
+    this.teardown()
+    this.stopTexts()
+    const gen = ++this.generation
+    this.dispatch({ type: 'dial' })
+
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      this.dispatch({ type: 'mic.failed', reason: 'insecure' })
+      return
+    }
+    // 제스처 안에서 만들어야 재생이 막히지 않는다. 시험 선택 micFirst면 마이크 허용 뒤에 만든다
+    if (!this.options.micFirst) this.useContext(makeContext(WIRE_RATE))
+    void this.requestWakeLock()
+    void this.connect(gen)
+  }
+
+  hangup(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.send({ type: 'call.end', turn: this.state.turn })
+    }
+    // 권한 창·워클릿 로드를 기다리던 connect()가 끊은 뒤에 이어 가지 않게 (리뷰 9번)
+    this.generation++
+    this.dispatch({ type: 'hangup' })
+    this.teardown()
+  }
+
+  endOfSpeech(): void {
+    this.send({ type: 'user.end_of_speech', turn: this.state.turn })
+  }
+
+  /**
+   * "말 끊기" 버튼(티켓 05). 서버가 허용한 턴의 봇 소리가 나는 중일 때만 듣는다.
+   * 재생을 멈추고, 이 턴 이하의 오디오를 버리고(cutTurn), 마이크를 바로 연 뒤 서버에
+   * `user.interrupt`와 들은 자리(`playback.interrupted {turn, seq, played_ms}`)를 보낸다.
+   * 끊은 턴의 `playback.done`은 보내지 않는다.
+   */
+  interrupt(): void {
+    if (!canInterrupt(this.state)) return
+    const turn = this.state.turn
+    const spot = this.player?.interrupt(turn) ?? { seq: 0, playedMs: 0 }
+    this.cue?.stop()
+    this.clocks.delete(turn)
+    this.dispatch({ type: 'interrupt' })
+    this.send({ type: 'user.interrupt', turn })
+    this.send({ type: 'playback.interrupted', turn, seq: spot.seq, played_ms: spot.playedMs })
+  }
+
+  /** AudioContext가 suspended·interrupted일 때 화면의 "소리 다시 켜기" 버튼. */
+  resumeAudio(): void {
+    const ctx = this.ctx
+    if (ctx) this.resumeAndReport(ctx)
+  }
+
+  /** 화면이 붙을 때(useEffect). */
+  attach(): void {
+    document.addEventListener('visibilitychange', this.onVisibility)
+  }
+
+  /** 화면이 떨어질 때. 통화 중이면 끊는다. */
+  detach(): void {
+    document.removeEventListener('visibilitychange', this.onVisibility)
+    this.hangup()
+    this.stopTexts()
+  }
+
+  // ------------------------------------------------------------------ 연결
+
+  private async connect(gen: number): Promise<void> {
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { ...MIC_CONSTRAINTS, autoGainControl: this.options.agc },
+      })
+    } catch (err) {
+      if (gen !== this.generation) return
+      this.dispatch({ type: 'mic.failed', reason: micFailure(err) })
+      this.teardown()
+      return
+    }
+    if (gen !== this.generation) {
+      stopStream(stream)
+      return
+    }
+    this.stream = stream
+    if (!this.ctx) this.useContext(makeContext(WIRE_RATE)) // micFirst: 마이크를 연 뒤 재생 컨텍스트
+
+    try {
+      const capture = await this.startCapture(stream)
+      if (gen !== this.generation) return
+      const settings = { ...stream.getAudioTracks()[0]?.getSettings() } as Record<string, unknown>
+      if (!this.ctx) return
+      // 화면에는 컨텍스트 레이트·캡처 방식도 보인다(실기에서 16000인지 확인, D10).
+      this.dispatch({
+        type: 'mic.ready',
+        settings: { ...settings, contextSampleRate: this.ctx?.sampleRate, capture },
+      })
+      this.openSocket(gen, settings, capture)
+    } catch (err) {
+      if (gen !== this.generation) return
+      console.error('마이크 캡처 시작 실패', err)
+      this.dispatch({ type: 'mic.failed', reason: 'other' })
+      this.teardown()
+    }
+  }
+
+  private async startCapture(stream: MediaStream): Promise<CaptureMode> {
+    let ctx = this.ctx!
+    let mode: CaptureMode = 'context-16k'
+    let source: MediaStreamAudioSourceNode
+    try {
+      source = ctx.createMediaStreamSource(stream)
+    } catch (err) {
+      // 파이어폭스: 16kHz 컨텍스트에 장치 레이트가 다른 트랙을 못 붙인다(D10-2).
+      if (!(err instanceof DOMException && err.name === 'NotSupportedError')) throw err
+      void ctx.close()
+      ctx = makeContext()
+      this.useContext(ctx) // 제스처 밖이라 suspended로 남으면 다시 켜기 버튼이 뜬다
+
+      source = ctx.createMediaStreamSource(stream)
+      mode = 'downsample'
+    }
+    await ctx.audioWorklet.addModule(captureWorkletUrl)
+    if (this.ctx !== ctx) throw new Error('통화가 끝났다') // 기다리는 동안 끊었다
+    const node = new AudioWorkletNode(ctx, CAPTURE_PROCESSOR, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 1,
+      channelCountMode: 'explicit',
+    })
+    node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => this.onMicFrame(e.data)
+    // 출력은 소리 없이 목적지에 붙여 둔다. 그래야 모든 브라우저가 노드를 렌더링한다.
+    const mute = ctx.createGain()
+    mute.gain.value = 0
+    source.connect(node).connect(mute).connect(ctx.destination)
+    this.node = node
+    return mode
+  }
+
+  private openSocket(gen: number, mic: Record<string, unknown>, capture: CaptureMode): void {
+    const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
+    const ws = new WebSocket(`${scheme}://${location.host}${WS_PATH}`)
+    ws.binaryType = 'arraybuffer'
+    this.ws = ws
+    const ctx = this.ctx!
+    ws.onopen = () => {
+      this.send({
+        type: 'call.start',
+        turn: 0,
+        mic,
+        capture,
+        sample_rate: ctx.sampleRate,
+        output_latency: ctx.outputLatency,
+        base_latency: ctx.baseLatency,
+        ctx_order: this.options.micFirst ? 'mic-first' : 'context-first',
+        ua: navigator.userAgent,
+        // 음성 끼어들기를 할 수 있는 브라우저인가(안드로이드 크롬 + 에코 제거). 켤지는 서버가 정한다
+        voice_barge_in: voiceBargeInCapable(navigator.userAgent, uaHints(), mic),
+        client_at: Date.now(),
+      })
+    }
+    ws.onmessage = (e: MessageEvent<ArrayBuffer | string>) => {
+      if (gen !== this.generation) return
+      if (typeof e.data === 'string') this.onServerText(e.data)
+      else this.onServerAudio(e.data)
+    }
+    ws.onclose = (e?: CloseEvent) => {
+      if (gen !== this.generation) return
+      this.dispatch({ type: 'socket.closed', code: e?.code })
+      this.teardown()
+    }
+  }
+
+  // ------------------------------------------------------------------ 받기
+
+  private onServerText(text: string): void {
+    let event: ServerEvent
+    try {
+      event = JSON.parse(text) as ServerEvent
+    } catch {
+      return
+    }
+    this.onBargeEvent(event)
+    this.dispatch({ type: 'server', event })
+    this.onCueEvent(event)
+    if (event.type === 'bot.done' && event.turn > this.state.cutTurn) {
+      const progress = this.playback.botDone(event.turn, event.sentences)
+      if (progress === 'turn-finished') this.finishTurn(event.turn, event.sentences - 1)
+    }
+  }
+
+  /**
+   * 음성 끼어들기(티켓 06). 판정은 서버가 하고 브라우저는 줄이기·되돌리기·멈추기만 한다.
+   * 멈출 때는 버튼처럼 재생을 멈추고(리듀서가 이 턴 이하 오디오를 버리게 한다) 들은 자리를
+   * `playback.interrupted`로 알린다. 지금 턴이 아니거나 이미 끊은 턴이면 무시한다.
+   */
+  private onBargeEvent(event: ServerEvent): void {
+    if (event.type !== 'bot.duck' && event.type !== 'bot.unduck' && event.type !== 'bot.stop') return
+    const turn = event.turn
+    if (turn !== this.state.turn || turn <= this.state.cutTurn) return
+    if (event.type === 'bot.duck') this.player?.duck(turn)
+    else if (event.type === 'bot.unduck') this.player?.unduck()
+    else {
+      const spot = this.player?.interrupt(turn) ?? { seq: 0, playedMs: 0 }
+      this.cue?.stop()
+      this.clocks.delete(turn)
+      this.send({ type: 'playback.interrupted', turn, seq: spot.seq, played_ms: spot.playedMs })
+    }
+  }
+
+  /** 생각 중 효과음: `bot.thinking`에 켜고, 그 턴이 목소리 없이 넘어가거나 끝나면 끈다. */
+  private onCueEvent(event: ServerEvent): void {
+    const cue = this.cue
+    if (!cue) return
+    if (event.type === 'bot.thinking') {
+      if (event.turn !== this.state.turn || this.state.phase !== 'thinking') return
+      const at = cue.play(event.turn)
+      if (at !== null) this.clock(event.turn).thinking = at
+    } else if (event.type === 'state') {
+      if (event.phase !== 'thinking' || event.turn !== cue.playingTurn) cue.stop()
+    } else if (event.type === 'error') {
+      cue.stop()
+    }
+  }
+
+  private onServerAudio(buf: ArrayBuffer): void {
+    let frame
+    try {
+      frame = parseAudioFrame(buf)
+    } catch (err) {
+      console.warn(err)
+      return
+    }
+    if (frame.turn <= this.state.cutTurn) return // 끊은 턴의 늦은 소리 (8바이트 헤더의 turn)
+    this.cue?.stop() // 봇 목소리가 왔다
+    const clock = this.clock(frame.turn)
+    clock.firstAudio ??= performance.now()
+    this.player?.enqueue(frame)
+  }
+
+  private onSentenceStarted(turn: number, seq: number): void {
+    this.clock(turn).playStart ??= performance.now()
+    // 마이크를 먼저 닫고 알린다. 서버는 이 보고를 받은 오디오 시각을 반이중 경계로 쓴다
+    this.dispatch({ type: 'playback.begun', turn })
+    this.send({ type: 'playback.started', turn, seq })
+  }
+
+  /**
+   * 마이크를 실제 재생 시작에 닫는다(6단계 티켓 02, `call.ready.mic_close`).
+   * 재생 시작 타이머(`onSentenceStarted`)는 메인 스레드가 바쁘거나 탭이 뒤에 있으면 늦는다. 그래서
+   * 마이크 프레임을 올릴 때마다 오디오 시계로 다시 본다: 이 턴 첫 조각의 예약 시각에 닿았으면 닫는다.
+   * 프레임에는 지금보다 앞의 소리만 들어 있고 스피커는 예약 시각보다 `outputLatency`만큼 늦게
+   * 소리를 내므로, 예약 시각 전에 올린 프레임에는 봇 소리가 없다. 판단이 늦어지면 닫는 쪽으로만 틀린다
+   */
+  private closeMicIfPlaying(): void {
+    const s = this.state
+    if (s.micCloseAt !== 'playback' || s.phase !== 'speaking' || s.botTalking) return
+    if (s.begunTurn >= s.turn) return // 이 턴은 이미 닫았다(재생이 끝나 다시 연 뒤일 수 있다)
+    const at = this.player?.startOf(s.turn) ?? null
+    if (at !== null && this.ctx && this.ctx.currentTime >= at) {
+      this.dispatch({ type: 'playback.begun', turn: s.turn })
+    }
+  }
+
+  private onSentenceEnded(turn: number, seq: number): void {
+    if (turn <= this.state.cutTurn) return
+    if (this.playback.sentenceEnded(turn, seq) === 'turn-finished') this.finishTurn(turn, seq)
+  }
+
+  /** 턴의 마지막 문장이 끝났다. 스피커 지연 + 150ms 뒤 마이크를 다시 열고 보고한다(D8). */
+  private finishTurn(turn: number, lastSeq: number): void {
+    const clock = this.clock(turn)
+    clock.playEnd = performance.now()
+    const outputLatency = this.ctx?.outputLatency
+    this.later(micReopenDelayMs(outputLatency), () => {
+      this.dispatch({ type: 'playback.finished', turn })
+      // metrics를 먼저: 확정·handoff 턴은 서버가 playback.done을 받자마자 통화를 끝낸다.
+      this.send({
+        type: 'client.metrics',
+        turn,
+        thinking_ms: clock.thinking,
+        first_audio_ms: clock.firstAudio,
+        play_start_ms: clock.playStart,
+        play_end_ms: clock.playEnd,
+        mic_open_ms: performance.now(),
+        output_latency: outputLatency ?? null,
+        base_latency: this.ctx?.baseLatency ?? null,
+        client_at: Date.now(),
+      })
+      this.send({ type: 'playback.done', turn, seq: lastSeq, output_latency: outputLatency ?? null })
+      this.clocks.delete(turn)
+    })
+  }
+
+  // ------------------------------------------------------------------ 보내기
+
+  private onMicFrame(frame: ArrayBuffer): void {
+    if (this.ws?.readyState !== WebSocket.OPEN || this.state.status !== 'live') return
+    this.closeMicIfPlaying()
+    // 봇이 말하는 동안에도 같은 속도로 보낸다(CLOVA "계속 보내기"). 내용만 0.
+    this.ws.send(micLive(this.state) ? frame : SILENT_FRAME)
+    // 회선이 느려 쌓이면 안내만 한다. 프레임을 버리면 서버의 STT 시각이 틀어진다(리뷰 1번)
+    this.dispatch({ type: 'link.slow', slow: this.ws.bufferedAmount > SLOW_LINK_BYTES })
+  }
+
+  private send(event: Record<string, unknown>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(event))
+  }
+
+  // ------------------------------------------------------------------ 기타
+
+  private useContext(ctx: AudioContext): void {
+    this.ctx = ctx
+    this.cue?.close()
+    this.cue = new ThinkingCue(ctx)
+    this.player?.stop()
+    this.player = new Player(ctx, {
+      sentenceStarted: (turn, seq) => this.onSentenceStarted(turn, seq),
+      sentenceEnded: (turn, seq) => this.onSentenceEnded(turn, seq),
+    })
+    // 크롬 136+: 외부 사유로 'interrupted'가 될 수 있다. 화면에 다시 켜기 버튼(D12-3).
+    ctx.onstatechange = () => {
+      if (this.ctx === ctx) this.dispatch({ type: 'audio.state', state: ctx.state })
+    }
+    // 처음부터 suspended로 남으면 statechange가 오지 않는다. 지금 상태를 한 번 알린다(리뷰 4번)
+    this.resumeAndReport(ctx)
+  }
+
+  private resumeAndReport(ctx: AudioContext): void {
+    const report = () => {
+      if (this.ctx === ctx) this.dispatch({ type: 'audio.state', state: ctx.state })
+    }
+    // interrupted 중에는 reject된다. 그래도 지금 상태로 버튼을 맞춘다.
+    void ctx.resume().then(report, report)
+  }
+
+  private async requestWakeLock(): Promise<void> {
+    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen')
+    } catch {
+      // 배터리 절약 모드 등. 화면 꺼짐만 막지 못할 뿐 통화는 된다.
+    }
+  }
+
+  /** 문서가 숨겨지면 잠금이 풀린다. 다시 보이면 다시 잡는다. */
+  private onVisibility = (): void => {
+    const s = this.state.status
+    if (document.visibilityState === 'visible' && (s === 'starting' || s === 'live')) {
+      if (!this.wakeLock || this.wakeLock.released) void this.requestWakeLock()
+      // 다른 앱에 다녀오면 소리가 멈춰 있을 수 있다. 멈췄으면 다시 켜기 버튼을 띄운다
+      if (this.ctx && this.ctx.state !== 'running') {
+        this.dispatch({ type: 'audio.state', state: this.ctx.state })
+      }
+    }
+  }
+
+  private clock(turn: number): TurnClock {
+    let c = this.clocks.get(turn)
+    if (!c) {
+      c = {}
+      this.clocks.set(turn, c)
+    }
+    return c
+  }
+
+  private later(ms: number, fn: () => void): void {
+    const t = window.setTimeout(() => {
+      this.timers.delete(t)
+      fn()
+    }, ms)
+    this.timers.add(t)
+  }
+
+  private dispatch(action: CallAction): void {
+    const prev = this.state
+    const next = callReducer(prev, action)
+    if (next === prev) return
+    this.state = next
+    for (const fn of this.listeners) fn()
+    if (over(next) && !over(prev)) this.startTexts()
+  }
+
+  /**
+   * 통화가 끝나면(서버가 끝냄·손님이 끊음·오류) 이 통화 id로 "받은 문자" 스트림을 연다(티켓 07, 최대 2분).
+   * 사장님이 늦게 답하면 여기로 온다. 연결되기 전에 끝난 통화(통화 id 없음)는 열지 않는다
+   */
+  private startTexts(): void {
+    const callId = this.state.callId
+    if (!callId || typeof EventSource === 'undefined') return
+    this.stopTexts()
+    this.closeTexts = openTextStream(callId, (texts) => this.dispatch({ type: 'texts', texts }))
+  }
+
+  private stopTexts(): void {
+    this.closeTexts?.()
+    this.closeTexts = null
+  }
+
+  /** 마이크·소켓·재생·잠금을 모두 정리한다. 화면 상태(자막·주문서·오류)는 남긴다. */
+  private teardown(): void {
+    for (const t of this.timers) clearTimeout(t)
+    this.timers.clear()
+    this.clocks.clear()
+    this.playback = new TurnPlayback()
+    this.player?.stop()
+    this.player = null
+    this.cue?.close()
+    this.cue = null
+    if (this.node) {
+      this.node.port.onmessage = null
+      this.node.disconnect()
+      this.node = null
+    }
+    if (this.stream) {
+      stopStream(this.stream)
+      this.stream = null
+    }
+    if (this.ws) {
+      const ws = this.ws
+      this.ws = null
+      ws.onopen = ws.onmessage = ws.onclose = null
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close()
+    }
+    if (this.ctx) {
+      this.ctx.onstatechange = null
+      void this.ctx.close().catch(() => {})
+      this.ctx = null
+    }
+    if (this.wakeLock) {
+      void this.wakeLock.release().catch(() => {})
+      this.wakeLock = null
+    }
+  }
+}
+
+function over(state: CallState): boolean {
+  return state.status === 'ended' || state.status === 'failed'
+}
+
+function makeContext(sampleRate?: number): AudioContext {
+  return new AudioContext(sampleRate ? { sampleRate, latencyHint: 'interactive' } : { latencyHint: 'interactive' })
+}
+
+function stopStream(stream: MediaStream): void {
+  for (const track of stream.getTracks()) track.stop()
+}
+
+function micFailure(err: unknown): MicFailure {
+  const name = err instanceof DOMException ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied'
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'no-device'
+  return 'other'
+}
