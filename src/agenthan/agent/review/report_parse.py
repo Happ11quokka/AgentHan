@@ -19,14 +19,22 @@ REPORT_WORD = R(
     r"보내\s?줘|send|присылай|отправляй|알림|알려\s?줘|notify|alert|уведом|сообщ"
 )
 NOW = R(
-    r"(지금|당장|바로).{0,8}(보고서|리포트)|보고서\s?(보여|줘|만들)|리포트\s?(보여|줘)|report now|"
+    r"(지금|당장|바로).{0,8}(보고서|리포트)|"
+    r"(보고서|리포트)\s?(를|좀)?\s?(지금|당장|바로)\s?(받|보|줘|보내)|"
+    r"(보고서|리포트)\s?(를|좀)?\s?받아\s?(볼|보고)|"
+    r"(보고서|리포트).{0,6}(지금|당장|바로)\s?\S{0,4}\s?(뽑|만들|받|보|줘|보내)|"  # holdout2 F07
+    r"보고서\s?(보여|줘|만들)|리포트\s?(보여|줘)|report now|"
     r"show (me )?(the )?report|отч[её]т сейчас|покажи отч"
 )
 OFF = R(
-    r"그만|끄|꺼|중지|중단|안\s?보내|필요\s?없|stop|turn off|disable|cancel|отключ|не присылай|"
+    r"그만|끄|꺼|중지|중단|안\s?보내|안\s?받|필요\s?없|"
+    r"stop|turn off|disable|cancel|отключ|не присылай|"
     r"хватит|стоп"
 )
-SUGGEST = R(r"얼마나\s?자주|알아서|적당|추천|how often|recommend|suggest|как часто|посоветуй")
+SUGGEST = R(
+    r"얼마나\s?자주|알아서|적당|추천|주기\s?(는\s?)?어떻게\s?(하는\s?게|해야|할까|하면)|어느\s?주기|"
+    r"how often|recommend|suggest|как часто|посоветуй"
+)
 FREQ = [
     ("daily", R(r"매일|날마다|하루\s?한\s?번|daily|every\s?day|каждый день|ежедневн")),
     (
@@ -75,6 +83,9 @@ ALERT_NEG = R(
 ALERT_ALL = R(
     r"새\s?리뷰.{0,8}(마다|올라오면\s?다|생길\s?때마다)|every new review|каждом новом отзыве"
 )
+# 주기와 함께 오면 보고 설정으로 보는 말 ('매일 저녁 8시에 리뷰 요약해줘', 벤치마크 I04).
+# 주기 없이 '리뷰 정리해줘'만 오면 지금 분석해 달라는 뜻이라 보고 설정이 아니다
+SUMMARY_WORD = R(r"요약해\s?(줘|주세요)|정리해\s?(줘|주세요)|summar")
 CONFIRM_YES = R(
     r"^\s*(응|어|네|예|좋아|그래|그렇게\s?(해|하자|해줘)|오케이|ok|okay|yes|sure|да|хорошо|давай)\b"
 )
@@ -114,6 +125,8 @@ def parse_report_request(u: str, pending_suggestion: dict | None = None):
     freq = next((f for f, p in FREQ if p.search(u)), None)
     wd = next((d for d, p in WEEKDAY if p.search(u)), None)
     t = _time(u) if (freq or wd or REPORT_WORD.search(u)) else None
+    if freq and SUMMARY_WORD.search(u) and not REPORT_WORD.search(u):
+        return "set", {k: v for k, v in {"frequency": freq, "weekday": wd, "time": t}.items() if v}
     alert = "negative" if ALERT_NEG.search(u) else "every_new" if ALERT_ALL.search(u) else None
     focus = "complaint" if FOCUS_COMPLAINT.search(u) else None
     has_report = REPORT_WORD.search(u)

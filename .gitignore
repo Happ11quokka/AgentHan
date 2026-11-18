@@ -54,12 +54,21 @@ GEMINI.md
 
 # 사장님 비서 로컬 더미 저장소 (실행 중 생성)
 .agenthan/
+eval_results/
 
 # tests/data/는 공개용으로 새로 쓴 평가 문장만 올린다
 !tests/data/
 tests/data/*
-!tests/data/place_request_cases.jsonl
-!tests/data/tool_selection_cases.jsonl
+# 공통 평가 케이스 (기능 분기 route.jsonl, 전체 흐름 flow.jsonl, 설명 README.md)
+!tests/data/eval/
+# 저작권을 확인한 공개 음식 사진 테스트 fixture
+!tests/data/food/
 
 # 실제 리뷰로 학습한 모델: 학습 데이터 조각이 들어 있어 올리지 않는다 (카톡으로 공유)
 models/*.joblib
+# 리뷰 도구: HCX 응답 캐시(리뷰 원문 포함)와 데모·벤치마크 상태 파일
+models/*cache*.jsonl
+models/replies_mock.json
+models/report_settings.json
+models/sentiment_*.json
+reports/

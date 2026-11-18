@@ -3,10 +3,10 @@
 데모에서는 시각을 지정해 흉내 낸다.
 
     # 지금 보낼 보고·알림이 있는지 확인
-    python scripts/run_report.py --store 홍만당 --check
+    python scripts/run_report.py --store 달빛모찌 --check
     # 설정과 상관없이 보고서 바로 생성
-    python scripts/run_report.py --store 홍만당 --now
-    python scripts/run_report.py --store 홍만당 --check \
+    python scripts/run_report.py --store 달빛모찌 --now
+    python scripts/run_report.py --store 달빛모찌 --check \
         --at "2026-11-09 09:00" --alerts-since 2026-10-24
 
 실서비스: 이 스크립트를 짧은 간격(예: 10분)으로 실행하고, 결과를 채팅창 메시지로 보낸다.
@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SETTING_KEYS = ["enabled", "frequency", "weekday", "time", "focus", "alert"]
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--store", default="홍만당")
+ap.add_argument("--store", default="달빛모찌")
 ap.add_argument("--today", default="2026-11-07")
 ap.add_argument(
     "--at", default=None, help="실행 시각 흉내 (YYYY-MM-DD HH:MM). 기본: 오늘 + 현재 시각"
@@ -37,6 +37,12 @@ ap.add_argument(
 )
 ap.add_argument("--analysis", choices=["rule", "hcx"], default="rule")
 ap.add_argument("--model", default="HCX-DASH-002")
+ap.add_argument(
+    "--snapshot",
+    default=str(ROOT / "fixtures" / "review_snapshot.jsonl"),
+    help="리뷰 스냅샷 (기본: 더미. 팀 내부 데이터는 data/ 경로를 직접 준다)",
+)
+ap.add_argument("--menus", default=str(ROOT / "fixtures" / "review_menus.json"), help="메뉴·별칭")
 a = ap.parse_args()
 
 today = date.fromisoformat(a.today)
@@ -47,7 +53,7 @@ at = (
 )
 store = ReportSettingsStore(ROOT / "models" / "report_settings.json")
 repo = ReplyAwareRepo(
-    SnapshotRepo(ROOT / "data" / "snapshots" / "test_baseline.jsonl"),
+    SnapshotRepo(a.snapshot),
     MockReplyStore(ROOT / "models" / "replies_mock.json", today=today),
 )
 st = store.get(a.store)
@@ -61,7 +67,7 @@ ctx = dict(
     store_id=a.store,
     today=at.date(),
     repo=repo,
-    catalog=MenuCatalog.load(ROOT / "data" / "menus_sample.json"),
+    catalog=MenuCatalog.load(a.menus),
     **extra,
 )
 

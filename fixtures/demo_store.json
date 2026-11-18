@@ -1,0 +1,273 @@
+{
+  "_note": "발표 시연용 가상 가게. 메뉴는 모국어 이름(name_native)을 갖고, 대표키워드에는 메뉴 한국어 이름이 없다.",
+  "shop": {
+    "id": "demo-shop",
+    "name": "가상 마트료시카 베이커리",
+    "address": "서울시 용산구 이태원동 가상마트료시카로 0 (가상 주소)",
+    "phone": "02-000-0000",
+    "introduction": "발표 시연용 가상의 러시안 베이커리입니다. 실제 가게가 아닙니다.",
+    "hours": {
+      "mon": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "tue": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "wed": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "thu": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "fri": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "22:00"
+      },
+      "sat": {
+        "closed": false,
+        "open_time": "10:00",
+        "close_time": "22:00"
+      },
+      "sun": {
+        "closed": true
+      }
+    },
+    "keywords": [
+      "러시안 베이커리",
+      "디저트 카페"
+    ],
+    "onsite_payment": false,
+    "new_opening": null,
+    "category": "베이커리"
+  },
+  "menus": [
+    {
+      "id": "m01",
+      "name": "메도빅",
+      "price": 7500,
+      "aliases": [
+        "꿀케이크",
+        "허니케이크",
+        "메도비크"
+      ],
+      "name_native": "Медовик",
+      "description": "꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크"
+    },
+    {
+      "id": "m02",
+      "name": "나폴레옹",
+      "price": 7000,
+      "aliases": [
+        "나폴레옹케이크"
+      ],
+      "name_native": "Наполеон",
+      "description": "바삭한 페이스트리 사이에 커스터드 크림을 넣은 케이크"
+    },
+    {
+      "id": "m03",
+      "name": "아메리카노",
+      "price": 4500,
+      "aliases": []
+    },
+    {
+      "id": "m04",
+      "name": "블린",
+      "price": 9000,
+      "aliases": [
+        "러시아 팬케이크",
+        "블리니"
+      ],
+      "name_native": "Блины",
+      "description": "얇은 러시아식 팬케이크. 연어·사워크림 토핑"
+    }
+  ],
+  "reviews": [
+    {
+      "review_id": "r01",
+      "visit_date": "2026-11-01",
+      "rating": 5,
+      "text": "메도빅이 너무 달지 않고 촉촉해요. 또 올게요!",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 18,
+              "text": "메도빅이 너무 달지 않고 촉촉해요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "만족도",
+          "highlights": [
+            {
+              "start": 20,
+              "end": 25,
+              "text": "또 올게요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true
+    },
+    {
+      "review_id": "r02",
+      "visit_date": "2026-11-03",
+      "rating": 3,
+      "text": "주말에 웨이팅이 길었어요. 전화 주문이 됐으면 좋겠네요.",
+      "features": [
+        {
+          "feature": "대기시간",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 13,
+              "text": "주말에 웨이팅이 길었어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r03",
+      "visit_date": "2026-11-05",
+      "rating": 4,
+      "text": "블린 양이 생각보다 적었지만 맛은 좋아요.",
+      "features": [
+        {
+          "feature": "음식량",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 15,
+              "text": "블린 양이 생각보다 적었지만"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 16,
+              "end": 22,
+              "text": "맛은 좋아요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    }
+  ],
+  "talktalk": [
+    {
+      "id": "talk-1",
+      "message": "메도빅 홀케이크 예약이 가능한가요?",
+      "reply_text": "",
+      "status": "unanswered"
+    },
+    {
+      "id": "talk-2",
+      "message": "메도빅 단체 주문도 받으시나요?",
+      "reply_text": "",
+      "status": "unanswered"
+    }
+  ],
+  "orders": [
+    {
+      "id": "order-1",
+      "items": "메도빅 2조각, 아메리카노 2잔",
+      "type": "pickup",
+      "status": "new"
+    },
+    {
+      "id": "order-2",
+      "items": "블린 1개, 나폴레옹 1조각",
+      "type": "pickup",
+      "status": "new"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "resv-1",
+      "date": "2026-11-10",
+      "time": "18:00",
+      "people": 2,
+      "status": "requested"
+    },
+    {
+      "id": "resv-2",
+      "date": "2026-11-11",
+      "time": "12:30",
+      "people": 4,
+      "status": "requested"
+    }
+  ],
+  "calls": [
+    {
+      "id": "call-1",
+      "time": "2026-11-06 11:20",
+      "missed": true
+    },
+    {
+      "id": "call-2",
+      "time": "2026-11-06 14:05",
+      "missed": false
+    },
+    {
+      "id": "call-3",
+      "time": "2026-11-07 09:40",
+      "missed": true
+    }
+  ],
+  "coupons": [],
+  "settlements": {
+    "this_week": {
+      "sales": 120000,
+      "fee": 3600,
+      "payout": 116400,
+      "payout_date": "2026-11-13"
+    },
+    "this_month": {
+      "sales": 480000,
+      "fee": 14400,
+      "payout": 465600,
+      "payout_date": "2026-12-05"
+    },
+    "last_month": {
+      "sales": 1350000,
+      "fee": 40500,
+      "payout": 1309500,
+      "payout_date": "2026-11-05"
+    }
+  },
+  "statistics": {
+    "7d": {
+      "place_views": 340,
+      "calls": 12,
+      "reservations": 5,
+      "orders": 9
+    },
+    "30d": {
+      "place_views": 1480,
+      "calls": 51,
+      "reservations": 22,
+      "orders": 37
+    }
+  }
+}

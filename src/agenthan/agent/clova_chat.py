@@ -1,6 +1,6 @@
 """Owner-assistant chat turn over the shared HCX client (see the hcx package).
 
-Messages use the OpenAI format (tool_calls, tool_call_id). tool_choice is never sent
+Messages use the OpenAI format (tool_calls, tool_call_id). tool_choice is sent only when given
 and errors are sanitized so a server body or key is never shown.
 """
 
@@ -9,13 +9,28 @@ import os
 
 from agenthan.core import llm as hcx
 
-CHAT_MODEL = "HCX-005"
+# Tool and argument turn. HCX-007 with reasoning off (llm.request_options): S1 276/276 (#56).
+CHAT_MODEL = "HCX-007"
 REQUEST_TIMEOUT = 45
 TEMPERATURE = 0.2
 
 
 class ClovaChatError(Exception):
     """An error safe to display without a server body or credentials."""
+
+
+class ClovaRequestRejected(ClovaChatError):
+    """HCX answered HTTP 400 for this input: retrying the same request will not help.
+
+    Seen with e.g. 40009 "Unsupported function" for some utterances. Not an outage."""
+
+
+REJECTED_MESSAGE = "CLOVA가 이 요청을 처리하지 못했습니다."
+
+
+def is_rejected(error: Exception) -> bool:
+    """True for an SDK HTTP 400; reads only the status code, never the body."""
+    return getattr(error, "status_code", None) == 400
 
 
 def make_client():
@@ -66,14 +81,25 @@ def parse_message(value: object) -> dict:
     return parsed
 
 
-def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = CHAT_MODEL) -> dict:
-    """One chat completion. Tools are sent only when non-empty; tool_choice is never sent."""
+def chat(
+    messages: list[dict],
+    *,
+    tools: list[dict],
+    client=None,
+    model: str = CHAT_MODEL,
+    tool_choice: dict | None = None,
+) -> dict:
+    """One chat completion. Tools are sent only when non-empty.
+
+    tool_choice is sent only when given (HCX-DASH-002 accepts a forced function)."""
     client = client or make_client()
     kwargs = {"model": model, "messages": messages, "temperature": TEMPERATURE}
     kwargs.update(hcx.tool_call_options(model))
     if tools:
         kwargs["tools"] = tools
-    failure = None
+        if tool_choice:
+            kwargs["tool_choice"] = tool_choice
+    failure, rejected = None, False
     try:
         choice = client.chat.completions.create(**kwargs).choices[0]
         if getattr(choice, "finish_reason", None) == "length":
@@ -82,7 +108,8 @@ def chat(messages: list[dict], *, tools: list[dict], client=None, model: str = C
             return parse_message(choice.message)
     except ClovaChatError as error:
         failure = str(error)
-    except Exception:  # noqa: BLE001 - SDK/transport errors may carry a body or key
-        failure = "CLOVA 대화 요청에 실패했습니다."
+    except Exception as error:  # noqa: BLE001 - SDK/transport errors may carry a body or key
+        rejected = is_rejected(error)
+        failure = REJECTED_MESSAGE if rejected else "CLOVA 대화 요청에 실패했습니다."
     # Outside except: even the exception context must not expose a body/key.
-    raise ClovaChatError(failure)
+    raise (ClovaRequestRejected if rejected else ClovaChatError)(failure)

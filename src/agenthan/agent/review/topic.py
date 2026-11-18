@@ -2,7 +2,7 @@
 
 1) 메뉴 별칭 사전과 특징 키워드 사전으로 찾고
 2) 못 찾으면 llm(선택)에게 묻는다. llm이 없으면 unresolved로 돌려준다.
-메뉴 목록·별칭은 원래 사장님 RAG에서 받아야 하며, data/menus_sample.json은 테스트용 예시다.
+메뉴 목록·별칭은 원래 사장님 RAG에서 받아야 하며, fixtures/review_menus.json은 테스트용 더미다.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ ASPECT_KEYWORDS: dict[str, list[str]] = {
         "친절",
         "직원",
         "응대",
+        "태도",  # '알바생 태도' (holdout2 D14)
         "알바",
         "사장님 태도",
         "service",
@@ -62,6 +63,10 @@ ASPECT_KEYWORDS: dict[str, list[str]] = {
         "기다",
         "빨리 나",
         "늦게 나",
+        "늦게",
+        "늦어",
+        "늦다",
+        "오래 걸",
         "wait",
         "queue",
         "line",
@@ -102,6 +107,64 @@ ASPECT_KEYWORDS: dict[str, list[str]] = {
 }
 
 
+# topic에 섞여 와도 메뉴·항목이 아닌 말 ('찾기 어렵다', '고쳐야 할 점'). 남은 단어로 보면 되묻기가
+# 되어 분석이 막힌다 (벤치마크 B04·D12, 2026-11-08). 불만·칭찬 여부는 focus가 맡는다
+GENERIC_PREFIXES = (
+    "음식",  # '음식 늦게' (holdout1 D13)
+    "고쳐",
+    "고칠",
+    "개선",
+    "문제",
+    "단점",
+    "장점",
+    "아쉬",
+    "부분",
+    "어렵",
+    "어려",
+    "힘들",
+    "불편",
+    "길다",
+    "길어",
+    "짧",
+    "많다",
+    "많은",
+    "적다",
+    "좋은",
+    "좋다",
+    "나쁜",
+    "나쁘",
+    "별로",
+    "부정",
+    "긍정",
+    "이야기",
+    "뭐래",
+    "뭐라",
+    "말이",
+    "있는지",
+    "있나",
+)
+
+
+def _alias_re(alias: str) -> re.Pattern:
+    """띄어쓰기를 무시하고 별칭을 찾는 정규식 ('딸기 모찌' ↔ '딸기모찌')."""
+    return re.compile(r"\s*".join(re.escape(ch) for ch in _norm(alias)), re.I)
+
+
+def _consume_menus(text: str, menus: list[dict], found: list[str]) -> str:
+    """긴 별칭부터 찾아 found에 정식명을 넣고, 찾은 부분을 지운 문장을 돌려준다."""
+    pairs = sorted(
+        ((a, m["name"]) for m in menus for a in menu_aliases(m) if _norm(a)),
+        key=lambda p: -len(_norm(p[0])),
+    )
+    for alias, name in pairs:
+        pat = _alias_re(alias)
+        if pat.search(text):
+            if name not in found:
+                found.append(name)
+            text = pat.sub(" ", text)
+    return text
+
+
 class MenuCatalog:
     """{매장명 접두어: [{"name": 정식 메뉴명, "aliases": [...]}, ...]}"""
 
@@ -135,19 +198,15 @@ def mentions_menu(text: str, menu: dict) -> bool:
 def resolve_topic(topic: str | None, store: str, catalog: MenuCatalog, llm=None) -> dict:
     """→ {"menus": [정식명], "aspects": [특징], "unresolved": [남은 표현], "candidates": [후보]}"""
     res = {"menus": [], "aspects": [], "unresolved": [], "candidates": []}
-    if not topic or not topic.strip():
+    if isinstance(topic, list):  # HCX가 메뉴 여러 개를 목록으로 보냄 (holdout1 C19)
+        topic = " ".join(str(t) for t in topic)
+    if not topic or not str(topic).strip():
         return res
     menus = catalog.menus(store)
     rest = topic
-    # 1) 메뉴: 긴 별칭부터 매칭해 '왕딸기'가 '딸기'보다 먼저 잡히게 한다
-    pairs = sorted(
-        ((a, m["name"]) for m in menus for a in menu_aliases(m)), key=lambda p: -len(p[0])
-    )
-    for alias, name in pairs:
-        if _norm(alias) and _norm(alias) in _norm(rest):
-            if name not in res["menus"]:
-                res["menus"].append(name)
-            rest = re.sub(re.escape(alias), " ", rest, flags=re.I)
+    # 1) 메뉴: 긴 별칭부터 매칭하고 찾은 부분은 지워서 '왕딸기모찌' 안의 '딸기모찌'가 다시 잡히지
+    # 않게 한다 (띄어쓰기는 무시: '딸기 모찌' = '딸기모찌'. 벤치마크 C03, 2026-11-08)
+    rest = _consume_menus(rest, menus, res["menus"])
     # 2) 특징 키워드
     low = rest.lower()
     for aspect, kws in ASPECT_KEYWORDS.items():
@@ -172,13 +231,20 @@ def resolve_topic(topic: str | None, store: str, catalog: MenuCatalog, llm=None)
         "대한",
         "평가",
         "많아",
+        "all",  # HCX가 topic에 'all'을 넣음 (holdout1 B20 '긍정적인 리뷰')
+        "전체",
+        "모든",
         "review",
         "reviews",
         "about",
         "отзыв",
         "отзывы",
     }
-    leftover = [w for w in re.findall(r"[\w가-힣]+", low) if len(w) >= 2 and w not in stop]
+    leftover = [
+        w
+        for w in re.findall(r"[\w가-힣]+", low)
+        if len(w) >= 2 and w not in stop and not w.startswith(GENERIC_PREFIXES)
+    ]
     # 일부만 해석돼도 남은 단어가 있으면 되묻는다 ('메도빅 가격'을 가격만으로 분석하지 않도록)
     if leftover:
         # 메뉴 일부와 겹치면(예: '모찌', '케이크') 후보로 되묻게 한다
@@ -210,8 +276,10 @@ def resolve_from_utterance(utterance: str, store: str, catalog: MenuCatalog, llm
     """LLM이 topic을 망가뜨렸을 때(로마자 변환 등) 시스템이 가진 사장님 원문에서 메뉴·특징을 다시
     찾는다."""
     res = {"menus": [], "aspects": [], "unresolved": [], "candidates": []}
-    for m in catalog.menus(store):
-        if any(_stem_hit(a, utterance) for a in menu_aliases(m)):
+    menus = catalog.menus(store)
+    rest = _consume_menus(utterance, menus, res["menus"])  # 붙어 있는 그대로 (긴 이름 먼저)
+    for m in menus:  # 그다음 어간 일치 (러시아어 격변화 등). 이미 찾은 부분은 지워져 있다
+        if m["name"] not in res["menus"] and any(_stem_hit(a, rest) for a in menu_aliases(m)):
             res["menus"].append(m["name"])
     if not res["menus"] and llm is not None:
         guess = llm.resolve_topic(

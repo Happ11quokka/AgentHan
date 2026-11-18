@@ -1,0 +1,207 @@
+"""Transport-free chat/embed recording. Files contain hashes and response payloads only."""
+
+import copy
+import hashlib
+import json
+import time
+from pathlib import Path
+
+from agenthan.agent.clova_chat import (
+    CHAT_MODEL,
+    TEMPERATURE,
+    ClovaChatError,
+    ClovaRequestRejected,
+    is_rejected,
+    make_client,
+    parse_message,
+)
+from agenthan.agent.feature_selector import SELECT_MODEL, TOOL_CHOICE
+from agenthan.core.embedding import ClovaEmbeddingError, embed_text, validate_embedding
+from agenthan.core.llm import tool_call_options
+
+EMBED_MODEL = "embedding-v2"
+# Recorded in place of a response when HCX answered HTTP 400 (no body is stored).
+REJECTED = {"rejected": True}
+# Live eval only: a transient outage (connection drop, 5xx) on one of ~1,100 calls made the
+# whole run INCOMPLETE. HTTP 400 and truncation are answers, not outages, so never retried.
+LIVE_RETRIES = 5
+LIVE_RETRY_DELAY = 2.0
+
+
+def canonical(value: object) -> str:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+
+
+def request_hash(operation: str, payload: dict) -> str:
+    return hashlib.sha256(canonical({"operation": operation, **payload}).encode()).hexdigest()
+
+
+def chat_request(
+    messages: list[dict], tools: list[dict], model: str, tool_choice: dict | None = None
+) -> dict:
+    request = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "temperature": TEMPERATURE,
+        **tool_call_options(model),
+    }
+    if tool_choice:
+        request["tool_choice"] = tool_choice
+    return request
+
+
+def select_request(messages: list[dict], tools: list[dict]) -> dict:
+    """The HCX-DASH-002 select_feature call (forced tool) as OwnerAssistant sends it."""
+    return chat_request(messages, tools, SELECT_MODEL, TOOL_CHOICE)
+
+
+class TransientChatError(ClovaChatError):
+    """A live eval chat failure other than HTTP 400 or truncation: worth retrying."""
+
+
+class ReplayMiss(ClovaChatError, ClovaEmbeddingError):
+    """A missing recording must count as an API error, including matcher fallback."""
+
+
+class Live:
+    """Same HCX chat settings as clova_chat, retaining usage discarded by chat()."""
+
+    def __init__(self, model: str = CHAT_MODEL, *, retries: int = LIVE_RETRIES):
+        self.model = model
+        self.client = None
+        self.retries = retries
+        self.retried = 0  # Transient failures absorbed by a retry (for the run log).
+
+    def _retry(self, call, transient: type[Exception]):
+        for attempt in range(self.retries + 1):
+            try:
+                return call()
+            except ClovaRequestRejected:
+                raise
+            except transient:
+                if attempt == self.retries:
+                    raise
+                self.retried += 1
+                time.sleep(LIVE_RETRY_DELAY * 2**attempt)  # 2, 4, 8, 16, 32 s
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._create(chat_request(messages, tools, self.model))
+
+    def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._create(select_request(messages, tools))
+
+    def _create(self, request: dict) -> dict:
+        return self._retry(lambda: self._create_once(request), TransientChatError)
+
+    def _create_once(self, request: dict) -> dict:
+        failure, rejected, truncated = "CLOVA evaluation chat failed", False, False
+        try:
+            if self.client is None:
+                self.client = make_client()
+            request = copy.deepcopy(request)
+            if not request["tools"]:
+                request.pop("tools")
+                request.pop("tool_choice", None)
+            response = self.client.chat.completions.create(**request)
+            choice = response.choices[0]
+            if choice.finish_reason == "length":
+                truncated = True
+                raise ClovaChatError("CLOVA evaluation response was truncated")
+            message = parse_message(choice.message)
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                if hasattr(usage, "model_dump"):
+                    usage = usage.model_dump()
+                message["usage"] = {
+                    key: usage[key]
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get(key), int)
+                }
+            return message
+        except Exception as error:  # SDK errors may include headers, keys, and server bodies.
+            rejected = is_rejected(error)
+        if rejected:
+            raise ClovaRequestRejected("CLOVA evaluation chat rejected (HTTP 400)")
+        if truncated:
+            raise ClovaChatError("CLOVA evaluation response was truncated")
+        raise TransientChatError(failure)
+
+    def embed(self, text: str) -> list[float]:
+        return self._retry(lambda: embed_text(text), ClovaEmbeddingError)
+
+
+class Recorder:
+    def __init__(self, path: Path, backend, *, provenance: str = "live"):
+        self.path, self.backend = path, backend
+        self.model = backend.model
+        self.data = {"version": 1, "provenance": provenance, "entries": {}}
+
+    def _save(self, key: str, response):
+        # Requests, clients, headers, and exception messages are never serialized.
+        self.data["entries"][key] = copy.deepcopy(response)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(canonical(self.data) + "\n", encoding="utf-8")
+        return response
+
+    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        request = chat_request(messages, tools, self.model)
+        return self._record(request, lambda: self.backend.chat(messages, tools=tools))
+
+    def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        if not hasattr(self.backend, "select"):
+            raise ClovaChatError("backend has no select_feature")  # Test fakes: fallback.
+        request = select_request(messages, tools)
+        return self._record(request, lambda: self.backend.select(messages, tools=tools))
+
+    def _record(self, request: dict, call) -> dict:
+        key = request_hash("chat", request)
+        try:
+            response = call()
+        except ClovaRequestRejected:
+            self._save(key, REJECTED)
+            raise
+        safe = parse_message(response)
+        if isinstance(response.get("usage"), dict):
+            safe["usage"] = {
+                key: response["usage"][key]
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                if isinstance(response["usage"].get(key), int)
+            }
+        return self._save(key, safe)
+
+    def embed(self, text: str) -> list[float]:
+        response = validate_embedding(self.backend.embed(text))
+        return self._save(request_hash("embed", {"model": EMBED_MODEL, "text": text}), response)
+
+
+class Replay:
+    def __init__(self, path: Path, model: str = CHAT_MODEL):
+        self.model = model
+        self.data = json.loads(path.read_text(encoding="utf-8"))
+        if self.data.get("version") != 1 or not isinstance(self.data.get("entries"), dict):
+            raise ValueError("Invalid replay file")
+
+    def _read(self, operation: str, payload: dict):
+        key = request_hash(operation, payload)
+        if key not in self.data["entries"]:
+            raise ReplayMiss(f"Missing replay {operation}: {key}")
+        return copy.deepcopy(self.data["entries"][key])
+
+    def chat(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._replay(chat_request(messages, tools, self.model))
+
+    def select(self, messages: list[dict], *, tools: list[dict]) -> dict:
+        return self._replay(select_request(messages, tools))
+
+    def _replay(self, request: dict) -> dict:
+        response = self._read("chat", request)
+        if response == REJECTED:
+            raise ClovaRequestRejected("Recorded CLOVA rejection (HTTP 400)")
+        return response
+
+    def embed(self, text: str) -> list[float]:
+        return validate_embedding(self._read("embed", {"model": EMBED_MODEL, "text": text}))
