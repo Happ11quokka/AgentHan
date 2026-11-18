@@ -1,0 +1,60 @@
+{"query": "나폴레옹 있어요?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "exact", "channel": "phone"}
+{"query": "꿀케이크 있어요?", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "family", "channel": "phone"}
+{"query": "메도빅 두 조각이요", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "family", "channel": "phone"}
+{"query": "초코 꿀케이크 하나요", "expected_ids": ["medovik-choco"], "primary_id": "medovik-choco", "type": "alias", "channel": "phone"}
+{"query": "에이드 뭐 있어요?", "expected_ids": ["lemon-ade", "mors", "grapefruit-ade", "omija-ade"], "primary_id": null, "type": "category", "channel": "phone"}
+{"query": "제일 잘 나가는 메뉴가 뭐예요?", "expected_ids": ["medovik", "napoleon"], "primary_id": null, "type": "popular", "channel": "phone"}
+{"query": "덜 단 거 있어요?", "expected_ids": [], "primary_id": null, "type": "taste", "channel": "phone"}
+{"query": "시그니처가 뭐예요?", "expected_ids": ["medovik", "napoleon"], "primary_id": null, "type": "popular", "channel": "phone"}
+{"query": "티라미수 있어요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "에이드 따뜻하게 돼요?", "expected_ids": ["lemon-ade", "mors", "grapefruit-ade", "omija-ade"], "primary_id": null, "type": "option", "channel": "phone"}
+{"query": "나폴레옹, 아 아니 초코 메도빅으로요", "expected_ids": ["medovik-choco"], "primary_id": "medovik-choco", "type": "alias", "channel": "phone"}
+{"query": "제일 싼 케이크 뭐예요?", "expected_ids": ["cheesecake"], "primary_id": "cheesecake", "type": "price", "channel": "phone", "match": "any"}
+{"query": "메도빅이랑 나폴레옹 차이가 뭐예요?", "expected_ids": ["medovik", "napoleon"], "primary_id": null, "type": "description", "channel": "phone"}
+{"query": "메도빅 하나랑 아메리카노 두잔이요", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole", "americano"], "primary_id": null, "type": "family", "channel": "phone"}
+{"query": "Сколько стоит наполеон?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "native", "channel": "phone"}
+{"query": "honey cake 가격 몇으로 올라가 있어?", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "native", "channel": "owner"}
+{"query": "러시아 전통 케이크 뭐 있는지 정리해 줘", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole", "napoleon", "ptichye-moloko", "kievsky", "praga"], "primary_id": null, "type": "description", "channel": "owner"}
+{"query": "매도빅 하나요", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "typo", "channel": "phone"}
+{"query": "나플레옹 포장 되나요?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "typo", "channel": "phone"}
+{"query": "버드밀크 가격 얼마로 돼 있지?", "expected_ids": ["ptichye-moloko"], "primary_id": "ptichye-moloko", "type": "alias", "channel": "owner"}
+{"query": "Есть сырники?", "expected_ids": ["syrniki"], "primary_id": "syrniki", "type": "native", "channel": "phone"}
+{"query": "홍차 주세요", "expected_ids": ["black-tea", "earl-grey", "milk-tea"], "primary_id": null, "type": "ambiguous", "channel": "phone"}
+{"query": "치즈 들어간 메뉴 뭐뭐 있지?", "expected_ids": ["cheesecake", "syrniki"], "primary_id": null, "type": "ambiguous", "channel": "owner"}
+{"query": "키예프 케이크 지금 품절로 돼 있어?", "expected_ids": ["kievsky"], "primary_id": "kievsky", "type": "option", "channel": "owner"}
+{"query": "요즘 리뷰에 많이 나오는 메뉴 뭐야?", "expected_ids": ["medovik", "meringue-roll"], "primary_id": "medovik", "type": "popular", "channel": "owner"}
+{"query": "선물용으로 추천할 만한 메뉴 뭐야?", "expected_ids": ["medovik-whole", "oreshki"], "primary_id": null, "type": "gift", "channel": "owner"}
+{"query": "제일 단 메뉴가 뭐야?", "expected_ids": ["pavlova"], "primary_id": "pavlova", "type": "taste", "channel": "owner"}
+{"query": "견과류 알레르기 있는데 괜찮은 케이크 있어요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "칼로리 낮은 거 뭐야?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "owner"}
+{"query": "마카롱 있어요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "혹시 나폴레옹 케이크 오늘 있나요?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "exact", "channel": "phone", "variant_of": "나폴레옹 있어요?"}
+{"query": "저기… 나폴레옹 아직 남아 있어요?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "exact", "channel": "phone", "variant_of": "나폴레옹 있어요?"}
+{"query": "제일 저렴한 케이크가 뭐예요?", "expected_ids": ["cheesecake"], "primary_id": "cheesecake", "type": "price", "channel": "phone", "match": "any", "variant_of": "제일 싼 케이크 뭐예요?"}
+{"query": "케이크 중에 제일 싼 게 얼마짜리예요?", "expected_ids": ["cheesecake"], "primary_id": "cheesecake", "type": "price", "channel": "phone", "match": "any", "variant_of": "제일 싼 케이크 뭐예요?"}
+{"query": "에이드 종류가 어떻게 돼요?", "expected_ids": ["lemon-ade", "mors", "grapefruit-ade", "omija-ade"], "primary_id": null, "type": "category", "channel": "phone", "variant_of": "에이드 뭐 있어요?"}
+{"query": "혹시 에이드는 뭐뭐 있나요?", "expected_ids": ["lemon-ade", "mors", "grapefruit-ade", "omija-ade"], "primary_id": null, "type": "category", "channel": "phone", "variant_of": "에이드 뭐 있어요?"}
+{"query": "메도빅하고 나폴레옹은 뭐가 달라요?", "expected_ids": ["medovik", "napoleon"], "primary_id": null, "type": "description", "channel": "phone", "variant_of": "메도빅이랑 나폴레옹 차이가 뭐예요?"}
+{"query": "나폴레옹이랑 메도빅 맛이 어떻게 달라요?", "expected_ids": ["medovik", "napoleon"], "primary_id": null, "type": "description", "channel": "phone", "variant_of": "메도빅이랑 나폴레옹 차이가 뭐예요?"}
+{"query": "러시아 전통 디저트로 소개할 만한 케이크 뭐 있지?", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole", "napoleon", "ptichye-moloko", "kievsky", "praga"], "primary_id": null, "type": "description", "channel": "owner", "variant_of": "러시아 전통 케이크 뭐 있는지 정리해 줘"}
+{"query": "선물하기 좋은 메뉴 뭐가 있지?", "expected_ids": ["medovik-whole", "oreshki"], "primary_id": null, "type": "gift", "channel": "owner", "variant_of": "선물용으로 추천할 만한 메뉴 뭐야?"}
+{"query": "손님이 선물용으로 뭐가 좋냐고 묻는데, 뭐 추천할까?", "expected_ids": ["medovik-whole", "oreshki"], "primary_id": null, "type": "gift", "channel": "owner", "variant_of": "선물용으로 추천할 만한 메뉴 뭐야?"}
+{"query": "너무 달지 않은 케이크 있나요?", "expected_ids": [], "primary_id": null, "type": "taste", "channel": "phone", "variant_of": "덜 단 거 있어요?"}
+{"query": "제일 달달한 메뉴 뭐였지?", "expected_ids": ["pavlova"], "primary_id": "pavlova", "type": "taste", "channel": "owner", "variant_of": "제일 단 메뉴가 뭐야?"}
+{"query": "에이드 뜨거운 걸로도 되나요?", "expected_ids": ["lemon-ade", "mors", "grapefruit-ade", "omija-ade"], "primary_id": null, "type": "option", "channel": "phone", "variant_of": "에이드 따뜻하게 돼요?"}
+{"query": "키예프 케이크 품절 처리돼 있나?", "expected_ids": ["kievsky"], "primary_id": "kievsky", "type": "option", "channel": "owner", "variant_of": "키예프 케이크 지금 품절로 돼 있어?"}
+{"query": "Сколько стоит торт Наполеон?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "native", "channel": "phone", "variant_of": "Сколько стоит наполеон?"}
+{"query": "Сырники есть?", "expected_ids": ["syrniki"], "primary_id": "syrniki", "type": "native", "channel": "phone", "variant_of": "Есть сырники?"}
+{"query": "honey cake 지금 얼마로 등록돼 있지?", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "native", "channel": "owner", "variant_of": "honey cake 가격 몇으로 올라가 있어?"}
+{"query": "혹시 꿀케이크 같은 거 파나요?", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "family", "channel": "phone", "variant_of": "꿀케이크 있어요?"}
+{"query": "꿀케이크 하나하고 아메리카노 두 잔 포장이요", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole", "americano"], "primary_id": null, "type": "family", "channel": "phone", "variant_of": "메도빅 하나랑 아메리카노 두잔이요"}
+{"query": "초코로 된 꿀케이크 하나 주세요", "expected_ids": ["medovik-choco"], "primary_id": "medovik-choco", "type": "alias", "channel": "phone", "variant_of": "초코 꿀케이크 하나요"}
+{"query": "나폴레옹 하나… 아 잠깐만요, 초코 메도빅으로 할게요", "expected_ids": ["medovik-choco"], "primary_id": "medovik-choco", "type": "alias", "channel": "phone", "variant_of": "나폴레옹, 아 아니 초코 메도빅으로요"}
+{"query": "버드밀크 케이크 지금 얼마로 돼 있어?", "expected_ids": ["ptichye-moloko"], "primary_id": "ptichye-moloko", "type": "alias", "channel": "owner", "variant_of": "버드밀크 가격 얼마로 돼 있지?"}
+{"query": "홍차 있어요?", "expected_ids": ["black-tea", "earl-grey", "milk-tea"], "primary_id": null, "type": "ambiguous", "channel": "phone", "variant_of": "홍차 주세요"}
+{"query": "치즈 들어가는 메뉴 뭐였지?", "expected_ids": ["cheesecake", "syrniki"], "primary_id": null, "type": "ambiguous", "channel": "owner", "variant_of": "치즈 들어간 메뉴 뭐뭐 있지?"}
+{"query": "매도빅 한 조각 돼요?", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "typo", "channel": "phone", "variant_of": "매도빅 하나요"}
+{"query": "나폴래옹 두 개 되나요?", "expected_ids": ["napoleon"], "primary_id": "napoleon", "type": "typo", "channel": "phone", "variant_of": "나플레옹 포장 되나요?"}
+{"query": "여기 뭐가 제일 잘 나가요?", "expected_ids": ["medovik", "napoleon"], "primary_id": null, "type": "popular", "channel": "phone", "variant_of": "제일 잘 나가는 메뉴가 뭐예요?"}
+{"query": "티라미수는 혹시 없죠?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone", "variant_of": "티라미수 있어요?"}
+{"query": "혹시 견과류 안 들어간 케이크 있어요? 알레르기가 있어서…", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone", "variant_of": "견과류 알레르기 있는데 괜찮은 케이크 있어요?"}

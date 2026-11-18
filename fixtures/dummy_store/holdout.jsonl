@@ -1,0 +1,14 @@
+{"query": "그그 뭐더라 꿀들어간 유명한거", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole"], "primary_id": "medovik", "type": "description", "channel": "phone"}
+{"query": "카페인 없는 커피 있어요?", "expected_ids": ["americano"], "primary_id": "americano", "type": "option", "channel": "phone"}
+{"query": "라떼 두잔이랑 나폴레옹 하나요", "expected_ids": ["latte", "napoleon"], "primary_id": null, "type": "exact", "channel": "phone"}
+{"query": "에스테르하지 있어요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "얼그레이요, 아 아니다 그냥 밀크티로 주세요", "expected_ids": ["milk-tea"], "primary_id": "milk-tea", "type": "exact", "channel": "phone"}
+{"query": "제일 유명한 그 인스타에 올라온 그게 뭐죠?", "expected_ids": ["medovik"], "primary_id": "medovik", "type": "popular", "channel": "phone"}
+{"query": "프라크 케이크 있어요?", "expected_ids": ["praga"], "primary_id": "praga", "type": "typo", "channel": "phone"}
+{"query": "치즈케이크 있어요?", "expected_ids": ["cheesecake"], "primary_id": "cheesecake", "type": "alias", "channel": "phone"}
+{"query": "차이콥스키 한 조각 포장이요", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}
+{"query": "아 그 뭐더라, 얇은 시트 여러겹인 케이크요", "expected_ids": ["medovik", "medovik-choco", "medovik-sour-berry", "medovik-whole", "napoleon"], "primary_id": null, "type": "description", "channel": "phone"}
+{"query": "그 엄청 달달한 디저트 머랭으로 만든거", "expected_ids": ["pavlova"], "primary_id": "pavlova", "type": "taste", "channel": "phone"}
+{"query": "아아 카페인 없이랑 초코 폭탄이거요", "expected_ids": ["americano"], "primary_id": "americano", "type": "option", "channel": "phone"}
+{"query": "자몽에이드 오늘 다 나갔어요?", "expected_ids": ["grapefruit-ade"], "primary_id": "grapefruit-ade", "type": "option", "channel": "phone"}
+{"query": "케이크에 초 꽂아 주시나요?", "expected_ids": [], "primary_id": null, "type": "none", "channel": "phone"}

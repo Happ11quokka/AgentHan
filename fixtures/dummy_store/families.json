@@ -1,0 +1,56 @@
+[
+  {
+    "id": "medovik",
+    "name_ko": "메도빅",
+    "representative": "medovik",
+    "members": [
+      "medovik",
+      "medovik-choco",
+      "medovik-sour-berry",
+      "medovik-whole"
+    ],
+    "aliases": [
+      "메도빅",
+      "꿀케이크",
+      "꿀 케이크",
+      "허니케이크",
+      "메도비크",
+      "Medovik",
+      "꿀케익",
+      "메도빅 케이크",
+      "꿀케잌",
+      "메도빅케잌",
+      "매도빅",
+      "Honey Cake",
+      "메도빅크",
+      "Медовик"
+    ],
+    "popularity": {
+      "best_mark": true,
+      "new_mark": false,
+      "naver_repr": false,
+      "review_mentions": 17,
+      "recent_mentions": 9
+    },
+    "gift": {
+      "gift_mentions": 3,
+      "takeout_mentions": 2
+    }
+  },
+  {
+    "id": "eclair",
+    "name_ko": "에클레어",
+    "representative": "big-eclair",
+    "members": [
+      "big-eclair",
+      "mini-eclair"
+    ],
+    "aliases": [
+      "에클레어",
+      "에끌레어",
+      "Eclair"
+    ],
+    "popularity": null,
+    "gift": null
+  }
+]
