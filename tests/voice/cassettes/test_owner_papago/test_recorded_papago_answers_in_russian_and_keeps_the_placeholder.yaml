@@ -1,0 +1,91 @@
+interactions:
+- request:
+    body: "{\"source\":\"ko\",\"target\":\"ru\",\"text\":\"\uBA54\uB3C4\uBE45\uC5D0
+      \uACAC\uACFC\uB958 \uB4E4\uC5B4\uAC00\uC694?\"}"
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '75'
+      content-type:
+      - application/json
+      host:
+      - papago.apigw.ntruss.com
+      user-agent:
+      - python-httpx/0.28.1
+    method: POST
+    uri: https://papago.apigw.ntruss.com/nmt/v1/translation
+  response:
+    body:
+      string: "{\"message\":{\"result\":{\"srcLangType\":\"ko\",\"tarLangType\":\"ru\",\"translatedText\":\"\u0412
+        \u043C\u0435\u0434\u043E\u0432\u0438\u043A \u0438\u0434\u0443\u0442 \u043E\u0440\u0435\u0445\u0438?\"}}}"
+    headers:
+      content-type:
+      - application/json;charset=UTF-8
+    status:
+      code: 200
+      message: OK
+- request:
+    body: "{\"source\":\"ko\",\"target\":\"ru\",\"text\":\"[1] \uBE7C \uC8FC\uC138\uC694\"}"
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '56'
+      content-type:
+      - application/json
+      host:
+      - papago.apigw.ntruss.com
+      user-agent:
+      - python-httpx/0.28.1
+    method: POST
+    uri: https://papago.apigw.ntruss.com/nmt/v1/translation
+  response:
+    body:
+      string: "{\"message\":{\"result\":{\"srcLangType\":\"ko\",\"tarLangType\":\"ru\",\"translatedText\":\"[1]
+        \u0423\u0431\u0435\u0440\u0438\u0442\u0435, \u043F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430.\"}}}"
+    headers:
+      content-type:
+      - application/json;charset=UTF-8
+    status:
+      code: 200
+      message: OK
+- request:
+    body: "{\"source\":\"ko\",\"target\":\"ru\",\"text\":\"[1] \uB530\uB85C \uD3EC\uC7A5\uD574
+      \uC8FC\uC138\uC694\"}"
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '69'
+      content-type:
+      - application/json
+      host:
+      - papago.apigw.ntruss.com
+      user-agent:
+      - python-httpx/0.28.1
+    method: POST
+    uri: https://papago.apigw.ntruss.com/nmt/v1/translation
+  response:
+    body:
+      string: "{\"message\":{\"result\":{\"srcLangType\":\"ko\",\"tarLangType\":\"ru\",\"translatedText\":\"[1]
+        \u0423\u043F\u0430\u043A\u0443\u0439\u0442\u0435 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E.\"}}}"
+    headers:
+      content-type:
+      - application/json;charset=UTF-8
+    status:
+      code: 200
+      message: OK
+version: 1

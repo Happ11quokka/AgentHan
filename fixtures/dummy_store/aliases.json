@@ -1,0 +1,387 @@
+{
+  "_설명": "더미 가게 메뉴 별칭 사전 (지어낸 데이터). private/make_dummy.py가 합친다. 형식은 data/clean/aliases.json과 같다. families는 메뉴 묶음: 묶음 별칭으로 물으면 묶음 전체, representative가 대표 메뉴.",
+  "review_link_exclude": [
+    "아아",
+    "뜨아",
+    "아메",
+    "디카페"
+  ],
+  "menus": {
+    "medovik": {
+      "name_native": "",
+      "aliases": [],
+      "ambiguous": []
+    },
+    "medovik-choco": {
+      "name_native": "Шоколадный медовик",
+      "aliases": [
+        "초코 꿀케이크",
+        "메도빅 초코",
+        "초콜릿 메도빅",
+        "초코꿀케익"
+      ],
+      "ambiguous": []
+    },
+    "medovik-sour-berry": {
+      "name_native": "",
+      "aliases": [
+        "사워크림 꿀케이크",
+        "메도빅 사워베리",
+        "베리 메도빅",
+        "사워베리",
+        "샤워베리 메도빅"
+      ],
+      "ambiguous": [
+        "사워베리"
+      ]
+    },
+    "medovik-whole": {
+      "name_native": "",
+      "aliases": [
+        "꿀케이크 홀",
+        "메도빅 한 판",
+        "홀케이크",
+        "메도빅 홀",
+        "홀케익"
+      ],
+      "ambiguous": [
+        "홀케이크",
+        "홀케익"
+      ]
+    },
+    "napoleon": {
+      "name_native": "",
+      "aliases": [
+        "나폴레옹 케이크",
+        "나폴레온",
+        "나폴래옹",
+        "나폴레옹케잌",
+        "나플레옹"
+      ],
+      "ambiguous": []
+    },
+    "ptichye-moloko": {
+      "name_native": "",
+      "aliases": [
+        "버드밀크",
+        "새의 우유",
+        "프티치예 몰로코",
+        "버드 밀크",
+        "버드밀크케익"
+      ],
+      "ambiguous": []
+    },
+    "kievsky": {
+      "name_native": "",
+      "aliases": [
+        "키예프",
+        "헤이즐넛 머랭 케이크",
+        "키예프스키",
+        "키이우 케이크"
+      ],
+      "ambiguous": []
+    },
+    "praga": {
+      "name_native": "",
+      "aliases": [
+        "프라하 케이크",
+        "프라하 초코 케이크",
+        "프라가",
+        "프라하 초코",
+        "프라하케잌"
+      ],
+      "ambiguous": []
+    },
+    "smetannik": {
+      "name_native": "",
+      "aliases": [
+        "사워크림 케이크",
+        "스메타니크",
+        "스메타닉 케이크"
+      ],
+      "ambiguous": []
+    },
+    "zebra": {
+      "name_native": "",
+      "aliases": [
+        "얼룩말 케이크",
+        "제브라",
+        "지브라 케이크"
+      ],
+      "ambiguous": []
+    },
+    "carrot-cake": {
+      "name_native": "",
+      "aliases": [
+        "캐럿 케이크",
+        "당근케익",
+        "당근케잌"
+      ],
+      "ambiguous": []
+    },
+    "cheesecake": {
+      "name_native": "",
+      "aliases": [
+        "치즈케이크",
+        "치케",
+        "치즈케익",
+        "치즈케잌"
+      ],
+      "ambiguous": [
+        "치즈케이크"
+      ]
+    },
+    "mini-eclair": {
+      "name_native": "Мини-эклеры",
+      "aliases": [
+        "미니 에끌레어",
+        "작은 에클레어",
+        "미니 에클레르",
+        "미니 슈"
+      ],
+      "ambiguous": [
+        "미니 슈"
+      ]
+    },
+    "big-eclair": {
+      "name_native": "Эклер",
+      "aliases": [
+        "빅 에끌레어",
+        "큰 에클레어",
+        "에클레어 클래식",
+        "빅에클러어"
+      ],
+      "ambiguous": []
+    },
+    "meringue-roll": {
+      "name_native": "Меренговый рулет",
+      "aliases": [
+        "머랭롤 케이크",
+        "머랭롤",
+        "머렝롤",
+        "머랭롤케잌"
+      ],
+      "ambiguous": []
+    },
+    "berry-tart": {
+      "name_native": "",
+      "aliases": [
+        "과일 타르트",
+        "타르트",
+        "베리타르트",
+        "블루베리 타르트"
+      ],
+      "ambiguous": [
+        "타르트"
+      ]
+    },
+    "pavlova": {
+      "name_native": "",
+      "aliases": [
+        "파브로바",
+        "파블로바 케이크",
+        "파플로파"
+      ],
+      "ambiguous": []
+    },
+    "syrniki": {
+      "name_native": "",
+      "aliases": [
+        "러시아 치즈 팬케이크",
+        "치즈 팬케이크",
+        "시르니크",
+        "시르니끼"
+      ],
+      "ambiguous": []
+    },
+    "oreshki": {
+      "name_native": "",
+      "aliases": [
+        "호두 쿠키",
+        "오레시키",
+        "오레쉬끼"
+      ],
+      "ambiguous": []
+    },
+    "americano": {
+      "name_native": "",
+      "aliases": [
+        "아메",
+        "아아",
+        "뜨아",
+        "아메리까노"
+      ],
+      "ambiguous": [
+        "아아",
+        "뜨아",
+        "아메"
+      ]
+    },
+    "latte": {
+      "name_native": "",
+      "aliases": [
+        "라떼",
+        "라테",
+        "카페라테"
+      ],
+      "ambiguous": []
+    },
+    "raf": {
+      "name_native": "",
+      "aliases": [
+        "라프",
+        "바닐라 크림 커피",
+        "라프커피",
+        "라프 라떼"
+      ],
+      "ambiguous": []
+    },
+    "cappuccino": {
+      "name_native": "",
+      "aliases": [
+        "카프치노",
+        "카푸치노 커피"
+      ],
+      "ambiguous": []
+    },
+    "black-tea": {
+      "name_native": "",
+      "aliases": [
+        "블랙 티"
+      ],
+      "ambiguous": []
+    },
+    "earl-grey": {
+      "name_native": "",
+      "aliases": [
+        "얼그레이 티",
+        "얼그래이"
+      ],
+      "ambiguous": []
+    },
+    "milk-tea": {
+      "name_native": "",
+      "aliases": [
+        "로열 밀크티",
+        "밀크 티"
+      ],
+      "ambiguous": []
+    },
+    "sea-buckthorn-tea": {
+      "name_native": "",
+      "aliases": [
+        "오블레피하",
+        "비타민나무 차",
+        "산자나무 열매차",
+        "오블리피하",
+        "씨벅턴 티"
+      ],
+      "ambiguous": []
+    },
+    "honey-lemon-tea": {
+      "name_native": "",
+      "aliases": [
+        "허니레몬",
+        "꿀레몬차",
+        "레몬티"
+      ],
+      "ambiguous": [
+        "레몬티"
+      ]
+    },
+    "lemon-ade": {
+      "name_native": "",
+      "aliases": [
+        "레몬 에이드",
+        "레모네이드"
+      ],
+      "ambiguous": []
+    },
+    "mors": {
+      "name_native": "",
+      "aliases": [
+        "모르스 에이드",
+        "크랜베리 에이드",
+        "베리 음료",
+        "모르스 음료"
+      ],
+      "ambiguous": []
+    },
+    "grapefruit-ade": {
+      "name_native": "",
+      "aliases": [
+        "자몽 에이드",
+        "그레이프프루트 에이드"
+      ],
+      "ambiguous": []
+    },
+    "omija-ade": {
+      "name_native": "",
+      "aliases": [
+        "오미자에이드"
+      ],
+      "ambiguous": []
+    }
+  },
+  "families": {
+    "medovik": {
+      "name_ko": "메도빅",
+      "representative": "medovik",
+      "members": [
+        "medovik",
+        "medovik-choco",
+        "medovik-sour-berry",
+        "medovik-whole"
+      ],
+      "aliases": [
+        "메도빅",
+        "꿀케이크",
+        "꿀 케이크",
+        "허니케이크",
+        "메도비크",
+        "Medovik",
+        "꿀케익",
+        "메도빅 케이크",
+        "꿀케잌",
+        "메도빅케잌",
+        "매도빅",
+        "Honey Cake",
+        "메도빅크",
+        "Медовик"
+      ]
+    },
+    "eclair": {
+      "name_ko": "에클레어",
+      "representative": "big-eclair",
+      "members": [
+        "big-eclair",
+        "mini-eclair"
+      ],
+      "aliases": [
+        "에클레어",
+        "에끌레어",
+        "Eclair"
+      ]
+    }
+  },
+  "taste_labels": {
+    "pavlova": "단 편"
+  },
+  "tags": {
+    "러시아 전통": [
+      "medovik",
+      "medovik-choco",
+      "medovik-sour-berry",
+      "medovik-whole",
+      "napoleon",
+      "praga",
+      "ptichye-moloko",
+      "kievsky"
+    ],
+    "홍차": [
+      "black-tea",
+      "earl-grey",
+      "milk-tea"
+    ]
+  }
+}

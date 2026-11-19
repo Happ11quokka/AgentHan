@@ -14,16 +14,16 @@ from agenthan.agent.review import (
 ROOT = Path(__file__).resolve().parents[1]
 
 TODAY = date(2026, 11, 7)
-REPO = SnapshotRepo(ROOT / "tests" / "fixtures" / "review_snapshot.jsonl")
-CAT = MenuCatalog.load(ROOT / "tests" / "fixtures" / "menus.json")
+REPO = SnapshotRepo(ROOT / "fixtures" / "review_snapshot.jsonl")
+CAT = MenuCatalog.load(ROOT / "fixtures" / "review_menus.json")
 
 
 def run(**kw):
-    return analyze_reviews(store_id="연습떡집", today=TODAY, repo=REPO, catalog=CAT, **kw)
+    return analyze_reviews(store_id="달빛모찌", today=TODAY, repo=REPO, catalog=CAT, **kw)
 
 
 def test_zero_reviews_in_window():
-    # 연습떡집 스냅샷의 마지막 리뷰는 10-30 → 최근 7일을 '직접 지정'하면 0건 + 마지막 리뷰 안내
+    # 달빛모찌 스냅샷의 마지막 리뷰는 10-30 → 최근 7일을 '직접 지정'하면 0건 + 마지막 리뷰 안내
     r = run(period="7d")
     assert r["review_count"] == 0
     assert r["last_review"]["visit_date"] == "2026-10-30" and r["last_review"]["days_ago"] == 8
@@ -46,12 +46,12 @@ def test_period_and_focus():
 
 
 def test_topic_menu_and_aspect():
-    assert resolve_topic("메도빅 가격", "연습떡집", CAT)["unresolved"] == ["메도빅"]  # 없는 메뉴
-    t = resolve_topic("딸기모찌 가격", "연습떡집", CAT)
+    assert resolve_topic("메도빅 가격", "달빛모찌", CAT)["unresolved"] == ["메도빅"]  # 없는 메뉴
+    t = resolve_topic("딸기모찌 가격", "달빛모찌", CAT)
     assert t["menus"] == ["딸기모찌"] and t["aspects"] == ["가격"]
-    assert resolve_topic("웨이팅", "연습떡집", CAT)["aspects"] == ["대기시간"]
-    assert resolve_topic("очередь", "연습떡집", CAT)["aspects"] == ["대기시간"]
-    amb = resolve_topic("딸기", "연습떡집", CAT)  # 여러 메뉴에 걸림
+    assert resolve_topic("웨이팅", "달빛모찌", CAT)["aspects"] == ["대기시간"]
+    assert resolve_topic("очередь", "달빛모찌", CAT)["aspects"] == ["대기시간"]
+    amb = resolve_topic("딸기", "달빛모찌", CAT)  # 여러 메뉴에 걸림
     assert amb["unresolved"] and len(amb["candidates"]) >= 2
     r = run(period="all", topic="딸기모찌")
     assert r["review_count"] > 0 and r["filters"]["menus"] == ["딸기모찌"]
@@ -61,10 +61,10 @@ def test_topic_menu_and_aspect():
 
 def test_rule_sentiment():
     s = RuleSentiment()
-    assert s.span_sentiment("딸기모찌 개 노맛...ㅜㅜ") == "negative"
-    assert s.span_sentiment("많이 안달고 맛있다") == "positive"
-    assert s.span_sentiment("불친절은 좀 아니지 않나요") == "negative"
-    assert s.span_sentiment("가격이 조금은 사악하지만") == "negative"
+    assert s.span_sentiment("딸기모찌 완전 노맛...ㅜㅜ") == "negative"
+    assert s.span_sentiment("별로 안달고 맛있다") == "positive"
+    assert s.span_sentiment("불친절한 건 좀 아니지 않나요") == "negative"
+    assert s.span_sentiment("가격이 살짝 사악하지만") == "negative"
 
 
 def test_few_reviews_not_generalized():
@@ -76,7 +76,7 @@ def test_few_reviews_not_generalized():
 def test_topic_recovered_from_utterance():
     from agenthan.agent.review.topic import resolve_from_utterance
 
-    assert resolve_from_utterance("Что говорят о клубничном моти?", "연습떡집", CAT)["menus"] == [
+    assert resolve_from_utterance("Что говорят о клубничном моти?", "달빛모찌", CAT)["menus"] == [
         "딸기모찌"
     ]
     # LLM이 topic을 로마자로 망가뜨려도 사장님 원문에서 찾는다 (2026-11-07 실제 발생)
@@ -112,10 +112,15 @@ class _FakeClient:
 
     def __init__(self):
         import json as _j
-        from types import SimpleNamespace as NS
 
-        self.calls, self._j, self._NS = [], _j, NS
-        self.chat = NS(completions=NS(create=self._create))
+        self.calls, self._j = [], _j
+
+    def chat(self, model, messages, **kw):  # ClovaClient.chat과 같은 모양
+        return self._create(model=model, messages=messages, **kw)
+
+    @staticmethod
+    def _msg(content):
+        return {"role": "assistant", "content": content}
 
     def _create(self, **kw):
         self.calls.append(kw)
@@ -134,8 +139,7 @@ class _FakeClient:
             body = {"items": [{"i": i, "label": "negative"} for i in range(n)]}
         else:
             body = {"insights": ["가짜 요약 문장입니다"]}
-        msg = self._NS(content="```json\n" + self._j.dumps(body, ensure_ascii=False) + "\n```")
-        return self._NS(choices=[self._NS(message=msg)])
+        return self._msg("```json\n" + self._j.dumps(body, ensure_ascii=False) + "\n```")
 
 
 def test_hcx_wiring_with_fake_client():
@@ -147,15 +151,13 @@ def test_hcx_wiring_with_fake_client():
     assert r["sentiment_source"] == "hcx" and r["insights_source"] == "hcx"
     assert r["insights"] == ["가짜 요약 문장입니다"]
     assert set(r["sentiment"]) <= {"negative", "mixed"}  # 가짜 응답이 모두 negative
-    assert all(
-        "response_format" not in c for c in fc.calls
-    )  # DASH에는 response_format을 보내지 않음
+    assert all("responseFormat" not in c for c in fc.calls)  # DASH에는 responseFormat을 보내지 않음
     import math
 
     n_calls = len(fc.calls)
     sent_calls = sum("감정 판단기" in c["messages"][0]["content"] for c in fc.calls)
     with_spans = sum(
-        1 for x in REPO.get_reviews("연습떡집") if any(f["highlights"] for f in x["features"])
+        1 for x in REPO.get_reviews("달빛모찌") if any(f["highlights"] for f in x["features"])
     )
     assert (
         sent_calls <= math.ceil(with_spans / 10) + 2
@@ -200,7 +202,7 @@ def test_batch_miss_falls_back_to_single():
             if "[R0]" in user:  # 첫 리뷰(구절 0)만 답하고 나머지는 빠뜨림
                 self.calls.append(kw)
                 body = {"items": [{"i": 0, "label": "positive"}]}
-                return self._NS(choices=[self._NS(message=self._NS(content=self._j.dumps(body)))])
+                return self._msg(self._j.dumps(body))
             return super()._create(**kw)
 
     fc = Partial()
@@ -222,7 +224,7 @@ def test_missed_reviews_get_second_batch():
             if "[R0]" in kw["messages"][-1]["content"] and SkipFirstPass.n == 0:
                 SkipFirstPass.n += 1
                 self.calls.append(kw)
-                return self._NS(choices=[self._NS(message=self._NS(content='{"items": []}'))])
+                return self._msg('{"items": []}')
             return super()._create(**kw)
 
     hs = HCXSentiment(

@@ -27,8 +27,8 @@ def _overlap(a0: int, a1: int, b0: int, b1: int) -> int:
 def clause_examples(rows: list[dict], weak_negatives: bool = False):
     """리뷰 → (절 텍스트, 특징, 라벨, 가중치).
 
-    - 리뷰가 특징 f 필터에서 수집됐으면: f 하이라이트와 겹치는 절 = 1, 나머지 절 = 0 (확실한 라벨)
-    - 수집되지 않은 특징은 알 수 없으므로 기본적으로 제외 (weak_negatives=True면 낮은 가중치의
+    - 리뷰에 특징 f 라벨이 관측됐으면: f 하이라이트와 겹치는 절 = 1, 나머지 절 = 0 (확실한 라벨)
+    - 관측되지 않은 특징은 알 수 없으므로 기본적으로 제외 (weak_negatives=True면 낮은 가중치의
     0으로 사용)
     """
     texts, feats, ys, ws = [], [], [], []

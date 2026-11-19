@@ -1,10 +1,10 @@
 {
   "shop": {
     "id": "dummy-shop",
-    "name": "가상 연습 가게",
-    "address": "서울시 연습구 연습로 1",
+    "name": "샘플 러시안 베이커리",
+    "address": "서울시 용산구 이태원동 가상베이커리로 0 (가상 주소)",
     "phone": "02-000-0000",
-    "introduction": "연습용 가상 가게입니다.",
+    "introduction": "더미 메뉴와 리뷰로 연습하는 가상의 러시안 베이커리·카페입니다.",
     "hours": {
       "mon": {
         "closed": false,
@@ -41,129 +41,149 @@
       }
     },
     "keywords": [
-      "연습 카페"
+      "러시안 베이커리",
+      "메도빅",
+      "베이커리 카페"
     ],
     "onsite_payment": false,
     "new_opening": null,
-    "category": "카페"
+    "category": "베이커리·카페"
   },
   "menus": [
     {
-      "id": "menu-1",
-      "name": "연습 라떼",
-      "price": 4000,
+      "id": "m01",
+      "name": "메도빅",
+      "price": 7500,
+      "aliases": [
+        "꿀케이크",
+        "허니케이크",
+        "메도비크"
+      ],
+      "name_native": "Медовик",
+      "description": "꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크"
+    },
+    {
+      "id": "m02",
+      "name": "나폴레옹",
+      "price": 7000,
+      "aliases": [
+        "나폴레옹케이크"
+      ],
+      "name_native": "Наполеон",
+      "description": "바삭한 페이스트리 사이에 커스터드 크림을 넣은 케이크"
+    },
+    {
+      "id": "m03",
+      "name": "아메리카노",
+      "price": 4500,
       "aliases": []
     },
     {
-      "id": "menu-2",
-      "name": "연습 샌드위치",
-      "price": 6000,
-      "aliases": []
+      "id": "m04",
+      "name": "블린",
+      "price": 9000,
+      "aliases": [
+        "러시아 팬케이크",
+        "블리니"
+      ],
+      "name_native": "Блины",
+      "description": "얇은 러시아식 팬케이크. 연어·사워크림 토핑"
     }
   ],
   "reviews": [
     {
-      "review_id": "review-1",
-      "visit_date": "2026-11-05",
+      "review_id": "r01",
+      "visit_date": "2026-11-01",
       "rating": 5,
-      "text": "연습 라떼가 부드럽고 맛있어요.",
+      "text": "메도빅이 너무 달지 않고 촉촉해요. 또 올게요!",
       "features": [
         {
           "feature": "맛",
           "highlights": [
             {
               "start": 0,
-              "end": 16,
-              "text": "연습 라떼가 부드럽고 맛있어요"
-            }
-          ],
-          "score": null
-        }
-      ],
-      "has_owner_reply": false
-    },
-    {
-      "review_id": "review-2",
-      "visit_date": "2026-11-03",
-      "rating": 5,
-      "text": "가게가 편안해요. 직원분이 친절해요.",
-      "features": [
-        {
-          "feature": "분위기",
-          "highlights": [
-            {
-              "start": 0,
-              "end": 8,
-              "text": "가게가 편안해요"
+              "end": 18,
+              "text": "메도빅이 너무 달지 않고 촉촉해요"
             }
           ],
           "score": null
         },
         {
-          "feature": "서비스",
+          "feature": "만족도",
           "highlights": [
             {
-              "start": 10,
-              "end": 19,
-              "text": "직원분이 친절해요"
-            }
-          ],
-          "score": null
-        }
-      ],
-      "has_owner_reply": false
-    },
-    {
-      "review_id": "review-3",
-      "visit_date": "2026-11-01",
-      "rating": 2,
-      "text": "연습 샌드위치가 조금 늦게 나왔어요.",
-      "features": [
-        {
-          "feature": "대기시간",
-          "highlights": [
-            {
-              "start": 0,
-              "end": 19,
-              "text": "연습 샌드위치가 조금 늦게 나왔어요"
-            }
-          ],
-          "score": null
-        }
-      ],
-      "has_owner_reply": false
-    },
-    {
-      "review_id": "review-4",
-      "visit_date": "2026-10-20",
-      "rating": 4,
-      "text": "연습 라떼 가격이 저렴하고 좋아요.",
-      "features": [
-        {
-          "feature": "가격",
-          "highlights": [
-            {
-              "start": 0,
-              "end": 18,
-              "text": "연습 라떼 가격이 저렴하고 좋아요"
+              "start": 20,
+              "end": 25,
+              "text": "또 올게요"
             }
           ],
           "score": null
         }
       ],
       "has_owner_reply": true
+    },
+    {
+      "review_id": "r02",
+      "visit_date": "2026-11-03",
+      "rating": 3,
+      "text": "주말에 웨이팅이 길었어요. 전화 주문이 됐으면 좋겠네요.",
+      "features": [
+        {
+          "feature": "대기시간",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 13,
+              "text": "주말에 웨이팅이 길었어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r03",
+      "visit_date": "2026-11-05",
+      "rating": 4,
+      "text": "블린 양이 생각보다 적었지만 맛은 좋아요.",
+      "features": [
+        {
+          "feature": "음식량",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 15,
+              "text": "블린 양이 생각보다 적었지만"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 16,
+              "end": 22,
+              "text": "맛은 좋아요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
     }
   ],
   "talktalk": [
     {
       "id": "talk-1",
-      "message": "주차할 곳이 있나요?",
+      "message": "메도빅 홀케이크 예약이 가능한가요?",
       "reply_text": "",
       "status": "unanswered"
     },
     {
       "id": "talk-2",
-      "message": "단체 손님도 받으시나요?",
+      "message": "메도빅 단체 주문도 받으시나요?",
       "reply_text": "",
       "status": "unanswered"
     }
@@ -171,13 +191,13 @@
   "orders": [
     {
       "id": "order-1",
-      "items": "연습 라떼 2잔",
+      "items": "메도빅 2조각, 아메리카노 2잔",
       "type": "pickup",
       "status": "new"
     },
     {
       "id": "order-2",
-      "items": "연습 샌드위치 1개",
+      "items": "블린 1개, 나폴레옹 1조각",
       "type": "pickup",
       "status": "new"
     }

@@ -1,5 +1,9 @@
 # 리뷰 도구 통합 안내 (`integrate/review-tools`)
 
+> **2026-11-08 기록이다. 지금과 다른 점:** `review_reply`·`ai_review`는 기능 `review` 하나로 합쳤다(3f71771).
+> `owner_tools.py`는 없어지고 도구는 `tools/feature_tools.py` 한 곳에 있다(58949d2, `docs/tools.md`).
+> 담당 구분 없이 함께 작업하며 작업 브랜치는 upstream `feat/s1-baseline`이다. 평가는 `docs/eval-baseline.md`를 따른다.
+
 근형님께. 종현 작성, 2026-11-08.
 
 ## 1. 한 줄 요약

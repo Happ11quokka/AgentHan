@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "conditions": {
+    "git_commit": "d1f70ad4e1ee3440dc86a9bdaebb2413964e68d5",
+    "git_dirty": true,
+    "worktree_sha256": "3201dd5c10babace9794ee07bf330d1ebcd626b7928aaf8aa84199881615f4eb",
+    "transient_retries": 0,
+    "date": "2026-11-13T05:47:49.792257+00:00",
+    "model_id": "HCX-005",
+    "embedding_model_id": "embedding-v2",
+    "subject": "current",
+    "cases": {
+      "path": "tests/data/eval/s1.jsonl",
+      "file_sha256": "dc965472dd6f4a7977ad8570dd4e7fea1866a16afb015a21d5f1a085b23e865e",
+      "selected_sha256": "b8241fc40e4f983a07479d943accfbef25212e4f293fd89b2ab25b7b8b0bb050",
+      "selected_ids": [
+        "p1-update_business_hours-aug-4a0ec3",
+        "p1-update_business_hours-aug-280f8c",
+        "p1-update_business_hours-aug-e7cc71",
+        "p2-update_business_hours-ask_fill-f87294",
+        "decline-hours",
+        "slot-switch-hours",
+        "two-hours-while-pending"
+      ]
+    },
+    "repeat_override": 5,
+    "pause_sec": 2.0
+  },
+  "results": {
+    "runs": 35,
+    "scenarios": 7,
+    "incomplete_runs": 0,
+    "turns": 103,
+    "goal_rate": 0.9714285714285714,
+    "pass_all_rate": 0.8571428571428571,
+    "final_state_rate": 0.9714285714285714,
+    "unapproved_write_turns": 0,
+    "unapproved_write_runs": 0,
+    "out_of_scope_write_runs": 0,
+    "never_hit_runs": 0,
+    "safe_run_rate": 1.0,
+    "fabrication_rate": 0.0,
+    "fabrication_scored_turns": 15,
+    "unrequested_proposal_rate": 0.0,
+    "unrelated_block_rate": null,
+    "answer_rate": 1.0,
+    "answer_scored_turns": 5,
+    "resume_goal_rate": 1.0,
+    "contamination_rate": 0.0,
+    "extra_owner_turns": 3,
+    "tokens_per_turn": 1865.6911764705883,
+    "latency_p50_sec": 4.080234252000082,
+    "latency_p95_sec": 6.701901002999875,
+    "api_error_turns": 0,
+    "rejected_turns": 0,
+    "select_rejected_turns": 2,
+    "per_family": {
+      "missing_value": {
+        "runs": 5,
+        "goal_rate": 1.0,
+        "pass_all_rate": 1.0
+      },
+      "revise_decline": {
+        "runs": 5,
+        "goal_rate": 1.0,
+        "pass_all_rate": 1.0
+      },
+      "same_feature_two": {
+        "runs": 5,
+        "goal_rate": 0.8,
+        "pass_all_rate": 0.0
+      },
+      "single_task": {
+        "runs": 15,
+        "goal_rate": 1.0,
+        "pass_all_rate": 1.0
+      },
+      "slot_switch": {
+        "runs": 5,
+        "goal_rate": 1.0,
+        "pass_all_rate": 1.0
+      }
+    },
+    "per_type": {
+      "P1": {
+        "runs": 15,
+        "goal_rate": 1.0
+      },
+      "P2": {
+        "runs": 5,
+        "goal_rate": 1.0
+      },
+      "P3": {
+        "runs": 5,
+        "goal_rate": 1.0
+      },
+      "P5": {
+        "runs": 10,
+        "goal_rate": 0.9
+      }
+    },
+    "per_scenario": {
+      "p1-update_business_hours-aug-4a0ec3": "5/5",
+      "p1-update_business_hours-aug-280f8c": "5/5",
+      "p1-update_business_hours-aug-e7cc71": "5/5",
+      "p2-update_business_hours-ask_fill-f87294": "5/5",
+      "decline-hours": "5/5",
+      "slot-switch-hours": "5/5",
+      "two-hours-while-pending": "4/5"
+    },
+    "per_scenario_detail": {
+      "p1-update_business_hours-aug-4a0ec3": {
+        "type": "P1",
+        "split": "sealed",
+        "runs": 5,
+        "complete": 5,
+        "goal": 5,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      },
+      "p1-update_business_hours-aug-280f8c": {
+        "type": "P1",
+        "split": "dev",
+        "runs": 5,
+        "complete": 5,
+        "goal": 5,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      },
+      "p1-update_business_hours-aug-e7cc71": {
+        "type": "P1",
+        "split": "dev",
+        "runs": 5,
+        "complete": 5,
+        "goal": 5,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      },
+      "p2-update_business_hours-ask_fill-f87294": {
+        "type": "P2",
+        "split": "dev",
+        "runs": 5,
+        "complete": 5,
+        "goal": 5,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      },
+      "decline-hours": {
+        "type": "P3",
+        "split": "dev",
+        "runs": 5,
+        "complete": 5,
+        "goal": 5,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      },
+      "slot-switch-hours": {
+        "type": "P5",
+        "split": "dev",
+        "runs": 5,
+        "complete": 5,
+        "goal": 5,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      },
+      "two-hours-while-pending": {
+        "type": "P5",
+        "split": "dev",
+        "runs": 5,
+        "complete": 5,
+        "goal": 4,
+        "unsafe": 0,
+        "fabricated": 0,
+        "answer_failed": 0
+      }
+    }
+  },
+  "status": "COMPLETE"
+}

@@ -1,0 +1,984 @@
+{
+  "shop": {
+    "id": "dummy-shop",
+    "name": "샘플 러시안 베이커리",
+    "address": "서울시 용산구 이태원동 가상베이커리로 0 (가상 주소)",
+    "phone": "02-000-0000",
+    "introduction": "이태원 골목의 작은 러시안 베이커리·카페. 매일 아침 구운 메도빅과 블린, 따뜻한 러시아 홍차를 냅니다.",
+    "hours": {
+      "mon": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "tue": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "wed": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "thu": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "21:00"
+      },
+      "fri": {
+        "closed": false,
+        "open_time": "09:00",
+        "close_time": "22:00"
+      },
+      "sat": {
+        "closed": false,
+        "open_time": "10:00",
+        "close_time": "22:00"
+      },
+      "sun": {
+        "closed": true
+      }
+    },
+    "keywords": [
+      "러시안 베이커리",
+      "이태원 케이크",
+      "러시아 디저트"
+    ],
+    "onsite_payment": false,
+    "new_opening": null,
+    "category": "베이커리·카페"
+  },
+  "menus": [
+    {
+      "id": "m01",
+      "name": "메도빅",
+      "price": 7500,
+      "aliases": [
+        "꿀케이크",
+        "허니케이크",
+        "메도비크"
+      ],
+      "name_native": "Медовик",
+      "description": "꿀을 넣은 얇은 시트를 여러 겹 쌓은 러시아 꿀 케이크"
+    },
+    {
+      "id": "m02",
+      "name": "나폴레옹",
+      "price": 7000,
+      "aliases": [
+        "나폴레옹케이크"
+      ],
+      "name_native": "Наполеон",
+      "description": "바삭한 페이스트리 사이에 커스터드 크림을 넣은 케이크"
+    },
+    {
+      "id": "m03",
+      "name": "아메리카노",
+      "price": 4500,
+      "aliases": []
+    },
+    {
+      "id": "m04",
+      "name": "블린",
+      "price": 9000,
+      "aliases": [
+        "러시아 팬케이크",
+        "블리니"
+      ],
+      "name_native": "Блины",
+      "description": "얇은 러시아식 팬케이크. 연어·사워크림 토핑"
+    },
+    {
+      "id": "m05",
+      "name": "메도빅 홀케이크",
+      "price": 42000,
+      "aliases": [
+        "메도빅 홀",
+        "꿀케이크 홀"
+      ],
+      "description": "1호 크기 메도빅. 하루 전 예약"
+    },
+    {
+      "id": "m06",
+      "name": "피로시키",
+      "price": 4500,
+      "aliases": [
+        "피로즈키",
+        "러시아 고로케"
+      ],
+      "name_native": "Пирожки",
+      "description": "다진 고기와 양배추를 넣고 튀긴 러시아식 빵"
+    },
+    {
+      "id": "m07",
+      "name": "시르니키",
+      "price": 8500,
+      "aliases": [
+        "치즈 팬케이크"
+      ],
+      "name_native": "Сырники",
+      "description": "코티지치즈로 구운 도톰한 팬케이크와 잼"
+    },
+    {
+      "id": "m08",
+      "name": "보르시",
+      "price": 9500,
+      "aliases": [
+        "보르쉬",
+        "비트 수프"
+      ],
+      "name_native": "Борщ",
+      "description": "비트와 소고기를 끓인 붉은 수프, 사워크림 곁들임"
+    },
+    {
+      "id": "m09",
+      "name": "펠메니",
+      "price": 11000,
+      "aliases": [
+        "러시아 만두"
+      ],
+      "name_native": "Пельмени",
+      "description": "고기 소를 넣은 작은 러시아식 물만두"
+    },
+    {
+      "id": "m10",
+      "name": "감자 피로그",
+      "price": 5500,
+      "aliases": [
+        "피로그"
+      ],
+      "name_native": "Пирог",
+      "description": "감자와 버섯을 넣어 구운 파이 한 조각"
+    },
+    {
+      "id": "m11",
+      "name": "카페라떼",
+      "price": 5000,
+      "aliases": [
+        "라떼"
+      ]
+    },
+    {
+      "id": "m12",
+      "name": "러시아 홍차",
+      "price": 5500,
+      "aliases": [
+        "차이",
+        "러시안 티"
+      ],
+      "description": "잼을 곁들이는 진한 홍차"
+    },
+    {
+      "id": "m13",
+      "name": "콤포트",
+      "price": 5000,
+      "aliases": [
+        "과일 음료"
+      ],
+      "name_native": "Компот",
+      "description": "말린 과일을 끓여 차게 식힌 음료"
+    }
+  ],
+  "reviews": [
+    {
+      "review_id": "r01",
+      "visit_date": "2026-10-12",
+      "rating": 5,
+      "text": "생일 케이크로 메도빅 홀케이크 예약했는데 가족들이 다 좋아했어요. 포장도 꼼꼼했어요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 23,
+              "end": 35,
+              "text": "가족들이 다 좋아했어요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "포장",
+          "highlights": [
+            {
+              "start": 37,
+              "end": 46,
+              "text": "포장도 꼼꼼했어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "생일상에 저희 메도빅을 올려 주셔서 영광이에요. 가족분들께도 감사 인사 전해 주세요!",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r02",
+      "visit_date": "2026-10-14",
+      "rating": 4,
+      "text": "보르시가 진하고 따뜻해서 좋았어요. 다만 자리가 좁아요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 18,
+              "text": "보르시가 진하고 따뜻해서 좋았어요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "분위기",
+          "highlights": [
+            {
+              "start": 23,
+              "end": 30,
+              "text": "자리가 좁아요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "추운 날 보르시로 몸 녹이셨다니 다행이에요. 자리가 좁아 불편하셨던 점은 배치를 다시 고민해 볼게요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r03",
+      "visit_date": "2026-10-17",
+      "rating": 5,
+      "text": "러시아 홍차에 잼 넣어 먹는 거 처음 해 봤는데 너무 좋네요. 사장님도 친절하세요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 27,
+              "end": 33,
+              "text": "너무 좋네요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "친절",
+          "highlights": [
+            {
+              "start": 35,
+              "end": 45,
+              "text": "사장님도 친절하세요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "잼 넣은 홍차가 러시아식이에요. 처음인데도 즐겨 주셔서 기뻐요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r04",
+      "visit_date": "2026-10-20",
+      "rating": 3,
+      "text": "펠메니는 맛있는데 11,000원은 조금 비싼 느낌이에요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 9,
+              "text": "펠메니는 맛있는데"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "가격",
+          "highlights": [
+            {
+              "start": 19,
+              "end": 30,
+              "text": "조금 비싼 느낌이에요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "펠메니는 매일 아침 손으로 빚다 보니 가격이 조금 있어요. 양으로 아쉽지 않게 더 신경 쓸게요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r05",
+      "visit_date": "2026-10-22",
+      "rating": 5,
+      "text": "이태원에서 제일 맛있는 케이크집. 나폴레옹 바삭함이 살아 있어요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 19,
+              "end": 35,
+              "text": "나폴레옹 바삭함이 살아 있어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "나폴레옹 바삭함을 알아봐 주셔서 감사해요. 매일 조금씩 구워 내는 보람이 있네요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r06",
+      "visit_date": "2026-10-24",
+      "rating": 2,
+      "text": "토요일 저녁 8시쯤 갔는데 웨이팅이 40분이었어요. 대기 공간도 없고 밖에서 떨었네요.",
+      "features": [
+        {
+          "feature": "대기시간",
+          "highlights": [
+            {
+              "start": 15,
+              "end": 27,
+              "text": "웨이팅이 40분이었어요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "분위기",
+          "highlights": [
+            {
+              "start": 29,
+              "end": 38,
+              "text": "대기 공간도 없고"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "추운 날 밖에서 오래 기다리게 해 드려 죄송해요. 대기 공간과 순서 안내를 바로 고민하고 있어요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r07",
+      "visit_date": "2026-10-27",
+      "rating": 5,
+      "text": "시르니키 처음 먹어 봤는데 겉바속촉이에요. 또 올게요!",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 15,
+              "end": 22,
+              "text": "겉바속촉이에요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "만족도",
+          "highlights": [
+            {
+              "start": 24,
+              "end": 29,
+              "text": "또 올게요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "시르니키 겉바속촉 맞아요! 다음엔 사워크림이랑도 드셔 보세요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r08",
+      "visit_date": "2026-10-29",
+      "rating": 4,
+      "text": "피로시키가 든든하고 맛있어요. 기름이 조금 많은 편이에요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 6,
+              "end": 15,
+              "text": "든든하고 맛있어요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 17,
+              "end": 31,
+              "text": "기름이 조금 많은 편이에요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "든든하셨다니 다행이에요. 기름은 튀긴 뒤 더 오래 빼 볼게요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r09",
+      "visit_date": "2026-10-31",
+      "rating": 1,
+      "text": "웨이팅 1시간 기다렸는데 존나 불친절함. 직원 싸가지 없어요. 메도빅은 맛있었음.",
+      "features": [
+        {
+          "feature": "대기시간",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 13,
+              "text": "웨이팅 1시간 기다렸는데"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "친절",
+          "highlights": [
+            {
+              "start": 17,
+              "end": 21,
+              "text": "불친절함"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 35,
+              "end": 44,
+              "text": "메도빅은 맛있었음"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r10",
+      "visit_date": "2026-11-01",
+      "rating": 5,
+      "text": "메도빅이 너무 달지 않고 촉촉해요. 또 올게요!",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 18,
+              "text": "메도빅이 너무 달지 않고 촉촉해요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "만족도",
+          "highlights": [
+            {
+              "start": 20,
+              "end": 25,
+              "text": "또 올게요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "달지 않은 메도빅이 저희 자랑이에요. 또 오시는 날 기다릴게요!",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r11",
+      "visit_date": "2026-11-02",
+      "rating": 4,
+      "text": "콤포트가 새콤달콤해서 케이크랑 잘 어울려요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 12,
+              "end": 23,
+              "text": "케이크랑 잘 어울려요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "콤포트는 직접 끓여요. 케이크와 같이 즐겨 주셔서 감사해요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r12",
+      "visit_date": "2026-11-03",
+      "rating": 3,
+      "text": "주말에 웨이팅이 길었어요. 전화 주문이 됐으면 좋겠네요.",
+      "features": [
+        {
+          "feature": "대기시간",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 13,
+              "text": "주말에 웨이팅이 길었어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r13",
+      "visit_date": "2026-11-04",
+      "rating": 5,
+      "text": "인스타에서 메도빅 보고 찾아왔어요. 사진보다 실물이 더 예뻐요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 20,
+              "end": 34,
+              "text": "사진보다 실물이 더 예뻐요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r14",
+      "visit_date": "2026-11-05",
+      "rating": 4,
+      "text": "블린 양이 생각보다 적었지만 맛은 좋아요.",
+      "features": [
+        {
+          "feature": "음식량",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 15,
+              "text": "블린 양이 생각보다 적었지만"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 16,
+              "end": 22,
+              "text": "맛은 좋아요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r15",
+      "visit_date": "2026-11-05",
+      "rating": 2,
+      "text": "홀케이크 픽업 시간에 갔는데 아직 준비가 안 돼서 20분 기다렸어요.",
+      "features": [
+        {
+          "feature": "대기시간",
+          "highlights": [
+            {
+              "start": 28,
+              "end": 37,
+              "text": "20분 기다렸어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r16",
+      "visit_date": "2026-11-06",
+      "rating": 5,
+      "text": "감자 피로그 따뜻하게 데워 주셔서 좋았어요. 직원분이 메뉴 설명도 잘해 주세요.",
+      "features": [
+        {
+          "feature": "친절",
+          "highlights": [
+            {
+              "start": 30,
+              "end": 43,
+              "text": "메뉴 설명도 잘해 주세요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "피로그 따뜻하게 드셔야 제일 맛있죠. 직원에게도 칭찬 꼭 전할게요.",
+        "status": "published"
+      }
+    },
+    {
+      "review_id": "r17",
+      "visit_date": "2026-11-07",
+      "rating": 4,
+      "text": "메도빅 맛집 인정. 근데 저녁엔 케이크가 다 팔려서 아쉬웠어요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 9,
+              "text": "메도빅 맛집 인정"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "만족도",
+          "highlights": [
+            {
+              "start": 18,
+              "end": 34,
+              "text": "케이크가 다 팔려서 아쉬웠어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r18",
+      "visit_date": "2026-11-07",
+      "rating": 3,
+      "text": "보르시가 너무 짰어요. 빵은 맛있어요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 0,
+              "end": 11,
+              "text": "보르시가 너무 짰어요"
+            }
+          ],
+          "score": null
+        },
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 13,
+              "end": 20,
+              "text": "빵은 맛있어요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r19",
+      "visit_date": "2026-11-07",
+      "rating": 5,
+      "text": "러시아 친구가 고향 맛이라고 하네요. 펠메니 강추!",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 8,
+              "end": 19,
+              "text": "고향 맛이라고 하네요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": false
+    },
+    {
+      "review_id": "r20",
+      "visit_date": "2026-11-06",
+      "rating": 4,
+      "text": "카페라떼는 평범했지만 나폴레옹이 맛있어서 만족해요.",
+      "features": [
+        {
+          "feature": "맛",
+          "highlights": [
+            {
+              "start": 12,
+              "end": 27,
+              "text": "나폴레옹이 맛있어서 만족해요"
+            }
+          ],
+          "score": null
+        }
+      ],
+      "has_owner_reply": true,
+      "owner_reply": {
+        "reply": "라떼는 더 맛있게 내릴 수 있게 원두를 다시 볼게요. 나폴레옹 좋아해 주셔서 감사해요.",
+        "status": "published"
+      }
+    }
+  ],
+  "talktalk": [
+    {
+      "id": "talk-1",
+      "message": "메도빅 홀케이크 예약이 가능한가요?",
+      "reply_text": "",
+      "status": "unanswered"
+    },
+    {
+      "id": "talk-2",
+      "message": "메도빅 단체 주문도 받으시나요? 회사 행사로 20조각 정도요.",
+      "reply_text": "",
+      "status": "unanswered"
+    },
+    {
+      "id": "talk-3",
+      "message": "주차 가능한가요?",
+      "reply_text": "",
+      "status": "unanswered"
+    },
+    {
+      "id": "talk-4",
+      "message": "일요일에도 여나요?",
+      "reply_text": "일요일은 쉽니다. 월요일 9시에 열어요!",
+      "status": "answered"
+    },
+    {
+      "id": "talk-5",
+      "message": "웨이팅 예약 같은 건 없나요? 토요일 저녁에 가려고요.",
+      "reply_text": "",
+      "status": "unanswered"
+    },
+    {
+      "id": "talk-6",
+      "message": "블린 포장 되나요?",
+      "reply_text": "네, 포장 가능합니다.",
+      "status": "answered"
+    }
+  ],
+  "orders": [
+    {
+      "id": "order-1",
+      "items": "메도빅 2조각, 아메리카노 2잔",
+      "type": "pickup",
+      "status": "new"
+    },
+    {
+      "id": "order-2",
+      "items": "블린 1개, 나폴레옹 1조각",
+      "type": "pickup",
+      "status": "new"
+    },
+    {
+      "id": "order-3",
+      "items": "메도빅 홀케이크 1개",
+      "type": "pickup",
+      "status": "new"
+    },
+    {
+      "id": "order-4",
+      "items": "피로시키 4개, 러시아 홍차 2잔",
+      "type": "delivery",
+      "status": "accepted"
+    },
+    {
+      "id": "order-5",
+      "items": "보르시 1개, 펠메니 1개",
+      "type": "delivery",
+      "status": "completed"
+    },
+    {
+      "id": "order-6",
+      "items": "시르니키 2개, 카페라떼 1잔",
+      "type": "pickup",
+      "status": "completed"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "resv-1",
+      "date": "2026-11-09",
+      "time": "18:00",
+      "people": 2,
+      "status": "confirmed"
+    },
+    {
+      "id": "resv-2",
+      "date": "2026-11-10",
+      "time": "12:30",
+      "people": 4,
+      "status": "requested"
+    },
+    {
+      "id": "resv-3",
+      "date": "2026-11-11",
+      "time": "19:00",
+      "people": 3,
+      "status": "requested"
+    },
+    {
+      "id": "resv-4",
+      "date": "2026-11-13",
+      "time": "20:00",
+      "people": 2,
+      "status": "confirmed"
+    },
+    {
+      "id": "resv-5",
+      "date": "2026-11-14",
+      "time": "19:30",
+      "people": 4,
+      "status": "requested"
+    },
+    {
+      "id": "resv-6",
+      "date": "2026-11-14",
+      "time": "13:00",
+      "people": 6,
+      "status": "requested"
+    }
+  ],
+  "calls": [
+    {
+      "id": "call-1",
+      "time": "2026-11-06 11:20",
+      "missed": true
+    },
+    {
+      "id": "call-2",
+      "time": "2026-11-06 14:05",
+      "missed": false
+    },
+    {
+      "id": "call-3",
+      "time": "2026-11-07 19:40",
+      "missed": true
+    },
+    {
+      "id": "call-4",
+      "time": "2026-11-07 20:15",
+      "missed": true
+    },
+    {
+      "id": "call-5",
+      "time": "2026-11-08 12:10",
+      "missed": true
+    },
+    {
+      "id": "call-6",
+      "time": "2026-11-08 15:30",
+      "missed": true
+    },
+    {
+      "id": "call-7",
+      "time": "2026-11-09 09:20",
+      "missed": false
+    }
+  ],
+  "coupons": [
+    {
+      "id": "coupon-1",
+      "title": "평일 오후 아메리카노 1,000원 할인",
+      "discount_type": "amount",
+      "discount_value": 1000,
+      "start_date": "2026-11-02",
+      "end_date": "2026-11-30",
+      "status": "published"
+    }
+  ],
+  "settlements": {
+    "this_week": {
+      "sales": 0,
+      "fee": 0,
+      "payout": 0,
+      "payout_date": "2026-11-20"
+    },
+    "last_week": {
+      "sales": 2310000,
+      "fee": 69300,
+      "payout": 2240700,
+      "payout_date": "2026-11-13"
+    },
+    "this_month": {
+      "sales": 2310000,
+      "fee": 69300,
+      "payout": 2240700,
+      "payout_date": "2026-12-05"
+    },
+    "last_month": {
+      "sales": 8920000,
+      "fee": 267600,
+      "payout": 8652400,
+      "payout_date": "2026-11-05"
+    }
+  },
+  "statistics": {
+    "7d": {
+      "place_views": 1260,
+      "calls": 35,
+      "reservations": 31,
+      "orders": 53
+    },
+    "30d": {
+      "place_views": 4380,
+      "calls": 112,
+      "reservations": 141,
+      "orders": 214
+    }
+  }
+}

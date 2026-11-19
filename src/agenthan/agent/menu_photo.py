@@ -22,9 +22,11 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from typing import Literal
 
 from agenthan.core.contracts import MenuItem, StoreKnowledge
 from agenthan.core.llm import ClovaV3Error, chat_v3, image_content
+from agenthan.tools.dummy_store import normalize
 
 VISION_MODEL = "HCX-005"
 TEXT_MODEL = "HCX-005"
@@ -70,6 +72,13 @@ class MenuDraft:
     matched_by: str | None = None  # exact | alias | fuzzy | search
     # generated, check_spelling, price_missing, name_missing
     notes: list[str] = field(default_factory=list)
+
+    photo: bytes | None = None
+    photo_mime: str | None = None
+    candidates: list[str] = field(default_factory=list)
+    is_food: bool = False
+    possible_menu_id: str | None = None
+    possible_menu_name: str | None = None
 
     @property
     def complete(self) -> bool:
@@ -162,6 +171,33 @@ def read_menu_photo(data: bytes, *, call: Call = chat_v3) -> list[tuple[str, int
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text).casefold())
+
+
+MenuChange = Literal["new", "price_change", "unchanged", "photo_attach"]
+
+
+def store_record(draft: MenuDraft, menus: list[dict]) -> dict | None:
+    """이 초안을 승인하면 바뀌는 저장된 메뉴. 음식 사진은 고른(또는 추측한) 메뉴 id로,
+    메뉴판 줄은 이름으로 찾는다. 이름은 저장할 때와 같은 `normalize`로 맞춘다(`_norm`은
+    가게 지식 매칭용)."""
+    if draft.is_food:
+        menu_id = draft.menu_id or draft.possible_menu_id
+        return next((m for m in menus if m["id"] == menu_id), None) if menu_id else None
+    key = normalize(draft.name_ko)
+    return next((m for m in menus if key and normalize(m["name"]) == key), None)
+
+
+def store_change(draft: MenuDraft, menus: list[dict]) -> tuple[MenuChange | None, int | None]:
+    """저장된 메뉴와 비교한 (바뀌는 종류, 저장된 가격). 기존 메뉴인데 가격을 아직 모르면
+    종류는 정할 수 없어 None이다."""
+    record = store_record(draft, menus)
+    if record is None:
+        return "new", None
+    if draft.is_food:
+        return "photo_attach", record["price"]
+    if draft.price is None:
+        return None, record["price"]
+    return ("unchanged" if draft.price == record["price"] else "price_change"), record["price"]
 
 
 def match_known(name: str, knowledge: StoreKnowledge) -> tuple[MenuItem, str] | None:

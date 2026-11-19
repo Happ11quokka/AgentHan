@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import tempfile
 import unicodedata
 import uuid
@@ -147,6 +148,10 @@ class DummyStore:
         *,
         description: str | None = None,
         name_native: str | None = None,
+        photo: bytes | None = None,
+        photo_mime: str | None = None,
+        menu_id: str | None = None,
+        create_only: bool = False,
     ) -> dict:
         """같은 이름이면 가격을 고치고, 없으면 등록한다. description·name_native는 줄 때만 저장
         (메뉴 사진 등록 A-1)."""
@@ -159,6 +164,12 @@ class DummyStore:
         }
         data = self.read()
         record = next((m for m in data["menus"] if normalize(m["name"]) == normalize(name)), None)
+        if menu_id is not None:
+            record = next((m for m in data["menus"] if m["id"] == menu_id), None)
+            if record is None:
+                raise DummyStoreError("기존 메뉴를 저장소에서 찾을 수 없습니다.")
+        elif create_only and record is not None:
+            raise DummyStoreError("같은 이름의 메뉴가 이미 있습니다. 사진 변경을 확인해 주세요.")
         previous_price = None
         action = "created"
         if record is None:
@@ -174,6 +185,32 @@ class DummyStore:
             previous_price = record["price"]
             record["price"] = price
         record.update(extra)
+        if photo is not None:
+            if photo_mime not in ("image/jpeg", "image/png") or not isinstance(photo, bytes):
+                raise DummyStoreError("사진 형식이 올바르지 않습니다.")
+            if self.path.parent.resolve() == SEED_PATH.parent.resolve():
+                raise DummyStoreError("시드 파일 옆에는 사진을 저장할 수 없습니다.")
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", record["id"]):
+                raise DummyStoreError("메뉴 ID가 올바르지 않습니다.")
+            photo_dir = self.path.parent / "photos"
+            filename = record["id"] + (".png" if photo_mime == "image/png" else ".jpg")
+            temporary = None
+            try:
+                photo_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    dir=photo_dir, suffix=".tmp", delete=False
+                ) as stream:
+                    temporary = Path(stream.name)
+                    stream.write(photo)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                temporary.replace(photo_dir / filename)
+            except OSError:
+                raise DummyStoreError("사진을 저장할 수 없습니다.") from None
+            finally:
+                if temporary is not None and temporary.exists():
+                    temporary.unlink()
+            record["photo"] = f"photos/{filename}"
         self._write(data)
         saved = next(m for m in self.read()["menus"] if m["id"] == record["id"])
         result = {"ok": True, "action": action, "record": saved}

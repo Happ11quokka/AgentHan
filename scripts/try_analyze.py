@@ -1,7 +1,7 @@
 """analyze_reviews를 스냅샷으로 실행해 본다 (LLM이 넘길 인자를 직접 입력).
 
-python scripts/try_analyze.py --store 홍만당 --period 30d --focus complaint
-python scripts/try_analyze.py --store 홍만당 --period all --topic 딸기모찌
+python scripts/try_analyze.py --store 달빛모찌 --period 30d --focus complaint
+python scripts/try_analyze.py --store 달빛모찌 --period all --topic 딸기모찌
 """
 
 import argparse
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--store", required=True)
-ap.add_argument("--today", default="2026-11-07", help="스냅샷 수집일")
+ap.add_argument("--today", default="2026-11-07", help="스냅샷 기준일")
 for k in ["period", "start_date", "end_date", "focus", "topic", "format"]:
     ap.add_argument(f"--{k}")
 ap.add_argument(
@@ -25,7 +25,8 @@ ap.add_argument(
     help="hcx: 감정 판단·요약을 HCX로 (본인 컴퓨터에서)",
 )
 ap.add_argument("--model", default="HCX-DASH-002")
-ap.add_argument("--snapshot", default=str(ROOT / "data" / "snapshots" / "test_baseline.jsonl"))
+ap.add_argument("--snapshot", default=str(ROOT / "fixtures" / "review_snapshot.jsonl"))
+ap.add_argument("--menus", default=str(ROOT / "fixtures" / "review_menus.json"))
 a = ap.parse_args()
 
 args = {
@@ -43,7 +44,7 @@ res = analyze_reviews(
     store_id=a.store,
     today=date.fromisoformat(a.today),
     repo=SnapshotRepo(a.snapshot),
-    catalog=MenuCatalog.load(ROOT / "data" / "menus_sample.json"),
+    catalog=MenuCatalog.load(a.menus),
     **args,
     **extra,
 )

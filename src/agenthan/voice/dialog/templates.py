@@ -1,0 +1,595 @@
+"""손님에게 하는 말은 전부 여기서 만든다 (spec §7).
+
+규칙: 해요체, 짧게. 한 턴에 질문은 하나. 괄호·이모지·마크다운 금지(TTS가 읽지 않음).
+한 문장은 150자를 넘지 않는다.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable, Sequence
+from datetime import datetime
+
+from agenthan.voice.hangul import final_consonant, has_batchim
+
+# ---------------------------------------------------------------- 수량·단위
+
+# 잔으로 세는 카테고리. 나머지는 개.
+_CUP_CATEGORIES = frozenset({"커피", "음료", "차"})
+
+# 1~10 고유어 수사. (단독형, 관형형) 예: 하나/한 잔, 둘/두 잔
+_NATIVE_NUMBERS = {
+    1: ("하나", "한"),
+    2: ("둘", "두"),
+    3: ("셋", "세"),
+    4: ("넷", "네"),
+    5: ("다섯", "다섯"),
+    6: ("여섯", "여섯"),
+    7: ("일곱", "일곱"),
+    8: ("여덟", "여덟"),
+    9: ("아홉", "아홉"),
+    10: ("열", "열"),
+}
+
+
+def counter_for(category: str) -> str:
+    """메뉴 카테고리에 맞는 단위."""
+    return "잔" if category in _CUP_CATEGORIES else "개"
+
+
+def qty_phrase(qty: int, unit: str = "개") -> str:
+    """수량 읽기. 1개는 "하나", 2개는 "두 개", 1잔은 "한 잔". 11 이상은 숫자."""
+    if qty not in _NATIVE_NUMBERS:
+        return f"{qty}{unit}"
+    alone, attributive = _NATIVE_NUMBERS[qty]
+    if unit == "개" and qty == 1:
+        return alone
+    return f"{attributive} {unit}"
+
+
+# 온도는 메뉴 앞에 붙여 읽는다 ("아이스 아메리카노", 5단계 티켓 10)
+_TEMPERATURE_PREFIX = {"차갑게": "아이스", "따뜻하게": "따뜻한"}
+
+
+def spoken_option(name: str) -> str:
+    """옵션 이름을 말로. 가게 데이터 표기("사워크림 빼기")를 그대로 읽으면 어색하다(티켓 10).
+
+    "○○ 빼기" → "○○ 빼고", "○○ 변경" → "○○로", "○○ 추가"·띄어 쓴 이름 → 그대로,
+    한 단어 선택지("순살", "곱빼기") → "순살로".
+    """
+    if name.endswith(" 빼기"):
+        return name[: -len(" 빼기")] + " 빼고"
+    if name.endswith(" 변경"):
+        return _euro(name[: -len(" 변경")])
+    if name.endswith(" 추가") or " " in name:
+        return name
+    return _euro(name)
+
+
+def line_phrase(name: str, qty: int, unit: str, options: Sequence[str] = ()) -> str:
+    """장바구니 한 줄(손님에게 말하는 꼴). 예: "아이스 아메리카노 디카페인으로 두 잔"."""
+    before = [_TEMPERATURE_PREFIX[o] for o in options if o in _TEMPERATURE_PREFIX]
+    after = [spoken_option(o) for o in options if o not in _TEMPERATURE_PREFIX]
+    return " ".join([*before, name, *after, qty_phrase(qty, unit)])
+
+
+def won(amount: int) -> str:
+    return f"{amount:,}원"
+
+
+def spoken_time(dt: datetime) -> str:
+    """픽업 시각 읽기. 18:30 → "6시 반", 18:15 → "6시 15분", 18:00 → "6시"."""
+    hour = dt.hour % 12 or 12
+    if dt.minute == 0:
+        return f"{hour}시"
+    if dt.minute == 30:
+        return f"{hour}시 반"
+    return f"{hour}시 {dt.minute}분"
+
+
+def _join(phrases: Iterable[str]) -> str:
+    return ", ".join(phrases)
+
+
+def i_ga(word: str) -> str:
+    """주격 조사를 붙인다. 블린 → 블린이, 아메리카노 → 아메리카노가."""
+    return f"{word}{'이' if has_batchim(word) else '가'}"
+
+
+def _josa(word: str, after_batchim: str, after_vowel: str) -> str:
+    return f"{word}{after_batchim if has_batchim(word) else after_vowel}"
+
+
+def eun_neun(word: str) -> str:
+    """메도빅 → 메도빅은, 아메리카노 → 아메리카노는."""
+    return _josa(word, "은", "는")
+
+
+def i_rang(word: str) -> str:
+    """메도빅 → 메도빅이랑, 아메리카노 → 아메리카노랑."""
+    return _josa(word, "이랑", "랑")
+
+
+def i_na(word: str) -> str:
+    """블린 → 블린이나, 아메리카노 → 아메리카노나."""
+    return _josa(word, "이나", "나")
+
+
+# ---------------------------------------------------------------- 대사
+
+def greeting(store_name: str) -> str:
+    """첫마디에 AI가 받는다고 알린다(AI 기본법 제31조 사전 고지, 6단계). 길어지지 않게 한 낱말만."""
+    return f"네, {store_name} AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?"
+
+
+def ask_order() -> str:
+    return "어떤 걸로 드릴까요?"
+
+
+def items_noted(phrases: Sequence[str]) -> str:
+    """항목을 받았다고 되받기만 한다. 예: "메도빅 하나요.", "아메리카노 한 잔이요."."""
+    return f"{_josa(_join(phrases), '이요', '요')}."
+
+
+def item_accepted(phrases: Sequence[str]) -> str:
+    """항목 수락 + 다음 질문. 예: "메도빅 하나요. 더 필요하신 거 있으세요?"."""
+    return f"{items_noted(phrases)} {anything_else()}"
+
+
+def anything_else() -> str:
+    return "더 필요하신 거 있으세요?"
+
+
+def not_on_menu(menu_names: Sequence[str]) -> str:
+    return f"죄송해요, 그 메뉴는 없어요. 저희는 {i_ga(_join(menu_names))} 있어요."
+
+
+# ---------------------------------------------------------------- 옵션·변경·삭제·요청 (티켓 03)
+
+
+def ask_required_option(menu_name: str, choices: Sequence[str]) -> str:
+    """필수 옵션 하나를 묻는다. 예: "아메리카노는 따뜻하게 드릴까요, 차갑게 드릴까요?"."""
+    if len(choices) == 2:
+        first, second = choices
+        return f"{eun_neun(menu_name)} {first} 드릴까요, {second} 드릴까요?"
+    return f"{eun_neun(menu_name)} {_join(choices)} 중에 어떤 걸로 드릴까요?"
+
+
+def option_not_available(menu_name: str, options: Sequence[str]) -> str:
+    """그 메뉴에 없는 옵션을 말했을 때. 되는 옵션이 있으면 알려 준다."""
+    if not options:
+        return f"죄송해요, {eun_neun(menu_name)} 따로 고를 수 있는 옵션이 없어요."
+    can = f"{_join(options)}만 돼요."
+    return f"죄송해요, {eun_neun(menu_name)} 그 옵션이 없어요. {can}"
+
+
+def option_unavailable(option_name: str) -> str:
+    """옵션은 있는데 오늘 안 될 때 (`MenuOption.available=False`)."""
+    return f"죄송해요, 오늘은 {i_ga(option_name)} 안 돼요."
+
+
+def not_a_choice() -> str:
+    """필수 옵션 질문에 고를 수 없는 값으로 답했을 때. 뒤에 같은 질문을 다시 한다."""
+    return "죄송해요, 그렇게는 준비가 안 돼요."
+
+
+def one_choice_only(group_name: str) -> str:
+    """한 줄에 같은 필수 옵션 값을 둘 이상 말했을 때 ("하나는 따뜻하게, 하나는 차갑게")."""
+    return f"죄송해요, {eun_neun(group_name)} 한 가지로만 골라 주세요."
+
+
+def qty_too_large(limit: int) -> str:
+    return f"죄송해요, 전화로는 한 번에 {limit}개까지 받을 수 있어요."
+
+
+def order_too_many(limit: int) -> str:
+    """한 통화의 총 수량 상한을 넘는 주문 (6단계 주문 가드). 넘는 만큼은 담지 않는다."""
+    return f"죄송해요, 전화로는 한 번에 모두 합쳐 {limit}개까지만 받을 수 있어요."
+
+
+def order_too_expensive(limit: int) -> str:
+    """한 통화의 총액 상한을 넘는 주문 (6단계 주문 가드)."""
+    return f"죄송해요, 전화로는 한 번에 {won(limit)}까지만 받을 수 있어요."
+
+
+def confirm_qty(phrase: str) -> str:
+    """큰 수량 확인 (6단계 품질). `phrase`는 `line_phrase`로 만든 "메도빅 12개"."""
+    return f"{phrase} 맞으세요?"
+
+
+def ask_qty(menu_name: str, unit: str = "개") -> str:
+    """큰 수량 확인에 "아니요"라고 했을 때. 예: "그럼 메도빅은 몇 개 드릴까요?"."""
+    return f"그럼 {eun_neun(menu_name)} 몇 {unit} 드릴까요?"
+
+
+def which_item() -> str:
+    """대상 메뉴를 모르는 옵션·요청. 예: 장바구니가 빈 채로 "디카페인으로요"."""
+    return "어떤 메뉴에 해 드릴까요?"
+
+
+def removed(menu_name: str) -> str:
+    return f"{eun_neun(menu_name)} 빼 드렸어요."
+
+
+def not_in_cart(menu_name: str) -> str:
+    return f"주문하신 것 중엔 {i_ga(menu_name)} 없어요."
+
+
+def offer_add(phrase: str) -> str:
+    """장바구니에 없는 메뉴를 빼 달라고 들었을 때 담을지 묻는다. `phrase`는 "블린 하나"."""
+    return f"{phrase} 담아 드릴까요?"
+
+
+def request_noted(menu_name: str, request: str) -> str:
+    return f"{menu_name}에 {request}라고 적어 둘게요."
+
+
+# ---------------------------------------------------------------- 픽업·확인·마무리
+
+
+def ask_pickup() -> str:
+    return "몇 시쯤 오세요?"
+
+
+def pickup_not_understood() -> str:
+    return "죄송해요, 몇 시쯤 오실지 한 번 더 말씀해 주세요."
+
+
+def final_readback(
+    cart_summary: str,
+    pickup: datetime,
+    total: int,
+    *,
+    requests: Sequence[tuple[str, str]] = (),
+    after_fix: bool = False,
+) -> str:
+    """최종 복창. 장바구니 객체에서 만든다 (D6).
+
+    `requests`는 (메뉴 이름, 요청 원문). 정정한 뒤 다시 복창할 때는 "그럼 다시 확인할게요."로
+    연다(5단계 티켓 10: "주문 확인할게요. …에 찾으러 오시고, 모두 ○원이에요. 맞으세요?").
+    """
+    head = "그럼 다시 확인할게요." if after_fix else "주문 확인할게요."
+    body = f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, 모두 {won(total)}이에요."
+    parts = [head, body]
+    parts += [f"{name}에 {request}라고 적어 뒀어요." for name, request in requests]
+    return " ".join([*parts, "맞으세요?"])
+
+
+def ask_what_to_fix() -> str:
+    return "어떤 걸 고쳐 드릴까요?"
+
+
+def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
+    """마무리. 사장님 답을 못 받은 질문이 있으면 문자 약속을 붙인다 (4단계 티켓 06)."""
+    later = " 여쭤보신 건 확인해서 문자로 알려 드릴게요." if owner_pending else ""
+    return f"네, {spoken_time(pickup)}까지 준비해 둘게요.{later} 감사합니다."
+
+
+def not_understood() -> str:
+    return "죄송해요, 제가 잘 못 알아들었어요."
+
+
+# ---------------------------------------------------------------- 픽업 규칙 (티켓 04)
+
+
+def meridiem_time(dt: datetime) -> str:
+    """오전·오후를 붙여 읽기. 11:00 → "오전 11시", 14:00 → "오후 2시", 12:30 → "낮 12시 반"."""
+    prefix = "오전" if dt.hour < 12 else "낮" if dt.hour == 12 else "오후"
+    return f"{prefix} {spoken_time(dt)}"
+
+
+def pickup_too_early(prep_minutes: int, offer: datetime) -> str:
+    return f"준비에 {prep_minutes}분 정도 걸려요. {spoken_time(offer)} 괜찮으세요?"
+
+
+def pickup_passed(offer: datetime) -> str:
+    """이미 지난 시각을 말했을 때. 가장 빠른 시각을 제안한다 (리뷰 P4)."""
+    return f"그 시간은 이미 지났어요. 가장 빠른 시간은 {spoken_time(offer)}인데 괜찮으세요?"
+
+
+def _euro(word: str) -> str:
+    """'으로/로'를 붙인다. 5시 25분 → 5시 25분으로, 6시 → 6시로."""
+    rieul = final_consonant(word) == "ㄹ"
+    return f"{word}{'으로' if has_batchim(word) and not rieul else '로'}"
+
+
+def pickup_asap(prep_minutes: int, at: datetime) -> str:
+    return f"준비하는 데 {prep_minutes}분쯤 걸려요. {spoken_time(at)}까지 해 둘게요."
+
+
+def pickup_after_close(close: datetime) -> str:
+    return f"죄송해요, 저희가 {spoken_time(close)}에 문을 닫아요. 그 전에 몇 시쯤 오세요?"
+
+
+def pickup_before_close(close: datetime) -> str:
+    """영업 종료 뒤 시각을 거절한 뒤 되물을 때(무응답·못 알아들음). "그 전에"가 가리킬 앞 문장이
+    빠지므로 닫는 시각을 넣는다 (감사 문제 A)."""
+    return f"{spoken_time(close)} 전에 몇 시쯤 오세요?"
+
+
+def pickup_before_open(open_at: datetime) -> str:
+    return f"죄송해요, 저희는 {spoken_time(open_at)}에 문을 열어요. 몇 시쯤 오세요?"
+
+
+def confirm_pickup(at: datetime) -> str:
+    return f"{meridiem_time(at)}에 오시는 거죠?"
+
+
+def ask_pickup_again() -> str:
+    return "그럼 몇 시쯤 오세요?"
+
+
+# ---------------------------------------------------------------- 메뉴 되묻기·대안 (티켓 02)
+
+
+def confirm_menu(name: str) -> str:
+    """매칭이 애매할 때 후보 하나를 확인한다."""
+    return f"혹시 {name} 말씀하신 거 맞으세요?"
+
+
+def choose_menu(names: Sequence[str]) -> str:
+    """1·2등이 가까울 때. 예: "메도빅이랑 나폴레옹 중에 어떤 거요?"."""
+    if len(names) == 2:
+        return f"{i_rang(names[0])} {names[1]} 중에 어떤 거요?"
+    return f"{_join(names)} 중에 어떤 거요?"
+
+
+def menu_declined(menu_names: Sequence[str]) -> str:
+    """되묻기에 "아니요"라고 했을 때. 메뉴 목록을 다시 알려 준다."""
+    return f"죄송해요. 저희는 {i_ga(_join(menu_names))} 있어요."
+
+
+def sold_out(name: str) -> str:
+    return f"죄송해요, {eun_neun(name)} 오늘 다 떨어졌어요."
+
+
+def suggest_menu(names: Sequence[str]) -> str:
+    """품절 대신 권하기. 하나면 "나폴레옹은 어떠세요?", 둘이면 "나폴레옹이나 블린은 어떠세요?"."""
+    if len(names) == 1:
+        return f"{eun_neun(names[0])} 어떠세요?"
+    head = ", ".join([*names[:-2], i_na(names[-2])])
+    return f"{head} {eun_neun(names[-1])} 어떠세요?"
+
+
+# ---------------------------------------------------------------- 메뉴 질문 (티켓 05)
+
+
+def _ieyo(word: str) -> str:
+    """케이크 → 케이크예요, 토핑 → 토핑이에요."""
+    return _josa(word, "이에요", "예요")
+
+
+def dont_know() -> str:
+    """필드에 근거가 없는 질문. 지어내지 않는다."""
+    return "그건 제가 정확히 모르겠어요."
+
+
+def menu_description(name: str, description: str) -> str:
+    return f"{eun_neun(name)} {_ieyo(description.rstrip('. '))}."
+
+
+def menu_price(name: str, price: int) -> str:
+    return f"{eun_neun(name)} {won(price)}이에요."
+
+
+def menu_options(name: str, options: Sequence[str]) -> str:
+    if not options:
+        return f"{eun_neun(name)} 따로 고를 수 있는 옵션이 없어요."
+    return f"{eun_neun(name)} {_join(spoken_option(o) for o in options)}도 돼요."
+
+
+def option_possible(name: str, option: str, extra_price: int) -> str:
+    said = f"네, {eun_neun(name)} {spoken_option(option)}도 돼요."
+    return f"{said} {won(extra_price)} 더 받아요." if extra_price else said
+
+
+def allergen_list(name: str, allergens: Sequence[str]) -> str:
+    return f"{name}에는 {i_ga(_join(allergens))} 들어가요."
+
+
+def allergen_present(name: str, allergen: str) -> str:
+    return f"네, {name}에는 {i_ga(allergen)} 들어가요."
+
+
+# ---------------------------------------------------------------- 정정·취소·사장님 연결 (티켓 05)
+
+
+def changed_to(phrases: Sequence[str]) -> str:
+    """정정한 항목만 되받는다. 예: "아메리카노 두 잔으로 바꿨어요."."""
+    return f"{_euro(_join(phrases))} 바꿔 드렸어요."
+
+
+def pickup_changed(at: datetime) -> str:
+    return f"찾으러 오시는 시간은 {_euro(spoken_time(at))} 바꿔 드렸어요."
+
+
+def pickup_noted(at: datetime) -> str:
+    """주문 중에 시각만 말했을 때. 예: "6시 픽업으로 알아 둘게요."."""
+    return f"{spoken_time(at)} 픽업으로 알아 둘게요."
+
+
+def confirm_cancel() -> str:
+    return "주문 취소할까요?"
+
+
+def cancelled() -> str:
+    return "네, 주문 취소했어요. 감사합니다."
+
+
+def cancel_declined() -> str:
+    return "네, 계속 도와드릴게요."
+
+
+def too_many_failures() -> str:
+    return "죄송해요, 제가 잘 못 알아듣고 있어요."
+
+
+def handoff() -> str:
+    return "사장님께 메모 남겨 드릴게요."
+
+
+# ---------------------------------------------------------------- 되묻기 루프 방지 (6단계 품질)
+# 같은 질문의 두 번째 되묻기부터 질문 앞에 붙이는 보기·답하는 법. 질문 문장이 아니다(한 턴 한 질문)
+
+
+def menu_examples(names: Sequence[str]) -> str:
+    """주문 질문의 보기. 가게 메뉴에서 뽑은 이름 몇 개."""
+    return f"저희는 {_join(names)} 같은 메뉴가 있어요."
+
+
+def more_or_done_hint(names: Sequence[str]) -> str:
+    """"더 필요하신 거 있으세요?"의 답하는 법. 메뉴 이름 한두 개를 보기로 든다."""
+    like = i_na(names[0]) + f" {names[1]}" if len(names) > 1 else names[0]
+    return f"더 주문하실 게 있으면 {like}처럼 메뉴 이름을, 없으면 없어요라고 말씀해 주세요."
+
+
+def time_examples(times: Sequence[datetime]) -> str:
+    """픽업 시각 질문의 보기. 가게가 지금 받을 수 있는 시각 한두 개."""
+    said = [spoken_time(t) for t in times]
+    like = i_na(said[0]) + f" {said[1]}" if len(said) > 1 else said[0]
+    return f"{like}처럼 시간으로 말씀해 주세요."
+
+
+def yes_no_hint() -> str:
+    return "네 또는 아니요로 말씀해 주세요."
+
+
+def confirm_hint() -> str:
+    """최종 복창의 답하는 법. 복창 앞에 말한다(복창이 그 턴의 마지막 말)."""
+    return "맞으면 네, 고칠 게 있으면 아니요라고 말씀해 주세요."
+
+
+def ack_first(utterances: Sequence[str]) -> list[str]:
+    """받아들인 대답 앞에 고정 문장 "네."를 따로 둔다 (6단계 품질, `PHONE_ACK_FIRST`).
+
+    CLOVA Voice는 같은 문장을 다시 부르면 첫 바이트가 빠르다(서버 캐시). 첫 문장이 매번 바뀌는
+    대답("메도빅 두 개요.")도 첫 소리는 고정 문장으로 나가게 한다. 이미 "네,"로 시작하면 쉼표를
+    마침표로 바꾼다(TTS 문장 나누기는 마침표 뒤에서만 자른다).
+    """
+    if not utterances:
+        return []
+    first = utterances[0]
+    first = "네. " + (first[len("네, "):] if first.startswith("네, ") else first)
+    return [first, *utterances[1:]]
+
+
+def sorry_for_trouble() -> str:
+    """손님이 짜증을 냈을 때. 뒤에 사장님 연결 안내가 온다."""
+    return "불편을 드려 죄송해요."
+
+
+# ---------------------------------------------------------------- 무응답·되묻기 (3단계 티켓 04)
+
+
+def hello_again() -> str:
+    """무음 되묻기의 부르는 말. 뒤에 직전 질문을 다시 한다 (CLOVA AiCall처럼)."""
+    return "여보세요?"
+
+
+def no_input_goodbye() -> str:
+    """두 번 되물어도 말이 없을 때 마지막 인사. 이 말 뒤에 통화를 끝낸다."""
+    return "연결이 원활하지 않아 전화를 끊을게요. 다시 걸어 주세요."
+
+
+def take_your_time(*, after_reply: bool = False) -> str:
+    """"잠깐만요"에. 앞에 다른 대답(담은 항목 되받기 등)이 있으면 "네,"를 뗀다."""
+    return "천천히 말씀하세요." if after_reply else "네, 천천히 말씀하세요."
+
+
+def not_heard() -> str:
+    """말소리는 있었는데 STT 글이 없을 때. 실패로 세지 않는다."""
+    return "죄송해요, 잘 못 들었어요. 다시 말씀해 주세요."
+
+
+_SENTENCES = re.compile(r"(?<=[.?!])\s+")
+
+
+def question_only(text: str) -> str:
+    """되물을 때 다시 할 부분: 끝의 질문 문장. 앞의 안내·사과 문장("죄송해요, …")은 뺀다.
+
+    무응답 되묻기("여보세요?")와 못 알아들음("잘 못 알아들었어요") 뒤에 쓴다(spec "여보세요? +
+    직전 질문", 감사 문제 A). 질문 문장이 없으면 그대로 돌려준다.
+    """
+    sentences = _SENTENCES.split(text.strip())
+    kept: list[str] = []
+    for sentence in reversed(sentences):
+        if not sentence.endswith("?"):
+            break
+        kept.insert(0, sentence)
+    return " ".join(kept) if kept else text
+
+
+# ---------------------------------------------------------------- 사장님께 묻기 (4단계 티켓 05)
+
+# 사장님 버튼 답 → 손님에게 할 고정 존댓말 문장. 사장님 글을 그대로 읽지 않는다
+# (spec "ASK_OWNER: 엔진")
+_OWNER_ANSWER = {
+    "yes": "사장님께 여쭤보니 네, 된다고 하세요.",
+    "no": "사장님께 여쭤보니 안 된다고 하세요.",
+    "unsure": "사장님께 여쭤봤는데 사장님도 정확히는 모르신대요.",
+    "timeout": "확인해서 문자로 알려 드릴게요.",  # 답 대기 시간 초과 (티켓 06)
+    # 사장님 자유 입력 답 (티켓 07). 글은 번역해 문자로만 간다. 손님에게 읽지 않는다
+    "free": "사장님이 답을 남기셨어요. 문자로 보내 드릴게요.",
+}
+# 대화 기록(`Order.transcript`)에 남기는 사장님 답 이름
+_OWNER_ANSWER_LABEL = {"yes": "돼요", "no": "안 돼요", "unsure": "모르겠어요",
+                       "timeout": "(답 없음, 시간 초과)", "free": "(글로 답함, 문자로 보냄)"}
+
+
+def ask_owner_hold() -> str:
+    """근거 없는 메뉴 질문을 사장님께 보낼 때. 이 턴의 마지막 말이다."""
+    return "잠시만요, 사장님께 여쭤볼게요."
+
+
+def owner_seen() -> str:
+    """사장님이 질문 카드를 봤다 (티켓 06). 기다리는 동안 한 번만."""
+    return "사장님이 보고 계세요, 조금만요."
+
+
+def owner_answer(answer: str, *, name: str = "", subject: str = "") -> str:
+    """사장님 답(yes·no·unsure·timeout·free) → 손님에게 할 말. 뒤에 하던 질문을 다시 한다.
+
+    "견과류 들어가요?"처럼 들어가는지만 묻는 질문이면(`subject`에 그 대상) 버튼 뜻이 들어가요/
+    안 들어가요다(리뷰 P2). 그때 yes·no는 "메도빅에 견과가 들어간대요"로 말한다.
+    """
+    if subject and answer in ("yes", "no"):
+        if answer == "yes":
+            return f"사장님께 여쭤보니 {name}에 {i_ga(subject)} 들어간대요."
+        return f"사장님께 여쭤보니 {name}에 {eun_neun(subject)} 안 들어간대요."
+    return _OWNER_ANSWER[answer]
+
+
+def owner_answer_label(answer: str, *, contains: bool = False) -> str:
+    """대화 기록의 사장님 답 이름. `contains`면 들어가요?류 질문의 버튼 뜻(들어가요/안 들어가요)."""
+    if contains and answer in ("yes", "no"):
+        return "들어가요" if answer == "yes" else "안 들어가요"
+    return _OWNER_ANSWER_LABEL[answer]
+
+
+# ---------------------------------------------------------------- 사장님 보충 지식 (4단계 티켓 13)
+
+
+# 메뉴가 아닌 가게 질문(주차·할인)의 보충 요청에 메뉴 이름 대신 쓰는 말 (5단계 티켓 11)
+STORE_QUESTION = "가게"
+
+
+def pass_on_to_owner() -> str:
+    """근거 없는 메뉴 질문을 사장님께 바로 묻지 않을 때(grilling Q17). 뒤에 하던 질문."""
+    return "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께 전해 둘게요."
+
+
+def owner_said(note: str) -> str:
+    """사장님이 저장한 설명(한국어)을 인용 틀에 넣는다. 사장님 글은 다듬지 않고, 문장 끝 부호만
+    없으면 붙인다(TTS 문장 나누기).
+    """
+    note = note.strip()
+    if not note.endswith((".", "?", "!")):
+        note += "."
+    return f"사장님 말씀으로는 {note}"
+
+
+def owner_checked(name: str, subject: str, contains: bool) -> str:
+    """질문 카드에서 사장님이 확인한 예/아니오 사실(Q20). 사장님께 다시 묻지 않고 출처를 붙인다."""
+    if contains:
+        return f"사장님 확인으로는 {name}에 {i_ga(subject)} 들어간대요."
+    return f"사장님 확인으로는 {name}에 {eun_neun(subject)} 안 들어간대요."

@@ -1,0 +1,24 @@
+{
+  "_note": "더미 가게 메뉴·별칭 (지어낸 것). 실제로는 사장님 RAG(StoreKnowledge)의 MenuItem에서 받는다",
+  "달빛모찌": [
+    {"name": "딸기모찌", "aliases": ["딸기 모찌", "딸기찹쌀떡", "strawberry mochi", "клубничное моти"]},
+    {"name": "왕딸기모찌", "aliases": ["왕딸기", "big strawberry mochi", "моти с крупной клубникой"]},
+    {"name": "딸기크림떡", "aliases": ["딸기 크림떡", "strawberry cream rice cake", "клубничный крем-моти"]},
+    {"name": "샤인머스캣모찌", "aliases": ["샤인머스캣", "샤인", "shine muscat mochi"]},
+    {"name": "귤모찌", "aliases": ["귤", "tangerine mochi"]}
+  ],
+  "황금반점": [
+    {"name": "짜장면", "aliases": ["자장면", "jajangmyeon"]},
+    {"name": "짬뽕", "aliases": ["jjamppong"]},
+    {"name": "탕수육", "aliases": ["sweet and sour pork"]}
+  ],
+  "별빛돈가스": [
+    {"name": "등심돈가스", "aliases": ["등심", "pork cutlet"]},
+    {"name": "치즈돈가스", "aliases": ["치즈", "cheese cutlet"]}
+  ],
+  "해오름분식": [
+    {"name": "떡볶이", "aliases": ["떡볶", "tteokbokki"]},
+    {"name": "순대", "aliases": ["sundae"]},
+    {"name": "김밥", "aliases": ["gimbap"]}
+  ]
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 
+from .harsh import harsh_of, soften_quote
 from .repo import ReviewRepo
 from .sentiment import RuleSentiment, prefetch_reviews
 from .topic import MenuCatalog, mentions_menu, resolve_from_utterance, resolve_topic
@@ -39,8 +40,13 @@ def _window(today: date, period, start_date, end_date):
 
 
 def _quote(text: str, limit: int = 60) -> str:
-    t = " ".join(text.split())
-    return t if len(t) <= limit else t[: limit - 1] + "…"
+    """사장님에게 보여 줄 인용. 상처 되는 표현은 거른다 (harsh.py)."""
+    return soften_quote(text, limit)[0]
+
+
+def _quoted(text: str, aspect: str | None = None) -> dict:
+    quote, softened = soften_quote(text, 60, aspect)
+    return {"quote": quote, "softened": softened}
 
 
 def _spans(review: dict, sentiment) -> list[dict]:
@@ -157,6 +163,8 @@ def _analyze(
     )
     out = {
         "period": {"start": start.isoformat() if start else None, "end": end.isoformat()},
+        # 리뷰가 0건이어도 요청한 형식을 돌려준다 (holdout1 F06 '보고서 형식으로')
+        "format": format or "chat",
         "filters": {
             "menus": [m["name"] for m in menus],
             "aspects": aspects,
@@ -187,7 +195,7 @@ def _analyze(
                 "review_id": last["review_id"],
                 "visit_date": last["visit_date"],
                 "days_ago": (today - date.fromisoformat(last["visit_date"])).days,
-                "quote": _quote(last["text"]),
+                **_quoted(last["text"]),
             }
         )
         if menus:
@@ -231,12 +239,17 @@ def _analyze(
         pick = next((s for s in sp if want and s["sentiment"] == want), None) or next(
             (s for s in sp if s["sentiment"] != "neutral"), None
         )
+        aspect = pick["aspect"] if pick else None
+        # 고른 구간이 깨끗해도 원문에 거친 표현이 있으면 '원문 보여줘' 대상으로 남긴다
+        about = aspect or next((f["feature"] for f in r.get("features", [])), None)
+        ex = _quoted(pick["text"] if pick else r["text"], DISPLAY_NAMES.get(about, about))
+        ex["softened"] = ex["softened"] or bool(harsh_of(r["text"]))
         examples.append(
             {
                 "review_id": r["review_id"],
                 "visit_date": r["visit_date"],
-                "quote": _quote(pick["text"] if pick else r["text"]),
-                "aspect": pick["aspect"] if pick else None,
+                **ex,
+                "aspect": aspect,
                 "sentiment": rs,
             }
         )

@@ -17,7 +17,8 @@ class ReviewRepo(ABC):
 
 
 class SnapshotRepo(ReviewRepo):
-    """data/snapshots/*.jsonl 을 읽는다. store_id는 매장명 앞부분만 줘도 된다 (예: '홍만당')."""
+    """스냅샷 jsonl을 읽는다 (예: fixtures/review_snapshot.jsonl 더미).
+    store_id는 매장명 앞부분만 줘도 된다 (예: '달빛모찌')."""
 
     def __init__(self, path: str | Path):
         with Path(path).open(encoding="utf-8") as f:
