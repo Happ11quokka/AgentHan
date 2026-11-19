@@ -1,0 +1,1483 @@
+[
+  {
+    "id": "medovik",
+    "name_ko": "메도빅",
+    "price": 8000,
+    "description": "꿀을 바른 얇은 시트를 여러 겹 쌓아 사워크림으로 마무리한 기본 케이크 (메뉴판 Best 표시)",
+    "category": "Cake",
+    "name_native": "Медовик",
+    "aliases": [
+      "Medovik Honey Cake",
+      "메도빅 클래식"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "both",
+      "csv_row": 2,
+      "name_en": "Medovik Honey Cake",
+      "name_ko_missing": false,
+      "naver_name": "메도빅 클래식",
+      "naver_menu_id": "DUMMYNVBAB956F767D16",
+      "price_photo": 8000,
+      "price_naver": 8000,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [
+        "Best"
+      ],
+      "naver_badges": [],
+      "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": {
+        "best_mark": true,
+        "new_mark": false,
+        "naver_repr": false,
+        "review_mentions": 0,
+        "recent_mentions": 0
+      },
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "medovik-choco",
+    "name_ko": "초코 메도빅",
+    "price": 8500,
+    "description": "코코아 시트와 다크 초콜릿 크림을 넣은 메도빅",
+    "category": "Cake",
+    "name_native": "Шоколадный медовик",
+    "aliases": [
+      "Chocolate Medovik",
+      "Шоколадный медовик",
+      "초코 꿀케이크",
+      "메도빅 초코",
+      "초콜릿 메도빅",
+      "초코꿀케익"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 3,
+      "name_en": "Chocolate Medovik",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 8500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "medovik-sour-berry",
+    "name_ko": "사워베리 메도빅",
+    "price": 8500,
+    "description": "산딸기 잼과 새콤한 크림을 층마다 바른 메도빅",
+    "category": "Cake",
+    "name_native": "",
+    "aliases": [
+      "Sour Berry Medovik",
+      "사워크림 꿀케이크",
+      "메도빅 사워베리",
+      "베리 메도빅",
+      "사워베리",
+      "샤워베리 메도빅"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 4,
+      "name_en": "Sour Berry Medovik",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 8500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu1.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "medovik-whole",
+    "name_ko": "메도빅 홀케이크",
+    "price": 58000,
+    "description": "메도빅 한 판. 하루 전 예약 권장",
+    "category": "Cake",
+    "name_native": "",
+    "aliases": [
+      "Medovik Whole Cake",
+      "꿀케이크 홀",
+      "메도빅 한 판",
+      "홀케이크",
+      "메도빅 홀",
+      "홀케익"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 5,
+      "name_en": "Medovik Whole Cake",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 58000,
+      "price_naver": null,
+      "size": "지름 18cm, 8조각",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "medovik",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": null,
+      "gift": {
+        "gift_mentions": 3,
+        "takeout_mentions": 2
+      },
+      "taste": null
+    }
+  },
+  {
+    "id": "napoleon",
+    "name_ko": "나폴레옹",
+    "price": 8000,
+    "description": "버터 페이스트리를 겹겹이 굽고 바닐라 커스터드를 채운 케이크 (메뉴판 Best 표시)",
+    "category": "Cake",
+    "name_native": "Наполеон",
+    "aliases": [
+      "Napoleon",
+      "Наполеон",
+      "나폴레옹 케이크",
+      "나폴레온",
+      "나폴래옹",
+      "나폴레옹케잌",
+      "나플레옹"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "both",
+      "csv_row": 6,
+      "name_en": "Napoleon",
+      "name_ko_missing": false,
+      "naver_name": "나폴레옹",
+      "naver_menu_id": "DUMMYNVA6E514F9486B8",
+      "price_photo": 8000,
+      "price_naver": 7500,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [
+        "Best"
+      ],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": {
+        "best_mark": true,
+        "new_mark": false,
+        "naver_repr": false,
+        "review_mentions": 8,
+        "recent_mentions": 3
+      },
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "ptichye-moloko",
+    "name_ko": "버드밀크 케이크",
+    "price": 8500,
+    "description": "마시멜로처럼 폭신한 수플레 위에 얇은 초콜릿을 덮은 케이크",
+    "category": "Cake",
+    "name_native": "Птичье молоко",
+    "aliases": [
+      "Bird's Milk Cake",
+      "Птичье молоко",
+      "버드밀크",
+      "새의 우유",
+      "프티치예 몰로코",
+      "버드밀크케익"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 7,
+      "name_en": "Bird's Milk Cake",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 8500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "kievsky",
+    "name_ko": "키예프 케이크",
+    "price": 9000,
+    "description": "헤이즐넛 머랭 사이에 버터크림을 넣은 바삭한 케이크 (주말 한정 수량)",
+    "category": "Cake",
+    "name_native": "Киевский торт",
+    "aliases": [
+      "Kyiv Cake",
+      "Киевский торт",
+      "키예프",
+      "헤이즐넛 머랭 케이크",
+      "키예프스키",
+      "키이우 케이크"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": true,
+    "extra": {
+      "source": "photo",
+      "csv_row": 8,
+      "name_en": "Kyiv Cake",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 9000,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu1.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "praga",
+    "name_ko": "프라하",
+    "price": 8500,
+    "description": "초콜릿 스펀지와 초콜릿 버터크림을 겹친 진한 케이크",
+    "category": "Cake",
+    "name_native": "Прага",
+    "aliases": [
+      "Praga Cake",
+      "Прага",
+      "프라하 케이크",
+      "프라하 초코 케이크",
+      "프라가",
+      "프라하 초코",
+      "프라하케잌"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 9,
+      "name_en": "Praga Cake",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 8500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "러시아 전통"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "smetannik",
+    "name_ko": "스메타닉",
+    "price": 8000,
+    "description": "부드러운 시트에 사워크림을 듬뿍 바른 가정식 케이크",
+    "category": "Cake",
+    "name_native": "Сметанник",
+    "aliases": [
+      "Smetannik",
+      "Сметанник",
+      "사워크림 케이크",
+      "스메타니크",
+      "스메타닉 케이크"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 10,
+      "name_en": "Smetannik",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 8000,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "zebra",
+    "name_ko": "제브라 케이크",
+    "price": 7500,
+    "description": "바닐라와 코코아 반죽을 번갈아 부어 줄무늬를 낸 파운드형 케이크",
+    "category": "Cake",
+    "name_native": "Зебра",
+    "aliases": [
+      "Zebra Cake",
+      "Зебра",
+      "얼룩말 케이크",
+      "제브라",
+      "지브라 케이크"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 11,
+      "name_en": "Zebra Cake",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 7500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "carrot-cake",
+    "name_ko": "당근 케이크",
+    "price": 7500,
+    "description": "시나몬 향 당근 시트와 크림치즈 프로스팅",
+    "category": "Cake",
+    "name_native": "",
+    "aliases": [
+      "캐럿 케이크",
+      "당근케익",
+      "당근케잌"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "naver",
+      "csv_row": 12,
+      "name_en": "",
+      "name_ko_missing": false,
+      "naver_name": "당근 케이크",
+      "naver_menu_id": "DUMMYNVC21D3709D6F8A",
+      "price_photo": null,
+      "price_naver": 7500,
+      "size": "",
+      "photo_file": [],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "cheesecake",
+    "name_ko": "바닐라 치즈케이크",
+    "price": 7000,
+    "description": "바닐라빈을 넣어 구운 꾸덕한 치즈케이크",
+    "category": "Cake",
+    "name_native": "",
+    "aliases": [
+      "치즈케이크",
+      "치케",
+      "치즈케익",
+      "치즈케잌"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "naver",
+      "csv_row": 13,
+      "name_en": "",
+      "name_ko_missing": false,
+      "naver_name": "바닐라 치즈케이크",
+      "naver_menu_id": "DUMMYNV5AC5355B84894",
+      "price_photo": null,
+      "price_naver": 7000,
+      "size": "",
+      "photo_file": [],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "mini-eclair",
+    "name_ko": "미니 에클레어",
+    "price": 7500,
+    "description": "한입 크기 슈 세 개에 연유 크림을 채운 세트",
+    "category": "Eclair",
+    "name_native": "Мини-эклеры",
+    "aliases": [
+      "Mini Eclair",
+      "Мини-эклеры",
+      "미니 에끌레어",
+      "작은 에클레어",
+      "미니 에클레르",
+      "미니 슈"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 14,
+      "name_en": "Mini Eclair",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 7500,
+      "price_naver": null,
+      "size": "3개",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "eclair",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "big-eclair",
+    "name_ko": "빅 에클레어",
+    "price": 8000,
+    "description": "길이 25cm 슈에 바닐라 휘핑크림을 가득 채운 에클레어",
+    "category": "Eclair",
+    "name_native": "Эклер",
+    "aliases": [
+      "Big Eclair",
+      "빅 에클레어 25cm",
+      "Эклер",
+      "빅 에끌레어",
+      "큰 에클레어",
+      "에클레어 클래식",
+      "빅에클러어"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "both",
+      "csv_row": 15,
+      "name_en": "Big Eclair",
+      "name_ko_missing": false,
+      "naver_name": "빅 에클레어 25cm",
+      "naver_menu_id": "DUMMYNV2C260BFDE8C01",
+      "price_photo": 8000,
+      "price_naver": 8000,
+      "size": "25cm",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "eclair",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "meringue-roll",
+    "name_ko": "머랭 롤",
+    "price": 8000,
+    "description": "바삭한 머랭 시트에 크림과 제철 베리를 말아 낸 롤",
+    "category": "Roll",
+    "name_native": "Меренговый рулет",
+    "aliases": [
+      "Meringue Roll",
+      "Меренговый рулет",
+      "머랭롤 케이크",
+      "머렝롤",
+      "머랭롤케잌"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "both",
+      "csv_row": 16,
+      "name_en": "Meringue Roll",
+      "name_ko_missing": false,
+      "naver_name": "머랭 롤",
+      "naver_menu_id": "DUMMYNV167C0564B0A07",
+      "price_photo": 8000,
+      "price_naver": 8000,
+      "size": "",
+      "photo_file": [
+        "dummy_menu1.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": {
+        "best_mark": false,
+        "new_mark": false,
+        "naver_repr": false,
+        "review_mentions": 6,
+        "recent_mentions": 4
+      },
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "berry-tart",
+    "name_ko": "베리 타르트",
+    "price": 9000,
+    "description": "버터 쇼트브레드 위에 커스터드와 블루베리·산딸기를 올린 타르트",
+    "category": "Tart",
+    "name_native": "",
+    "aliases": [
+      "Berry Tart",
+      "과일 타르트",
+      "타르트",
+      "블루베리 타르트"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 17,
+      "name_en": "Berry Tart",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 9000,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "pavlova",
+    "name_ko": "파블로바",
+    "price": 8500,
+    "description": "겉은 바삭하고 속은 쫀득한 머랭에 마스카포네 크림과 베리를 올린 디저트",
+    "category": "Dessert",
+    "name_native": "Павлова",
+    "aliases": [
+      "Pavlova",
+      "Павлова",
+      "파브로바",
+      "파블로바 케이크",
+      "파플로파"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 18,
+      "name_en": "Pavlova",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 8500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": {
+        "label": "단 편",
+        "sweet_mentions": 1,
+        "less_sweet_mentions": 1
+      }
+    }
+  },
+  {
+    "id": "syrniki",
+    "name_ko": "시르니키",
+    "price": 7000,
+    "description": "코티지치즈로 부친 작은 팬케이크. 사워크림과 잼을 곁들임",
+    "category": "Dessert",
+    "name_native": "Сырники",
+    "aliases": [
+      "Syrniki",
+      "Сырники",
+      "러시아 치즈 팬케이크",
+      "치즈 팬케이크",
+      "시르니크",
+      "시르니끼"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 19,
+      "name_en": "Syrniki",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 7000,
+      "price_naver": null,
+      "size": "3개",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "oreshki",
+    "name_ko": "오레쉬키",
+    "price": 3000,
+    "description": "호두 모양 쿠키 안에 연유 캐러멜을 채운 과자",
+    "category": "Cookie",
+    "name_native": "Орешки",
+    "aliases": [
+      "Oreshki",
+      "Орешки",
+      "호두 쿠키",
+      "오레시키",
+      "오레쉬끼"
+    ],
+    "options": [],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 20,
+      "name_en": "Oreshki",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 3000,
+      "price_naver": null,
+      "size": "1개",
+      "photo_file": [
+        "dummy_menu1.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": {
+        "gift_mentions": 2,
+        "takeout_mentions": 0
+      },
+      "taste": null
+    }
+  },
+  {
+    "id": "americano",
+    "name_ko": "아메리카노",
+    "price": 4500,
+    "description": "고소한 원두로 내린 기본 커피 (메뉴판 Best 표시)",
+    "category": "Coffee",
+    "name_native": "",
+    "aliases": [
+      "Americano",
+      "아메",
+      "아아",
+      "뜨아",
+      "아메리까노"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "디카페인 변경",
+        "available": true,
+        "extra_price": 500,
+        "note": ""
+      },
+      {
+        "name": "샷 추가",
+        "available": true,
+        "extra_price": 500,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "both",
+      "csv_row": 21,
+      "name_en": "Americano",
+      "name_ko_missing": false,
+      "naver_name": "아메리카노",
+      "naver_menu_id": "DUMMYNV62D4B7788EDA7",
+      "price_photo": 4500,
+      "price_naver": 4500,
+      "size": "",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [
+        "Best"
+      ],
+      "naver_badges": [
+        "repr",
+        "recommend"
+      ],
+      "family": "",
+      "tags": [],
+      "popularity": {
+        "best_mark": true,
+        "new_mark": false,
+        "naver_repr": true,
+        "review_mentions": 3,
+        "recent_mentions": 2
+      },
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "latte",
+    "name_ko": "카페라떼",
+    "price": 5000,
+    "description": "에스프레소에 우유를 넣은 커피",
+    "category": "Coffee",
+    "name_native": "",
+    "aliases": [
+      "Latte",
+      "라떼",
+      "라테",
+      "카페라테"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "both",
+      "csv_row": 22,
+      "name_en": "Latte",
+      "name_ko_missing": false,
+      "naver_name": "카페라떼",
+      "naver_menu_id": "DUMMYNVC18C81318D17D",
+      "price_photo": 5000,
+      "price_naver": 5000,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "raf",
+    "name_ko": "라프 커피",
+    "price": 5500,
+    "description": "에스프레소에 크림과 바닐라 설탕을 넣고 함께 스팀한 러시아식 커피",
+    "category": "Coffee",
+    "name_native": "Раф кофе",
+    "aliases": [
+      "Raf Coffee",
+      "Раф кофе",
+      "라프",
+      "바닐라 크림 커피",
+      "라프 라떼"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 23,
+      "name_en": "Raf Coffee",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 5500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "cappuccino",
+    "name_ko": "카푸치노",
+    "price": 5000,
+    "description": "우유 거품을 두껍게 올린 커피",
+    "category": "Coffee",
+    "name_native": "",
+    "aliases": [
+      "카프치노",
+      "카푸치노 커피"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "naver",
+      "csv_row": 24,
+      "name_en": "",
+      "name_ko_missing": false,
+      "naver_name": "카푸치노",
+      "naver_menu_id": "DUMMYNV884201C83881D",
+      "price_photo": null,
+      "price_naver": 5000,
+      "size": "",
+      "photo_file": [],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "black-tea",
+    "name_ko": "블랙티",
+    "price": 4000,
+    "description": "진하게 우린 홍차",
+    "category": "Tea",
+    "name_native": "",
+    "aliases": [
+      "Black Tea"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 25,
+      "name_en": "Black Tea",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 4000,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "홍차"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "earl-grey",
+    "name_ko": "얼그레이",
+    "price": 4000,
+    "description": "베르가못 향을 입힌 홍차",
+    "category": "Tea",
+    "name_native": "",
+    "aliases": [
+      "Earl Grey",
+      "얼그레이 티",
+      "얼그래이"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 26,
+      "name_en": "Earl Grey",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 4000,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "홍차"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "milk-tea",
+    "name_ko": "밀크티",
+    "price": 4500,
+    "description": "홍차를 우유에 진하게 우린 차",
+    "category": "Tea",
+    "name_native": "",
+    "aliases": [
+      "Milk Tea",
+      "로열 밀크티"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 27,
+      "name_en": "Milk Tea",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 4500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [
+        "홍차"
+      ],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "sea-buckthorn-tea",
+    "name_ko": "오블레피하 차",
+    "price": 5000,
+    "description": "비타민나무 열매를 꿀과 함께 우린 새콤한 러시아식 차",
+    "category": "Tea",
+    "name_native": "Облепиховый чай",
+    "aliases": [
+      "Sea Buckthorn Tea",
+      "Облепиховый чай",
+      "오블레피하",
+      "비타민나무 차",
+      "산자나무 열매차",
+      "오블리피하",
+      "씨벅턴 티"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 28,
+      "name_en": "Sea Buckthorn Tea",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 5000,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu1.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "honey-lemon-tea",
+    "name_ko": "허니레몬티",
+    "price": 4500,
+    "description": "레몬 슬라이스와 꿀을 넣은 따뜻한 차",
+    "category": "Tea",
+    "name_native": "",
+    "aliases": [
+      "Honey Lemon Tea",
+      "허니레몬",
+      "꿀레몬차",
+      "레몬티"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 29,
+      "name_en": "Honey Lemon Tea",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 4500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "lemon-ade",
+    "name_ko": "레몬에이드",
+    "price": 5500,
+    "description": "직접 짠 레몬즙과 탄산수",
+    "category": "Ade",
+    "name_native": "",
+    "aliases": [
+      "Lemonade",
+      "레모네이드"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": false,
+        "extra_price": 0,
+        "note": "ICE ONLY"
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 30,
+      "name_en": "Lemonade",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 5500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu3.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "mors",
+    "name_ko": "모르스",
+    "price": 5500,
+    "description": "크랜베리와 링곤베리를 끓여 식힌 러시아 전통 베리 음료",
+    "category": "Ade",
+    "name_native": "Морс",
+    "aliases": [
+      "Mors",
+      "Морс",
+      "모르스 에이드",
+      "크랜베리 에이드",
+      "베리 음료",
+      "모르스 음료"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": false,
+        "extra_price": 0,
+        "note": "ICE ONLY"
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 31,
+      "name_en": "Mors",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 5500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu4.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "grapefruit-ade",
+    "name_ko": "자몽에이드",
+    "price": 5500,
+    "description": "자몽 과육을 듬뿍 넣은 에이드",
+    "category": "Ade",
+    "name_native": "",
+    "aliases": [
+      "Grapefruit Ade",
+      "그레이프프루트 에이드"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": false,
+        "extra_price": 0,
+        "note": "ICE ONLY"
+      }
+    ],
+    "allergens": [],
+    "sold_out": true,
+    "extra": {
+      "source": "photo",
+      "csv_row": 32,
+      "name_en": "Grapefruit Ade",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 5500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu1.jpg"
+      ],
+      "menu_marks": [],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": null,
+      "gift": null,
+      "taste": null
+    }
+  },
+  {
+    "id": "omija-ade",
+    "name_ko": "오미자 에이드",
+    "price": 5500,
+    "description": "오미자청과 탄산수를 섞은 붉은 에이드 (메뉴판 NEW 표시)",
+    "category": "Ade",
+    "name_native": "",
+    "aliases": [
+      "Omija Ade"
+    ],
+    "options": [
+      {
+        "name": "ICE",
+        "available": true,
+        "extra_price": 0,
+        "note": ""
+      },
+      {
+        "name": "HOT",
+        "available": false,
+        "extra_price": 0,
+        "note": "ICE ONLY"
+      }
+    ],
+    "allergens": [],
+    "sold_out": false,
+    "extra": {
+      "source": "photo",
+      "csv_row": 33,
+      "name_en": "Omija Ade",
+      "name_ko_missing": false,
+      "naver_name": "",
+      "naver_menu_id": "",
+      "price_photo": 5500,
+      "price_naver": null,
+      "size": "",
+      "photo_file": [
+        "dummy_menu2.jpg"
+      ],
+      "menu_marks": [
+        "NEW"
+      ],
+      "naver_badges": [],
+      "family": "",
+      "tags": [],
+      "popularity": {
+        "best_mark": false,
+        "new_mark": true,
+        "naver_repr": false,
+        "review_mentions": 0,
+        "recent_mentions": 0
+      },
+      "gift": null,
+      "taste": null
+    }
+  }
+]

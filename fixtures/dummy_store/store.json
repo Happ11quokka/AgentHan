@@ -1,0 +1,151 @@
+{
+  "place_id": "9990000001",
+  "name": "샘플 러시안 케이크 하우스",
+  "category": "베이커리",
+  "road_address": "서울 중구 샘플로 12",
+  "address": "서울 중구 샘플동 1-23",
+  "coordinate": {
+    "lat": 37.566,
+    "lng": 127.008
+  },
+  "phone": "02-000-0000",
+  "business_hours": [
+    {
+      "day": "화~일",
+      "start": "11:00",
+      "end": "21:00",
+      "break": [],
+      "last_order": "20:30",
+      "note": null
+    }
+  ],
+  "regular_closed_days": [
+    "매주 월요일"
+  ],
+  "conveniences": [
+    "포장",
+    "배달",
+    "단체 주문"
+  ],
+  "payment": [
+    "제로페이",
+    "지역화폐"
+  ],
+  "keywords": [
+    "메도빅",
+    "러시아디저트"
+  ],
+  "description": "러시아 가정식 케이크와 차를 파는 작은 디저트 가게입니다. (레포용 더미 가게, 실제 가게 아님)",
+  "subway": [
+    "샘플역 1호선"
+  ],
+  "review_summary": {
+    "total": 1240,
+    "avg_rating": 4.48,
+    "blog_cafe_total": 410,
+    "micro_reviews": [
+      "얇은 시트가 겹겹이 쌓인 꿀케이크"
+    ],
+    "themes": [
+      {
+        "label": "맛",
+        "count": 520
+      },
+      {
+        "label": "만족도",
+        "count": 260
+      },
+      {
+        "label": "서비스",
+        "count": 90
+      },
+      {
+        "label": "가격",
+        "count": 40
+      },
+      {
+        "label": "대기시간",
+        "count": 25
+      },
+      {
+        "label": "분위기",
+        "count": 20
+      }
+    ],
+    "menus_mentioned": [
+      {
+        "label": "케이크",
+        "count": 310
+      },
+      {
+        "label": "메도빅",
+        "count": 120
+      },
+      {
+        "label": "나폴레옹",
+        "count": 64
+      },
+      {
+        "label": "커피",
+        "count": 52
+      },
+      {
+        "label": "에클레어",
+        "count": 18
+      },
+      {
+        "label": "밀크티",
+        "count": 9
+      }
+    ],
+    "voted_keywords": [
+      {
+        "label": "디저트가 맛있어요",
+        "count": 640
+      },
+      {
+        "label": "특별한 메뉴가 있어요",
+        "count": 410
+      },
+      {
+        "label": "친절해요",
+        "count": 230
+      },
+      {
+        "label": "가성비가 좋아요",
+        "count": 70
+      }
+    ]
+  },
+  "naver_menu_updated_at": "26.10.01",
+  "menu_board_images": [
+    "https://example.com/dummy/menu-board-1.jpg"
+  ],
+  "crawled_at": "2026-11-15T10:00:00+09:00",
+  "extra": {
+    "naver_bundled_menus": [
+      {
+        "naver_name": "차",
+        "naver_menu_id": "DUMMYNV9C8E46448A7DF",
+        "naver_price": "가격 변동",
+        "category": "Tea",
+        "actual_count": 5,
+        "note": "네이버에는 차·에이드가 가격 없이 묶음으로만 등록돼 있고, 실제로는 차 5종·에이드 4종이 있음"
+      },
+      {
+        "naver_name": "에이드",
+        "naver_menu_id": "DUMMYNV817C9F67C0CEE",
+        "naver_price": "가격 변동",
+        "category": "Ade",
+        "actual_count": 4,
+        "note": "네이버에는 차·에이드가 가격 없이 묶음으로만 등록돼 있고, 실제로는 차 5종·에이드 4종이 있음"
+      }
+    ],
+    "taste_note": "단맛은 손님마다 느끼는 게 달라서 메뉴별로 단정하지 않음",
+    "evidence_rules": {
+      "popularity": "메뉴판 Best/NEW 표시·네이버 대표 배지가 있거나 리뷰 언급 5건 이상인 메뉴만. recent_mentions는 수집일 기준 최근 91일",
+      "gift": "선물·생일·기념일 언급 2건 이상 또는 포장(테이크아웃) 언급 5건 이상인 메뉴만 (리뷰 단위)",
+      "taste": "손으로 지정한 메뉴만 (taste_labels). 근거 수는 같은 마디에 메뉴와 단맛 표현이 함께 나온 리뷰 수"
+    }
+  }
+}

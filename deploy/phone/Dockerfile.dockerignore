@@ -1,0 +1,17 @@
+# Dockerfile 옆 전용 ignore (BuildKit이 deploy/phone/Dockerfile.dockerignore를 쓴다)
+# 키·로컬 상태가 빌드 맥락에 들어가지 않게. Dockerfile은 필요한 폴더만 COPY하지만 한 번 더 막는다
+**/.env
+**/.env.*
+.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+web/dist
+logs
+data
+private
+.claude
+docs
+tests

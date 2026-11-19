@@ -1,0 +1,5079 @@
+[
+  {
+    "id": "49f5cd396272d1863e3ead89",
+    "text": "머랭 롤이 오후에 금방 떨어져요. 사려면 점심 직후에 가는 게 좋아요.",
+    "created_at": "2026-11-14T00:00:00+09:00",
+    "rating": null,
+    "author": "p****",
+    "menu_ids": [
+      "meringue-roll"
+    ],
+    "extra": {
+      "created_raw": "11.14.토",
+      "visited_raw": "11.12.목",
+      "visit_datetime": "2026-11-12T04:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "포장이 꼼꼼해요",
+        "음료가 맛있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "menu",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Meringue Roll",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 585,
+      "menu_matches": [
+        "머랭롤"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "6271aa48050d933c970aad1c",
+    "text": "요즘 머랭 롤 때문에 자주 와요. 겉은 바삭한데 속은 부드러워서 계속 생각나요.",
+    "created_at": "2026-11-13T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "신****",
+    "menu_ids": [
+      "meringue-roll"
+    ],
+    "extra": {
+      "created_raw": "11.13.금",
+      "visited_raw": "11.11.수",
+      "visit_datetime": "2026-11-11T08:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "양이 많아요",
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 235,
+      "menu_matches": [
+        "머랭롤"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "228305314e6bc3325449a573",
+    "text": "퇴근길에 머랭 롤 포장해서 집에서 먹었어요. 크림이 가벼워서 늦은 시간에도 부담이 없었어요.",
+    "created_at": "2026-11-12T00:00:00+09:00",
+    "rating": null,
+    "author": "k****",
+    "menu_ids": [
+      "meringue-roll"
+    ],
+    "extra": {
+      "created_raw": "11.12.목",
+      "visited_raw": "11.10.화",
+      "visit_datetime": "2026-11-10T04:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-78.jpg"
+        }
+      ],
+      "receipt_item": "Meringue Roll",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 160,
+      "menu_matches": [
+        "머랭롤"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "300a5bdc68bd2a0e5985a539",
+    "text": "친구 생일 선물로 오레쉬키를 한 봉지 샀어요. 하나씩 꺼내 먹기 좋대요.",
+    "created_at": "2026-11-11T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "y****",
+    "menu_ids": [
+      "oreshki"
+    ],
+    "extra": {
+      "created_raw": "11.11.수",
+      "visited_raw": "11.10.화",
+      "visit_datetime": "2026-11-10T03:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-77.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 404,
+      "menu_matches": [
+        "오레쉬키"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "e5441e5193cdaed6c3f467ef",
+    "text": "파블로바는 생각보다 많이 달았어요. 베리가 새콤해서 끝까지 먹긴 했어요.",
+    "created_at": "2026-11-06T00:00:00+09:00",
+    "rating": 4.0,
+    "author": "서****",
+    "menu_ids": [
+      "pavlova"
+    ],
+    "extra": {
+      "created_raw": "11.6.금",
+      "visited_raw": "11.5.목",
+      "visit_datetime": "2026-11-05T03:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "양이 많아요",
+        "친절해요",
+        "인테리어가 멋져요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Pavlova",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 40,
+      "menu_matches": [
+        "파블로바"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "513cec3e2132fe2d2346e792",
+    "text": "초코 메도빅은 달달했고 레몬에이드는 덜 달아서 같이 먹기 좋았어요.",
+    "created_at": "2026-11-05T00:00:00+09:00",
+    "rating": null,
+    "author": "서****",
+    "menu_ids": [
+      "medovik-choco",
+      "lemon-ade"
+    ],
+    "extra": {
+      "created_raw": "11.5.목",
+      "visited_raw": "11.2.월",
+      "visit_datetime": "2026-11-02T08:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Chocolate Medovik",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 527,
+      "menu_matches": [
+        "초코메도빅",
+        "레몬에이드"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "ca824d8af58160339b2777c8",
+    "text": "기념일이라 메도빅 홀케이크를 미리 주문했어요. 상자가 튼튼해서 들고 가기 편했어요.",
+    "created_at": "2026-11-04T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "권****",
+    "menu_ids": [
+      "medovik-whole"
+    ],
+    "extra": {
+      "created_raw": "11.4.수",
+      "visited_raw": "10.31.토",
+      "visit_datetime": "2026-10-31T10:30:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Medovik Whole Cake",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 202,
+      "menu_matches": [
+        "메도빅홀케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "41b4a48fc184cd3efcba3170",
+    "text": "러시아 디저트를 이렇게 다양하게 맛볼 수 있는 곳이 드문데 메뉴 하나하나 정성이 느껴져요.",
+    "created_at": "2026-10-31T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "류****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "10.31.토",
+      "visited_raw": "10.31.토",
+      "visit_datetime": "2026-10-31T03:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "인테리어가 멋져요",
+        "음료가 맛있어요",
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 234,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "84d79a40ac24dbaa969e8621",
+    "text": "얼그레이 아이스로 마셨는데 향이 그대로 살아 있어요.",
+    "created_at": "2026-10-30T00:00:00+09:00",
+    "rating": null,
+    "author": "w****",
+    "menu_ids": [
+      "earl-grey"
+    ],
+    "extra": {
+      "created_raw": "10.30.금",
+      "visited_raw": "10.28.수",
+      "visit_datetime": "2026-10-28T04:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Earl Grey",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 469,
+      "menu_matches": [
+        "얼그레이"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "cc75c80fb2ccf1ac9a5dadf9",
+    "text": "머랭 롤 크림이 가볍고 과일이 상큼해서 무겁지 않아요.",
+    "created_at": "2026-10-27T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "h****",
+    "menu_ids": [
+      "meringue-roll"
+    ],
+    "extra": {
+      "created_raw": "10.27.화",
+      "visited_raw": "10.27.화",
+      "visit_datetime": "2026-10-27T08:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 288,
+      "menu_matches": [
+        "머랭롤"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "4ed641e9c0a71ebddee2b9c8",
+    "text": "메도빅은 맛있는데 한 조각 가격이 조금 비싸게 느껴져요.",
+    "created_at": "2026-10-26T00:00:00+09:00",
+    "rating": null,
+    "author": "d****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "10.26.월",
+      "visited_raw": "10.22.목",
+      "visit_datetime": "2026-10-22T03:15:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "price",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Cake",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 383,
+      "menu_matches": [
+        "메도빅"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "2c36545eb09bb8675f9332a8",
+    "text": "베리 타르트 과일이 신선해요. 다음엔 한 판으로 주문해 보고 싶어요.",
+    "created_at": "2026-10-23T00:00:00+09:00",
+    "rating": null,
+    "author": "권****",
+    "menu_ids": [
+      "berry-tart"
+    ],
+    "extra": {
+      "created_raw": "10.23.금",
+      "visited_raw": "10.22.목",
+      "visit_datetime": "2026-10-22T08:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Berry Tart",
+      "origin_type": "결제내역",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 426,
+      "menu_matches": [
+        "베리타르트"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "b1e5d925c7abdb67cb7808d4",
+    "text": "초코 메도빅이랑 오블레피하 차 조합이 의외로 잘 어울려요.",
+    "created_at": "2026-10-20T00:00:00+09:00",
+    "rating": null,
+    "author": "t****",
+    "menu_ids": [
+      "medovik-choco",
+      "sea-buckthorn-tea"
+    ],
+    "extra": {
+      "created_raw": "10.20.화",
+      "visited_raw": "10.16.금",
+      "visit_datetime": "2026-10-16T03:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Chocolate Medovik",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 10,
+      "menu_matches": [
+        "오블레피하차",
+        "초코메도빅"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "71beceb0f69f0dcd02eff48c",
+    "text": "결제하고 영수증을 받기까지 한참 기다렸어요. 바쁜 시간이라 그런 것 같아요.",
+    "created_at": "2026-10-18T00:00:00+09:00",
+    "rating": null,
+    "author": "f****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "10.18.일",
+      "visited_raw": "10.15.목",
+      "visit_datetime": "2026-10-15T07:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "service",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 176,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "4de727631331842643c562e9",
+    "text": "라프 커피 달달해서 디저트 없이 마셔도 만족스러워요.",
+    "created_at": "2026-10-17T00:00:00+09:00",
+    "rating": null,
+    "author": "장****",
+    "menu_ids": [
+      "raf"
+    ],
+    "extra": {
+      "created_raw": "10.17.토",
+      "visited_raw": "10.14.수",
+      "visit_datetime": "2026-10-14T07:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-66.jpg"
+        }
+      ],
+      "receipt_item": "Raf Coffee",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 324,
+      "menu_matches": [
+        "라프커피"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "3112f2d287041f24d69fca97",
+    "text": "당근 케이크 촉촉하고 견과류가 씹혀서 좋아요.",
+    "created_at": "2026-10-16T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "안****",
+    "menu_ids": [
+      "carrot-cake"
+    ],
+    "extra": {
+      "created_raw": "10.16.금",
+      "visited_raw": "10.13.화",
+      "visit_datetime": "2026-10-13T04:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Cake",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 54,
+      "menu_matches": [
+        "당근케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "990ba921236d6946fd0f06c2",
+    "text": "미니 에클레어 맛있는데 금방 눅눅해져서 바로 먹는 걸 추천해요.",
+    "created_at": "2026-10-14T00:00:00+09:00",
+    "rating": null,
+    "author": "g****",
+    "menu_ids": [
+      "mini-eclair"
+    ],
+    "extra": {
+      "created_raw": "10.14.수",
+      "visited_raw": "10.10.토",
+      "visit_datetime": "2026-10-10T09:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-64.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 486,
+      "menu_matches": [
+        "미니에클레어"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "0f499edcd7e43a80c0eda8be",
+    "text": "꿀케이크 사러 매주 들르는 단골이에요. 언제 와도 맛이 한결같아요.",
+    "created_at": "2026-10-13T00:00:00+09:00",
+    "rating": null,
+    "author": "황****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "10.13.화",
+      "visited_raw": "10.11.일",
+      "visit_datetime": "2026-10-11T10:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "양이 많아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Cake",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 162,
+      "menu_matches": [
+        "꿀케이크"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "1f9b5d15e09ad9f5bf5cb8eb",
+    "text": "밀크티 진하고 부드러워요. 홍차 향이 살아 있어요.",
+    "created_at": "2026-10-09T00:00:00+09:00",
+    "rating": null,
+    "author": "c****",
+    "menu_ids": [
+      "milk-tea"
+    ],
+    "extra": {
+      "created_raw": "10.9.금",
+      "visited_raw": "10.6.화",
+      "visit_datetime": "2026-10-06T05:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "친절해요",
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-62.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 448,
+      "menu_matches": [
+        "밀크티"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "d9a8d2941eada495e5222c7c",
+    "text": "주차할 곳이 없어서 근처 유료 주차장에 세웠어요. 대중교통 이용을 추천해요.",
+    "created_at": "2026-10-08T00:00:00+09:00",
+    "rating": 3.0,
+    "author": "k****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "10.8.목",
+      "visited_raw": "10.8.목",
+      "visit_datetime": "2026-10-08T09:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "parking",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 110,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "17617afa46cf7465a8415e1b",
+    "text": "직원분들이 바쁜데도 웃으면서 응대해 주셔서 기분 좋게 먹고 왔어요.",
+    "created_at": "2026-10-06T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "류****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "10.6.화",
+      "visited_raw": "10.3.토",
+      "visit_datetime": "2026-10-03T10:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "가성비가 좋아요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 53,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "4eccca66394a75b423e6f800",
+    "text": "프라하 케이크 초코 좋아하는 분들한테 추천해요. 진한 초코 맛이에요.",
+    "created_at": "2026-10-02T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "n****",
+    "menu_ids": [
+      "praga"
+    ],
+    "extra": {
+      "created_raw": "10.2.금",
+      "visited_raw": "9.30.수",
+      "visit_datetime": "2026-09-30T07:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "가성비가 좋아요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Praga Cake",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 43,
+      "menu_matches": [
+        "프라하케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "4610d7dca235137f482d9381",
+    "text": "사워베리 메도빅은 새콤해서 좋았는데 크림이 조금 묽었어요.",
+    "created_at": "2026-10-01T00:00:00+09:00",
+    "rating": null,
+    "author": "류****",
+    "menu_ids": [
+      "medovik-sour-berry"
+    ],
+    "extra": {
+      "created_raw": "10.1.목",
+      "visited_raw": "9.29.화",
+      "visit_datetime": "2026-09-29T07:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "양이 많아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Sour Berry Medovik",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 220,
+      "menu_matches": [
+        "사워베리메도빅"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "5ed1bbf0ddd772223ccd4626",
+    "text": "빅 에클레어 크림이 달지 않고 깔끔해서 끝까지 맛있게 먹었어요.",
+    "created_at": "2026-09-30T00:00:00+09:00",
+    "rating": null,
+    "author": "오****",
+    "menu_ids": [
+      "big-eclair"
+    ],
+    "extra": {
+      "created_raw": "9.30.수",
+      "visited_raw": "9.27.일",
+      "visit_datetime": "2026-09-27T03:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-57.jpg"
+        }
+      ],
+      "receipt_item": "Big Eclair",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 392,
+      "menu_matches": [
+        "빅에클레어"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "45dcc45662abe6d245496b7b",
+    "text": "허니케이크 한 조각에 아메리카노 한 잔이면 오후가 행복해져요.",
+    "created_at": "2026-09-27T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "권****",
+    "menu_ids": [
+      "americano"
+    ],
+    "extra": {
+      "created_raw": "9.27.일",
+      "visited_raw": "9.26.토",
+      "visit_datetime": "2026-09-26T10:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 124,
+      "menu_matches": [
+        "허니케이크",
+        "아메리카노"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "dc55bffb856cc728b5710504",
+    "text": "키예프 케이크 또 품절이었어요. 두 번째 허탕이라 아쉽습니다.",
+    "created_at": "2026-09-25T00:00:00+09:00",
+    "rating": null,
+    "author": "j****",
+    "menu_ids": [
+      "kievsky"
+    ],
+    "extra": {
+      "created_raw": "9.25.금",
+      "visited_raw": "9.22.화",
+      "visit_datetime": "2026-09-22T09:15:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "menu",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 456,
+      "menu_matches": [
+        "키예프케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "af084b86b0c759c9ab11d404",
+    "text": "라떼 우유 맛이 고소해요. 케이크 없이 음료만 마시러 와도 괜찮을 정도예요.",
+    "created_at": "2026-09-24T00:00:00+09:00",
+    "rating": null,
+    "author": "한****",
+    "menu_ids": [
+      "latte"
+    ],
+    "extra": {
+      "created_raw": "9.24.목",
+      "visited_raw": "9.20.일",
+      "visit_datetime": "2026-09-20T09:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-54.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 377,
+      "menu_matches": [
+        "라떼"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "d0a690e2812dc80753dc4297",
+    "text": "시르니키는 아침 대용으로도 좋을 것 같아요. 담백하고 든든해요.",
+    "created_at": "2026-09-21T00:00:00+09:00",
+    "rating": null,
+    "author": "b****",
+    "menu_ids": [
+      "syrniki"
+    ],
+    "extra": {
+      "created_raw": "9.21.월",
+      "visited_raw": "9.17.목",
+      "visit_datetime": "2026-09-17T06:45:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "매장이 청결해요",
+        "디저트가 맛있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Syrniki",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 11,
+      "menu_matches": [
+        "시르니키"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "aa54991aa7dc32990af2fde8",
+    "text": "제브라 케이크 비주얼은 좋은데 맛은 평범했어요. 다른 케이크가 더 인상적이었어요.",
+    "created_at": "2026-09-19T00:00:00+09:00",
+    "rating": 4.0,
+    "author": "s****",
+    "menu_ids": [
+      "zebra"
+    ],
+    "extra": {
+      "created_raw": "9.19.토",
+      "visited_raw": "9.17.목",
+      "visit_datetime": "2026-09-17T07:45:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "인테리어가 멋져요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 363,
+      "menu_matches": [
+        "제브라케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "2daf7242e887e833870e6871",
+    "text": "홍차 맛이 진하고 떫지 않아요. 나폴레옹이랑 먹으니 딱 좋네요.",
+    "created_at": "2026-09-16T00:00:00+09:00",
+    "rating": null,
+    "author": "r****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "9.16.수",
+      "visited_raw": "9.14.월",
+      "visit_datetime": "2026-09-14T07:00:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [
+        "인테리어가 멋져요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-51.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 332,
+      "menu_matches": [
+        "나폴레옹"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "c1e8d935510046657f9d8f5e",
+    "text": "자리끼리 바짝 붙어 있어서 옆 테이블 대화가 다 들려요. 포장 위주로 이용하는 게 나을 것 같아요.",
+    "created_at": "2026-09-15T00:00:00+09:00",
+    "rating": null,
+    "author": "강****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "9.15.화",
+      "visited_raw": "9.11.금",
+      "visit_datetime": "2026-09-11T10:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "space",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 56,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "bdab039d1052deaee3ea304f",
+    "text": "파브로바라고 메뉴판에 적혀 있던데 머랭이 정말 가볍고 크림도 안 느끼해요.",
+    "created_at": "2026-09-13T00:00:00+09:00",
+    "rating": null,
+    "author": "h****",
+    "menu_ids": [
+      "pavlova"
+    ],
+    "extra": {
+      "created_raw": "9.13.일",
+      "visited_raw": "9.10.목",
+      "visit_datetime": "2026-09-10T05:45:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "인테리어가 멋져요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 144,
+      "menu_matches": [
+        "파브로바"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "beef9619b421a78f69186ef3",
+    "text": "모르스 색이 예쁘고 맛도 새콤달콤해요. 여름에 또 마시러 올게요.",
+    "created_at": "2026-09-12T00:00:00+09:00",
+    "rating": null,
+    "author": "서****",
+    "menu_ids": [
+      "mors"
+    ],
+    "extra": {
+      "created_raw": "9.12.토",
+      "visited_raw": "9.11.금",
+      "visit_datetime": "2026-09-11T04:45:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "양이 많아요",
+        "인테리어가 멋져요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 169,
+      "menu_matches": [
+        "모르스"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "89fb39aae296468606eec0b1",
+    "text": "사워크림 케이크 맛은 좋았는데 냉장고에서 바로 나와서 조금 딱딱했어요.",
+    "created_at": "2026-09-10T00:00:00+09:00",
+    "rating": 3.5,
+    "author": "m****",
+    "menu_ids": [
+      "smetannik"
+    ],
+    "extra": {
+      "created_raw": "9.10.목",
+      "visited_raw": "9.8.화",
+      "visit_datetime": "2026-09-08T03:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "매장이 청결해요",
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": "솔직한 후기 감사합니다. 말씀해 주신 부분은 더 신경 쓰겠습니다.",
+      "language": "ko",
+      "view_count": 346,
+      "menu_matches": [
+        "사워크림케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "d652216fca70f29c667e5219",
+    "text": "메도빅 홀케이크로 회사 동료 생일 챙겼는데 다들 어디서 샀냐고 물어봤어요.",
+    "created_at": "2026-09-08T00:00:00+09:00",
+    "rating": null,
+    "author": "임****",
+    "menu_ids": [
+      "medovik-whole"
+    ],
+    "extra": {
+      "created_raw": "9.8.화",
+      "visited_raw": "9.4.금",
+      "visit_datetime": "2026-09-04T07:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 496,
+      "menu_matches": [
+        "메도빅홀케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "d7698e6a4f0f7f426313dd8b",
+    "text": "크랜베리 에이드 진짜 상큼해요. 단맛보다 새콤한 맛이 강해서 케이크랑 잘 어울려요.",
+    "created_at": "2026-09-03T00:00:00+09:00",
+    "rating": null,
+    "author": "h****",
+    "menu_ids": [
+      "mors"
+    ],
+    "extra": {
+      "created_raw": "9.3.목",
+      "visited_raw": "9.1.화",
+      "visit_datetime": "2026-09-01T06:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Mors",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 80,
+      "menu_matches": [
+        "크랜베리에이드"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "5139f0eddb429c0240d4bd5f",
+    "text": "가격이 조금씩 오른 것 같아요. 맛은 여전히 좋지만 자주 오기엔 부담돼요.",
+    "created_at": "2026-09-01T00:00:00+09:00",
+    "rating": 2.0,
+    "author": "g****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "9.1.화",
+      "visited_raw": "8.31.월",
+      "visit_datetime": "2026-08-31T10:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "price",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-44.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 206,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "63b01ca73674cd36b087cc02",
+    "text": "사장님이 러시아 디저트 이야기를 재미있게 해 주셔서 즐거웠어요. 버드밀크 꼭 드셔보세요.",
+    "created_at": "2026-08-31T00:00:00+09:00",
+    "rating": null,
+    "author": "한****",
+    "menu_ids": [
+      "ptichye-moloko"
+    ],
+    "extra": {
+      "created_raw": "8.31.월",
+      "visited_raw": "8.27.목",
+      "visit_datetime": "2026-08-27T08:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Bird's Milk Cake",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 485,
+      "menu_matches": [
+        "버드밀크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "02acef322882984f6665709b",
+    "text": "치즈케이크는 무난했어요. 여기서는 러시아 케이크를 먹는 게 더 나은 것 같아요.",
+    "created_at": "2026-08-30T00:00:00+09:00",
+    "rating": 3.5,
+    "author": "조****",
+    "menu_ids": [
+      "cheesecake"
+    ],
+    "extra": {
+      "created_raw": "8.30.일",
+      "visited_raw": "8.28.금",
+      "visit_datetime": "2026-08-28T04:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "특별한 메뉴가 있어요",
+        "매장이 청결해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-42.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 39,
+      "menu_matches": [
+        "치즈케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "78a2b140255fd2706407ed60",
+    "text": "초코 꿀케이크 먹어봤는데 기본 메도빅이랑 또 다른 매력이 있어요.",
+    "created_at": "2026-08-29T00:00:00+09:00",
+    "rating": null,
+    "author": "안****",
+    "menu_ids": [
+      "medovik-choco"
+    ],
+    "extra": {
+      "created_raw": "8.29.토",
+      "visited_raw": "8.27.목",
+      "visit_datetime": "2026-08-27T03:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "친절해요",
+        "음료가 맛있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 202,
+      "menu_matches": [
+        "초코꿀케이크",
+        "메도빅"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "22de9306468739f856acb842",
+    "text": "허니레몬티가 목 아플 때 마시기 좋아요. 꿀 향이 은은해요.",
+    "created_at": "2026-08-27T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "강****",
+    "menu_ids": [
+      "honey-lemon-tea"
+    ],
+    "extra": {
+      "created_raw": "8.27.목",
+      "visited_raw": "8.25.화",
+      "visit_datetime": "2026-08-25T06:15:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [
+        "인테리어가 멋져요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-40.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 52,
+      "menu_matches": [
+        "허니레몬티"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "462fa62cf6fce4730907c791",
+    "text": "평일 저녁에 갔더니 나폴레옹 말고는 케이크가 몇 개 안 남아 있었어요. 일찍 가는 걸 추천해요.",
+    "created_at": "2026-08-26T00:00:00+09:00",
+    "rating": null,
+    "author": "류****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "8.26.수",
+      "visited_raw": "8.22.토",
+      "visit_datetime": "2026-08-22T06:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "menu",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 469,
+      "menu_matches": [
+        "나폴레옹"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "e43d55bbd4165e0061bf5046",
+    "text": "디카페인으로 바꿔서 아메리카노 마셨는데 고소하고 산미가 적어서 좋았어요.",
+    "created_at": "2026-08-22T00:00:00+09:00",
+    "rating": null,
+    "author": "권****",
+    "menu_ids": [
+      "americano"
+    ],
+    "extra": {
+      "created_raw": "8.22.토",
+      "visited_raw": "8.20.목",
+      "visit_datetime": "2026-08-20T08:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "가성비가 좋아요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-38.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 142,
+      "menu_matches": [
+        "아메리카노"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "fc6bbdea771b75b2a657adf8",
+    "text": "나폴레옹 케이크 층이 정말 많아요. 커스터드가 부드러워서 입에서 녹아요.",
+    "created_at": "2026-08-21T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "서****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "8.21.금",
+      "visited_raw": "8.17.월",
+      "visit_datetime": "2026-08-17T04:30:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [
+        "인테리어가 멋져요",
+        "매장이 청결해요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Napoleon",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 258,
+      "menu_matches": [
+        "나폴레옹케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "ecf849096c92d2f87b3fa45b",
+    "text": "카푸치노 거품은 풍성했는데 온도가 조금 미지근했어요.",
+    "created_at": "2026-08-18T00:00:00+09:00",
+    "rating": 4.0,
+    "author": "장****",
+    "menu_ids": [
+      "cappuccino"
+    ],
+    "extra": {
+      "created_raw": "8.18.화",
+      "visited_raw": "8.16.일",
+      "visit_datetime": "2026-08-16T06:15:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Cake",
+      "origin_type": "영수증",
+      "owner_reply": "솔직한 후기 감사합니다. 말씀해 주신 부분은 더 신경 쓰겠습니다.",
+      "language": "ko",
+      "view_count": 483,
+      "menu_matches": [
+        "카푸치노"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "4afde78437cfc1a8418e3f01",
+    "text": "베리 타르트 위에 과일이 듬뿍 올라가 있어요. 타르트지가 고소하고 바삭해요.",
+    "created_at": "2026-08-17T00:00:00+09:00",
+    "rating": null,
+    "author": "e****",
+    "menu_ids": [
+      "berry-tart"
+    ],
+    "extra": {
+      "created_raw": "8.17.월",
+      "visited_raw": "8.15.토",
+      "visit_datetime": "2026-08-15T04:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "디저트가 맛있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Berry Tart",
+      "origin_type": "결제내역",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 99,
+      "menu_matches": [
+        "베리타르트",
+        "타르트"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "c16c73ee72bd43e50c77695a",
+    "text": "꿀케이크랑 밀크티 조합 강추합니다. 밀크티가 많이 달지 않아서 좋았어요.",
+    "created_at": "2026-08-15T00:00:00+09:00",
+    "rating": null,
+    "author": "t****",
+    "menu_ids": [
+      "milk-tea"
+    ],
+    "extra": {
+      "created_raw": "8.15.토",
+      "visited_raw": "8.15.토",
+      "visit_datetime": "2026-08-15T04:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Cake",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 346,
+      "menu_matches": [
+        "꿀케이크",
+        "밀크티"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "cd71474e7dad06001fb474cc",
+    "text": "포장해 간 머랭 롤이 상자 안에서 조금 쓰러져 있었어요. 포장을 더 단단히 해 주시면 좋겠어요.",
+    "created_at": "2026-08-12T00:00:00+09:00",
+    "rating": null,
+    "author": "권****",
+    "menu_ids": [
+      "meringue-roll"
+    ],
+    "extra": {
+      "created_raw": "8.12.수",
+      "visited_raw": "8.12.수",
+      "visit_datetime": "2026-08-12T06:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "packaging",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 195,
+      "menu_matches": [
+        "머랭롤"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "ecc2bfc1e5d709be4654b2d5",
+    "text": "오레쉬키 안에 캐러멜이 들어 있어서 하나만 먹어도 만족스러워요. 선물용으로 샀어요.",
+    "created_at": "2026-08-10T00:00:00+09:00",
+    "rating": null,
+    "author": "송****",
+    "menu_ids": [
+      "oreshki"
+    ],
+    "extra": {
+      "created_raw": "8.10.월",
+      "visited_raw": "8.7.금",
+      "visit_datetime": "2026-08-07T05:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "매장이 청결해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 358,
+      "menu_matches": [
+        "오레쉬키"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "d9d479c305399e5251aa0c56",
+    "text": "얼그레이 향이 진하고 깔끔해요. 케이크랑 같이 마시기 딱 좋은 차예요.",
+    "created_at": "2026-08-06T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "홍****",
+    "menu_ids": [
+      "earl-grey"
+    ],
+    "extra": {
+      "created_raw": "8.6.목",
+      "visited_raw": "8.4.화",
+      "visit_datetime": "2026-08-04T03:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "양이 많아요",
+        "매장이 청결해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-31.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 358,
+      "menu_matches": [
+        "얼그레이"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "4942baa0295aa4c36e49ec45",
+    "text": "당근 케이크는 향신료 향이 좋았는데 크림치즈가 조금 적었어요.",
+    "created_at": "2026-08-05T00:00:00+09:00",
+    "rating": 4.0,
+    "author": "y****",
+    "menu_ids": [
+      "carrot-cake"
+    ],
+    "extra": {
+      "created_raw": "8.5.수",
+      "visited_raw": "8.5.수",
+      "visit_datetime": "2026-08-05T04:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 58,
+      "menu_matches": [
+        "당근케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "b4c6960248494ac5abe18336",
+    "text": "머랭롤 처음 먹어봤는데 겉은 바삭, 안은 촉촉. 크림도 가벼워서 금방 다 먹었어요.",
+    "created_at": "2026-08-03T00:00:00+09:00",
+    "rating": null,
+    "author": "p****",
+    "menu_ids": [
+      "meringue-roll"
+    ],
+    "extra": {
+      "created_raw": "8.3.월",
+      "visited_raw": "7.30.목",
+      "visit_datetime": "2026-07-30T04:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "특별한 메뉴가 있어요",
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-29.jpg"
+        }
+      ],
+      "receipt_item": "Meringue Roll",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 370,
+      "menu_matches": [
+        "머랭롤"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "b0041fda4de27974a1a4dd4f",
+    "text": "자몽에이드 시키려고 했는데 재료 소진이라고 해서 다른 걸로 바꿨어요.",
+    "created_at": "2026-08-02T00:00:00+09:00",
+    "rating": null,
+    "author": "f****",
+    "menu_ids": [
+      "grapefruit-ade"
+    ],
+    "extra": {
+      "created_raw": "8.2.일",
+      "visited_raw": "8.2.일",
+      "visit_datetime": "2026-08-02T07:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "menu",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 315,
+      "menu_matches": [
+        "자몽에이드"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "50df48a96889ad53a3c065d9",
+    "text": "선물용으로 나폴레옹 두 조각을 샀는데 받는 분이 정말 좋아했어요.",
+    "created_at": "2026-08-01T00:00:00+09:00",
+    "rating": null,
+    "author": "한****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "8.1.토",
+      "visited_raw": "7.31.금",
+      "visit_datetime": "2026-07-31T03:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "매장이 청결해요",
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 567,
+      "menu_matches": [
+        "나폴레옹"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "766ec9214996dcc11c44e2bc",
+    "text": "레몬에이드 탄산이 세지 않고 레몬 맛이 진해서 좋았어요.",
+    "created_at": "2026-07-28T00:00:00+09:00",
+    "rating": null,
+    "author": "r****",
+    "menu_ids": [
+      "lemon-ade"
+    ],
+    "extra": {
+      "created_raw": "7.28.화",
+      "visited_raw": "7.28.화",
+      "visit_datetime": "2026-07-28T06:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Lemonade",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 113,
+      "menu_matches": [
+        "레몬에이드"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "c4b5c5701d204338dee80b67",
+    "text": "Medovik 먹으러 친구랑 왔어요. 고향에서 먹던 맛이랑 비슷하다고 친구가 좋아했어요.",
+    "created_at": "2026-07-27T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "j****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "7.27.월",
+      "visited_raw": "7.23.목",
+      "visit_datetime": "2026-07-23T06:15:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "매장이 청결해요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 510,
+      "menu_matches": [
+        "medovik"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "176b747f1bf74b48e0281708",
+    "text": "프라하 초코 케이크는 진했는데 시트가 조금 퍽퍽했어요. 커피랑 먹으면 괜찮아요.",
+    "created_at": "2026-07-25T00:00:00+09:00",
+    "rating": null,
+    "author": "y****",
+    "menu_ids": [
+      "praga"
+    ],
+    "extra": {
+      "created_raw": "7.25.토",
+      "visited_raw": "7.23.목",
+      "visit_datetime": "2026-07-23T05:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "매장이 청결해요",
+        "특별한 메뉴가 있어요",
+        "양이 많아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 539,
+      "menu_matches": [
+        "프라하초코케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "ed5a816b68c90efeb734245d",
+    "text": "Napoleon cake was flaky and creamy. 영어로 주문해도 친절하게 받아주세요.",
+    "created_at": "2026-07-24T00:00:00+09:00",
+    "rating": null,
+    "author": "임****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "7.24.금",
+      "visited_raw": "7.24.금",
+      "visit_datetime": "2026-07-24T07:15:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [
+        "특별한 메뉴가 있어요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "service",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-23.jpg"
+        }
+      ],
+      "receipt_item": "Napoleon",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 171,
+      "menu_matches": [
+        "napoleon"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "9bde764fa14ea214119b905c",
+    "text": "빅 에클레어 크기 보고 놀랐어요. 둘이서 하나 나눠 먹어도 충분합니다.",
+    "created_at": "2026-07-23T00:00:00+09:00",
+    "rating": 4.5,
+    "author": "n****",
+    "menu_ids": [
+      "big-eclair"
+    ],
+    "extra": {
+      "created_raw": "7.23.목",
+      "visited_raw": "7.23.목",
+      "visit_datetime": "2026-07-23T09:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 130,
+      "menu_matches": [
+        "빅에클레어"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "0da82869a7d2bee976f2432b",
+    "text": "둘이 가서 꿀케이크와 나폴레옹을 골랐는데 둘 다 만족스러웠어요.",
+    "created_at": "2026-07-20T00:00:00+09:00",
+    "rating": null,
+    "author": "오****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "7.20.월",
+      "visited_raw": "7.18.토",
+      "visit_datetime": "2026-07-18T10:15:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Napoleon",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 383,
+      "menu_matches": [
+        "꿀케이크",
+        "나폴레옹"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "0bfa0cd06905742a10b6a7f5",
+    "text": "제브라 케이크 단면이 예뻐서 사진 찍기 좋아요. 맛도 부드러운 바닐라 맛이에요.",
+    "created_at": "2026-07-16T00:00:00+09:00",
+    "rating": null,
+    "author": "f****",
+    "menu_ids": [
+      "zebra"
+    ],
+    "extra": {
+      "created_raw": "7.16.목",
+      "visited_raw": "7.16.목",
+      "visit_datetime": "2026-07-16T08:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "음료가 맛있어요",
+        "친절해요",
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-20.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 478,
+      "menu_matches": [
+        "제브라케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "435255b0c548f6a825752204",
+    "text": "줄이 길어서 30분 넘게 기다렸어요. 대기 순서 안내가 조금 더 체계적이면 좋겠어요.",
+    "created_at": "2026-07-14T00:00:00+09:00",
+    "rating": null,
+    "author": "윤****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "7.14.화",
+      "visited_raw": "7.14.화",
+      "visit_datetime": "2026-07-14T08:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "1시간 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "waiting",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 553,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "37157ea4181706db63cbc8a4",
+    "text": "오블레피하 차 처음 마셔봤는데 새콤하고 향이 독특해요. 몸이 따뜻해지는 느낌!",
+    "created_at": "2026-07-12T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "한****",
+    "menu_ids": [
+      "sea-buckthorn-tea"
+    ],
+    "extra": {
+      "created_raw": "7.12.일",
+      "visited_raw": "7.8.수",
+      "visit_datetime": "2026-07-08T06:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "매장이 청결해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Sea Buckthorn Tea",
+      "origin_type": "결제내역",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 277,
+      "menu_matches": [
+        "오블레피하차"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "8bd377e4f18df39df0726c4a",
+    "text": "나폴레옹 단맛은 사람마다 다르게 느끼나 봐요. 저는 덜 달다고 느꼈는데 친구는 좀 달다고 했어요.",
+    "created_at": "2026-07-11T00:00:00+09:00",
+    "rating": null,
+    "author": "t****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "7.11.토",
+      "visited_raw": "7.7.화",
+      "visit_datetime": "2026-07-07T10:30:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-17.jpg"
+        }
+      ],
+      "receipt_item": "Napoleon",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 460,
+      "menu_matches": [
+        "나폴레옹"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "7d941b36c11ecf4b5d656c71",
+    "text": "미니 에클레어 세 개 들어 있어서 나눠 먹기 좋아요. 크림이 꽉 차 있어요.",
+    "created_at": "2026-07-09T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "류****",
+    "menu_ids": [
+      "mini-eclair"
+    ],
+    "extra": {
+      "created_raw": "7.9.목",
+      "visited_raw": "7.9.목",
+      "visit_datetime": "2026-07-09T03:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-16.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": "찾아 주셔서 감사합니다! 다음에도 맛있는 케이크로 기다릴게요.",
+      "language": "ko",
+      "view_count": 41,
+      "menu_matches": [
+        "미니에클레어"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "7d3112321f759f54bd3cfde6",
+    "text": "스메타닉 맛있었는데 단 걸 별로 안 좋아하는 저한테는 조금 달았어요.",
+    "created_at": "2026-07-07T00:00:00+09:00",
+    "rating": null,
+    "author": "r****",
+    "menu_ids": [
+      "smetannik"
+    ],
+    "extra": {
+      "created_raw": "7.7.화",
+      "visited_raw": "7.4.토",
+      "visit_datetime": "2026-07-04T03:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "포장이 꼼꼼해요",
+        "특별한 메뉴가 있어요",
+        "양이 많아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": "솔직한 후기 감사합니다. 말씀해 주신 부분은 더 신경 쓰겠습니다.",
+      "language": "ko",
+      "view_count": 161,
+      "menu_matches": [
+        "스메타닉"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "dd5cf893f4bb8ac5bb003f25",
+    "text": "파블로바 겉은 바삭하고 속은 쫀득해요. 베리 산미 덕분에 마지막까지 안 질려요.",
+    "created_at": "2026-07-06T00:00:00+09:00",
+    "rating": null,
+    "author": "홍****",
+    "menu_ids": [
+      "pavlova"
+    ],
+    "extra": {
+      "created_raw": "7.6.월",
+      "visited_raw": "7.3.금",
+      "visit_datetime": "2026-07-03T05:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "가성비가 좋아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 350,
+      "menu_matches": [
+        "파블로바"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "1423c541bdd146f980327ead",
+    "text": "아이스 라떼가 너무 연했어요. 케이크는 괜찮았는데 음료는 다시 시킬지 모르겠어요.",
+    "created_at": "2026-07-03T00:00:00+09:00",
+    "rating": null,
+    "author": "강****",
+    "menu_ids": [
+      "latte"
+    ],
+    "extra": {
+      "created_raw": "7.3.금",
+      "visited_raw": "7.3.금",
+      "visit_datetime": "2026-07-03T10:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "taste",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 313,
+      "menu_matches": [
+        "라떼"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "9b38345dc00b29601e9fc49b",
+    "text": "시르니키 따뜻하게 데워 주셔서 좋았어요. 사워크림 찍어 먹으니 고소해요.",
+    "created_at": "2026-07-02T00:00:00+09:00",
+    "rating": null,
+    "author": "c****",
+    "menu_ids": [
+      "syrniki"
+    ],
+    "extra": {
+      "created_raw": "7.2.목",
+      "visited_raw": "6.30.화",
+      "visit_datetime": "2026-06-30T05:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "Syrniki",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 80,
+      "menu_matches": [
+        "시르니키"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "e0c7eb043ac5700a515c13d0",
+    "text": "생일이라 메도빅 홀케이크 예약했는데 포장도 예쁘고 가족들 반응이 최고였어요.",
+    "created_at": "2026-06-28T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "m****",
+    "menu_ids": [
+      "medovik-whole"
+    ],
+    "extra": {
+      "created_raw": "6.28.일",
+      "visited_raw": "6.28.일",
+      "visit_datetime": "2026-06-28T08:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "디저트가 맛있어요",
+        "친절해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-11.jpg"
+        }
+      ],
+      "receipt_item": "Medovik Whole Cake",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 58,
+      "menu_matches": [
+        "메도빅홀케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "8e531ce4962db48d610fb6ff",
+    "text": "디저트는 전부 만족스러웠지만 좌석이 몇 개 없어서 편하게 머물기는 어려웠어요.",
+    "created_at": "2026-06-26T00:00:00+09:00",
+    "rating": null,
+    "author": "t****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "6.26.금",
+      "visited_raw": "6.24.수",
+      "visit_datetime": "2026-06-24T08:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "포장이 꼼꼼해요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "10분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "space",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 598,
+      "menu_matches": [],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "67268641f1df95888bdd9e15",
+    "text": "초코 메도빅 진하고 꾸덕해요. 쌉쌀한 아메리카노를 곁들이니 균형이 맞았습니다.",
+    "created_at": "2026-06-25T00:00:00+09:00",
+    "rating": null,
+    "author": "신****",
+    "menu_ids": [
+      "medovik-choco",
+      "americano"
+    ],
+    "extra": {
+      "created_raw": "6.25.목",
+      "visited_raw": "6.24.수",
+      "visit_datetime": "2026-06-24T07:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-9.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 387,
+      "menu_matches": [
+        "초코메도빅",
+        "아메리카노"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "1db57860828ae581b4ec4f8e",
+    "text": "키예프 케이크 먹으러 일부러 왔는데 품절이라 못 먹었어요. 미리 알려주시면 좋겠어요.",
+    "created_at": "2026-06-23T00:00:00+09:00",
+    "rating": null,
+    "author": "한****",
+    "menu_ids": [
+      "kievsky"
+    ],
+    "extra": {
+      "created_raw": "6.23.화",
+      "visited_raw": "6.21.일",
+      "visit_datetime": "2026-06-21T08:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_acquaintance",
+          "keywords": [
+            "지인・동료"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "menu",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 134,
+      "menu_matches": [
+        "키예프케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "b1723dc3f5d117d2d4fcb33c",
+    "text": "직원분이 메뉴마다 어떤 맛인지 친절하게 설명해 주셨어요. 허니케이크랑 홍차 조합 추천합니다.",
+    "created_at": "2026-06-22T00:00:00+09:00",
+    "rating": null,
+    "author": "박****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "6.22.월",
+      "visited_raw": "6.19.금",
+      "visit_datetime": "2026-06-19T06:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "매장이 청결해요",
+        "특별한 메뉴가 있어요",
+        "인테리어가 멋져요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "service",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 90,
+      "menu_matches": [
+        "허니케이크"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  },
+  {
+    "id": "d9cb37546a4684cbbac0696d",
+    "text": "모르스가 상큼해서 좋았는데 따뜻하게는 안 된다고 하셔서 조금 아쉬웠어요.",
+    "created_at": "2026-06-19T00:00:00+09:00",
+    "rating": null,
+    "author": "s****",
+    "menu_ids": [
+      "mors"
+    ],
+    "extra": {
+      "created_raw": "6.19.금",
+      "visited_raw": "6.16.화",
+      "visit_datetime": "2026-06-16T05:30:00.000Z",
+      "visit_count": 2,
+      "voted_keywords": [
+        "디저트가 맛있어요",
+        "양이 많아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_alone",
+          "keywords": [
+            "혼자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "menu",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 162,
+      "menu_matches": [
+        "모르스"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "3bb1f348b9064a313dd2bf80",
+    "text": "버드밀크 케이크 식감이 마시멜로처럼 폭신해요. 초코 코팅도 얇아서 느끼하지 않았어요.",
+    "created_at": "2026-06-18T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "홍****",
+    "menu_ids": [
+      "ptichye-moloko"
+    ],
+    "extra": {
+      "created_raw": "6.18.목",
+      "visited_raw": "6.18.목",
+      "visit_datetime": "2026-06-18T05:15:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "친절해요",
+        "가성비가 좋아요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 63,
+      "menu_matches": [
+        "버드밀크케이크"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "03ae3209d203759227340b20",
+    "text": "사워베리 메도빅 기대했는데 생각보다 새콤함이 약했어요. 가격 대비 조각이 조금 작게 느껴졌습니다.",
+    "created_at": "2026-06-16T00:00:00+09:00",
+    "rating": null,
+    "author": "김****",
+    "menu_ids": [
+      "medovik-sour-berry"
+    ],
+    "extra": {
+      "created_raw": "6.16.화",
+      "visited_raw": "6.15.월",
+      "visit_datetime": "2026-06-15T06:45:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_celebration",
+          "keywords": [
+            "기념일"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "neutral"
+        },
+        {
+          "theme": "price",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 204,
+      "menu_matches": [
+        "사워베리메도빅"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "135b36f6218f0a4e11d6761c",
+    "text": "라프 커피라는 걸 처음 알았어요. 바닐라 향이 은은하고 부드러워서 케이크랑 잘 맞아요.",
+    "created_at": "2026-06-12T00:00:00+09:00",
+    "rating": null,
+    "author": "n****",
+    "menu_ids": [
+      "raf"
+    ],
+    "extra": {
+      "created_raw": "6.12.금",
+      "visited_raw": "6.12.금",
+      "visit_datetime": "2026-06-12T03:30:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_takeout",
+          "keywords": [
+            "포장"
+          ]
+        },
+        {
+          "category": "v_friend",
+          "keywords": [
+            "친구"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [],
+      "receipt_item": "",
+      "origin_type": "결제내역",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 512,
+      "menu_matches": [
+        "라프커피"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "156e5ac5e399f58d11c04f35",
+    "text": "나폴레옹은 바삭하고 맛있었는데 주말 오후라 자리가 없어서 포장해 왔어요.",
+    "created_at": "2026-06-11T00:00:00+09:00",
+    "rating": null,
+    "author": "이****",
+    "menu_ids": [
+      "napoleon"
+    ],
+    "extra": {
+      "created_raw": "6.11.목",
+      "visited_raw": "6.11.목",
+      "visit_datetime": "2026-06-11T04:00:00.000Z",
+      "visit_count": 3,
+      "voted_keywords": [
+        "음료가 맛있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "30분 이내"
+          ]
+        },
+        {
+          "category": "v_date",
+          "keywords": [
+            "데이트"
+          ]
+        },
+        {
+          "category": "v_family",
+          "keywords": [
+            "가족"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        },
+        {
+          "theme": "space",
+          "sentiment": "negative"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-2.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 375,
+      "menu_matches": [
+        "나폴레옹"
+      ],
+      "family_mentions": []
+    }
+  },
+  {
+    "id": "514e81c366088022e7ebbd69",
+    "text": "꿀케이크 처음 먹어봤는데 시트가 얇고 촉촉해서 계속 손이 가요. 다음엔 한 판 사갈래요.",
+    "created_at": "2026-06-09T00:00:00+09:00",
+    "rating": 5.0,
+    "author": "y****",
+    "menu_ids": [],
+    "extra": {
+      "created_raw": "6.9.화",
+      "visited_raw": "6.7.일",
+      "visit_datetime": "2026-06-07T09:00:00.000Z",
+      "visit_count": 1,
+      "voted_keywords": [
+        "포장이 꼼꼼해요",
+        "친절해요",
+        "특별한 메뉴가 있어요"
+      ],
+      "visit_keywords": [
+        {
+          "category": "v_no_reservation",
+          "keywords": [
+            "예약 없이 이용"
+          ]
+        },
+        {
+          "category": "대기 시간",
+          "keywords": [
+            "바로 입장"
+          ]
+        },
+        {
+          "category": "v_daily_routine",
+          "keywords": [
+            "일상"
+          ]
+        },
+        {
+          "category": "v_couple",
+          "keywords": [
+            "연인・배우자"
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "theme": "taste",
+          "sentiment": "positive"
+        }
+      ],
+      "media": [
+        {
+          "type": "image",
+          "url": "https://example.com/dummy/review-1.jpg"
+        }
+      ],
+      "receipt_item": "",
+      "origin_type": "영수증",
+      "owner_reply": null,
+      "language": "ko",
+      "view_count": 33,
+      "menu_matches": [
+        "꿀케이크"
+      ],
+      "family_mentions": [
+        "medovik"
+      ]
+    }
+  }
+]

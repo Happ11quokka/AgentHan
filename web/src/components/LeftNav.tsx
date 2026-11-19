@@ -27,6 +27,24 @@ export const QUICK: Array<{ key: string; label: string; hint: string; icon: Icon
 
 export type Quick = (typeof QUICK)[number];
 
+/**
+ * 전화 주문(Part C) 화면으로 가는 링크. 사장님 주문 카드 화면은 `?key=`가 있어야 열리므로
+ * 지금 주소에 key가 있으면 그대로 넘긴다.
+ */
+function phoneLinks(search: string): Array<{ key: string; label: string; hint: string; icon: IconName; href: string }> {
+  const ownerKey = new URLSearchParams(search).get("key");
+  return [
+    { key: "phone", label: "손님으로 전화 걸기", hint: "AI가 받는 전화 주문", icon: "phone", href: "/phone" },
+    {
+      key: "owner",
+      label: "전화 주문 카드",
+      hint: "들어온 주문·손님 질문",
+      icon: "receipt",
+      href: ownerKey ? `/owner?key=${encodeURIComponent(ownerKey)}` : "/owner",
+    },
+  ];
+}
+
 type Props = {
   recent: Recent[];
   current: string | null;
@@ -73,6 +91,23 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
                 </span>
               )}
             </button>
+          </li>
+        ))}
+      </ul>
+
+      <h2 className="nav-title">전화 주문</h2>
+      <ul className="quick">
+        {phoneLinks(window.location.search).map((l) => (
+          <li key={l.key}>
+            <a href={l.href} target="_blank" rel="noreferrer" aria-describedby={`phone-${l.key}`}>
+              <span className="quick-icon" aria-hidden>
+                <Icon name={l.icon} />
+              </span>
+              <span className="quick-text">
+                <strong>{l.label}</strong>
+                <small id={`phone-${l.key}`}>{l.hint}</small>
+              </span>
+            </a>
           </li>
         ))}
       </ul>

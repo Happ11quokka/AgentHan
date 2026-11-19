@@ -1,0 +1,544 @@
+/* 사장님 화면 전용. 클래스는 모두 owner- 접두어(다른 화면과 겹치지 않게). 노트북·태블릿 가로 화면 기준. */
+.owner {
+  --owner-accent: #1f7a4d;
+  --owner-danger: #c0392b;
+  --owner-muted: #6b7280;
+  --owner-line: rgba(127, 127, 127, 0.3);
+  --owner-new-bg: rgba(31, 122, 77, 0.1);
+  /* 카드 색 3단계 (티켓 08): 픽업까지 여유 · 곧 · 지남. 경계값은 alertSettings.ts */
+  --owner-band-relaxed: #2563eb;
+  --owner-band-soon: #d97706;
+  --owner-band-late: #dc2626;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.owner-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+
+.owner-head h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.owner-status {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+.owner-status-live {
+  color: var(--owner-accent);
+  font-weight: 700;
+}
+
+.owner-status-failed {
+  color: var(--owner-danger);
+}
+
+.owner-btn {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 28px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  color: #fff;
+  background: var(--owner-accent);
+}
+
+.owner-orders {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.owner-empty {
+  color: var(--owner-muted);
+}
+
+.owner-card {
+  border: 1px solid var(--owner-line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.owner-card-new {
+  background: var(--owner-new-bg);
+  border-color: var(--owner-accent);
+}
+
+.owner-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.owner-pickup {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.owner-total {
+  font-size: 20px;
+}
+
+.owner-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 20px;
+}
+
+.owner-lines li + li {
+  margin-top: 6px;
+}
+
+.owner-qty {
+  font-weight: 700;
+}
+
+/* 사장님 언어 (티켓 03). 원어 이름 크게, 한국어 이름 작게. 요청은 번역 + 한국어 원문 + 배지 */
+.owner-name {
+  font-weight: 700;
+}
+
+.owner-name-ko {
+  margin-left: 8px;
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
+.owner-request {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.owner-request p {
+  margin: 2px 0 0;
+}
+
+.owner-request-ko {
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
+.owner-badges {
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.owner-badge {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--owner-danger);
+}
+
+.owner-badge-allergy {
+  background: #7c2d12;
+}
+
+.owner-heard-ko {
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
+.owner-heard-ko summary {
+  cursor: pointer;
+}
+
+.owner-pickup-label {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--owner-muted);
+}
+
+/* 주문 카드 주문 시각 · 손님 이름 (리뷰 P1) */
+.owner-order-meta {
+  margin: 0;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--owner-muted);
+}
+
+/* Papago 표기 (이용 조건: 브랜드 표기와 링크) */
+.owner-foot {
+  margin: 24px 0 8px;
+  text-align: right;
+  font-size: 13px;
+}
+
+.owner-foot a {
+  color: var(--owner-muted);
+}
+
+.owner-accepted {
+  margin: 0;
+  color: var(--owner-muted);
+  font-weight: 700;
+}
+
+/* 답을 못 받은 손님 질문이 있던 주문 (티켓 06) */
+.owner-check {
+  margin: 0;
+  color: var(--owner-band-late);
+  font-weight: 700;
+}
+
+/* 알림 소리 상태 (티켓 08). 가게 열기 전에는 브라우저가 소리를 막는다 */
+.owner-sound {
+  margin: 0;
+  font-size: 14px;
+  color: var(--owner-muted);
+}
+
+.owner-sound-locked,
+.owner-sound-unavailable {
+  color: var(--owner-danger);
+}
+
+/* 카드 색 3단계 (티켓 08). 왼쪽 굵은 띠와 픽업 시각 글자색. 픽업 시각이 없으면(none) 기본색 */
+.owner-band-relaxed,
+.owner-band-soon,
+.owner-band-late {
+  border-left-width: 10px;
+}
+
+.owner-band-relaxed {
+  border-left-color: var(--owner-band-relaxed);
+}
+
+.owner-band-soon {
+  border-left-color: var(--owner-band-soon);
+}
+
+.owner-band-late {
+  border-left-color: var(--owner-band-late);
+}
+
+.owner-band-soon .owner-pickup {
+  color: var(--owner-band-soon);
+}
+
+.owner-band-late .owner-pickup {
+  color: var(--owner-band-late);
+}
+
+/* 새 주문 깜빡임 (티켓 08): 카드가 뜰 때 몇 번, 리마인드 때 한 번 더(애니메이션 이름이 바뀌면 다시 돈다) */
+@keyframes owner-blink {
+  from {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  to {
+    box-shadow: 0 0 0 6px var(--owner-accent);
+  }
+}
+
+@keyframes owner-blink-again {
+  from {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  to {
+    box-shadow: 0 0 0 6px var(--owner-accent);
+  }
+}
+
+.owner-card-new {
+  animation: owner-blink 0.45s ease-in-out 6 alternate;
+}
+
+.owner-card-new.owner-card-remind {
+  animation-name: owner-blink-again;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owner-card-new {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--owner-accent);
+  }
+}
+
+/* 통화 카드 (티켓 02). 맨 위 줄: 통화 중. 그 아래: 손님 연락 필요(넘김)·회색 미완료 */
+.owner-calls {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.owner-call-live {
+  border-style: dashed;
+  border-color: var(--owner-accent);
+}
+
+.owner-call-handoff {
+  border-color: var(--owner-danger);
+  border-width: 2px;
+}
+
+.owner-call-missed {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--owner-muted);
+}
+
+.owner-call-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.owner-call-live .owner-call-title {
+  color: var(--owner-accent);
+}
+
+.owner-call-handoff .owner-call-title {
+  color: var(--owner-danger);
+}
+
+.owner-call-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--owner-muted);
+}
+
+.owner-call-reason,
+.owner-call-empty {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+.owner-heard {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 16px;
+}
+
+.owner-btn-dismiss {
+  background: var(--owner-muted);
+}
+
+/* 통화 자막 (티켓 10): 통화 중 카드 아래 최근 4줄. 손님 말은 번역 + 작은 원문, AI 말은 회색 한 줄 */
+.owner-captions {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--owner-line);
+  display: grid;
+  gap: 4px;
+  font-size: 16px;
+}
+
+.owner-caption-who {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--owner-muted);
+}
+
+.owner-caption-customer .owner-caption-who {
+  color: var(--owner-accent);
+}
+
+.owner-caption-ko {
+  display: block;
+  font-size: 14px;
+  color: var(--owner-muted);
+}
+
+.owner-caption-bot {
+  color: var(--owner-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 질문 카드 (티켓 05): 답을 기다리는 손님 질문. 통화 중 줄 바로 아래, 가장 눈에 띄게 */
+.owner-questions {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.owner-question {
+  border-color: var(--owner-band-soon);
+  border-width: 2px;
+}
+
+.owner-question-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.owner-question-left {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--owner-band-soon);
+}
+
+.owner-question-late {
+  color: var(--owner-band-late);
+}
+
+/* 접힌 질문 카드 머리: 누르면 펼쳐지고 그때 열람을 알린다 (리뷰 P4) */
+.owner-question-head {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.owner-question-head::-webkit-details-marker {
+  display: none;
+}
+
+.owner-question-open {
+  flex-basis: 100%;
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
+.owner-question[open] .owner-question-open {
+  display: none;
+}
+
+.owner-question-text {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* 번역이 있을 때 그 아래 작은 한국어 원문 (티켓 03) */
+.owner-question-ko {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--owner-muted);
+}
+
+.owner-question-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owner-btn-answer {
+  flex: 1 1 0;
+  padding: 12px 8px;
+}
+
+.owner-btn-no {
+  background: var(--owner-danger);
+}
+
+.owner-btn-unsure {
+  background: var(--owner-muted);
+}
+
+/* 질문 카드 자유 입력 (티켓 07). 접혀 있다. 손님에게는 번역 문자로만 간다 */
+.owner-written summary {
+  cursor: pointer;
+  color: var(--owner-muted);
+}
+
+.owner-written-hint {
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--owner-muted);
+}
+
+.owner-written-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--owner-line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.owner-btn-written {
+  margin-top: 6px;
+}
+
+.owner-btn-written:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 카드 안 "손님에게 보낸 문자" 한 줄씩 (티켓 07) */
+.owner-sms {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  border-top: 1px dashed var(--owner-line);
+  font-size: 13px;
+}
+
+.owner-sms li + li {
+  margin-top: 4px;
+}
+
+.owner-sms-label {
+  color: var(--owner-muted);
+}
+
+.owner-sms-text {
+  overflow-wrap: anywhere;
+}
+
+.owner-sms-failed {
+  display: block;
+  color: var(--owner-danger);
+}
+
+/* "손님이 궁금해한 것" (티켓 13): 주문 카드 아래 접힌 목록 */
+.owner-knowledge {
+  margin-top: 16px;
+}
+
+.owner-knowledge > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 0;
+}
+
+.owner-knowledge-waiting {
+  color: var(--owner-band-late);
+}
+
+.owner-knowledge-card + .owner-knowledge-card {
+  margin-top: 8px;
+}
+
+.owner-knowledge-filled {
+  opacity: 0.75;
+}
+
+.owner-knowledge-count {
+  font-size: 13px;
+  color: var(--owner-muted);
+}
+
+.owner-knowledge-answer {
+  margin-top: 8px;
+}
+
+.owner-knowledge-saved {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.owner-knowledge-saved-label {
+  font-weight: 700;
+}

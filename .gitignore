@@ -7,6 +7,8 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+# 통화 지연 기록 JSONL (voice)
+logs/
 
 # 프론트엔드 (web/)
 node_modules/
@@ -75,3 +77,6 @@ reports/
 
 # 개발 중 Playwright 스크린샷
 web/.shots/
+
+# Smart Turn ONNX 모델. 이미지 빌드 때 고정 리비전에서 받는다. 커밋하지 않는다
+*.onnx

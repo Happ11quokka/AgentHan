@@ -1,0 +1,99 @@
+{
+  "_note": "HCX 튜닝 학습 데이터용 가상 가게(5단계 티켓 08). 실제 가게가 아니다. 평가 가게(sample_store.json 베이커리, sample_pho_store.json 쌀국수집)와 메뉴가 겹치지 않게 만들었다.",
+  "stores": [
+    {
+      "store": {"id": "t-bunsik", "name": "가상 분식"},
+      "menu": [
+        {"id": "b1", "name_ko": "떡볶이", "price": 5000, "category": "분식", "aliases": ["떡뽁이"], "options": [{"name": "치즈 추가", "extra_price": 1000}, {"name": "어묵 빼기"}]},
+        {"id": "b2", "name_ko": "김밥", "price": 3500, "category": "분식", "aliases": ["야채김밥"], "options": [{"name": "단무지 빼기"}, {"name": "오이 빼기"}]},
+        {"id": "b3", "name_ko": "라면", "price": 4500, "category": "분식", "options": [{"name": "계란 추가", "extra_price": 500}, {"name": "치즈 추가", "extra_price": 1000}]},
+        {"id": "b4", "name_ko": "순대", "price": 4000, "category": "분식", "options": [{"name": "내장 빼기"}]},
+        {"id": "b5", "name_ko": "쿨피스", "price": 1500, "category": "음료"}
+      ],
+      "phone": {"required_options": {"b3": [{"name": "맵기", "choices": ["순한맛", "매운맛"]}]}}
+    },
+    {
+      "store": {"id": "t-cafe", "name": "가상 카페"},
+      "menu": [
+        {"id": "c1", "name_ko": "카페라떼", "price": 5000, "category": "커피", "aliases": ["라떼"], "options": [{"name": "샷 추가", "extra_price": 500}, {"name": "디카페인 변경", "extra_price": 500}, {"name": "오트밀크 변경", "extra_price": 700}]},
+        {"id": "c2", "name_ko": "바닐라라떼", "price": 5500, "category": "커피", "options": [{"name": "샷 추가", "extra_price": 500}, {"name": "시럽 빼기"}]},
+        {"id": "c3", "name_ko": "녹차라떼", "price": 5500, "category": "음료", "options": [{"name": "휘핑크림 빼기"}]},
+        {"id": "c4", "name_ko": "크로플", "price": 4500, "category": "디저트", "options": [{"name": "아이스크림 추가", "extra_price": 1500}]},
+        {"id": "c5", "name_ko": "치즈케이크", "price": 6500, "category": "디저트", "aliases": ["뉴욕치즈케이크"]}
+      ],
+      "phone": {"required_options": {
+        "c1": [{"name": "온도", "choices": ["따뜻하게", "차갑게"]}],
+        "c2": [{"name": "온도", "choices": ["따뜻하게", "차갑게"]}],
+        "c3": [{"name": "온도", "choices": ["따뜻하게", "차갑게"]}]
+      }}
+    },
+    {
+      "store": {"id": "t-chinese", "name": "가상 중화요리"},
+      "menu": [
+        {"id": "h1", "name_ko": "짜장면", "price": 7000, "category": "면", "options": [{"name": "곱빼기 변경", "extra_price": 1000}, {"name": "양파 빼기"}]},
+        {"id": "h2", "name_ko": "짬뽕", "price": 8500, "category": "면", "options": [{"name": "곱빼기 변경", "extra_price": 1000}, {"name": "홍합 빼기"}]},
+        {"id": "h3", "name_ko": "탕수육", "price": 18000, "category": "요리", "options": [{"name": "소스 따로"}]},
+        {"id": "h4", "name_ko": "볶음밥", "price": 8000, "category": "밥", "aliases": ["새우볶음밥"], "options": [{"name": "짜장 소스 추가", "extra_price": 1000}]},
+        {"id": "h5", "name_ko": "군만두", "price": 6000, "category": "요리"}
+      ],
+      "phone": {"required_options": {"h3": [{"name": "크기", "choices": ["소", {"name": "중", "extra_price": 6000}, {"name": "대", "extra_price": 12000}], "default": "소"}]}}
+    },
+    {
+      "store": {"id": "t-chicken", "name": "가상 치킨"},
+      "menu": [
+        {"id": "k1", "name_ko": "후라이드치킨", "price": 19000, "category": "치킨", "aliases": ["후라이드"], "options": [{"name": "치킨무 추가", "extra_price": 500}]},
+        {"id": "k2", "name_ko": "양념치킨", "price": 21000, "category": "치킨", "aliases": ["양념"], "options": [{"name": "치킨무 추가", "extra_price": 500}, {"name": "소스 따로"}]},
+        {"id": "k3", "name_ko": "반반치킨", "price": 21000, "category": "치킨", "aliases": ["반반"], "options": [{"name": "치킨무 추가", "extra_price": 500}]},
+        {"id": "k4", "name_ko": "감자튀김", "price": 4000, "category": "사이드", "options": [{"name": "케첩 빼기"}]},
+        {"id": "k5", "name_ko": "콜라", "price": 2000, "category": "음료"}
+      ],
+      "phone": {"required_options": {
+        "k1": [{"name": "뼈", "choices": ["뼈", {"name": "순살", "extra_price": 2000}]}],
+        "k2": [{"name": "뼈", "choices": ["뼈", {"name": "순살", "extra_price": 2000}]}]
+      }}
+    },
+    {
+      "store": {"id": "t-thai", "name": "가상 타이 식당"},
+      "menu": [
+        {"id": "t1", "name_ko": "팟타이", "price": 12000, "category": "면", "aliases": ["팟 타이"], "options": [{"name": "땅콩 빼기"}, {"name": "새우 추가", "extra_price": 3000}]},
+        {"id": "t2", "name_ko": "똠얌꿍", "price": 15000, "category": "국물", "aliases": ["똠양꿍"], "options": [{"name": "고수 빼기"}]},
+        {"id": "t3", "name_ko": "그린커리", "price": 13000, "category": "밥", "options": [{"name": "고수 빼기"}, {"name": "밥 추가", "extra_price": 1000}]},
+        {"id": "t4", "name_ko": "카오팟", "price": 11000, "category": "밥", "aliases": ["태국식 볶음밥"], "options": [{"name": "계란 빼기"}]},
+        {"id": "t5", "name_ko": "땡모반", "price": 6000, "category": "음료", "aliases": ["수박 주스"]}
+      ],
+      "phone": {"required_options": {"t3": [{"name": "맵기", "choices": ["덜 맵게", "보통", "맵게"], "default": "보통"}]}}
+    },
+    {
+      "store": {"id": "t-mongol", "name": "가상 몽골 식당"},
+      "menu": [
+        {"id": "m1", "name_ko": "보즈", "price": 9000, "category": "요리", "aliases": ["몽골 만두"]},
+        {"id": "m2", "name_ko": "호쇼르", "price": 10000, "category": "요리", "aliases": ["튀김만두"]},
+        {"id": "m3", "name_ko": "초이왕", "price": 12000, "category": "면", "options": [{"name": "양고기 추가", "extra_price": 3000}, {"name": "당근 빼기"}]},
+        {"id": "m4", "name_ko": "수테차", "price": 4000, "category": "차", "aliases": ["밀크티"], "options": [{"name": "소금 빼기"}]}
+      ],
+      "phone": {"required_options": {"m4": [{"name": "온도", "choices": ["따뜻하게", "차갑게"]}]}}
+    },
+    {
+      "store": {"id": "t-taco", "name": "가상 타코"},
+      "menu": [
+        {"id": "x1", "name_ko": "비프 타코", "price": 6000, "category": "요리", "aliases": ["소고기 타코"], "options": [{"name": "고수 빼기"}, {"name": "할라피뇨 빼기"}, {"name": "치즈 추가", "extra_price": 1000}]},
+        {"id": "x2", "name_ko": "부리토", "price": 9500, "category": "요리", "aliases": ["브리또"], "options": [{"name": "콩 빼기"}, {"name": "치즈 추가", "extra_price": 1000}]},
+        {"id": "x3", "name_ko": "퀘사디아", "price": 8500, "category": "요리", "aliases": ["께사디야"]},
+        {"id": "x4", "name_ko": "나초", "price": 7000, "category": "사이드", "options": [{"name": "과카몰리 추가", "extra_price": 2000}]},
+        {"id": "x5", "name_ko": "레모네이드", "price": 4500, "category": "음료"}
+      ],
+      "phone": {"required_options": {"x2": [{"name": "고기", "choices": ["소고기", "닭고기", "돼지고기"]}]}}
+    },
+    {
+      "store": {"id": "t-indian", "name": "가상 인도 커리"},
+      "menu": [
+        {"id": "i1", "name_ko": "치킨 마살라", "price": 14000, "category": "커리", "aliases": ["치킨 마크니"], "options": [{"name": "밥 추가", "extra_price": 1000}]},
+        {"id": "i2", "name_ko": "버터 난", "price": 3000, "category": "빵", "aliases": ["버터난"]},
+        {"id": "i3", "name_ko": "갈릭 난", "price": 3500, "category": "빵", "aliases": ["마늘 난"]},
+        {"id": "i4", "name_ko": "탄두리 치킨", "price": 16000, "category": "요리", "options": [{"name": "양파 빼기"}]},
+        {"id": "i5", "name_ko": "망고 라씨", "price": 5000, "category": "음료", "aliases": ["망고라씨"]}
+      ],
+      "phone": {"required_options": {"i1": [{"name": "맵기", "choices": ["순한맛", "중간맛", "매운맛"]}]}}
+    }
+  ]
+}
