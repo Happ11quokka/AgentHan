@@ -27,9 +27,11 @@ from datetime import date
 from pathlib import Path
 
 from agenthan.agent import (
+    actions,
     feature_selector,
     food_photo,
     menu_photo,
+    planner,
     report_explainer,
     review_delegate,
     turn_graph,
@@ -342,6 +344,32 @@ def record_view(record: dict, fields: tuple[str, ...]) -> dict:
     return view
 
 
+def targets_line(targets: dict) -> str:
+    """The candidate records line of a model prompt (legacy system prompt, planner step)."""
+    if not targets["stated"]:
+        note = (
+            "사장님이 대상을 아직 가리키지 않음. 조회 질문이면 후보로 답만 하고, "
+            "상태를 바꾸려는데 하나로 정해지지 않을 때만 어느 건인지 물을 것"
+        )
+    elif not targets["views"]:
+        note = "사장님 말에 맞는 건이 없음. 그렇다고 알리고 다시 물을 것"
+    else:
+        note = "사장님 말에 맞는 건"
+    return (
+        f"대상 후보 ({note}, 전체 {targets['total']}건 중 {len(targets['views'])}건): "
+        + json.dumps(targets["views"], ensure_ascii=False)
+    )
+
+
+def target_schema(feature_id: str, targets: dict | None) -> dict:
+    """The feature's tool; a record id may only be one of the candidates (none: no enum)."""
+    schema = feature_tool_schema(feature_id)
+    if targets and targets["ids"]:
+        prop = schema["function"]["parameters"]["properties"][targets["param"]]
+        prop["enum"] = list(targets["ids"])
+    return schema
+
+
 def tool_params(feature_id: str) -> list[tuple[str, str, tuple[str, ...], str]]:
     """(id, kind, enum, label) of the feature's write tool parameters."""
     return [(p.id, p.kind, p.enum, p.label) for p in TOOLS[feature_id].params]
@@ -505,10 +533,18 @@ class OwnerAssistant:
         clova_v3: menu_photo.Call | None = None,
         select_chat: Callable | None = None,
         today: date | None = None,
+        agent_mode: str | None = None,
+        plan_call: planner.Call | None = None,
     ):
         """owner_lang=None detects the language per utterance (review answers only).
         review_session(store, owner_lang=...) builds the review session lazily; tests
-        inject one with a fake client and writer."""
+        inject one with a fake client and writer.
+
+        agent_mode (AGENT_MODE, default legacy): shadow also asks the planner after each free-form
+        turn and records its plan in the trace; the answer never depends on it (ADR-0005).
+        plan_call(model, body) sends that one HCX-007 call (default core.llm.chat_v3)."""
+        self.agent_mode = planner.resolve_mode(agent_mode)
+        self.plan_call = plan_call or planner.default_call
         if type(max_tool_calls) is not int or max_tool_calls < 1:
             raise ValueError("max_tool_calls must be a positive integer")
         self.store = DummyStore(store)
@@ -539,6 +575,10 @@ class OwnerAssistant:
         self._photo_preview = None
         # One owner turn runs through the LangGraph turn graph (ADR-0003).
         self._turn_route: Route | None = None
+        self._turn_plan_input: dict | None = None  # Shadow planner input, read before the turn.
+        self.next_actions: list[dict] = []
+        # planner 모드에서 "최근 보여 준 것"(ref)으로 고른 대상. 값 출처는 lookup으로 남는다.
+        self._ref_lookup: dict | None = None
         self.turns = turn_graph.build(self)
 
     @property
@@ -659,6 +699,16 @@ class OwnerAssistant:
             answer = headline + "\n" + answer
         if missing:
             answer += "\n확인할 항목: " + ", ".join(missing)
+        sentence = None
+        if saved and self.agent_mode == "planner" and all(r.get("action") == "read" for r in saved):
+            # 계획 모드의 단일 조회는 실제 결과로 코드가 만든 한국어 문장을 쓴다(덤프 금지).
+            # 문장 틀이 없는 기능은 아래 기존 경로 그대로다.
+            sentence = self.planner_loop.read_sentence(self.trace["feature"], saved[-1])
+        if sentence:
+            task = self.ledger.get(self._turn_task)
+            if task and task.is_open and task.preview is None:
+                self.ledger.close(task, "done")
+            return self._end_turn(sentence)
         if saved:
             # Always show the actual reread records even if the model omits them.
             label = (
@@ -678,13 +728,16 @@ class OwnerAssistant:
                 summary = (
                     "저장함 " + json.dumps(written, ensure_ascii=False)[:160] if written else ""
                 )
-                self.ledger.close(task, "done", summary)
+                self.ledger.close(task, "done", summary, values=written or None)
         return self._end_turn(answer)
 
     def _end_turn(self, answer: str, blocks: str = "") -> str:
         """Remember what the turn's task asked, add a resume notice for a held task.
 
         blocks (rendered originals/drafts) go to the owner but not into the history."""
+        if self.agent_mode == "planner" and not answer.strip() and not blocks.strip():
+            self.trace["empty_answer_fallback"] = True
+            answer = self.planner_loop.fallback_answer()
         notice = ""
         task = self.ledger.active()
         if task is not None and task.id == self._turn_task:
@@ -695,9 +748,20 @@ class OwnerAssistant:
             key = "photo" if task.kind == "photo" else task.status
             if key in RESUME_TEXT and (task.kind != "tool" or key != "collecting" or task.prompt):
                 notice = "\n" + RESUME_TEXT[key].format(name=get_feature(task.feature)["name_ko"])
+        if self.agent_mode == "planner":
+            photo = self.ledger.find_open(kind="photo")
+            if (
+                photo is not None
+                and photo is not task
+                and photo.id != self._turn_task
+                and not self.ledger.quiet(photo)
+            ):
+                notice += "\n" + RESUME_TEXT["photo"]
         self.history.append({"role": "assistant", "content": answer + notice})
         # Which ledger task each message of this turn worked on (see _finished_task_message).
         self._history_task += [self._turn_task] * (len(self.history) - len(self._history_task))
+        if self.agent_mode == "planner":
+            self.planner_loop.remember_reply()
         return answer + (f"\n{blocks}" if blocks else "") + notice
 
     def _task_for(self, feature_id: str, kind: str):
@@ -878,6 +942,219 @@ class OwnerAssistant:
             return HELP
         return turn_graph.run(self.turns, text)
 
+    def run_action(self, action_id: str, args: dict, label: str) -> dict:
+        """화면이 선택한 동작을 기능 선택 없이 실행한다."""
+        spec = actions.ACTIONS.get(action_id)
+        if spec is None:
+            raise ValueError("없는 버튼입니다.")
+        if not isinstance(args, dict) or set(args) - set(spec.inputs):
+            raise ValueError("버튼 입력을 확인해 주세요.")
+        if action_id == "task.continue" and self.agent_mode != "planner":
+            raise ValueError("계획 모드의 남은 작업 버튼입니다.")
+        values = {**spec.fixed, **args}
+        if self.agent_mode == "planner":
+            result = self.planner_loop.button(action_id, values, label)
+            if result is not None:
+                return result
+        self._begin_turn()
+        self._adding = False
+        self._act = None
+        self.trace = new_trace(None, "button")
+        label = " ".join(label.splitlines())
+        self.history.append({"role": "user", "content": f"[버튼] {label}"})
+        next_actions = []
+
+        def finish(text):
+            if self.agent_mode == "planner":
+                self.next_actions = next_actions
+            return {"reply": self._end_turn(text), "next_actions": next_actions}
+
+        if action_id in ("task.approve", "task.cancel"):
+            task = self.ledger.get(values.get("task_id"))
+            if task is None or not task.is_open:
+                return finish("열린 작업을 찾을 수 없어요.")
+            if action_id == "task.approve" and (
+                task.preview is None
+                or type(values.get("version")) is not int
+                or values["version"] != task.version
+            ):
+                return finish("미리보기가 바뀌었어요. 현재 내용을 다시 확인해 주세요.")
+            self.ledger.resume(task.id)
+            self._turn_task = task.id
+            if task.kind == "review" and task.preview and task.preview.get("button_review"):
+                return finish(self._finish_button_review(task, action_id == "task.approve"))
+            # 기존 승인 경로는 자체적으로 턴과 기록을 남긴다.
+            self.history.pop()
+            self.ledger.turn -= 1
+            reply = self.reply_to_approval("네" if action_id == "task.approve" else "취소")
+            if reply is None:
+                self.ledger.close(task, "cancelled")
+                self._begin_turn(task.id)
+                self.history.append({"role": "user", "content": f"[버튼] {label}"})
+                reply = self._end_turn("작업을 취소했어요.")
+            else:
+                self.history[-2]["content"] = f"[버튼] {label}"
+            self.trace["via"] = "button"
+            return {"reply": reply, "next_actions": []}
+
+        if action_id.startswith("stats."):
+            question = "오늘 통계" if values["period"] == "day" else "이번 주 통계"
+            self.last_report = report_explainer.explain(
+                question, chat=self.chat, shop=self.store.read()
+            )
+            self._detail_subject = "report"
+            card = report_explainer.make_card(self.last_report, chat=self.chat)
+            return finish(report_headline(self.last_report) + "\n" + card.render())
+
+        if action_id.startswith("review."):
+            if self.review is None:
+                self.review = self._review_factory(self.store, owner_lang=self.owner_lang or "ko")
+            box = self.review.toolbox
+            if action_id == "review.summary":
+                from agenthan.agent.review.analyze import analyze_reviews
+
+                result = analyze_reviews(**box.ctx, period=values["period"])
+                counts = result.get("sentiment", {})
+                rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
+                unanswered = {r["review_id"] for r in rows if not r.get("has_owner_reply")}
+                example = next(
+                    (
+                        e
+                        for e in result.get("examples", [])
+                        if e.get("sentiment") in ("negative", "mixed")
+                        and e["review_id"] in unanswered
+                    ),
+                    None,
+                )
+                if example:
+                    next_actions.append(
+                        {
+                            "action_id": "review.draft_reply",
+                            "label": "불만 리뷰 답글 초안",
+                            "args": {"review_id": example["review_id"]},
+                        }
+                    )
+                names = {"positive": "좋음", "negative": "아쉬움", "mixed": "엇갈림"}
+                parts = [f"{names[k]} {counts[k]}건" for k in names if counts.get(k)]
+                text = f"리뷰 {result['review_count']}건을 살펴봤어요."
+                if parts:
+                    text += " " + ", ".join(parts) + "이에요."
+                if self.agent_mode == "planner":
+                    # 계획 모드는 이 버튼이 보여 준 리뷰를 다음 말의 ref 후보로 기억한다.
+                    self.planner_loop.remember_reviews(rows)
+                return finish(text)
+            review_id = values.get("review_id")
+            if not isinstance(review_id, str) or not review_id:
+                task = self.ledger.start("review", "review")
+                self._turn_task = task.id
+                return finish("어느 리뷰에 답글을 쓸까요? 리뷰를 선택해 주세요.")
+            rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
+            row = next((r for r in rows if r["review_id"] == review_id), None)
+            if row is None or row.get("has_owner_reply"):
+                return finish("답글을 작성할 리뷰를 찾을 수 없어요.")
+            task = self.ledger.start("review", "review")
+            self._turn_task = task.id
+            out = box._draft({}, review_id=review_id)
+            draft = next((d for d in out.get("drafts", []) if d.get("reply_ko")), None)
+            if draft is None:
+                self.ledger.close(task, "failed")
+                return finish("답글 초안을 만들지 못했어요.")
+            sources, missing = value_source.check(
+                [("review_id", "string", (), "리뷰")],
+                {"review_id": review_id},
+                "",
+                self.store.read(),
+                ui=values,
+            )
+            if missing:
+                self.ledger.close(task, "failed")
+                return finish("리뷰를 다시 선택해 주세요.")
+            self.ledger.set_slot(task, "review_id", review_id, sources["review_id"])
+            self.ledger.set_slot(task, "reply", draft["reply_ko"], "ai_draft")
+            self.ledger.set_preview(
+                task,
+                {
+                    "feature_id": "review",
+                    "button_review": True,
+                    "review_id": review_id,
+                    "draft": copy.deepcopy(box.drafts[review_id]),
+                },
+            )
+            self.trace["pending_approval"] = True
+            if self.agent_mode == "planner":
+                next_actions.extend(
+                    [
+                        {
+                            "action_id": "task.approve",
+                            "label": "저장",
+                            "args": {"task_id": task.id, "version": task.version},
+                        },
+                        {"action_id": "task.cancel", "label": "취소", "args": {"task_id": task.id}},
+                    ]
+                )
+                return finish(self.planner_loop.review_preview(task.preview))
+            return finish(
+                f"답글 초안이에요. 내용을 확인해 주세요.\n> {draft['reply_ko']}\n이대로 올릴까요?"
+            )
+
+        feature = TOOL_FEATURES[spec.target]
+        entries = values.get("entries") if feature == "business_hours" else [values]
+        if (
+            not isinstance(entries, list)
+            or not entries
+            or any(not isinstance(e, dict) for e in entries)
+        ):
+            return finish("필요한 값을 입력해 주세요.")
+        task = self.ledger.start(feature)
+        self._turn_task = task.id
+        params = tool_params(feature)
+        allowed = {p[0] for p in params}
+        for entry in entries:
+            if set(entry) - allowed:
+                self.ledger.close(task, "failed")
+                return finish("입력 항목을 확인해 주세요.")
+            sources, missing = value_source.check(
+                params, entry, "", self.store.read(), today=self.today, ui=entry
+            )
+            if missing:
+                self.ledger.close(task, "failed")
+                return finish("값을 다시 확인해 주세요.")
+            for name, source in sources.items():
+                self.ledger.set_slot(task, name, entry[name], source)
+            result = self._preview(feature, spec.target, entry)
+            if not result.get("ok"):
+                self.ledger.drop_preview(task)
+                self.ledger.close(task, "failed")
+                return finish(result.get("message", "필요한 값을 입력해 주세요."))
+        return finish(self._approval_question(feature, task.preview["actions"]))
+
+    def _finish_button_review(self, task, approve: bool) -> str:
+        from agenthan.agent.review.replies import post_review_reply
+
+        preview = task.preview
+        box = self.review.toolbox
+        rid = preview["review_id"]
+        if not approve:
+            if box.drafts.get(rid) == preview["draft"]:
+                box.drafts.pop(rid, None)
+            self.ledger.close(task, "cancelled")
+            return "작업을 취소했어요."
+        rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
+        row = next((r for r in rows if r["review_id"] == rid), None)
+        if row is None or row.get("has_owner_reply") or box.drafts.get(rid) != preview["draft"]:
+            return "리뷰 또는 초안이 바뀌었어요. 다시 확인해 주세요."
+        result = post_review_reply(
+            drafts={rid: preview["draft"]},
+            store=box.reply_store,
+            utterance="네",
+            allow_bare_yes=True,
+        )
+        if result.get("posted_count") != 1:
+            return "답글을 저장하지 못했어요. 초안을 다시 확인해 주세요."
+        box.drafts.pop(rid, None)
+        self.ledger.close(task, "done")
+        return "답글을 저장했어요. 실제 발송은 하지 않았어요."
+
     def _dry_run(self, name: str, arguments: object) -> dict:
         """Run a write on a throwaway copy of the current store."""
         with tempfile.TemporaryDirectory() as folder:
@@ -897,6 +1174,11 @@ class OwnerAssistant:
         intent = approval_intent(text)
         if intent is None:
             return None
+        if task.kind == "review" and task.preview.get("button_review"):
+            self._begin_turn(task.id)
+            self.history.append({"role": "user", "content": text.strip()})
+            self.trace = new_trace("review", "approval")
+            return self._end_turn(self._finish_button_review(task, intent != "decline"))
         text = text.strip()
         self._begin_turn(task.id)
         action = task.preview
@@ -1225,6 +1507,12 @@ class OwnerAssistant:
                     missing = []
                 elif result.get("missing_fields"):
                     missing = result["missing_fields"]
+                    if self.agent_mode == "planner" and result.get("error") == "unconfirmed_value":
+                        # 거절된 인자를 모델이 같은 턴에 되풀이하지 않게 코드 질문으로 끝낸다.
+                        self.trace["missing"] = missing
+                        self.planner_loop.batch.asked = list(missing)
+                        self.planner_loop.batches[task.id] = self.planner_loop.batch
+                        return self._finish(self.planner_loop.ask_text(missing), saved, missing)
             if over_limit:
                 self.ledger.close(task, "failed", "도구 호출 한도")
                 return self._finish(TOOL_LIMIT_MESSAGE, saved, missing)
@@ -1370,6 +1658,8 @@ class OwnerAssistant:
 
     def _chat_once_more_if_rejected(self, messages: list[dict], tools: list[dict]) -> dict:
         """HCX sometimes rejects (HTTP 400) a request it accepts on the next try: ask twice."""
+        if self.agent_mode == "planner":
+            return parse_message(self.chat(copy.deepcopy(messages), tools=copy.deepcopy(tools)))
         for attempt in range(2):
             try:
                 return parse_message(self.chat(copy.deepcopy(messages), tools=copy.deepcopy(tools)))
@@ -1444,21 +1734,8 @@ class OwnerAssistant:
             "가게 데이터: "
             + json.dumps(store_slice(feature_id, self.store.read()), ensure_ascii=False),
         ]
-        targets = self._targets
-        if targets is not None:
-            if not targets["stated"]:
-                note = (
-                    "사장님이 대상을 아직 가리키지 않음. 조회 질문이면 후보로 답만 하고, "
-                    "상태를 바꾸려는데 하나로 정해지지 않을 때만 어느 건인지 물을 것"
-                )
-            elif not targets["views"]:
-                note = "사장님 말에 맞는 건이 없음. 그렇다고 알리고 다시 물을 것"
-            else:
-                note = "사장님 말에 맞는 건"
-            lines.append(
-                f"대상 후보 ({note}, 전체 {targets['total']}건 중 {len(targets['views'])}건): "
-                + json.dumps(targets["views"], ensure_ascii=False)
-            )
+        if self._targets is not None:
+            lines.append(targets_line(self._targets))
         lines.append("현재 작업: " + json.dumps(state, ensure_ascii=False))
         guide = guide_text(feature_id)
         if guide:
@@ -1466,16 +1743,21 @@ class OwnerAssistant:
         done = self.ledger.log(feature_id, last=5)
         if done:
             lines.append("앞서 끝난 작업: " + "; ".join(done))
+        if self.agent_mode == "planner":
+            lines.append(self.planner_loop.completed_context())
         return "\n".join(lines)
 
-    def _record_targets(self, feature_id: str, task) -> dict | None:
+    def _record_targets(self, feature_id: str, task, said: str | None = None) -> dict | None:
         """Records the owner's words in this task point at (all of them, capped, when the
-        owner has not pointed yet). Only the owner's words narrow it; nothing is assumed."""
+        owner has not pointed yet). Only the owner's words narrow it; nothing is assumed.
+
+        said: the words to narrow by instead of the whole task (a planner step's share)."""
         if feature_id not in RECORD_TARGETS:
             return None
         collection, param, fields = RECORD_TARGETS[feature_id]
         records = self.store.read().get(collection, [])
-        fits, stated = value_source.candidates(records, "\n".join(task.said), self.today)
+        said = "\n".join(task.said) if said is None else said
+        fits, stated = value_source.candidates(records, said, self.today)
         fits = fits[:MAX_TARGETS]
         return {
             "param": param,
@@ -1487,12 +1769,7 @@ class OwnerAssistant:
 
     def _tool_schema(self, feature_id: str) -> dict:
         """The feature's tool; a record id may only be one of this turn's candidates."""
-        schema = feature_tool_schema(feature_id)
-        targets = self._targets
-        if targets and targets["ids"]:
-            prop = schema["function"]["parameters"]["properties"][targets["param"]]
-            prop["enum"] = list(targets["ids"])
-        return schema
+        return target_schema(feature_id, self._targets)
 
     def _context(self, turn_start: int, feature: str | None = None) -> list[dict]:
         """This turn in full plus the last CONTEXT_TURNS earlier messages as plain text.
@@ -1524,7 +1801,9 @@ class OwnerAssistant:
         task = self.ledger.get(task_id) if task_id else None
         return task is not None and not task.is_open and task.feature == feature
 
-    def _propose(self, task, feature_id: str, raw: object) -> tuple[object, dict | None]:
+    def _propose(
+        self, task, feature_id: str, raw: object, *, lookup: dict | None = None
+    ) -> tuple[object, dict | None]:
         """The model proposes values; code keeps them per task and decides what may run.
 
         Empty values are treated as not given (nullable slots). Values the owner confirmed
@@ -1576,7 +1855,14 @@ class OwnerAssistant:
             newer = "\n".join(task.said[slot.said_at :])
             spec = [p for p in params if p[0] == name]
             if newer and spec:
-                ok, _ = value_source.check(spec, {name: value}, newer, store, today=self.today)
+                confirmed_lookup = (
+                    self.planner_loop.lookup(feature_id, given)
+                    if self.agent_mode == "planner"
+                    else None
+                )
+                ok, _ = value_source.check(
+                    spec, {name: value}, newer, store, today=self.today, lookup=confirmed_lookup
+                )
                 if ok:
                     continue
             merged[name] = slot.value
@@ -1597,8 +1883,12 @@ class OwnerAssistant:
                 "message": "대상 후보에 없는 id입니다. 후보 중에서 고르거나 사장님께 물어보세요.",
                 "candidates": targets["views"],
             }
+        if lookup is None:
+            lookup = self._ref_lookup
+        if self.agent_mode == "planner":
+            lookup = {**(lookup or {}), **self.planner_loop.lookup(feature_id, merged)}
         sources, unconfirmed = value_source.check(
-            params, merged, "\n".join(task.said), store, today=self.today
+            params, merged, "\n".join(task.said), store, today=self.today, lookup=lookup
         )
         extras = [p for p in params if p[0] in DROPPABLE and p[3] in unconfirmed]
         if extras:
@@ -2150,6 +2440,8 @@ class OwnerAssistant:
         return {"ok": True, "draft": {"number": number, **d.to_form()}}
 
     def _delegate_review(self, feature_id: str, text: str) -> str:
+        if self.agent_mode == "planner":
+            return self.planner_loop.legacy_review(text)
         lang = self.owner_lang or review_delegate.detect_lang(text)
         if self.review is None:
             self.review = self._review_factory(self.store, owner_lang=lang)

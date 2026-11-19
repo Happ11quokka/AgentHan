@@ -25,6 +25,12 @@ class ClovaRequestRejected(ClovaChatError):
     Seen with e.g. 40009 "Unsupported function" for some utterances. Not an outage."""
 
 
+class ClovaTransientError(ClovaChatError):
+    """본문 없는 일시 전송 오류. 계획 루프가 재시도 예산을 관리한다."""
+
+    retryable = True
+
+
 REJECTED_MESSAGE = "CLOVA가 이 요청을 처리하지 못했습니다."
 
 
@@ -87,7 +93,7 @@ def chat(
     tools: list[dict],
     client=None,
     model: str = CHAT_MODEL,
-    tool_choice: dict | None = None,
+    tool_choice: str | dict | None = None,
 ) -> dict:
     """One chat completion. Tools are sent only when non-empty.
 
@@ -99,7 +105,7 @@ def chat(
         kwargs["tools"] = tools
         if tool_choice:
             kwargs["tool_choice"] = tool_choice
-    failure, rejected = None, False
+    failure, rejected, transient = None, False, False
     try:
         choice = client.chat.completions.create(**kwargs).choices[0]
         if getattr(choice, "finish_reason", None) == "length":
@@ -110,6 +116,15 @@ def chat(
         failure = str(error)
     except Exception as error:  # noqa: BLE001 - SDK/transport errors may carry a body or key
         rejected = is_rejected(error)
+        status = getattr(error, "status_code", None)
+        from openai import APIConnectionError
+
+        transient = isinstance(error, (OSError, APIConnectionError)) or (
+            isinstance(status, int) and (status == 429 or status >= 500)
+        )
         failure = REJECTED_MESSAGE if rejected else "CLOVA 대화 요청에 실패했습니다."
     # Outside except: even the exception context must not expose a body/key.
-    raise (ClovaRequestRejected if rejected else ClovaChatError)(failure)
+    error_type = (
+        ClovaRequestRejected if rejected else ClovaTransientError if transient else ClovaChatError
+    )
+    raise error_type(failure)

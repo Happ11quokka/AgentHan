@@ -14,12 +14,37 @@
 | 파일 | 층 | 평가 경로 | 케이스 | 나눔 |
 | --- | --- | --- | --- | --- |
 | `s1.jsonl` | **L1 회귀 게이트** | 시나리오 (`agenthan.eval.scenario`, 업무 명세로 채점) | 92 | dev 80 / sealed 12 |
+| `s2.jsonl` | **S2 목표 지표** (플래너 채택 근거, ADR-0006) | 시나리오 (`--suite s2`, trace·가게 상태 우선) | 48 | dev 40 / sealed 8 |
 | `route.jsonl` | L2 진단 | 기능 분기 (`OwnerAssistant.route()`) | 213 | dev 149 / holdout 64 |
 | `flow.jsonl` | L2 진단 | 전체 흐름 (분기 → 질문 → 도구·인자 → 저장소) | 156 (194턴) | dev 120 / holdout 36 |
 | `scenario.jsonl` | S1 원본 | 기존 시나리오 30건 (`scripts/build_s1.py`가 S1으로 옮김) | 30 | 전부 dev |
 
 `s1.jsonl`은 손으로 고치지 않는다. 원본(flow·route·scenario·리뷰 골드셋)을 고치고 `scripts/build_s1.py`로 다시 만든다.
 flow의 인자는 2026-11-12 도구 스펙(`docs/tools.md`)을 따른다.
+
+## S2 (`s2.jsonl`)
+
+S1이 "기능 하나씩 정확히"를 재는 회귀 게이트라면, S2는 계획형 루프가 잘하는 일을 잰다(ADR-0006). 가게는 S1과 같은 더미 시드
+(`today` 2026-11-10)에, 필요한 시나리오만 `setup`으로 리뷰를 더한다. 손으로 쓴 파일이고 빌드 스크립트는 없다.
+
+| family | 개수 | 재는 것 |
+| --- | --- | --- |
+| `multi_step` | 12 | 한 말에 기능 2~3개 ("불만 리뷰 답글 달고 영업시간 늘려 줘") |
+| `chain` | 8 | 앞 도구 결과가 다음 인자를 정함 ("리뷰에 많이 나온 메뉴 품절 걸어 줘") |
+| `lexical_trap` | 10 | 단어가 다른 기능을 가리킴 ("리뷰 이벤트 메뉴 만들기", "예약 안 받는 날 영업시간") |
+| `advice` | 8 | 근거 있는 조언(내 데이터 + 우리 기능으로 실행할 처방). 문장은 기준표 채점기 |
+| `out_of_scope` | 5 | 정중한 거절 + 대안, 가게 도구는 부르지 않기 |
+| `button_mix` | 5 | 버튼 턴 + 말 섞기. 비서에 `run_action`이 없으면 "미지원"으로 건너뜀(실패 아님) |
+
+S1과 다른 필드(전부 S2 전용):
+
+- `steps`: 정답 단계 `[{"feature", "reach"}]`. 기능 집합이 정답 집합이고, `reach`는 읽기 = `call`, 쓰기 = `preview`.
+  범위 밖(`scope: "out"`)은 `steps`가 없고 가게 도구를 부르면 실패다.
+- 턴의 `action`: B1 버튼 `{"action_id", "args", "label"}`(`say`는 label로 채워짐). id는 `review.summary`·`review.draft_reply`·
+  `stats.week`·`stats.day`·`coupon.create`·`hours.edit`·`task.approve`·`task.cancel`.
+- 턴의 `judge`: `{"kind": "advice"|"refusal", "evidence": {…}}`. 이 턴의 답 문장만 채점기가 본다.
+- 기대 상태는 S1과 같은 `expect.final/writes/never`. 쓰기 시나리오는 미리보기 뒤 "네"(`again`으로 되풀이)로 승인한다.
+- sealed 8개(family마다 1~2개)는 판정 때만 돌린다. `setup`의 `reviews[+]`는 리스트 값이면 항목을 모두 더한다.
 
 ## source
 

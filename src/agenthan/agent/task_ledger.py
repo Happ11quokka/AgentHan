@@ -16,14 +16,16 @@ which keeps the earlier value in the task's change log; an edit replaces only th
 names and every other confirmed value stays.
 """
 
+import copy
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Literal
 
 Status = Literal["collecting", "awaiting_approval", "paused", "done", "cancelled", "failed"]
 OPEN = frozenset({"collecting", "awaiting_approval", "paused"})
 # owner = the owner said it, lookup = confirmed from the store, rule = computed by code,
 # ai_draft = written by a model (needs the owner's approval before it is saved).
-Source = Literal["owner", "lookup", "rule", "ai_draft"]
+Source = Literal["owner", "ui", "lookup", "rule", "ai_draft"]
 QUIET_AFTER = 3
 
 
@@ -52,6 +54,8 @@ class Task:
     paused_at: int | None = None
     held_status: Status | None = None  # Status to restore when resumed.
     summary: str = ""
+    closed_at: str | None = None
+    closed_values: object = None  # 완료·취소 시점의 값. 열린 미리보기와 구분한다.
     # (turn, slot, old value, new value, source) for every slot change, oldest first.
     changes: list[tuple] = field(default_factory=list)
 
@@ -154,8 +158,16 @@ class TaskLedger:
         if task.status == "awaiting_approval":
             task.status = "collecting"
 
-    def close(self, task: Task, status: Status, summary: str = "") -> Task | None:
+    def close(self, task: Task, status: Status, summary: str = "", *, values=None) -> Task | None:
         """End a task. Returns the task that resumes on top, if any."""
+        if values is None:
+            values = {k: s.value for k, s in task.slots.items()}
+            if task.preview and task.preview.get("actions"):
+                values = [a["arguments"] for a in task.preview["actions"]]
+            elif task.kind == "photo" and task.data:
+                values = [d.to_form() for d in task.data]
+        task.closed_values = copy.deepcopy(values)
+        task.closed_at = datetime.now(UTC).isoformat(timespec="seconds")
         task.status = status
         task.preview = None
         task.summary = summary or task.summary

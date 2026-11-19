@@ -29,3 +29,13 @@ timeout_sec = 60
 name = "format"
 argv = ["uv", "run", "--frozen", "--offline", "ruff", "format", "--check", "."]
 timeout_sec = 60
+
+[[command]]
+name = "web"
+argv = ["npm", "--prefix", "web", "run", "test", "--", "--run"]
+timeout_sec = 120
+
+[[command]]
+name = "web-typecheck"
+argv = ["npm", "--prefix", "web", "run", "typecheck"]
+timeout_sec = 120

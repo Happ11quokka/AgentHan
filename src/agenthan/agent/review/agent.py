@@ -688,9 +688,13 @@ class ReviewToolbox:
         except (KeyError, ValueError) as e:  # 잘못된 기간 값 등
             return {"error": "bad_arguments", "detail": str(e)[:200], "arguments": clean}
 
-    def _draft(self, args: dict, utterance: str | None = None) -> dict:
+    def _draft(
+        self, args: dict, utterance: str | None = None, review_id: str | None = None
+    ) -> dict:
         edit = args.get("edit_request")
-        if edit and self.drafts:  # 고치기: 직전 초안들이 대상
+        if review_id is not None:
+            ids = [review_id]
+        elif edit and self.drafts:  # 고치기: 직전 초안들이 대상
             ids = list(self.drafts)
         else:  # 새로 쓰기: 직전 미답글 목록에서 고른다
             target = args.get("target") or "first"

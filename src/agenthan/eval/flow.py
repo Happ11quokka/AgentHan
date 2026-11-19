@@ -40,10 +40,13 @@ class Probe:
         self.errors: list[str] = []
         self.tokens: list[int] = []
         self.select_rejected = 0
+        self.model_calls = 0  # chat + select_feature requests of the turn (S2 metric)
+        self.planner_calls = 0  # shadow planner requests, kept apart from model_calls
 
-    def chat(self, messages, *, tools):
+    def chat(self, messages, *, tools, **options):
+        self.model_calls += 1
         try:
-            response = self.backend.chat(messages, tools=tools)
+            response = self.backend.chat(messages, tools=tools, **options)
         except ClovaRequestRejected:
             raise  # The app answers the owner; scored as a failed turn, not an outage.
         except ClovaChatError as error:
@@ -58,6 +61,7 @@ class Probe:
         """HCX-DASH-002 select_feature. A rejection is app behavior (it falls back)."""
         if not hasattr(self.backend, "select"):
             raise ClovaChatError("backend has no select_feature")  # Test fakes: fallback.
+        self.model_calls += 1
         try:
             response = self.backend.select(messages, tools=tools)
         except ClovaRequestRejected:
@@ -70,6 +74,14 @@ class Probe:
         if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
             self.tokens.append(usage["total_tokens"])
         return response
+
+    def plan(self, model, body):
+        """The shadow planner's call. A failure is the planner's to swallow, so it is neither
+        counted in model_calls nor recorded in errors (it must not turn a turn into an outage)."""
+        if not hasattr(self.backend, "plan"):
+            raise ClovaChatError("backend has no planner call")
+        self.planner_calls += 1
+        return self.backend.plan(model, body)
 
     def embed(self, text):
         try:

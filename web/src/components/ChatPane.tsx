@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { RESULT_TEXT } from "../labels";
-import type { Message } from "../types";
+import { REPLY_NOTICE_VIEW, RESULT_TEXT } from "../labels";
+import type { Action, Message } from "../types";
 import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
+import { CouponForm } from "./CouponForm";
 import { Icon } from "./Icon";
 import { ReplyText } from "./ReplyText";
 
@@ -15,9 +16,31 @@ type Props = {
   sideOpen: boolean;
   onToggleNav: () => void;
   onToggleSide: () => void;
+  /** 화면 알림의 [리뷰 탭에서 보기]: 사이드카 리뷰 탭을 열고 그 카드로 스크롤. */
+  onShowReview: (reviewId: string) => void;
 };
 
-function Bubble({ message }: { message: Message }) {
+type BubbleProps = {
+  message: Message;
+  onAction: (action: Action) => void;
+  onShowReview: (reviewId: string) => void;
+  busy: boolean;
+  /** 이 답이 띄운 승인 카드가 아직 떠 있다: 카드와 겹치는 인용·질문은 빼고 첫 줄만 보인다. */
+  lead: boolean;
+};
+
+function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
+  if (message.role === "notice") {
+    return (
+      <div className="notice" role="status">
+        <Icon name="close" size={14} />
+        <p>{message.text}</p>
+        <button type="button" className="ghost small" onClick={() => onShowReview(message.reviewId)}>
+          {REPLY_NOTICE_VIEW}
+        </button>
+      </div>
+    );
+  }
   if (message.role === "result") {
     return (
       <div className="result" data-saved={message.saved}>
@@ -27,8 +50,8 @@ function Bubble({ message }: { message: Message }) {
         </span>
         {message.lines.length > 0 && (
           <ul>
-            {message.lines.map((line) => (
-              <li key={line}>{line}</li>
+            {message.lines.map((line, i) => (
+              <li key={`${i}-${line}`}>{line}</li>
             ))}
           </ul>
         )}
@@ -50,20 +73,43 @@ function Bubble({ message }: { message: Message }) {
     <div className="row agent">
       <img className="avatar" src="/agent.png" alt="" />
       <div className="bubble agent">
-        <ReplyText text={message.text} />
+        <ReplyText text={message.text} lead={lead} previews={message.previews} />
+        {message.nextActions && message.nextActions.length > 0 && (
+          <div className="suggestions">
+            {message.nextActions.map((action, i) => (
+              <button key={i} type="button" disabled={busy} onClick={() => onAction(action)}>{action.label}</button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide }: Props) {
+/**
+ * 한 번에 저장되는 변경 카드들. 변경 카드가 둘 이상이고 마지막 비서 답의 승인 칩([모두 저장])이
+ * 그중 하나를 가리키면, 그 칩 하나가 묶음 전체를 저장·취소한다. 이때 카드마다 [저장]을 두면
+ * 카드 하나만 저장되는 것처럼 보이므로 카드 버튼은 숨긴다.
+ */
+function bundledCards(chat: Conversation): Set<string> {
+  const cards = chat.pending.filter((p) => !p.kind);
+  if (cards.length < 2) return new Set();
+  const last = [...chat.messages].reverse().find((m) => m.role === "agent");
+  const ids = new Set(cards.map((p) => p.task_id));
+  const chip = last?.role === "agent" && last.nextActions?.some((a) => a.action_id === "task.approve" && ids.has(String(a.args.task_id)));
+  return chip ? ids : new Set();
+}
+
+export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
+  const open = new Set(chat.pending.map((p) => p.task_id));
+  const bundled = bundledCards(chat);
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
-  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error]);
+  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error, chat.couponForm === null]);
 
   return (
     <main
@@ -113,7 +159,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               <p>메뉴 등록, 영업시간, 쿠폰, 리뷰까지 말로 하면 제가 대신 해 드려요.</p>
               <div className="suggestions">
                 {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" onClick={() => void chat.send(s)} disabled={!chat.sessionId}>
+                  <button key={s} type="button" onClick={() => void (s === "요즘 리뷰 어때?" ? chat.act({ action_id: "review.summary", args: {}, label: s }) : chat.send(s))} disabled={!chat.sessionId}>
                     {s}
                   </button>
                 ))}
@@ -121,7 +167,14 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
             </section>
           )}
           {chat.messages.map((m) => (
-            <Bubble key={m.id} message={m} />
+            <Bubble
+              key={m.id}
+              message={m}
+              onAction={(action) => void chat.act(action)}
+              onShowReview={onShowReview}
+              busy={chat.busy}
+              lead={m.role === "agent" && Boolean(m.cardFor) && open.has(m.cardFor!)}
+            />
           ))}
           {!chat.busy &&
             chat.place &&
@@ -130,12 +183,24 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
                 key={p.task_id}
                 place={chat.place!}
                 pending={p}
+                bundled={bundled.has(p.task_id)}
+                review={chat.reviewOf(p.review_id)}
                 onAnswer={(text) => void chat.send(text)}
+                onAction={(action) => void chat.act(action)}
               />
             ))}
+          {chat.couponForm && (
+            <CouponForm
+              key={JSON.stringify(chat.couponForm)}
+              initial={chat.couponForm}
+              busy={chat.busy}
+              onCancel={chat.closeCoupon}
+              onSubmit={(values) => void chat.submitCoupon(values)}
+            />
+          )}
           {chat.busy && (
             <div className="row agent" role="status" aria-label="비서가 답을 쓰는 중">
-              <img className="avatar" src="/agent.png" alt="" />
+              <img className="avatar working" src="/agent.png" alt="" />
               <div className="bubble agent typing">
                 <span />
                 <span />

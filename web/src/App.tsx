@@ -1,13 +1,21 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { httpApi, type AssistantApi } from "./api";
 import { ChatPane } from "./components/ChatPane";
 import { LeftNav, type Quick } from "./components/LeftNav";
 import { Sidecar, type Tab } from "./components/Sidecar";
-import type { Period } from "./types";
+import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./labels";
+import type { Period, ReplyError, ReplyOp, ReplyResult, ReviewRow } from "./types";
 import { useConversation } from "./useConversation";
 import { useLoad } from "./useLoad";
 
-export default function App({ api = httpApi }: { api?: AssistantApi }) {
+/** 답글 대기함 초안을 쓰는 동안 리뷰를 다시 읽는 간격. */
+const REVIEW_POLL_MS = 2500;
+/** 카드 버튼이 실패했을 때 채팅에도 알릴 까닭: 검사에 걸려 막힘, 저장·초안 쓰기 실패(서버 쪽 오류). */
+const NOTICE_REASONS = new Set(["checks", "save_failed", "draft_failed"]);
+
+type AppProps = { api?: AssistantApi; reviewPollMs?: number; demo?: boolean };
+
+export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo = import.meta.env.DEV }: AppProps) {
   const chat = useConversation(api);
   const [tab, setTab] = useState<Tab>("shop");
   const [period, setPeriod] = useState<Period>("week");
@@ -18,14 +26,59 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
   // 리뷰·통계는 그 탭이 열려 있을 때만 읽고, 대화가 바뀌거나 비서 답이 오면 다시 읽는다.
   const id = chat.sessionId;
   const turn = `${id}:${chat.messages.length}`;
-  const reviews = useLoad(tab === "reviews" && id ? () => api.reviews(id) : null, `${turn}:${tab}`);
+  // 리뷰는 왼쪽 배지(기다리는 수) 때문에 대화마다 한 번은 읽는다. 탭이 열려 있으면 답이 올 때마다 다시 읽는다.
+  const reviews = useLoad(id ? () => api.reviews(id) : null, tab === "reviews" ? `${turn}:${tab}` : `${id}`);
+  const reloadReviews = reviews.reload;
+  const preparing = reviews.data?.summary.preparing ?? 0;
+  useEffect(() => {
+    if (!preparing) return; // 초안을 다 쓰면 멈춘다
+    const timer = setTimeout(reloadReviews, reviewPollMs);
+    return () => clearTimeout(timer);
+  }, [reviews.data, preparing, reloadReviews, reviewPollMs]);
+  const simulateReview = async () => {
+    if (!id) return;
+    await api.simulateReview(id).catch(() => undefined);
+    reloadReviews();
+  };
+  // 대기함 카드 버튼: 대화 턴이 아니다. 결과로 그 카드와 요약만 바꾸고 채팅 말풍선은 만들지 않는다.
+  // 채팅에는 다시 봐야 할 것(검사에 걸려 막힘, 서버 오류)만 화면 알림 한 개로 올린다.
+  const [focusReview, setFocusReview] = useState<{ id: string; at: number } | null>(null);
+  const { update: updateReviews } = reviews;
+  const { addLog, notify } = chat;
+  const replyToReview = useCallback(
+    async (review: ReviewRow, op: ReplyOp): Promise<ReplyError | null> => {
+      if (!id) return null;
+      let result: ReplyResult;
+      try {
+        result = await api.replyToReview(id, review.id, op);
+      } catch {
+        notify(replyNoticeText(review, REPLY_SERVER_ERROR), review.id);
+        return REPLY_SERVER_ERROR;
+      }
+      updateReviews((v) => ({ summary: result.summary, reviews: v.reviews.map((r) => (r.id === result.review.id ? result.review : r)) }));
+      const { error } = result;
+      if (!error) {
+        if (op.op === "post") addLog([REVIEW_POSTED_TEXT]);
+        return null;
+      }
+      if (NOTICE_REASONS.has(error.reason)) notify(replyNoticeText(result.review, error), review.id);
+      return error;
+    },
+    [api, id, addLog, notify, updateReviews],
+  );
+  const showReview = (reviewId: string) => {
+    setTab("reviews");
+    setSideOpen(true);
+    setFocusReview({ id: reviewId, at: Date.now() });
+  };
   const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
 
   const quick = (q: Quick) => {
     setNavOpen(false);
     setTab(q.tab);
-    setSideOpen(true); // 좁은 화면에서는 접힌 사이드카를 펼쳐 보여 준다
-    if (q.ask) void chat.send(q.ask);
+    if (!q.inChat) setSideOpen(true); // 좁은 화면에서는 접힌 사이드카를 펼쳐 보여 준다
+    if (q.action_id) void chat.act({ action_id: q.action_id, args: {}, label: q.label });
+    else if (q.ask) void chat.send(q.ask);
     else photoInput.current?.click();
   };
 
@@ -44,6 +97,7 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
           void chat.open(target);
         }}
         onQuick={quick}
+        badges={{ reviews: reviews.data?.summary.waiting ?? 0 }}
       />
       <ChatPane
         chat={chat}
@@ -51,6 +105,7 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
         sideOpen={sideOpen}
         onToggleNav={() => setNavOpen((o) => !o)}
         onToggleSide={() => setSideOpen((o) => !o)}
+        onShowReview={showReview}
       />
       <Sidecar
         tab={tab}
@@ -64,7 +119,10 @@ export default function App({ api = httpApi }: { api?: AssistantApi }) {
         report={report}
         period={period}
         onPeriod={setPeriod}
-        onAsk={(text) => void chat.send(text)}
+        onAction={(action) => void chat.act(action)}
+        onSimulateReview={demo ? () => void simulateReview() : undefined}
+        onReply={replyToReview}
+        focusReview={focusReview}
         onClose={() => setSideOpen(false)}
       />
       <button

@@ -160,3 +160,8 @@ def handle(utterance: str, session: ReviewSession) -> dict:
         n = text.count("\n") + 1
         return {"text": "\n".join(lines[:n]), "blocks": "\n".join(lines[n:]).strip("\n")}
     return {"text": out, "blocks": ""}
+
+
+def ask_review_agent(request: str, session: ReviewSession) -> dict:
+    """계획 루프에 노출하는 리뷰 위임 도구. 리뷰 내부 판단은 기존 handle이 맡는다."""
+    return handle(request, session)

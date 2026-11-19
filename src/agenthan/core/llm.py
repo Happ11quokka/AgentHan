@@ -23,10 +23,24 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from contextvars import ContextVar
 
 DEFAULT_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
 DEFAULT_MAX_RETRIES = 8
 TOOL_MAX_TOKENS = 1024
+# 계획 루프에서만 설정한다. 기존 호출의 시간 제한·재시도는 바꾸지 않는다.
+call_deadline: ContextVar[float | None] = ContextVar("hcx_deadline", default=None)
+call_managed: ContextVar[bool] = ContextVar("hcx_managed_retry", default=False)
+
+
+def remaining_time(timeout: float) -> float:
+    deadline = call_deadline.get()
+    if deadline is None:
+        return timeout
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ClovaV3Error("이번 요청의 처리 시간이 다 됐습니다.")
+    return min(timeout, remaining)
 
 
 def make_client(*, max_retries: int | None = None, timeout: float | None = None):
@@ -35,6 +49,10 @@ def make_client(*, max_retries: int | None = None, timeout: float | None = None)
 
     from openai import DefaultHttpxClient, OpenAI  # 테스트에서 가짜 client를 넣도록 지연 import
 
+    if call_deadline.get() is not None:
+        timeout = remaining_time(timeout or V3_TIMEOUT)
+    if call_managed.get() or call_deadline.get() is not None:
+        max_retries = 0
     key = os.environ.get("CLOVASTUDIO_API_KEY")
     if not key:
         raise KeyError("CLOVASTUDIO_API_KEY")
@@ -87,6 +105,11 @@ V3_TIMEOUT = 60
 class ClovaV3Error(Exception):
     """서버 본문·키가 들어가지 않은, 화면에 보여도 되는 오류."""
 
+    def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None):
+        super().__init__(message)
+        self.retryable = retryable
+        self.status_code = status_code
+
 
 def _retry_wait(attempt: int, retry_after: str | None) -> float | None:
     """다시 시도할 때 기다릴 초. 기다리면 안 되면 None."""
@@ -110,7 +133,7 @@ def chat_v3(model: str, body: dict, *, timeout: float = V3_TIMEOUT) -> dict:
         raise ClovaV3Error("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
     url = f"{V3_HOST}/v3/chat-completions/{model}"
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    for attempt in range(V3_MAX_RETRIES + 1):
+    for attempt in range((0 if call_managed.get() else V3_MAX_RETRIES) + 1):
         request = urllib.request.Request(
             url,
             data=data,
@@ -122,24 +145,35 @@ def chat_v3(model: str, body: dict, *, timeout: float = V3_TIMEOUT) -> dict:
             method="POST",
         )
         wait = None
+        retryable, status_code = False, None
         failure = "CLOVA 요청에 실패했습니다."
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request, timeout=remaining_time(timeout)) as response:
                 payload = json.load(response)
             code = str(payload["status"]["code"])
             if code == "20000":
                 return payload["result"]
             failure = f"CLOVA API 오류 (code {code[:5]})"
             if code[:3] == "429" or code[:1] == "5":
+                retryable = True
                 wait = _retry_wait(attempt, None)
         except urllib.error.HTTPError as error:
             failure = f"CLOVA HTTP 오류 ({error.code})"
+            status_code = error.code
             if error.code == 429 or 500 <= error.code <= 599:
+                retryable = True
                 wait = _retry_wait(attempt, error.headers.get("Retry-After"))
             error.close()
-        except (OSError, http.client.HTTPException, ValueError, KeyError, TypeError):
+        except (OSError, http.client.HTTPException):
+            retryable = True
+            failure = "CLOVA 연결이 올바르지 않습니다."
+        except (ValueError, KeyError, TypeError):
             failure = "CLOVA 응답 또는 연결이 올바르지 않습니다."
+        if call_managed.get():
+            raise ClovaV3Error(failure, retryable=retryable, status_code=status_code)
         if wait is not None:
+            if call_deadline.get() is not None and wait >= remaining_time(timeout):
+                raise ClovaV3Error("이번 요청의 처리 시간이 다 됐습니다.")
             time.sleep(wait)
             continue
         raise ClovaV3Error(failure)

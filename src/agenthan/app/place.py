@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from agenthan.agent import menu_photo
+from agenthan.agent.owner_assistant import RECORD_TARGETS
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import execute_feature_tool
 
@@ -24,9 +25,33 @@ def _no_photo(_record: dict) -> None:
     return None
 
 
+def _record_rows(records: list[dict], label_fields: tuple[str, ...]) -> list[dict]:
+    """Records a feature changes one at a time (talktalk, order, reservation).
+
+    label: the fields that tell the records apart (owner_assistant.RECORD_TARGETS);
+    fields: every other field. The screen shows a change as the label plus the fields
+    whose value differs, so a new record kind needs no screen code of its own.
+    """
+    rows = []
+    for record in records:
+        rest = {k: copy.deepcopy(v) for k, v in record.items() if k != "id"}
+        rows.append(
+            {
+                "id": record["id"],
+                "label": {k: rest.pop(k) for k in label_fields if k in rest},
+                "fields": rest,
+            }
+        )
+    return rows
+
+
 def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
     """The sections the screen draws, keyed by feature id."""
     hours = data.get("shop", {}).get("hours", {})
+    records = {
+        feature: _record_rows(data.get(collection, []), fields)
+        for feature, (collection, _key, fields) in RECORD_TARGETS.items()
+    }
     return {
         "menu": [
             {**{k: m.get(k) for k in MENU_FIELDS}, "photo_url": photo_url(m)}
@@ -34,13 +59,16 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
         ],
         "business_hours": {day: copy.deepcopy(hours[day]) for day in DAYS if day in hours},
         "coupon": copy.deepcopy(data.get("coupons", [])),
+        "keywords": list(data.get("shop", {}).get("keywords", [])),
+        **records,
     }
 
 
 def _keyed(section: object) -> dict:
     if isinstance(section, dict):
         return section
-    return {item["id"]: item for item in section}
+    # Records are keyed by id; a list of words (keywords) by the word itself.
+    return {item if isinstance(item, str) else item["id"]: item for item in section}
 
 
 def changes(before: dict, after: dict) -> dict:
