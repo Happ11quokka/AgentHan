@@ -23,8 +23,11 @@ PACE_S = 1.05
 def _targets(conn, store_id: str, url: str | None) -> dict[str, dict[str, str]]:
     from agenthan.rag import RagStoreKnowledge
 
-    kb = RagStoreKnowledge.from_db(store_id, embed=False, url=url)
-    menus = {i: kb._embed_text(i) for i in kb.records}
+    has_menu = conn.execute("SELECT 1 FROM menus WHERE store_id = %s LIMIT 1", (store_id,))
+    menus: dict[str, str] = {}
+    if has_menu.fetchone():  # 메뉴 없는 가게(플레이스 리포트)는 검색 색인을 만들 수 없다
+        kb = RagStoreKnowledge.from_db(store_id, embed=False, url=url)
+        menus = {i: kb._embed_text(i) for i in kb.records}
     reviews = dict(
         conn.execute(
             "SELECT id, text FROM reviews WHERE store_id = %s AND length(trim(text)) > 0",
