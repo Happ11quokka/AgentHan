@@ -311,6 +311,7 @@ class HCXReviewLLM:
         recent: list[str] | None = None,
         instruction: str | None = None,
         glossary: dict[str, str] | None = None,
+        facts: list[dict] | None = None,
     ) -> str:
         """한국어 답글. edit_request(사장님 언어 그대로 가능)가 있으면 previous를 그 요청대로
         고친다.
@@ -325,6 +326,13 @@ class HCXReviewLLM:
             user += (
                 "메뉴 표기 (답글에는 왼쪽 한국어 이름을 쓰세요): "
                 + ", ".join(f"{ko} = {native}" for ko, native in glossary.items())
+                + "\n"
+            )
+        if facts:  # 리뷰에 나온 메뉴의 가게 정보 (가게 지식 RAG)
+            user += (
+                "리뷰에 나온 메뉴의 가게 정보 (메뉴를 말할 때는 이 정보만 쓰고, 없는 내용은 "
+                "지어내지 마세요): "
+                + json.dumps(facts, ensure_ascii=False)
                 + "\n"
             )
         user += "플랫폼: 네이버 플레이스, 친근한 존댓말, 300자 이내\n"

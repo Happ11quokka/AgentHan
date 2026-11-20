@@ -28,10 +28,12 @@ def reviews(data: dict) -> dict:
             }
         )
     count = len(rows)
+    # Naver reviews often have no star rating; average only the rated ones.
+    rated = [r["rating"] for r in rows if r["rating"] is not None]
     return {
         "summary": {
             "count": count,
-            "average_rating": round(sum(r["rating"] for r in rows) / count, 1) if count else None,
+            "average_rating": round(sum(rated) / len(rated), 1) if rated else None,
             "unanswered": sum(not r["has_owner_reply"] for r in rows),
         },
         "reviews": rows,

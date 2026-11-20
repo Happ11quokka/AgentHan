@@ -53,3 +53,37 @@ def test_pilot_records_happen_on_or_before_the_pilot_day(tmp_path):
     assert any(t["status"] == "unanswered" for t in data["talktalk"])
     assert any(o["status"] == "new" for o in data["orders"])
     assert any(r["status"] == "requested" for r in data["reservations"])
+
+
+DUMMY_DATA = "fixtures/dummy_store"  # same format as data/clean, safe to commit
+
+
+def test_a_store_data_folder_replaces_the_made_up_shop(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTHAN_DATA_DIR", DUMMY_DATA)
+    api = TestClient(create_app(make_assistant=pilot.assistant, root=tmp_path))
+    session_id = api.post("/assistant/sessions").json()["session_id"]
+
+    place = api.get(f"/assistant/sessions/{session_id}/place").json()["place"]
+    names = {m["name"] for m in place["menu"]}
+    assert "피로시키" not in names, "the made-up pilot menu is gone"
+    assert len(place["menu"]) >= 20
+
+    data = pilot.assistant(tmp_path / "check.json").store.read()
+    menu_names = {m["name"] for m in data["menus"]}
+    assert all(any(n in o["items"] for n in menu_names) for o in data["orders"])
+    assert any(n in data["coupons"][0]["title"] for n in menu_names)
+    for review in data["reviews"]:
+        assert date.fromisoformat(review["visit_date"]) <= PILOT_DAY
+    assert data["statistics"] and data["reservations"], "missing records stay as dummies"
+
+
+def test_unrated_reviews_do_not_break_the_average(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTHAN_DATA_DIR", DUMMY_DATA)
+    data = pilot.assistant(tmp_path / "store.json").store.read()
+    data["reviews"][0]["rating"] = None
+
+    from agenthan.app.screens import reviews
+
+    summary = reviews(data)["summary"]
+    assert summary["average_rating"] is not None
+    assert summary["count"] == len(data["reviews"])

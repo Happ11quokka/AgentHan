@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from agenthan.agent.place_matcher import get_feature, load_features
+from agenthan.tools import menu_index
 from agenthan.tools.dummy_store import DummyStore, find_records, normalize
 
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -175,10 +176,41 @@ def _find_menu(menus: list[dict], name: str) -> dict | None:
     )
 
 
+def _resolve_menu(menus: list[dict], name: str, action: str) -> dict | list[dict] | None:
+    """The menu a name means: exact name/alias first, then the store knowledge RAG
+    (aliases, typos, family names; ADR-0008). A list means several menus fit: ask.
+
+    Saving with a name that only contains a menu name ("메도빅 미니") is a new menu, so the
+    RAG answer counts for saves only when the name is that menu's whole name or alias."""
+    if (record := _find_menu(menus, name)) is not None:
+        return record
+    index = menu_index.index_for(menus)
+    if index is None:
+        return None
+    found = index.resolve(name)
+    if not found.ids or (action == "save" and not found.whole):
+        return None
+    by_id = {m["id"]: m for m in menus}
+    records = [by_id[i] for i in found.ids if i in by_id]
+    return records[0] if len(records) == 1 else records or None
+
+
+def _ambiguous_menu(records: list[dict]) -> dict:
+    names = ", ".join(r["name"] for r in records)
+    return {
+        "ok": False,
+        "error": "ambiguous_target",
+        "message": f"어느 메뉴인지 골라 주세요: {names}",
+        "candidates": [{"id": r["id"], "name": r["name"]} for r in records],
+    }
+
+
 def _menu(store, args):
     data = store.read()
     action = args.get("action") or "save"
-    record = _find_menu(data["menus"], args["name"])
+    record = _resolve_menu(data["menus"], args["name"], action)
+    if isinstance(record, list):
+        return _ambiguous_menu(record)
     if action != "save":
         if record is None:
             return _not_found("menu", data["menus"], "name")

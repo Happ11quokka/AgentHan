@@ -91,7 +91,8 @@ export type Message =
 export type ReviewRow = {
   id: string;
   visit_date: string;
-  rating: number;
+  /** 네이버 리뷰는 별점이 없는 경우가 많다(null). */
+  rating: number | null;
   /** 거친 표현을 거른 문장. 거를 게 없으면 원문 그대로. */
   text: string;
   softened: boolean;

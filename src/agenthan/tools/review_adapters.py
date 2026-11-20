@@ -16,7 +16,10 @@ from datetime import date, datetime
 from agenthan.agent.review.replies import MockReplyStore
 from agenthan.agent.review.repo import ReviewRepo
 from agenthan.agent.review.topic import MenuCatalog
+from agenthan.tools import menu_index
 from agenthan.tools.dummy_store import DummyStore
+
+FACTS_LIMIT = 3  # menus per review given to the reply writer
 
 
 class DummyStoreReviewRepo(ReviewRepo):
@@ -53,6 +56,13 @@ class DummyStoreMenuCatalog(MenuCatalog):
             {"name": m["name"], "aliases": list(m.get("aliases", []))}
             for m in self.store.read()["menus"]
         ]
+
+    def facts_for(self, store: str, text: str) -> list[dict]:
+        """Menus the text mentions, by the store knowledge RAG over this shop (ADR-0008)."""
+        index = menu_index.index_for(self.store.read()["menus"])
+        if index is None:
+            return []
+        return [index.facts(menu_id) for menu_id in index.mentions(text)[:FACTS_LIMIT]]
 
 
 class DummyStoreReplyStore(MockReplyStore):

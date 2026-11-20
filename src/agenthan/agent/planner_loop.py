@@ -24,6 +24,7 @@ from agenthan.agent.loop_budget import BudgetExhausted, LoopBudget
 from agenthan.agent.place_matcher import get_feature
 from agenthan.agent.review.clova import ClovaError
 from agenthan.core import llm
+from agenthan.tools import menu_index
 from agenthan.tools.feature_tools import (
     TOOL_FEATURES,
     TOOLS,
@@ -1508,10 +1509,15 @@ class PlannerLoop:
         task = self.a.ledger.find_open(step.feature)
         context = self.a._tasks_summary(task, self.a._held_tasks(task)) or "없음"
         # 읽을 수 있는 실제 가게 값도 계획 기능 범위로만 제공한다.
-        from agenthan.agent.owner_assistant import store_slice, targets_line
+        from agenthan.agent.owner_assistant import knowledge_slice, store_slice, targets_line
 
-        values = store_slice(step.feature, self.a.store.read())
+        store = self.a.store.read()
         targets = self.step_targets(step)
+        said = "\n".join(filter(None, [step.goal, self.step_said(step)]))
+        views = (targets or {}).get("views")
+        values = knowledge_slice(
+            step.feature, store, store_slice(step.feature, store), said, views
+        )
         candidates = ("\n" + targets_line(targets)) if targets is not None else ""
         return [
             {"role": "system", "content": SYSTEM},
@@ -1829,6 +1835,8 @@ class PlannerLoop:
     def menu_mentions(self):
         """리뷰 원문에서 실제 메뉴·별칭의 등장 횟수를 센다. 표본 수에 따른 중단은 없다."""
         store = self.a.store.read()
+        if (index := menu_index.index_for(store["menus"])) is not None:
+            return self._indexed_menu_mentions(store, index)
         records = []
         for menu in store["menus"]:
             names = {
@@ -1855,6 +1863,30 @@ class PlannerLoop:
             "menu_mentions": counts,
             "text": "보유한 리뷰 원문의 메뉴 언급 횟수예요. "
             + ", ".join(f"{k} {v}회" for k, v in counts.items()),
+            "blocks": "",
+            "read_evidence": True,
+        }
+
+    def _indexed_menu_mentions(self, store, index):
+        """Reviews that mention each menu, by the store knowledge RAG (ADR-0008): aliases,
+        spacing and family names count; a family name alone counts for its representative."""
+        counts = {m["id"]: 0 for m in store["menus"]}
+        for review in store["reviews"]:
+            for menu_id in index.mentions(review["text"]):
+                if menu_id in counts:
+                    counts[menu_id] += 1
+        records = sorted(
+            ({**m, "mentions": counts[m["id"]]} for m in store["menus"]),
+            key=lambda m: -m["mentions"],
+        )
+        mentions = {m["name"]: m["mentions"] for m in records}
+        return {
+            "ok": True,
+            "action": "read",
+            "records": records,
+            "menu_mentions": mentions,
+            "text": "메뉴별로 그 메뉴를 언급한 리뷰 수예요(별칭·묶음 이름 포함). "
+            + ", ".join(f"{k} {v}건" for k, v in mentions.items() if v),
             "blocks": "",
             "read_evidence": True,
         }

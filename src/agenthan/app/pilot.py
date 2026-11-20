@@ -3,14 +3,21 @@
 Every chat starts from a copy of one made-up shop whose menus, reviews, inquiries and
 stats tell one story, on a fixed day so "어제" and "이번 주" match the data. The
 evaluation seed (tools/dummy_store_seed.json) is not touched.
+
+With AGENTHAN_DATA_DIR set (e.g. data/clean), the shop, menus and reviews come from that
+store data folder instead and the rest of the story is retold with its menus (store_data.py).
 """
 
+import json
+import os
 import shutil
 from datetime import date
 from pathlib import Path
 
 from agenthan.agent import review_delegate
 from agenthan.agent.owner_assistant import OwnerAssistant
+from agenthan.app import knowledge, store_data
+from agenthan.tools import menu_index
 from agenthan.tools.dummy_store import DummyStore
 
 PILOT_SEED = Path(__file__).with_name("pilot_store.json")
@@ -22,10 +29,27 @@ def review_session(store: DummyStore, owner_lang: str = "ko", **kwargs):
     return review_delegate.new_session(store, owner_lang=owner_lang, today=PILOT_TODAY, **kwargs)
 
 
+_knowledge_folder: str | None = None
+
+
+def use_knowledge(folder: str | Path) -> None:
+    """Tools search menus with the store knowledge RAG over each shop copy (ADR-0008)."""
+    global _knowledge_folder
+    if _knowledge_folder != str(folder):
+        menu_index.configure(knowledge.index_factory(folder))
+        _knowledge_folder = str(folder)
+
+
 def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
     """An assistant over a fresh copy of the pilot shop. kwargs go to OwnerAssistant."""
     path = Path(path)
+    folder = os.environ.get(store_data.DATA_DIR_ENV)
+    use_knowledge(folder or knowledge.DEFAULT_FOLDER)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(PILOT_SEED, path)
+        if folder:
+            pilot = json.loads(PILOT_SEED.read_text(encoding="utf-8"))
+            DummyStore(path).write(store_data.pilot_seed(folder, pilot, PILOT_TODAY))
+        else:
+            shutil.copyfile(PILOT_SEED, path)
     return OwnerAssistant(path, today=PILOT_TODAY, review_session=review_session, **kwargs)

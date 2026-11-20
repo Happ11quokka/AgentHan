@@ -295,6 +295,7 @@ def draft_review_reply(
     recent: list[str] | None = None,
     instruction: str | None = None,
     owner_promise: bool = False,
+    catalog=None,
     **_,
 ) -> dict:
     """review_ids(시스템 값)의 리뷰마다 한국어 답글 초안을 만든다. edit_request가 있으면 previous
@@ -328,6 +329,9 @@ def draft_review_reply(
             kw = dict(route=route, profile=profile, recent=recent_all[-3:], glossary=glossary)
             if instruction and not edit_request:
                 kw["instruction"] = instruction
+            # 리뷰에 나온 메뉴의 가게 정보: 답글이 없는 메뉴·틀린 가격을 지어내지 않게 (ADR-0008)
+            if catalog is not None and (facts := catalog.facts_for(store_id, r["text"])):
+                kw["facts"] = facts
             reply = writer.write_reply(
                 r["text"], senti, edit_request=edit_request, previous=prev, **kw
             )

@@ -179,7 +179,8 @@ export const REPLY_SERVER_ERROR: ReplyError = { reason: "server", message: "서�
 /** 채팅에 올리는 짧은 알림(서버 대화 기록에는 넣지 않는다). */
 export function replyNoticeText(r: Pick<ReviewRow, "visit_date" | "rating">, e: ReplyError) {
   const why = e.reason === "checks" && e.issues.length ? e.issues.join(", ") : e.message;
-  return `${reviewDate(r.visit_date)} 별점 ${r.rating}점 리뷰 답글을 올리지 못했어요: ${why}`;
+  const which = r.rating === null ? "" : ` 별점 ${r.rating}점`;
+  return `${reviewDate(r.visit_date)}${which} 리뷰 답글을 올리지 못했어요: ${why}`;
 }
 export const REPLY_NOTICE_VIEW = "리뷰 탭에서 보기";
 

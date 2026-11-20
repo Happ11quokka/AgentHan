@@ -42,6 +42,7 @@ from agenthan.agent.place_matcher import RELEVANCE_THRESHOLD, get_feature
 from agenthan.agent.task_ledger import QUIET_AFTER, TaskLedger
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.tools import menu_index
 from agenthan.tools.dummy_store import DEFAULT_STORE, DummyStore, DummyStoreError, find_records
 from agenthan.tools.feature_tools import (
     TOOL_FEATURES,
@@ -309,6 +310,52 @@ def store_slice(feature_id: str, store: dict) -> dict:
         else:
             out[head] = value
     return out
+
+
+MENU_FACTS = 5  # menus whose facts a talktalk answer sees
+
+
+def knowledge_slice(
+    feature_id: str, store: dict, values: dict, said: str, views: list[dict] | None = None
+) -> dict:
+    """With the store knowledge RAG plugged in (ADR-0008), adjust a feature's store slice:
+    - menu: only the menus the owner named (aliases, typos, family names) instead of all of
+      them; nothing named (\"제일 비싼 메뉴\") → the full list as before.
+    - talktalk: facts of the menus the owner or the candidate inquiries name, and opening
+      hours, so an answer does not make them up. An inquiry that names no menu gets related
+      menus from the full RAG (vectors when a key is set), marked as only related.
+    Without the RAG the slice is unchanged (the evaluation path)."""
+    index = menu_index.index_for(store.get("menus", []))
+    if index is None or feature_id not in ("menu", "talktalk"):
+        return values
+    if feature_id == "menu":
+        ids = set(index.resolve(said).ids) | set(index.mentions(said))
+        menus = values.get("menus", [])
+        named = [m for m in menus if m["id"] in ids]
+        if named and len(named) < len(menus):
+            values["menus"] = named
+            values["menus_note"] = (
+                f"사장님 말에 나온 메뉴만 보임 (전체 {len(menus)}개). "
+                "다른 메뉴가 필요하면 이름으로 다시 찾을 것"
+            )
+        return values
+    named = dict.fromkeys(index.mentions(said))
+    related: dict[str, None] = {}
+    for view in views or []:
+        found = index.lookup(str(view.get("message", "")))
+        (named if found.named else related).update(dict.fromkeys(found.ids))
+    if named:
+        values["menu_facts"] = [index.facts(i) for i in list(named)[:MENU_FACTS]]
+    related = [i for i in related if i not in named][:MENU_FACTS]
+    if related:
+        # A question that names no menu ("덜 단 거 있어요?"): menus found by meaning or intent.
+        values["related_menu_facts"] = [index.facts(i) for i in related]
+        values["related_note"] = (
+            "문의에 메뉴 이름은 없고 뜻으로 찾은 메뉴. "
+            "추천할 때만 쓰고, 문의한 메뉴라고 단정하지 말 것"
+        )
+    values.setdefault("shop", {})["hours"] = store.get("shop", {}).get("hours")
+    return values
 
 
 def prompt_fingerprint(store: dict) -> str:
@@ -1711,6 +1758,12 @@ class OwnerAssistant:
         args["keywords"] = whole
         return args
 
+    def _store_material(self, feature_id: str, task) -> dict:
+        store = self.store.read()
+        views = (self._targets or {}).get("views")
+        said = "\n".join(task.said)
+        return knowledge_slice(feature_id, store, store_slice(feature_id, store), said, views)
+
     def _system(self, feature_id: str, task) -> str:
         """Rules, today, this feature's slice of the store, the task's held values, and one
         line per finished task. Approvals, ids and amounts come from the ledger, not prose."""
@@ -1732,7 +1785,7 @@ class OwnerAssistant:
             SYSTEM,
             f"오늘: {self.today.isoformat()} ({'월화수목금토일'[self.today.weekday()]}요일)",
             "가게 데이터: "
-            + json.dumps(store_slice(feature_id, self.store.read()), ensure_ascii=False),
+            + json.dumps(self._store_material(feature_id, task), ensure_ascii=False),
         ]
         if self._targets is not None:
             lines.append(targets_line(self._targets))
