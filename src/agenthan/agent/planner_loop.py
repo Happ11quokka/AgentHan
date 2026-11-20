@@ -1835,7 +1835,7 @@ class PlannerLoop:
     def menu_mentions(self):
         """리뷰 원문에서 실제 메뉴·별칭의 등장 횟수를 센다. 표본 수에 따른 중단은 없다."""
         store = self.a.store.read()
-        if (index := menu_index.index_for(store["menus"])) is not None:
+        if (index := menu_index.index_for(store)) is not None:
             return self._indexed_menu_mentions(store, index)
         records = []
         for menu in store["menus"]:

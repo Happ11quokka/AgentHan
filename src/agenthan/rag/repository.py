@@ -3,13 +3,15 @@
 - JsonDirRepository: JSON 폴더(fixtures/dummy_store 또는 data/clean)를 메모리에 올린다.
 - PgRepository: PostgreSQL(`agenthan.db`, AGENTHAN_DB_URL)의 가게 한 곳을 같은 모양으로 올린다.
 - ShopDataRepository: 비서 가게 파일(DummyStore) 한 벌(dict)을 같은 모양으로.
+  메뉴의 family·popularity 등과 최상위 families가 있으면 같이 읽는다
+  (실제 데이터로 만든 파일럿 가게).
 """
 
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Protocol
@@ -154,9 +156,19 @@ class ShopDataRepository:
                     for o in m.get("options") or ()
                     if isinstance(o, dict) and o.get("name")
                 ),
+                allergens=tuple(m.get("allergens") or ()),
                 sold_out=bool(m.get("sold_out", False)),
             )
-            menus.append(MenuRecord(item=item, tags=tuple(m.get("tags") or ())))
+            menus.append(
+                MenuRecord(
+                    item=item,
+                    family=m.get("family") or "",
+                    tags=tuple(m.get("tags") or ()),
+                    popularity=m.get("popularity"),
+                    gift=m.get("gift"),
+                    taste=m.get("taste"),
+                )
+            )
         kst = timezone(timedelta(hours=9))
         reviews = []
         for r in self.data.get("reviews") or []:
@@ -175,7 +187,16 @@ class ShopDataRepository:
                     menu_ids=tuple(r.get("menu_ids") or ()),
                 )
             )
-        return StoreData(menus, [], reviews, dict(self.data.get("shop") or {}))
+        # 묶음(families)이 있으면 같이: '메도빅'이 묶음 전체를 가리키게. 빠진 메뉴는 묶음에서 뺀다
+        ids = {m.item.id for m in menus}
+        families = []
+        for f in self.data.get("families") or []:
+            fam = _family(f)
+            members = tuple(m for m in fam.members if m in ids)
+            if members:
+                lead = fam.representative if fam.representative in members else members[0]
+                families.append(replace(fam, members=members, representative=lead))
+        return StoreData(menus, families, reviews, dict(self.data.get("shop") or {}))
 
 
 _OPTION_FIELDS = {"name", "available", "extra_price", "note"}

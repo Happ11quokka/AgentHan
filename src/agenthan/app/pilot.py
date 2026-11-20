@@ -30,15 +30,15 @@ def review_session(store: DummyStore, owner_lang: str = "ko", **kwargs):
     return review_delegate.new_session(store, owner_lang=owner_lang, today=PILOT_TODAY, **kwargs)
 
 
-_knowledge_folder: str | None = None
+_knowledge_on = False
 
 
-def use_knowledge(folder: str | Path) -> None:
-    """Tools search menus with the store knowledge RAG over each shop copy (ADR-0008)."""
-    global _knowledge_folder
-    if _knowledge_folder != str(folder):
-        menu_index.configure(knowledge.index_factory(folder))
-        _knowledge_folder = str(folder)
+def use_knowledge() -> None:
+    """Tools search menus with Part B search over each shop copy they work on (ADR-0008)."""
+    global _knowledge_on
+    if not _knowledge_on:
+        menu_index.configure(knowledge.index_factory())
+        _knowledge_on = True
 
 
 def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
@@ -48,7 +48,7 @@ def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
     rebuilt whenever the menus or reviews in that file change."""
     path = Path(path)
     folder = os.environ.get(store_data.DATA_DIR_ENV)
-    use_knowledge(folder or knowledge.DEFAULT_FOLDER)
+    use_knowledge()
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         if folder:

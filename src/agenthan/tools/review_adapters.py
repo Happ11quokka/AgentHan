@@ -59,7 +59,7 @@ class DummyStoreMenuCatalog(MenuCatalog):
 
     def facts_for(self, store: str, text: str) -> list[dict]:
         """Menus the text mentions, by the store knowledge RAG over this shop (ADR-0008)."""
-        index = menu_index.index_for(self.store.read()["menus"])
+        index = menu_index.index_for(self.store.read())
         if index is None:
             return []
         return [index.facts(menu_id) for menu_id in index.mentions(text)[:FACTS_LIMIT]]

@@ -246,7 +246,18 @@ STORE_SLICE = {
     "onsite_payment": ["shop.onsite_payment"],
 }
 CONTEXT_MESSAGES = 8
-HIDDEN_KEYS = {"photo", "photo_mime"}
+# Photos, and search-only menu fields the store knowledge RAG reads (app/store_data.py).
+HIDDEN_KEYS = {
+    "photo",
+    "photo_mime",
+    "family",
+    "tags",
+    "popularity",
+    "gift",
+    "taste",
+    "options",
+    "allergens",
+}
 # Features whose write points at one stored record: (collection, id parameter, fields that
 # tell records apart). Code narrows the records from the owner's words; the model picks an
 # id among them or asks. The whole collection is never sent.
@@ -325,7 +336,7 @@ def knowledge_slice(
       hours, so an answer does not make them up. An inquiry that names no menu gets related
       menus from the full RAG (vectors when a key is set), marked as only related.
     Without the RAG the slice is unchanged (the evaluation path)."""
-    index = menu_index.index_for(store.get("menus", []))
+    index = menu_index.index_for(store)
     if index is None or feature_id not in ("menu", "talktalk"):
         return values
     if feature_id == "menu":

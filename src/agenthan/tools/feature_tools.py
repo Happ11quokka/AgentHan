@@ -176,15 +176,16 @@ def _find_menu(menus: list[dict], name: str) -> dict | None:
     )
 
 
-def _resolve_menu(menus: list[dict], name: str, action: str) -> dict | list[dict] | None:
+def _resolve_menu(data: dict, name: str, action: str) -> dict | list[dict] | None:
     """The menu a name means: exact name/alias first, then the store knowledge RAG
     (aliases, typos, family names; ADR-0008). A list means several menus fit: ask.
 
     Saving with a name that only contains a menu name ("메도빅 미니") is a new menu, so the
     RAG answer counts for saves only when the name is that menu's whole name or alias."""
+    menus = data["menus"]
     if (record := _find_menu(menus, name)) is not None:
         return record
-    index = menu_index.index_for(menus)
+    index = menu_index.index_for(data)
     if index is None:
         return None
     found = index.resolve(name)
@@ -208,7 +209,7 @@ def _ambiguous_menu(records: list[dict]) -> dict:
 def _menu(store, args):
     data = store.read()
     action = args.get("action") or "save"
-    record = _resolve_menu(data["menus"], args["name"], action)
+    record = _resolve_menu(data, args["name"], action)
     if isinstance(record, list):
         return _ambiguous_menu(record)
     if action != "save":

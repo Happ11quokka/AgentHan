@@ -357,7 +357,7 @@ def test_b5g_with_the_store_rag_spacing_and_typos_count_once_per_review(tmp_path
         "agenthan.agent.review_delegate.ask_review_agent",
         lambda *a: pytest.fail("집계에 리뷰 모델 불필요"),
     )
-    pilot.use_knowledge("fixtures/dummy_store")
+    pilot.use_knowledge()
     hcx = HCX(
         [],
         call("ask_review_agent", request="집계"),
@@ -3077,7 +3077,7 @@ def test_with_the_store_rag_the_menu_step_sees_only_the_named_menu(tmp_path):
     """ADR-0008: the model gets the menus the owner named, not the whole menu list."""
     from agenthan.app import pilot
 
-    pilot.use_knowledge("fixtures/dummy_store")
+    pilot.use_knowledge()
     hcx = HCX(["menu"], {"role": "assistant", "content": "확인할게요"})
     app = assistant(tmp_path, hcx)
     app.ask("블리니 가격 9500원으로 바꿔 줘")  # an alias of 블린
@@ -3090,7 +3090,7 @@ def test_with_the_store_rag_the_menu_step_sees_only_the_named_menu(tmp_path):
 def test_with_the_store_rag_an_unnamed_menu_request_still_sees_every_menu(tmp_path):
     from agenthan.app import pilot
 
-    pilot.use_knowledge("fixtures/dummy_store")
+    pilot.use_knowledge()
     hcx = HCX(["menu"], {"role": "assistant", "content": "확인할게요"})
     app = assistant(tmp_path, hcx)
     app.ask("제일 비싼 메뉴 가격 좀 올려 줘")
@@ -3102,7 +3102,7 @@ def test_with_the_store_rag_an_unnamed_menu_request_still_sees_every_menu(tmp_pa
 def test_with_the_store_rag_a_talktalk_answer_sees_menu_facts_and_hours(tmp_path):
     from agenthan.app import pilot
 
-    pilot.use_knowledge("fixtures/dummy_store")
+    pilot.use_knowledge()
     hcx = HCX(["talktalk"], {"role": "assistant", "content": "확인할게요"})
     app = assistant(tmp_path, hcx)
     app.ask("메도빅 홀케이크 예약 문의에 답장해 줘")

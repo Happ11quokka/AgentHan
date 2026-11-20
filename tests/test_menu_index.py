@@ -65,26 +65,26 @@ def test_a_deleted_menu_is_not_found_any_more(store):
 
 
 def test_the_index_is_rebuilt_only_when_menus_change(store):
-    menus = store.read()["menus"]
-    first = menu_index.index_for(menus)
-    assert menu_index.index_for(store.read()["menus"]) is first
+    first = menu_index.index_for(store.read())
+    assert menu_index.index_for(store.read()) is first
 
     menu(store, name="나폴레옹", price=9900)
 
-    assert menu_index.index_for(store.read()["menus"]) is not first
+    assert menu_index.index_for(store.read()) is not first
 
 
-def test_owner_edits_win_over_the_data_folder(store):
+def test_the_shop_file_carries_search_fields_and_owner_edits(store):
     menu(store, name="프라하", new_name="체코 초코 케이크")
 
-    index = menu_index.index_for(store.read()["menus"])
-    praga = index.facts("praga")
+    data = store.read()
+    assert data["families"], "families from the data folder are in the shop file"
+    praga = menu_index.index_for(data).facts("praga")
     assert praga["name"] == "체코 초코 케이크"
-    assert praga["category"], "search-only fields still come from the data folder"
+    assert praga["category"]
 
 
 def test_mentions_count_a_family_name_for_its_representative(store):
-    index = menu_index.index_for(store.read()["menus"])
+    index = menu_index.index_for(store.read())
 
     found = index.mentions("꿀케이크도 맛있고 초코 메도빅이랑 아아도 좋았어요")
 
@@ -104,7 +104,6 @@ def test_the_pilot_shop_without_a_data_folder_still_resolves_aliases(tmp_path):
     result = menu(store, name="메도비크으", action="sold_out")
 
     assert result["ok"] and result["record"]["name"] == "메도빅"
-    assert knowledge.DEFAULT_FOLDER.exists()
 
 
 def test_a_reply_draft_gets_the_facts_of_the_menus_its_review_names(store):
@@ -153,7 +152,7 @@ class CountingEmbed:
 @pytest.fixture
 def embed(store):
     fake = CountingEmbed()
-    menu_index.configure(knowledge.index_factory(DUMMY, embed=fake))
+    menu_index.configure(knowledge.index_factory(embed=fake))
     return fake
 
 
@@ -165,7 +164,7 @@ def test_writes_never_search_by_meaning(store, embed):
 
 
 def test_a_question_that_names_a_menu_needs_no_vectors(store, embed):
-    index = menu_index.index_for(store.read()["menus"])
+    index = menu_index.index_for(store.read())
 
     found = index.lookup("꿀케이크 선물 포장 되나요?")
 
@@ -174,25 +173,24 @@ def test_a_question_that_names_a_menu_needs_no_vectors(store, embed):
 
 
 def test_a_question_that_names_no_menu_finds_related_menus_by_meaning(store, embed):
-    index = menu_index.index_for(store.read()["menus"])
+    index = menu_index.index_for(store.read())
 
     found = index.lookup("폭신한 수플레 같은 거 있어요?")
 
     assert not found.named and found.ids[0] == "ptichye-moloko"
-    assert embed.texts, "vectors were used"
+    assert index.open_search.vector.enabled, "the read-only search may use vectors"
 
 
 def test_a_menu_change_re_embeds_only_that_menu(store, tmp_path):
     fake = CountingEmbed()
     cache = tmp_path / "embeddings.json"
-    source = knowledge._source(DUMMY)
-    menus = store.read()["menus"]
-    knowledge.RagMenuIndex(menus, source, fake, cache).lookup("폭신한 거")
+    data = store.read()
+    knowledge.RagMenuIndex(data, fake, cache).lookup("폭신한 거")
     first = len(fake.texts)
 
-    changed = [dict(m) for m in menus]
-    changed[0]["description"] = "새로 바꾼 설명"
-    knowledge.RagMenuIndex(changed, source, fake, cache).lookup("폭신한 거")
+    changed = {**data, "menus": [dict(m) for m in data["menus"]]}
+    changed["menus"][0]["description"] = "새로 바꾼 설명"
+    knowledge.RagMenuIndex(changed, fake, cache).lookup("폭신한 거")
 
     assert first > 1 and len(fake.texts) - first == 1
 

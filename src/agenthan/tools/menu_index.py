@@ -1,11 +1,12 @@
 """Store-knowledge search over the shop copy a tool is working on (ADR-0008).
 
 Tools never import the RAG (Part B) themselves. The app plugs in a factory that builds a
-MenuIndex from a shop's menu rows; without one, tools fall back to exact name matching.
+MenuIndex from a shop's data (its menus and families); without one, tools fall back to exact
+name matching.
 
-The index is cached by a fingerprint of the menu rows, so any menu change (add, rename,
-price, alias, delete, sold out) builds a new index the next time a tool looks. That holds for
-the session store and for the throwaway copies used for previews alike.
+The index is cached by a fingerprint of the menus and families, so any menu change (add,
+rename, price, alias, delete, sold out) builds a new index the next time a tool looks. That
+holds for the session store and for the throwaway copies used for previews alike.
 """
 
 from __future__ import annotations
@@ -56,7 +57,7 @@ class MenuIndex(Protocol):
         ...
 
 
-Factory = Callable[[list[dict]], MenuIndex]
+Factory = Callable[[dict], MenuIndex]  # shop data ({"menus", "families"}) → index
 
 _factory: Factory | None = None
 _cache: OrderedDict[str, MenuIndex] = OrderedDict()
@@ -70,21 +71,22 @@ def configure(factory: Factory | None) -> None:
     _cache.clear()
 
 
-def fingerprint(menus: list[dict]) -> str:
-    raw = json.dumps(menus, ensure_ascii=False, sort_keys=True, default=str)
+def fingerprint(data: dict) -> str:
+    parts = [data.get("menus") or [], data.get("families") or []]
+    raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
-def index_for(menus: list[dict]) -> MenuIndex | None:
-    """The index for exactly these menu rows; rebuilt whenever they change."""
+def index_for(data: dict) -> MenuIndex | None:
+    """The index for exactly this shop's menus and families; rebuilt whenever they change."""
     global builds
-    if _factory is None or not menus:
+    if _factory is None or not data.get("menus"):
         return None
-    key = fingerprint(menus)
+    key = fingerprint(data)
     if key in _cache:
         _cache.move_to_end(key)
         return _cache[key]
-    index = _factory(menus)
+    index = _factory(data)
     builds += 1
     _cache[key] = index
     while len(_cache) > CACHE_SIZE:

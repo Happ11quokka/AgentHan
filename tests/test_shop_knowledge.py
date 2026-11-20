@@ -8,6 +8,7 @@ from pathlib import Path
 
 from agenthan.app import pilot
 from agenthan.rag import LiveShopKnowledge
+from agenthan.rag.shop import shop_knowledge
 from agenthan.tools.dummy_store import DummyStore
 
 PILOT = Path(pilot.PILOT_SEED)
@@ -51,3 +52,27 @@ def test_pilot_assistant_uses_its_own_shop_knowledge(tmp_path) -> None:
     assistant = pilot.assistant(tmp_path / "s" / "store.json")
     assert isinstance(assistant.knowledge, LiveShopKnowledge)
     assert "메도빅" in {m.name_ko for m in assistant.knowledge.list_menu()}
+
+
+def test_a_shop_file_with_families_finds_the_whole_family():
+    """A pilot shop built from a data folder keeps families in the file (app/store_data.py)."""
+    data = {
+        "menus": [
+            {"id": "a", "name": "꿀 케이크", "price": 8000, "family": "honey"},
+            {"id": "b", "name": "초코 꿀 케이크", "price": 8500, "family": "honey"},
+            {"id": "c", "name": "아메리카노", "price": 4500},
+        ],
+        "families": [
+            {
+                "id": "honey",
+                "name_ko": "메도빅",
+                "representative": "a",
+                "members": ["a", "b", "gone"],
+                "aliases": ["메도빅"],
+            },
+        ],
+    }
+    kb = shop_knowledge(data, embed=False)
+
+    assert [h.item.id for h in kb.search_menu("메도빅")] == ["a", "b"]
+    assert kb.families["honey"].members == ("a", "b"), "a deleted menu leaves the family"

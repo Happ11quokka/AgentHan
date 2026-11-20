@@ -1,81 +1,36 @@
-"""The store knowledge RAG over a session's own menus (ADR-0008).
+"""Menu lookups for the assistant's tools over the shop copy they work on (ADR-0008).
 
-`index_factory(folder)` gives tools/menu_index a builder: menu rows from the shop copy go in,
-a RagStoreKnowledge over exactly those menus comes out. Search-only fields the rows do not
-carry (family, tags, popularity, category, options) come from the data folder by menu id;
-the copy's name, price, aliases and sold-out state win.
+The search itself is Part B's: `rag.shop_knowledge` over the shop file (`ShopDataRepository`),
+the same builder `LiveShopKnowledge` uses. A shop built from a data folder carries the
+search-only fields (family, popularity…) and `families` in the file itself (store_data.py).
 
-Two searches, one per risk (ADR-0008):
+Two searches, one per risk:
 - resolve/mentions (they pick what a write changes): names, aliases, typos and family names
-  only. Vector search is never used and the embedding API is never called.
+  only, from a vector-free index. The embedding API is never called.
 - lookup (read-only questions): the same names first; only when none match, the full RAG
   search (intent rules, BM25 and, with CLOVASTUDIO_API_KEY, vectors). That index is built
-  on first use, and its embeddings are cached by content, so a menu change re-embeds only the
-  menus whose text changed.
+  on first use. Embeddings are cached by content (in the DB when there is one, else in
+  data/cache/shop_embeddings.json), so a menu change re-embeds only the menus that changed.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import replace
 from difflib import SequenceMatcher
-from functools import lru_cache
 from pathlib import Path
 
-from agenthan.app.store_data import resolve
-from agenthan.core.contracts import MenuItem
 from agenthan.rag.knowledge import RagStoreKnowledge, jamo
 from agenthan.rag.normalize import key, normalize
-from agenthan.rag.repository import DUMMY_DIR, Family, JsonDirRepository, MenuRecord, StoreData
-from agenthan.rag.vector import Embed, default_cache_path
+from agenthan.rag.repository import Family
+from agenthan.rag.shop import shop_knowledge
+from agenthan.rag.vector import CACHE_DIR, Embed, EmbeddingCache
 from agenthan.tools.menu_index import Factory, Lookup, Resolution
 
-DEFAULT_FOLDER = DUMMY_DIR  # no data folder set: the committed dummy store
 WHOLE_RATIO = 0.8  # a name this close to a menu/alias/family name is that name (typos allowed)
 CONFIDENT = ("exact", "alias")  # name, alias, family and typo matches; not BM25 or vectors
 LOOKUP_LIMIT = 3  # related menus for a question that names none
+FILE_CACHE = CACHE_DIR / "shop_embeddings.json"  # data/ is gitignored
 _HANGUL = re.compile(r"[가-힣]")
-
-
-@lru_cache(maxsize=4)
-def _source(folder: str) -> StoreData:
-    return JsonDirRepository(resolve(folder)).load()
-
-
-class SessionRepository:
-    """rag MenuRepository over menu rows from a shop copy."""
-
-    def __init__(self, menus: list[dict], source: StoreData):
-        self.menus = menus
-        self.source = source
-
-    def load(self) -> StoreData:
-        known = {r.item.id: r for r in self.source.menus}
-        records = []
-        for row in self.menus:
-            base = known.get(row["id"])
-            src = base.item if base else None
-            item = MenuItem(
-                id=row["id"],
-                name_ko=row["name"],
-                price=row["price"],
-                description=row.get("description") or (src.description if src else ""),
-                category=src.category if src else "",
-                name_native=row.get("name_native") or (src.name_native if src else ""),
-                aliases=tuple(row.get("aliases") or ()),
-                options=src.options if src else (),
-                allergens=src.allergens if src else (),
-                sold_out=bool(row.get("sold_out", False)),
-            )
-            records.append(replace(base, item=item) if base else MenuRecord(item=item))
-        ids = [r.item.id for r in records]
-        families = []
-        for f in self.source.families:
-            members = tuple(m for m in f.members if m in ids)
-            if members:
-                lead = f.representative if f.representative in members else members[0]
-                families.append(replace(f, members=members, representative=lead))
-        return StoreData(records, families, [], self.source.store)
 
 
 def _similar(a: str, b: str) -> float:
@@ -106,13 +61,14 @@ def _pattern(term: str) -> re.Pattern | None:
 class RagMenuIndex:
     def __init__(
         self,
-        menus: list[dict],
-        source: StoreData,
+        data: dict,
         embed: Embed | None | bool = None,
-        cache_path: Path | None = None,
+        cache_path: Path | None = FILE_CACHE,
     ):
-        self.repo = SessionRepository(menus, source)
-        self.knowledge = RagStoreKnowledge(self.repo, embed=False)  # names only, for writes
+        """data: the shop file's menus (and families). embed as in rag: None = CLOVA when the
+        key is set, False = off, a function = tests. cache_path: file cache when no DB."""
+        self.data = {"menus": data.get("menus") or [], "families": data.get("families") or []}
+        self.knowledge = shop_knowledge(self.data, embed=False)  # names only, for writes
         self._embed = embed
         self._cache_path = cache_path
         self._open: RagStoreKnowledge | None = None
@@ -124,7 +80,6 @@ class RagMenuIndex:
             terms += [(t, item.id) for t in (item.name_ko, item.name_native, *item.aliases) if t]
         for f in self.families.values():
             terms += [(t, f"family:{f.id}") for t in (f.name_ko, *f.aliases) if t]
-        self.terms = terms
         # Longest first so "메도빅 초코" wins over "메도빅" in the same place.
         self.patterns = sorted(
             ((p, target, len(_flat(t))) for t, target in terms if (p := _pattern(t))),
@@ -168,7 +123,10 @@ class RagMenuIndex:
     def open_search(self) -> RagStoreKnowledge:
         """The full RAG (rules, BM25, vectors) over the same menus, built on first use."""
         if self._open is None:
-            self._open = RagStoreKnowledge(self.repo, self._embed, self._cache_path)
+            kb = shop_knowledge(self.data, self._embed)
+            if kb.vector.enabled and isinstance(kb.vector.cache, EmbeddingCache):
+                kb.vector.cache = EmbeddingCache(self._cache_path)  # no DB: keep it on disk
+            self._open = kb
         return self._open
 
     def lookup(self, question: str) -> Lookup:
@@ -196,9 +154,5 @@ class RagMenuIndex:
         return out
 
 
-def index_factory(folder: str | Path, embed: Embed | None | bool = None) -> Factory:
-    """embed: None = CLOVA embeddings when CLOVASTUDIO_API_KEY is set (cached in
-    data/cache/<folder>_embeddings.json, shared with Part B), False = off, a function = tests."""
-    source = _source(str(folder))
-    cache = default_cache_path(resolve(folder)) if embed is None else None
-    return lambda menus: RagMenuIndex(menus, source, embed, cache)
+def index_factory(embed: Embed | None | bool = None) -> Factory:
+    return lambda data: RagMenuIndex(data, embed)

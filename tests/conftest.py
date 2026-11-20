@@ -17,7 +17,7 @@ def _no_menu_index_leak():
     from agenthan.tools import menu_index
 
     menu_index.configure(None)
-    pilot._knowledge_folder = None
+    pilot._knowledge_on = False
 
 
 @pytest.fixture(autouse=True)

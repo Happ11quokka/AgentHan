@@ -63,6 +63,11 @@ def _popularity(menu: dict) -> int:
     return ((menu.get("extra") or {}).get("popularity") or {}).get("review_mentions") or 0
 
 
+# Search-only menu fields (Part B): kept in the shop file for the store knowledge RAG
+# (rag.ShopDataRepository reads them), hidden from model prompts (owner_assistant.HIDDEN_KEYS).
+SEARCH_FIELDS = ("family", "tags", "popularity", "gift", "taste")
+
+
 def _menu(m: dict) -> dict:
     row = {
         "id": m["id"],
@@ -74,6 +79,13 @@ def _menu(m: dict) -> dict:
         row["name_native"] = m["name_native"]
     if description := _description(m.get("description", "")):
         row["description"] = description
+    for key in ("category", "options", "allergens"):
+        if m.get(key):
+            row[key] = m[key]
+    extra = m.get("extra") or {}
+    for key in SEARCH_FIELDS:
+        if extra.get(key):
+            row[key] = extra[key]
     return row
 
 
@@ -182,6 +194,7 @@ def pilot_seed(folder: str | Path, pilot: dict, today: date) -> dict:
         **pilot,
         "shop": shop,
         "menus": [_menu(m) for m in raw_menus],
+        "families": _read(folder, "families.json", []),
         "reviews": reviews,
         **_story(pilot, raw_menus, shop, store),
     }
