@@ -30,6 +30,17 @@ DB를 켜면 바뀌는 것:
 - Part B(`RagStoreKnowledge.from_db()`): 메뉴·묶음·리뷰를 DB에서 읽고 벡터는 pgvector에서 찾는다.
   `search_reviews()`·`search_store_info()`로 리뷰·가게 정보 의미 검색도 된다.
 
+## Part B 검색을 쓰는 곳 (2026-11-21)
+
+| 어디 | 무엇 |
+|---|---|
+| 전화 가게 지식 (`serve.phone_knowledge`) | DB에 전화 가게가 있으면 `RagStoreKnowledge.from_db(그 가게)`. 메뉴 목록은 JSON과 같고 검색만 Part B |
+| 전화: 메뉴 이름을 못 알아들음 (`engine._searched_menus`) | 매처가 거절하면 검색 후보로 되묻는다("꿀 들어간 거" → 메도빅?). 매처가 애매하게(confirm) 고른 메뉴와 검색이 다르면 둘 다 묻는다("얇은 팬케이크" → 메도빅이랑 블린 중에?) |
+| 전화: 손님 질문 답 (`engine._with_related_reviews`) | 질문과 가까운 후기(리뷰 의미 검색) 3개를 답변기 자료 한 줄로. 답변기 스레드에서 |
+| 비서 가게 지식 (`app/pilot.py`) | 대화마다 그 가게 파일 메뉴로 `LiveShopKnowledge`(메뉴 사진 매칭). 메뉴가 바뀌면 다시 색인 |
+
+검색이 실패하거나 DB가 없으면 예전 동작(전화 기본 가게 지식, 없는 메뉴 안내)으로 돌아간다.
+
 ## 표
 
 | 표 | 내용 |

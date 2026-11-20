@@ -11,6 +11,7 @@ from pathlib import Path
 
 from agenthan.agent import review_delegate
 from agenthan.agent.owner_assistant import OwnerAssistant
+from agenthan.rag import LiveShopKnowledge
 from agenthan.tools.dummy_store import DummyStore
 
 PILOT_SEED = Path(__file__).with_name("pilot_store.json")
@@ -23,9 +24,13 @@ def review_session(store: DummyStore, owner_lang: str = "ko", **kwargs):
 
 
 def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
-    """An assistant over a fresh copy of the pilot shop. kwargs go to OwnerAssistant."""
+    """An assistant over a fresh copy of the pilot shop. kwargs go to OwnerAssistant.
+
+    Its store knowledge (menu photo matching) is Part B search over this chat's own shop file,
+    rebuilt whenever the menus or reviews in that file change."""
     path = Path(path)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(PILOT_SEED, path)
+    kwargs.setdefault("knowledge", LiveShopKnowledge(DummyStore(path).read))
     return OwnerAssistant(path, today=PILOT_TODAY, review_session=review_session, **kwargs)

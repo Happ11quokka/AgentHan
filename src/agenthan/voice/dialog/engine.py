@@ -111,6 +111,10 @@ QUESTION_RESCUE_MIN_CHARS = 5
 _RESCUE_STATES = (State.ORDERING, State.ASK_PICKUP, State.CONFIRM)
 _RETRACT_STATES = (State.ORDERING, State.ASK_PICKUP)  # 말하다 거둔 말을 기다림으로 받는 상태
 REVIEWS_FOR_FACTS = 30  # 답변기 자료에 넣으려고 읽는 최근 후기 수
+SEARCH_SUGGEST = 3  # 이름으로 못 찾은 메뉴 말을 가게 지식 검색으로 찾았을 때 되묻는 후보 수
+RELATED_REVIEWS = 3  # 질문과 가까운 후기(의미 검색) 수. 가게 지식이 search_reviews를 할 때만
+RELATED_REVIEW_CHARS = 80  # 그 후기 한 개를 자료에 넣는 최대 글자 수
+RELATED_REVIEW_LABEL = "손님 후기"  # 답 검사(`answerer`)가 아는 자료 이름과 같게
 RECENT_LINES = 4  # 답변기에 주는 직전 대화 줄 수
 # 답변기가 못 답했을 때도 규칙으로 답하는 종류: 메뉴 필드에 그대로 있는 값
 _FIELD_KINDS = frozenset({"allergen", "allergy", "price"})
@@ -1186,10 +1190,34 @@ class DialogEngine:
         """답변기 한 번 + 검사. 엔진 상태를 건드리지 않는다(다른 스레드에서 돈다)."""
         assert self._answerer is not None
         try:
+            request = self._with_related_reviews(request)
             return checked(self._answerer.answer(request), request)
         except Exception:  # noqa: BLE001  답변기 고장으로 통화가 끊기면 안 된다
             log.exception("답변기 실패")
             return UNSURE
+
+    def _with_related_reviews(self, request: AnswerRequest) -> AnswerRequest:
+        """가게 지식이 리뷰 의미 검색(`search_reviews`, 계약 밖 선택 기능)을 하면 질문과 가까운 후기
+        몇 개를 자료 한 줄로 더한다 ("웨이팅 길어요?" → 웨이팅 후기). 없거나 실패하면 그대로.
+        답변기 스레드에서 돈다(질문 임베딩 호출이 통화 턴을 막지 않게)."""
+        search = getattr(self._store, "search_reviews", None)
+        if not callable(search) or not request.text.strip():
+            return request
+        try:
+            hits = search(request.text, k=RELATED_REVIEWS)
+        except Exception:  # noqa: BLE001
+            log.exception("후기 검색 실패")
+            return request
+        known = " ".join(request.facts)
+        texts = []
+        for review, _score in hits:
+            text = " ".join(review.text.split())[:RELATED_REVIEW_CHARS]
+            if text and text not in known:
+                texts.append(text)
+        if not texts:
+            return request
+        line = " | ".join(f"{RELATED_REVIEW_LABEL}: {t}" for t in texts)
+        return replace(request, facts=(*request.facts, line))
 
     def _cannot_answer(self, turn: _Turn, key: KnowledgeKey, menu_name: str, *,
                        before_question: bool = False) -> None:
@@ -1284,7 +1312,16 @@ class DialogEngine:
             return result.item
         if result.decision == "confirm" and result.item is not None:
             item = result.item
-            self._open_menu_clarify(turn, act, (item,), templates.confirm_menu(item.name_ko))
+            searched = self._searched_menus(act)
+            if searched and item not in searched:
+                # 글자는 비슷하지만 검색은 다른 메뉴를 가리킴
+                # ("얇은 팬케이크": 매처 메도빅, 검색 블린)
+                # → 하나만 확인하지 않고 둘 다 묻는다
+                options = (item, *searched)[:SEARCH_SUGGEST]
+                names = [m.name_ko for m in options]
+                self._open_menu_clarify(turn, act, options, templates.choose_menu(names))
+            else:
+                self._open_menu_clarify(turn, act, (item,), templates.confirm_menu(item.name_ko))
         elif result.decision == "choose":
             names = [m.name_ko for m in result.candidates]
             self._open_menu_clarify(turn, act, result.candidates, templates.choose_menu(names))
@@ -1296,11 +1333,40 @@ class DialogEngine:
                 self._open_menu_clarify(turn, act, alternatives, question, notice=notice)
             else:
                 self._say(turn, notice)  # 대안이 없다 = 남은 메뉴가 없다. 더 묻지 않는다
+        elif suggested := self._searched_menus(act):
+            # 이름으로는 못 찾았지만 가게 지식 검색이 찾음 ("꿀 들어간 케이크" → 메도빅).
+            # 담지 않고 묻는다
+            names = [m.name_ko for m in suggested]
+            question = (templates.confirm_menu(names[0]) if len(names) == 1
+                        else templates.choose_menu(names))
+            self._open_menu_clarify(turn, act, suggested, question)
         else:
             self._fail(turn)
             self._say(turn, templates.not_on_menu(self._available_names()))
             turn.menu_listed = True
         return None
+
+    def _searched_menus(self, act: Act) -> tuple[MenuItem, ...]:
+        """매처가 거절하거나 확신하지 못한(confirm) 메뉴 말을 가게 지식 검색에 보인다.
+
+        Part B 검색은 설명·별칭·오타·의미로 찾고, 근거가 없으면 빈 목록이다(없는 메뉴 = 없음).
+        통화 메뉴에 있고 품절이 아닌 것만, 많아야 SEARCH_SUGGEST개. 검색이 실패하면 빈 튜플.
+        """
+        text = (act.menu_text or act.free_text or "").strip()
+        if not text:
+            return ()
+        try:
+            hits = self._store.search_menu(text, k=SEARCH_SUGGEST * 2)
+        except Exception:  # noqa: BLE001  검색 고장으로 통화가 멈추면 안 된다
+            log.exception("가게 지식 검색 실패")
+            return ()
+        by_id = {m.id: m for m in self._menu if not m.sold_out}
+        found: list[MenuItem] = []
+        for hit in hits:
+            item = by_id.get(hit.item.id)
+            if item is not None and item not in found:
+                found.append(item)
+        return tuple(found[:SEARCH_SUGGEST])
 
     def _add_to_cart(self, turn: _Turn, item: MenuItem, act: Act) -> None:
         """장바구니에 담는다. 수량 기본값 1, 기본값이 있는 필수 옵션은 미리 고르고,

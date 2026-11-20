@@ -2,6 +2,7 @@
 
 - JsonDirRepository: JSON 폴더(fixtures/dummy_store 또는 data/clean)를 메모리에 올린다.
 - PgRepository: PostgreSQL(`agenthan.db`, AGENTHAN_DB_URL)의 가게 한 곳을 같은 모양으로 올린다.
+- ShopDataRepository: 비서 가게 파일(DummyStore) 한 벌(dict)을 같은 모양으로.
 """
 
 from __future__ import annotations
@@ -127,6 +128,54 @@ class PgRepository:
             reviews=[_review_from_row(r) for r in reviews],
             store=store[0] or {},
         )
+
+
+class ShopDataRepository:
+    """비서 가게 파일(DummyStore, `shop`·`menus`·`reviews` 형식) 한 벌을 그대로 검색 데이터로.
+
+    메뉴 이름 키는 `name`(없으면 `name_ko`), 리뷰 id는 `review_id`, 시각은 `visit_date`."""
+
+    def __init__(self, data: dict) -> None:
+        self.data = data
+
+    def load(self) -> StoreData:
+        menus = []
+        for m in self.data.get("menus") or []:
+            item = MenuItem(
+                id=str(m["id"]),
+                name_ko=m.get("name") or m.get("name_ko") or "",
+                price=m.get("price") or 0,
+                description=m.get("description") or "",
+                category=m.get("category") or "",
+                name_native=m.get("name_native") or "",
+                aliases=tuple(m.get("aliases") or ()),
+                options=tuple(
+                    MenuOption(**{k: v for k, v in o.items() if k in _OPTION_FIELDS})
+                    for o in m.get("options") or ()
+                    if isinstance(o, dict) and o.get("name")
+                ),
+                sold_out=bool(m.get("sold_out", False)),
+            )
+            menus.append(MenuRecord(item=item, tags=tuple(m.get("tags") or ())))
+        kst = timezone(timedelta(hours=9))
+        reviews = []
+        for r in self.data.get("reviews") or []:
+            when = r.get("created_at") or r.get("visit_date") or "1970-01-01"
+            try:
+                t = datetime.fromisoformat(str(when))
+            except ValueError:
+                t = datetime(1970, 1, 1)
+            reviews.append(
+                Review(
+                    id=str(r.get("review_id") or r.get("id")),
+                    text=r.get("text") or "",
+                    created_at=t if t.tzinfo else t.replace(tzinfo=kst),
+                    rating=r.get("rating"),
+                    author=r.get("author") or "",
+                    menu_ids=tuple(r.get("menu_ids") or ()),
+                )
+            )
+        return StoreData(menus, [], reviews, dict(self.data.get("shop") or {}))
 
 
 _OPTION_FIELDS = {"name", "available", "extra_price", "note"}

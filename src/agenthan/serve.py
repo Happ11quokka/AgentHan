@@ -31,7 +31,10 @@ SESSIONS_ENV = "AGENTHAN_SESSIONS_DIR"
 def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     settings = settings or VoiceSettings.from_env()
     store_raw, sinks = phone_db(settings)
-    app = voice_server.create_app(settings, store_raw=store_raw, order_sinks=sinks)
+    knowledge = phone_knowledge(store_raw, settings)
+    app = voice_server.create_app(
+        settings, store_raw=store_raw, order_sinks=sinks, knowledge=knowledge
+    )
     include_assistant(app, settings.env)  # from_env면 os.environ·.env를 합친 값
     return app
 
@@ -54,6 +57,27 @@ def phone_db(settings: VoiceSettings) -> tuple[dict | None, list]:
     log.info("DB 켬: 전화 가게 %s, 주문은 phone_orders에도 남김",
              f"DB({store_id})" if raw else f"파일({fixture.name}, DB에 없음)")
     return raw, [PgOrderSink(store_id=store_id, url=url)]
+
+
+def phone_knowledge(store_raw: dict | None, settings: VoiceSettings):
+    """전화 가게를 Part B 검색(RagStoreKnowledge)으로 연다.
+
+    DB에 그 가게가 있으면 DB(벡터는 pgvector, 리뷰 의미 검색 포함), 없으면 None(전화 기본 가게
+    지식). 메뉴 목록은 가게 JSON과 같다."""
+    store_id = str(((store_raw or {}).get("store") or {}).get("id") or "")
+    if not store_id:
+        return None
+    from agenthan.rag import RagStoreKnowledge
+
+    url = settings.env.get("AGENTHAN_DB_URL", "").strip() or None
+    try:
+        knowledge = RagStoreKnowledge.from_db(store_id, url=url)
+    except Exception as error:
+        log.warning("전화 가게 지식을 Part B로 못 열어 기본으로: %s", type(error).__name__)
+        return None
+    log.info("전화 가게 지식: Part B 검색 (DB %s, 벡터 %s)", store_id,
+             "켬" if knowledge.vector.enabled else "끔(CLOVASTUDIO_API_KEY 없음)")
+    return knowledge
 
 
 def include_assistant(app: FastAPI, env: Mapping[str, str]) -> None:

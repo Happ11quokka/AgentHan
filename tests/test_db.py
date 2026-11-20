@@ -212,3 +212,26 @@ def test_serve_phone_db_uses_db_store(seeded) -> None:
     assert raw["store"]["id"] == "sample"
     assert len(sinks) == 1
     sinks[0].close()
+
+
+@needs_db
+def test_phone_gets_part_b_knowledge_from_db(seeded) -> None:
+    from agenthan.core.fakes import FakeStoreKnowledge
+    from agenthan.serve import phone_db, phone_knowledge
+    from agenthan.voice.settings import VoiceSettings
+
+    settings = VoiceSettings.from_env({"AGENTHAN_DB_URL": seeded}, env_file=None)
+    raw, sinks = phone_db(settings)
+    for sink in sinks:
+        sink.close()
+    kb = phone_knowledge(raw, settings)
+    assert isinstance(kb, RagStoreKnowledge)
+    assert kb.list_menu() == FakeStoreKnowledge.from_fixture().list_menu()
+    assert kb.search_menu("꿀 들어간 케이크")[0].item.name_ko == "메도빅"
+
+
+def test_phone_knowledge_without_db_store_is_none() -> None:
+    from agenthan.serve import phone_knowledge
+    from agenthan.voice.settings import VoiceSettings
+
+    assert phone_knowledge(None, VoiceSettings.from_env({}, env_file=None)) is None
