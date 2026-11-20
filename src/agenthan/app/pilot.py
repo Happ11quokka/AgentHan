@@ -17,6 +17,7 @@ from pathlib import Path
 from agenthan.agent import review_delegate
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app import knowledge, store_data
+from agenthan.rag import LiveShopKnowledge
 from agenthan.tools import menu_index
 from agenthan.tools.dummy_store import DummyStore
 
@@ -41,7 +42,10 @@ def use_knowledge(folder: str | Path) -> None:
 
 
 def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
-    """An assistant over a fresh copy of the pilot shop. kwargs go to OwnerAssistant."""
+    """An assistant over a fresh copy of the pilot shop. kwargs go to OwnerAssistant.
+
+    Its store knowledge (menu photo matching) is Part B search over this chat's own shop file,
+    rebuilt whenever the menus or reviews in that file change."""
     path = Path(path)
     folder = os.environ.get(store_data.DATA_DIR_ENV)
     use_knowledge(folder or knowledge.DEFAULT_FOLDER)
@@ -52,4 +56,5 @@ def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
             DummyStore(path).write(store_data.pilot_seed(folder, pilot, PILOT_TODAY))
         else:
             shutil.copyfile(PILOT_SEED, path)
+    kwargs.setdefault("knowledge", LiveShopKnowledge(DummyStore(path).read))
     return OwnerAssistant(path, today=PILOT_TODAY, review_session=review_session, **kwargs)

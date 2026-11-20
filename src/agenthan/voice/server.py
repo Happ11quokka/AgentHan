@@ -31,13 +31,14 @@ import logging
 import secrets
 import signal
 import threading
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from importlib import metadata
 from typing import Any
 
 from fastapi import FastAPI
 
+from agenthan.core.contracts import Order, OrderSink, StoreKnowledge
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice import adapters
 from agenthan.voice.gate import CallGate
@@ -58,14 +59,37 @@ SHUTDOWN_NOTICE_S = 1.0  # SIGTERM 뒤 종료 안내가 화면에 닿게 기다�
 SHUTDOWN_LIMIT_S = 8  # uvicorn이 남은 작업을 기다리는 상한 (compose `stop_grace_period` 15초 안)
 
 
-def create_app(settings: VoiceSettings | None = None) -> FastAPI:
-    """`clova`를 골랐는데 어댑터가 없으면 `AdapterMissing`으로 뜨기 전에 멈춘다."""
+def create_app(
+    settings: VoiceSettings | None = None,
+    *,
+    store_raw: Mapping[str, object] | None = None,
+    order_sinks: Sequence[OrderSink] = (),
+    knowledge: StoreKnowledge | None = None,
+) -> FastAPI:
+    """`clova`를 골랐는데 어댑터가 없으면 `AdapterMissing`으로 뜨기 전에 멈춘다.
+
+    store_raw: 가게 JSON과 같은 모양의 dict(DB에서 읽은 것). 없으면 `PHONE_STORE_FIXTURE` 파일.
+    order_sinks: 확정·넘김 주문을 사장님 화면과 함께 받을 곳(DB 기록 등). 실패해도 통화는 계속.
+    knowledge: 같은 가게의 다른 `StoreKnowledge` 구현(Part B 검색 등). 메뉴 목록이 가게 JSON과
+        같아야 한다(다르면 경고하고 JSON 쪽을 쓴다).
+    """
     settings = settings or VoiceSettings.from_env()
     fixture = settings.store_fixture
-    store = (
-        FakeStoreKnowledge.from_fixture(fixture) if fixture else FakeStoreKnowledge.from_fixture()
-    )
-    config = StoreConfig.from_fixture(fixture)
+    if store_raw is not None:
+        store = FakeStoreKnowledge.from_dict(dict(store_raw))
+        config = StoreConfig.from_store_json(store_raw)
+    else:
+        store = (
+            FakeStoreKnowledge.from_fixture(fixture)
+            if fixture
+            else FakeStoreKnowledge.from_fixture()
+        )
+        config = StoreConfig.from_fixture(fixture)
+    if knowledge is not None:
+        if knowledge.list_menu() == store.list_menu():
+            store = knowledge
+        else:
+            log.warning("가게 지식(%s) 메뉴가 가게 JSON과 달라 JSON을 씀", type(knowledge).__name__)
     # 가게 데이터 검사 (5단계 티켓 06): 오류면 여기서 멈추고, 경고는 로그에 남긴다
     ensure_usable(store.list_menu(), config, log)
     # 확정 주문과 통화 상황(통화 중·넘김·미완료)을 받아 사장님 화면으로 보낸다(주문은 로그 한 줄도
@@ -127,7 +151,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
         phone_router(
             store=store,
             config=config,
-            order_sink=hub,
+            order_sink=_TeeSink(hub, *order_sinks) if order_sinks else hub,
             settings=settings,
             owner=hub,
             knowledge=hub.knowledge,  # 사장님 보충 지식: 허브가 쓰고 통화 엔진이 읽는다 (티켓 13)
@@ -197,6 +221,22 @@ def _notice_on_sigterm(gate: CallGate) -> None:
 async def _later(keeper: Housekeeper) -> None:
     await asyncio.sleep(INTERVAL_S)
     await keeper.run_forever()
+
+
+class _TeeSink:
+    """주문을 사장님 허브와 추가 sink(들)에 같이 넘긴다. 추가 sink 실패는 로그만."""
+
+    def __init__(self, primary: OrderSink, *extra: OrderSink) -> None:
+        self.primary = primary
+        self.extra = extra
+
+    def submit(self, order: Order) -> None:
+        self.primary.submit(order)
+        for sink in self.extra:
+            try:
+                sink.submit(order)
+            except Exception:
+                log.exception("추가 주문 기록 실패 (%s)", type(sink).__name__)
 
 
 def main(

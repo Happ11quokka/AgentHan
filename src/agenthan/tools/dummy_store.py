@@ -1,4 +1,6 @@
-"""Local-only shop data. No publishing or network operations."""
+"""Local shop data in a JSON file. With AGENTHAN_DB_URL set, every write is also copied to the
+assistant_store_docs table (agenthan.db), and a missing file is read back from that copy.
+No publishing operations."""
 
 import json
 import os
@@ -66,6 +68,28 @@ def _migrate_review(record: dict) -> dict:
     return record
 
 
+def _db_key(path: Path) -> str:
+    return str(path.resolve())
+
+
+def _db_copy(path: Path) -> dict | None:
+    """AGENTHAN_DB_URL이 있으면 assistant_store_docs의 사본. 없거나 DB가 꺼져 있으면 None."""
+    if not os.environ.get("AGENTHAN_DB_URL"):
+        return None
+    from agenthan.db.stores import load_assistant_doc
+
+    return load_assistant_doc(_db_key(path))
+
+
+def _db_save(path: Path, data: dict) -> None:
+    """파일을 쓴 뒤 DB에도 한 벌(실패해도 파일은 이미 저장됨)."""
+    if not os.environ.get("AGENTHAN_DB_URL"):
+        return
+    from agenthan.db.stores import save_assistant_doc
+
+    save_assistant_doc(_db_key(path), data)
+
+
 class DummyStore:
     def __init__(self, path: str | Path = DEFAULT_STORE):
         self.path = Path(path).expanduser()
@@ -75,8 +99,10 @@ class DummyStore:
     def read(self) -> dict:
         """Before the first valid write, read the seed without creating a file."""
         try:
-            source = self.path if self.path.exists() else SEED_PATH
-            data = json.loads(source.read_text(encoding="utf-8"))
+            if self.path.exists():
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+            else:  # 파일이 없으면 DB 사본(재배포로 파일이 사라진 경우) → 없으면 시드
+                data = _db_copy(self.path) or json.loads(SEED_PATH.read_text(encoding="utf-8"))
             if (
                 not isinstance(data, dict)
                 or not isinstance(data.get("shop"), dict)
@@ -133,6 +159,7 @@ class DummyStore:
                 stream.flush()
                 os.fsync(stream.fileno())
             temporary.replace(self.path)
+            _db_save(self.path, data)
             return
         except OSError:
             pass

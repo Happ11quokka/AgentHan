@@ -18,3 +18,13 @@ def _no_menu_index_leak():
 
     menu_index.configure(None)
     pilot._knowledge_folder = None
+
+
+@pytest.fixture(autouse=True)
+def _no_database_unless_asked(monkeypatch):
+    """Tests never touch a real database by accident: AGENTHAN_DB_URL is cleared and the DB
+    circuit breaker reset. tests/test_db.py sets its own URL from AGENTHAN_TEST_DB_URL."""
+    monkeypatch.delenv("AGENTHAN_DB_URL", raising=False)
+    from agenthan.db.conn import reset_pause
+
+    reset_pause()

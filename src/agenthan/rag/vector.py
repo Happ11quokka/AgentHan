@@ -155,3 +155,136 @@ class VectorIndex:
         ]
         scored = [(i, s) for i, s in scored if s >= rules.VECTOR_MIN_COSINE]
         return sorted(scored, key=lambda t: t[1], reverse=True)[:k]
+
+
+# ------------------------------------------------------------------ PostgreSQL + pgvector
+def _parse_vector(value) -> list[float]:
+    """pgvector 값 → 실수 목록 (psycopg는 '[1,2,...]' 글로 준다)."""
+    return json.loads(value) if isinstance(value, str) else [float(x) for x in value]
+
+
+def _literal(vector: list[float]) -> str:
+    return "[" + ",".join(f"{x:.6f}" for x in vector) + "]"
+
+
+class PgEmbeddingCache:
+    """embedding_cache 표를 쓰는 캐시. EmbeddingCache와 같은 get·put·save."""
+
+    def __init__(self, url: str | None = None) -> None:
+        self.url = url
+
+    def get(self, text: str) -> list[float] | None:
+        from agenthan.db.conn import connect
+
+        with connect(self.url) as conn:
+            row = conn.execute(
+                "SELECT embedding FROM embedding_cache WHERE content_hash = %s",
+                (content_hash(text),),
+            ).fetchone()
+        return _parse_vector(row[0]) if row else None
+
+    def put(self, text: str, vector: list[float]) -> None:
+        from agenthan.db.conn import connect
+
+        with connect(self.url) as conn:
+            conn.execute(
+                "INSERT INTO embedding_cache (content_hash, model, embedding) VALUES (%s, %s, %s)"
+                " ON CONFLICT (content_hash) DO NOTHING",
+                (content_hash(text), MODEL_ID, _literal(vector)),
+            )
+
+    def save(self) -> None:  # 표에 바로 쓰므로 따로 저장할 것이 없다
+        return
+
+
+class PgVectorIndex(VectorIndex):
+    """벡터를 embeddings 표(pgvector, HNSW cosine)에 두고 유사도도 DB에서 계산한다.
+
+    - warm(): 메뉴 글이 바뀐 것만 임베딩해서(캐시 표 우선) embeddings에 넣고, 없어진 메뉴는 지운다.
+    - search(): 질문 하나만 임베딩(캐시 표 우선) → `ORDER BY embedding <=> 질문` 상위 k개.
+    - search_kind(): 같은 방식으로 리뷰(review)·가게 정보 조각(doc)도 찾는다.
+    실패하면 VectorIndex와 똑같이 FAIL_COOLDOWN초 쉬고 [](나머지 검색 단계로)."""
+
+    def __init__(
+        self,
+        docs: dict[str, str],
+        store_id: str,
+        embed: Embed | None | bool = None,
+        url: str | None = None,
+    ) -> None:
+        super().__init__(docs, embed, cache_path=None)
+        self.store_id = store_id
+        self.url = url
+        self.cache = PgEmbeddingCache(url)
+
+    def warm(self) -> int:
+        if not self.enabled:
+            return 0
+        from agenthan.db.conn import connect
+
+        before = self.calls
+        with connect(self.url) as conn:
+            have = dict(
+                conn.execute(
+                    "SELECT ref_id, content_hash FROM embeddings"
+                    " WHERE store_id = %s AND kind = 'menu'",
+                    (self.store_id,),
+                ).fetchall()
+            )
+        rows = []
+        for ref_id, text in self.docs.items():
+            if not text.strip() or have.get(ref_id) == content_hash(text):
+                continue
+            rows.append((ref_id, text, self._vector(text)))
+        with connect(self.url) as conn, conn.transaction():
+            for ref_id, text, vector in rows:
+                conn.execute(
+                    "INSERT INTO embeddings (store_id, kind, ref_id, model, content_hash, content,"
+                    " embedding) VALUES (%s, 'menu', %s, %s, %s, %s, %s)"
+                    " ON CONFLICT (store_id, kind, ref_id) DO UPDATE SET model = EXCLUDED.model,"
+                    " content_hash = EXCLUDED.content_hash, content = EXCLUDED.content,"
+                    " embedding = EXCLUDED.embedding, updated_at = now()",
+                    (self.store_id, ref_id, MODEL_ID, content_hash(text), text, _literal(vector)),
+                )
+            conn.execute(
+                "DELETE FROM embeddings WHERE store_id = %s AND kind = 'menu'"
+                " AND NOT (ref_id = ANY(%s))",
+                (self.store_id, list(self.docs)),
+            )
+        self._vectors = {}  # 준비 끝 표시 (벡터는 DB에 있다)
+        return self.calls - before
+
+    def search(self, query: str, k: int = 10) -> list[tuple[str, float]]:
+        if self._vectors is None and self.enabled and not self.paused:
+            try:
+                self.warm()
+            except Exception as error:
+                self._pause(error)
+                return []
+        return self.search_kind("menu", query, k, rules.VECTOR_MIN_COSINE)
+
+    def search_kind(
+        self, kind: str, query: str, k: int = 10, min_cosine: float = 0.0
+    ) -> list[tuple[str, float]]:
+        """→ [(ref_id, 코사인 유사도)] 높은 순."""
+        if not self.enabled or self.paused or not query.strip():
+            return []
+        from agenthan.db.conn import connect
+
+        try:
+            q = _literal(self._vector(query))
+            with connect(self.url) as conn:
+                rows = conn.execute(
+                    "SELECT ref_id, 1 - (embedding <=> %s::vector) AS score FROM embeddings"
+                    " WHERE store_id = %s AND kind = %s"
+                    " ORDER BY embedding <=> %s::vector LIMIT %s",
+                    (q, self.store_id, kind, q, k),
+                ).fetchall()
+        except Exception as error:
+            self._pause(error)
+            return []
+        return [(ref_id, float(score)) for ref_id, score in rows if score >= min_cosine]
+
+    def _pause(self, error: Exception) -> None:
+        log.warning("벡터 검색(DB)을 %d초 쉽니다: %s", FAIL_COOLDOWN, type(error).__name__)
+        self._paused_until = time.monotonic() + FAIL_COOLDOWN

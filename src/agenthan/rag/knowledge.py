@@ -23,6 +23,7 @@ matched_by는 계약 값만 쓴다: 메뉴명·원어명 = exact, 별칭·묶음
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,9 +34,16 @@ from agenthan.core.contracts import MenuHit, MenuItem, Review
 from agenthan.rag import rules
 from agenthan.rag.keyword import Analysis, KeywordIndex, user_words
 from agenthan.rag.normalize import contains_any, drop_correction, key, normalize, split_items
-from agenthan.rag.repository import DUMMY_DIR, JsonDirRepository, MenuRepository, StoreData
-from agenthan.rag.vector import Embed, VectorIndex, default_cache_path
+from agenthan.rag.repository import (
+    DUMMY_DIR,
+    JsonDirRepository,
+    MenuRepository,
+    PgRepository,
+    StoreData,
+)
+from agenthan.rag.vector import Embed, PgVectorIndex, VectorIndex, default_cache_path
 
+log = logging.getLogger(__name__)
 _HANGUL = re.compile(r"[가-힣]")
 _LETTER = r"a-z0-9Ѐ-ӿ"  # 라틴·숫자·키릴 글자
 _MASK = "\x00"
@@ -132,6 +140,44 @@ class RagStoreKnowledge:
         if cache_path is None and embed is None:
             cache_path = default_cache_path(repo.path)
         return cls(repo, embed, cache_path)
+
+    @classmethod
+    def from_db(
+        cls,
+        store_id: str | None = None,
+        embed: Embed | None | bool = None,
+        url: str | None = None,
+    ) -> RagStoreKnowledge:
+        """PostgreSQL(AGENTHAN_DB_URL)의 가게 한 곳. store_id → AGENTHAN_STORE_ID → dummy_store.
+        벡터는 pgvector(embeddings 표)에서 찾고, 임베딩 캐시도 DB 표(embedding_cache)를 쓴다.
+        리뷰·가게 정보 의미 검색(search_reviews·search_store_info)은 DB일 때만 된다."""
+        from agenthan.db.conn import connect, default_store_id
+
+        sid = store_id or default_store_id()
+        kb = cls(PgRepository(sid, url), embed=False)
+        kb.vector = PgVectorIndex(kb.vector.docs, sid, embed, url)
+        kb.store_id = sid
+        with connect(url) as conn:
+            kb.store_docs = {
+                i: (title, body)
+                for i, title, body in conn.execute(
+                    "SELECT id, title, body FROM store_docs WHERE store_id = %s ORDER BY id", (sid,)
+                ).fetchall()
+            }
+        return kb
+
+    @classmethod
+    def from_env(cls, embed: Embed | None | bool = None) -> RagStoreKnowledge:
+        """AGENTHAN_DB_URL이 있으면 DB, 없거나 DB를 못 읽으면 JSON 폴더(from_dir)."""
+        from agenthan.db.conn import enabled, pause
+
+        if enabled():
+            try:
+                return cls.from_db(embed=embed)
+            except Exception as error:
+                pause(error)
+                log.warning("DB에서 가게 지식을 못 읽어 JSON으로 엽니다: %s", type(error).__name__)
+        return cls.from_dir(embed=embed)
 
     @classmethod
     def from_fixture(cls) -> RagStoreKnowledge:
@@ -241,6 +287,25 @@ class RagStoreKnowledge:
                 since = since.replace(tzinfo=rows[0].created_at.tzinfo)
             rows = [r for r in rows if r.created_at >= since]
         return rows[: max(limit, 0)]
+
+    # ---------------------------------------------------------------- DB 의미 검색 (계약 밖)
+    store_id: str = ""
+    store_docs: dict[str, tuple[str, str]] = {}  # {조각 id: (제목, 본문)}
+
+    def search_reviews(self, query: str, k: int = 5) -> list[tuple[Review, float]]:
+        """리뷰 의미 검색 ("양 많다는 얘기 있어?"). DB·벡터가 켜져 있을 때만, 아니면 []."""
+        if not isinstance(self.vector, PgVectorIndex):
+            return []
+        by_id = {r.id: r for r in self._reviews}
+        hits = self.vector.search_kind("review", query, k, rules.VECTOR_MIN_COSINE)
+        return [(by_id[i], s) for i, s in hits if i in by_id]
+
+    def search_store_info(self, query: str, k: int = 3) -> list[tuple[str, str, float]]:
+        """가게 정보 조각 의미 검색 ("주차 돼요?" → 편의·결제 조각). → [(제목, 본문, 점수)]."""
+        if not isinstance(self.vector, PgVectorIndex):
+            return []
+        hits = self.vector.search_kind("doc", query, k, rules.VECTOR_MIN_COSINE)
+        return [(*self.store_docs[i], s) for i, s in hits if i in self.store_docs]
 
     def search_menu(self, query: str, k: int = 5) -> list[MenuHit]:
         hits = self._search(query)

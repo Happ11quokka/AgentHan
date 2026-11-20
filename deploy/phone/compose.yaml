@@ -1,4 +1,5 @@
 # 전화 주문 배포 (티켓 09): app(FastAPI, 화면 + /api/phone/ws) + caddy(자동 HTTPS)
+#                            + db(PostgreSQL 17 + pgvector, 가게 지식·벡터·주문. docs/db.md)
 #
 #   저장소 루트에서:  ./deploy/phone/deploy.sh up
 #   (먼저 빌드 → 새 통화 받기 중지 → 통화 0개 대기 → 교체 → 오래된 이미지 정리. README 4절)
@@ -28,6 +29,9 @@ services:
       - "8000"
     volumes:
       - phone_logs:/app/logs # 통화 기록 JSONL, 하루 예산(phone-budget.json), 점검 표시(DRAIN)
+    # DB는 먼저 띄우기만 한다(건강할 때까지 안 기다림). DB가 없거나 죽어도 앱은 JSON 파일로 뜬다
+    depends_on:
+      - db
     # SIGTERM → 통화 중인 화면에 안내(1초) → uvicorn 종료(최대 8초). 그 안에 못 끝내면 강제 종료
     stop_grace_period: 15s
     logging:
@@ -55,7 +59,30 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # 가게 지식·벡터(pgvector)·전화 주문·비서 가게 사본. 밖에 포트를 열지 않는다(app만 붙는다).
+  # 앱은 .env의 AGENTHAN_DB_URL=postgresql://agenthan:<비밀번호>@db:5432/agenthan 로 붙는다.
+  # 스키마·데이터: docker compose run --rm app python -m agenthan.db.seed (docs/db.md)
+  db:
+    image: pgvector/pgvector:0.8.7-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agenthan
+      POSTGRES_DB: agenthan
+      POSTGRES_PASSWORD: ${AGENTHAN_DB_PASSWORD:-}
+    volumes:
+      - pg_data:/var/lib/postgresql/data # 지우면 DB가 빈다(시드로 다시 채울 수 있음, 주문 기록은 사라짐)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenthan -d agenthan"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    shm_size: 256mb
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
 volumes:
+  pg_data:
   caddy_data:
   caddy_config:
   phone_logs:
