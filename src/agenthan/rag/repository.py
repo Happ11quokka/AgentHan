@@ -1,7 +1,7 @@
 """저장소: 메뉴·묶음·리뷰를 어디서 읽을지. 검색 코드는 이 Protocol만 본다.
 
-지금은 JSON 폴더(fixtures/dummy_store 또는 data/clean)를 메모리에 올린다.
-나중에 NCP PostgreSQL + pgvector로 옮길 때는 같은 메서드를 가진 클래스를 하나 더 만들면 된다.
+- JsonDirRepository: JSON 폴더(fixtures/dummy_store 또는 data/clean)를 메모리에 올린다.
+- PgRepository: PostgreSQL(`agenthan.db`, AGENTHAN_DB_URL)의 가게 한 곳을 같은 모양으로 올린다.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -83,6 +83,94 @@ class JsonDirRepository:
         families = [_family(f) for f in self._read("families.json", [])]
         reviews = [_review(r) for r in self._read("reviews.json", [])]
         return StoreData(menus, families, reviews, self._read("store.json", {}))
+
+
+class PgRepository:
+    """PostgreSQL(`agenthan.db`)의 한 가게. JSON 폴더와 같은 StoreData를 돌려준다.
+
+    표의 열에서 다시 만든다(원본 형식이 rag·phone·owner 어느 것이든). 순서는 원본 순서(position)."""
+
+    def __init__(self, store_id: str, url: str | None = None) -> None:
+        self.store_id = store_id
+        self.url = url
+
+    def load(self) -> StoreData:
+        from agenthan.db.conn import connect
+
+        with connect(self.url) as conn:
+            store = conn.execute(
+                "SELECT info FROM stores WHERE id = %s", (self.store_id,)
+            ).fetchone()
+            if store is None:
+                raise LookupError(f"DB에 가게가 없습니다: {self.store_id}")
+            menus = conn.execute(
+                "SELECT id, name_ko, price, description, category, name_native, aliases, options,"
+                " allergens, sold_out, family_id, tags, popularity, extra, name_en FROM menus"
+                " WHERE store_id = %s ORDER BY position, id",
+                (self.store_id,),
+            ).fetchall()
+            families = conn.execute(
+                "SELECT id, name_ko, representative, members, aliases, popularity, gift"
+                " FROM menu_families WHERE store_id = %s ORDER BY position, id",
+                (self.store_id,),
+            ).fetchall()
+            reviews = conn.execute(
+                "SELECT id, text, created_at, visit_date, rating, author, menu_ids FROM reviews"
+                " WHERE store_id = %s ORDER BY position, id",
+                (self.store_id,),
+            ).fetchall()
+        return StoreData(
+            menus=[_menu_from_row(r) for r in menus],
+            families=[
+                Family(f[0], f[1], f[2], tuple(f[3]), tuple(f[4]), f[5], f[6]) for f in families
+            ],
+            reviews=[_review_from_row(r) for r in reviews],
+            store=store[0] or {},
+        )
+
+
+_OPTION_FIELDS = {"name", "available", "extra_price", "note"}
+
+
+def _menu_from_row(r) -> MenuRecord:
+    (mid, name_ko, price, description, category, name_native, aliases, options, allergens,
+     sold_out, family, tags, popularity, extra, name_en) = r
+    extra = extra or {}
+    item = MenuItem(
+        id=mid,
+        name_ko=name_ko,
+        price=price or 0,
+        description=description,
+        category=category,
+        name_native=name_native,
+        aliases=tuple(aliases),
+        options=tuple(
+            MenuOption(**{k: v for k, v in o.items() if k in _OPTION_FIELDS}) for o in options
+        ),
+        allergens=tuple(allergens),
+        sold_out=sold_out,
+    )
+    return MenuRecord(
+        item=item,
+        family=family,
+        tags=tuple(tags),
+        popularity=popularity,
+        gift=extra.get("gift"),
+        taste=extra.get("taste"),
+        name_en=name_en,
+    )
+
+
+def _review_from_row(r) -> Review:
+    rid, text, created_at, visit_date, rating, author, menu_ids = r
+    if created_at is None:  # 시각이 없는 리뷰: 방문일 → 없으면 아주 옛날(최신순 맨 뒤)
+        kst = timezone(timedelta(hours=9))
+        created_at = (
+            datetime.combine(visit_date, datetime.min.time(), kst)
+            if visit_date
+            else datetime(1970, 1, 1, tzinfo=kst)
+        )
+    return Review(rid, text, created_at, rating, author, tuple(menu_ids))
 
 
 def _menu(m: dict) -> MenuRecord:

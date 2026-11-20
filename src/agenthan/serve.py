@@ -6,6 +6,8 @@
   (`/assistant/*`, `agenthan.app.server`)를 같은 앱에 붙인다.
   화면은 주소로 갈린다(`web/src/main.tsx`).
 - voice는 core 말고 다른 파트를 import하지 않는 규칙이라, 둘을 묶는 일은 이 파일이 한다.
+- AGENTHAN_DB_URL이 있으면 전화 가게 메뉴를 DB에서 읽고 확정·넘김 주문을 phone_orders 표에 남긴다
+  (`agenthan.db`). 비서 가게 파일도 쓸 때마다 DB에 한 벌 남는다(tools/dummy_store.py).
 - AGENTHAN_ASSISTANT=off면 비서를 붙이지 않는다(전화만). 대화마다 가게 파일을
   AGENTHAN_SESSIONS_DIR(기본 .agenthan/sessions)에 쓴다.
 """
@@ -28,9 +30,30 @@ SESSIONS_ENV = "AGENTHAN_SESSIONS_DIR"
 
 def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     settings = settings or VoiceSettings.from_env()
-    app = voice_server.create_app(settings)
+    store_raw, sinks = phone_db(settings)
+    app = voice_server.create_app(settings, store_raw=store_raw, order_sinks=sinks)
     include_assistant(app, settings.env)  # from_env면 os.environ·.env를 합친 값
     return app
+
+
+def phone_db(settings: VoiceSettings) -> tuple[dict | None, list]:
+    """AGENTHAN_DB_URL이 있으면 전화 가게를 DB(stores.raw)에서 읽고, 주문을 phone_orders에 남긴다.
+    DB가 없거나 그 가게가 DB에 없으면 지금처럼 PHONE_STORE_FIXTURE 파일을 읽는다."""
+    from agenthan import db
+
+    url = settings.env.get(db.DB_URL_ENV, "").strip()
+    if not url:
+        return None, []
+    from agenthan.core.fakes import SAMPLE_STORE
+    from agenthan.db.orders import PgOrderSink
+    from agenthan.db.stores import phone_store_raw
+
+    fixture = settings.store_fixture or SAMPLE_STORE
+    raw = phone_store_raw(fixture, url)
+    store_id = str(((raw or {}).get("store") or {}).get("id") or "")
+    log.info("DB 켬: 전화 가게 %s, 주문은 phone_orders에도 남김",
+             f"DB({store_id})" if raw else f"파일({fixture.name}, DB에 없음)")
+    return raw, [PgOrderSink(store_id=store_id, url=url)]
 
 
 def include_assistant(app: FastAPI, env: Mapping[str, str]) -> None:

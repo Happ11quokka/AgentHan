@@ -23,7 +23,11 @@ class FakeStoreKnowledge:
 
     @classmethod
     def from_fixture(cls, path: Path = SAMPLE_STORE) -> FakeStoreKnowledge:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> FakeStoreKnowledge:
+        """가게 JSON과 같은 모양의 dict (DB stores.raw 등)."""
         menu = [
             MenuItem(
                 **{k: v for k, v in m.items() if k not in ("aliases", "options", "allergens")},

@@ -19,6 +19,7 @@ dependencies = [
     "opencv-python-headless>=5.0.0.93",
     "openpyxl>=3.1.5",
     "protobuf>=7.36.2",
+    "psycopg[binary]>=3.2",
     "pydantic>=2",
     "python-multipart>=0.0.20",
     # models/baseline.joblib이 1.9.1로 저장됨. 버전을 바꾸면 scripts/train_baseline.py로 재학습

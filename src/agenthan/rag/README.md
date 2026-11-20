@@ -12,6 +12,9 @@ from agenthan.rag import RagStoreKnowledge
 
 kb = RagStoreKnowledge.from_dir()      # AGENTHAN_DATA_DIR 폴더, 없으면 fixtures/dummy_store (더미)
 kb = RagStoreKnowledge.from_fixture()  # 테스트·데모: 더미, 벡터 끔 (네트워크 없이 항상 같은 결과)
+kb = RagStoreKnowledge.from_db("real")  # PostgreSQL(AGENTHAN_DB_URL)의 가게, 벡터는 pgvector (docs/db.md)
+kb = RagStoreKnowledge.from_env()       # AGENTHAN_DB_URL이 있으면 DB, 못 읽으면 JSON 폴더
+kb.search_reviews("양 많다는 얘기 있어?")  # DB일 때만: 리뷰 의미 검색 → [(Review, 점수)]
 
 kb.search_menu("꿀케이크 있어요?", k=5)  # → list[MenuHit] (점수 높은 순, 근거 없으면 [])
 kb.get_menu("napoleon")                 # → MenuItem | None
@@ -22,6 +25,7 @@ kb.recent_reviews(limit=10, since=None) # → list[Review] (최신순, 작성자
 | 환경변수 | 뜻 |
 |---|---|
 | `AGENTHAN_DATA_DIR` | 데이터 폴더. 비우면 더미, `data/clean`이면 실제 데이터 |
+| `AGENTHAN_DB_URL` | 있으면 `from_db`·`from_env`가 DB를 읽는다. 가게는 `AGENTHAN_STORE_ID`(기본 dummy_store) |
 | `CLOVASTUDIO_API_KEY` | 있으면 CLOVA 임베딩 v2 벡터 검색을 켠다. 없거나 실패하면 별칭·BM25만으로 동작 |
 
 라이브러리는 `.env`를 직접 읽지 않는다. 앱·스크립트가 환경변수를 넣어 준다
