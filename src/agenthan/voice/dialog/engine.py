@@ -104,6 +104,13 @@ MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hc
 _ACTIVE = (State.ORDERING, State.CLARIFY, State.ASK_PICKUP, State.CONFIRM)
 # "더 필요하신 거?"에 "아니요, ~"의 뒷말이 이것뿐이면 "아니요"는 주문 끝이다 (`_no_means_done`)
 _AFTER_DONE: frozenset[ActType] = frozenset({"set_pickup_time", "set_name", "done_ordering"})
+# 사장님 확인을 기다리는 중(주문 승인 티켓 07)에도 평소처럼 처리하는 말: 취소, 주문 고치기
+# (메뉴·수량·옵션·요청·시각), "네"(확인 중이라고 다시 말한다), 사장님 연결. 그 밖의 말(질문·
+# "아니요"·못 알아들은 말 등)은 처리하지 않고 "확인 중이에요, 잠시만요."로 받는다
+# (spec "엔진" 대기 중 손님 말)
+_WHILE_APPROVAL: frozenset[ActType] = frozenset({
+    "cancel_order", "add_item", "change_qty", "remove_item", "set_option", "set_request",
+    "set_pickup_time", "yes", "want_owner"})
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 # NLU가 놓친 메뉴 한 마디를 매처로 다시 볼 최대 길이(공백·문장부호 뺀 글자). "맥도빅 주세요"(6)까지
 RESCUE_MAX_CHARS = 7
@@ -249,7 +256,7 @@ SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
     "_fail_key": "value", "_fail_count": "value", "_no_input": "value", "_reasks": "value",
     "_owner_open": "value", "_owner_asked": "value", "_read_back": "value",
     "_owner_timed_out": "value", "_owner_seen_said": "value",
-    "_approval_open": "value", "_approvals": "value",
+    "_approval_open": "value", "_approvals": "value", "_cancel_withdrawn": "value",
     "_transcript": "copy", "_pending": "copy",
 }
 
@@ -357,6 +364,9 @@ class DialogEngine:
         # 든다. 결정이 오면 `owner_decided`가 마무리한다
         self._approval_open: int | None = None
         self._approvals = 0  # 이 통화에서 연 확인 요청 수 (요청 번호)
+        # 티켓 07. 기다리는 중에 "취소할게요"가 와서 "주문 취소할까요?"를 물으며 거둔 요청 번호.
+        # 손님이 취소를 확정하면 그 번호를 취소(cancelled)로 한 번 더 알린다(사장님 카드가 취소로)
+        self._cancel_withdrawn: int | None = None
 
     # ------------------------------------------------------------ 진입점
 
@@ -534,6 +544,19 @@ class DialogEngine:
             self._transcript.append("사장님: 수락")
             self._say(turn, self._ok(turn, templates.closing(self._pickup, owner_pending=pending)))
         turn.order_status = "confirmed"
+        return self._result(turn)
+
+    def approval_still_waiting(self, number: int, now: datetime) -> TurnResult:
+        """확인 요청을 연 뒤 재안내 시간이 지났다(주문 승인 티켓 07). 세션이 봇 턴으로 한 번 넣는다.
+
+        그 요청을 아직 기다리는 중이면 "조금만 더 기다려 주세요."만 말한다. 이미 결정이 왔거나
+        거뒀거나(번호가 다름) 손님이 취소를 묻는 중이면 말 없는 턴이다.
+        """
+        if self._state is State.GREETING:
+            raise RuntimeError("start()를 먼저 불러야 해요")
+        turn = _Turn(self._local(now), cart_before=self._cart)
+        if self._awaiting_approval() and self._approval_open == number:
+            self._say(turn, templates.approval_still_waiting())
         return self._result(turn)
 
     def owner_seen(self, number: int, now: datetime) -> TurnResult:
@@ -744,6 +767,8 @@ class DialogEngine:
     def _dispatch(self, turn: _Turn, act: Act) -> None:
         if self._cancel_resume is not None and self._on_cancel_answer(turn, act):
             return
+        if self._awaiting_approval() and act.type not in _WHILE_APPROVAL:
+            return  # 확인 대기 중 그 밖의 말: 턴 끝에 "확인 중이에요, 잠시만요." (`_finish`)
         handler = _HANDLERS.get((self._state, act.type), DialogEngine._on_unhandled)
         handler(self, turn, act)
 
@@ -799,9 +824,17 @@ class DialogEngine:
                 self._ask_readback(turn)
         if turn.owner_question is not None:
             self._hold_for_owner(turn)
-        if (self._approval_open is not None and self._state is State.CONFIRM
-                and not turn.correcting and not turn.utterances):
-            self._say(turn, templates.approval_hold())  # 확인을 기다리는 중이다. 말 없는 턴 막기
+        if self._awaiting_approval() and not turn.correcting and not turn.utterances:
+            # 확인을 기다리는 중에 고치지도 취소하지도 않은 말 (티켓 07). 말 없는 턴도 막는다
+            self._say(turn, templates.approval_still_checking())
+
+    def _awaiting_approval(self) -> bool:
+        """사장님 확인을 기다리는 중이다: 열린 확인 요청이 있고 복창(CONFIRM)에 머물러 있다.
+
+        "주문 취소할까요?"를 묻는 중이면 아니다(그 답은 취소 처리가 받고, 요청은 그 턴에 거둔다).
+        """
+        return (self._approval_open is not None and self._state is State.CONFIRM
+                and self._cancel_resume is None)
 
     def _hold_for_owner(self, turn: _Turn) -> None:
         """사장님 질문을 연 턴의 끝(4단계 티켓 05). 대사는 "잠시만요, 사장님께 여쭤볼게요."로 끝.
@@ -907,12 +940,24 @@ class DialogEngine:
 
     def _result(self, turn: _Turn) -> TurnResult:
         if self._approval_open is not None and (self._state is not State.CONFIRM
-                                                 or turn.correcting):
+                                                 or turn.correcting
+                                                 or self._cancel_resume is not None):
             # 확인을 기다리는 중에 주문을 고쳤거나(changed, 같은 턴에 다시 복창했어도) 취소·넘김으로
-            # 끝났다(cancelled). 요청을 거둔다. 그 번호에 오는 결정은 버린다 (주문 승인 티켓 02)
+            # 끝났다(cancelled). 요청을 거둔다. 그 번호에 오는 결정은 버린다 (주문 승인 티켓 02).
+            # "취소할게요"에 "주문 취소할까요?"를 물을 때도 거둔다(changed, 티켓 07): 묻는 사이에
+            # 사장님이 수락하면 손님이 취소하려던 주문이 확정된다. 취소를 안 하면 다시 복창하고 새
+            # 번호로 연다
             reason = "cancelled" if self._state in TERMINAL else "changed"
+            if self._cancel_resume is not None and reason == "changed":
+                self._cancel_withdrawn = self._approval_open
             turn.approval_withdrawn = ApprovalWithdrawn(self._approval_open, reason)
             self._approval_open = None
+        elif self._cancel_withdrawn is not None and (self._cancel_resume is None
+                                                      or self._state in TERMINAL):
+            # 취소를 물으며 거둔 요청: 취소로 끝났으면 취소로 알린다. 취소를 안 했으면 잊는다
+            if self._state in TERMINAL:
+                turn.approval_withdrawn = ApprovalWithdrawn(self._cancel_withdrawn, "cancelled")
+            self._cancel_withdrawn = None
         self._transcript.extend(f"AI: {text}" for text in turn.utterances)
         if turn.order_status is not None:
             turn.order = self._build_order(turn.order_status, turn.now)

@@ -270,6 +270,16 @@ def approval_hold() -> str:
     return "사장님께 주문 확인 중이에요. 잠시만요."
 
 
+def approval_still_waiting() -> str:
+    """확인을 기다린 지 재안내 시간(10초쯤)이 지났다. 요청마다 한 번 (주문 승인 티켓 07)."""
+    return "조금만 더 기다려 주세요."
+
+
+def approval_still_checking() -> str:
+    """확인을 기다리는 중에 손님이 고치지도 취소하지도 않는 말을 했다 (주문 승인 티켓 07)."""
+    return "확인 중이에요, 잠시만요."
+
+
 def approval_timeout() -> str:
     """통화 중 대기 시간 안에 사장님 결정이 없었다 (주문 승인 spec "엔진"). 통화를 끝낸다."""
     return ("가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요. "
