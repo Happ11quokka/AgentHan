@@ -10,11 +10,30 @@ import {
   quietText,
   shortDay,
 } from "../labels";
-import type { Period, ReportView } from "../types";
+import type { Period, ReportView, ReviewStats, ReviewStatsPeriod } from "../types";
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
+import { ReviewStatsView } from "./ReviewStatsView";
 
-type Props = { loaded: Loaded<ReportView>; period: Period; onPeriod: (p: Period) => void };
+export type StatsKind = "visits" | "reviews";
+
+type Props = {
+  loaded: Loaded<ReportView>;
+  period: Period;
+  onPeriod: (p: Period) => void;
+  /** 방문·유입 | AI 리뷰 통계. 없으면 방문·유입만 보인다. */
+  kind?: StatsKind;
+  onKind?: (k: StatsKind) => void;
+  reviewStats?: Loaded<ReviewStats>;
+  reviewPeriod?: ReviewStatsPeriod;
+  onReviewPeriod?: (p: ReviewStatsPeriod) => void;
+  onAsk?: (text: string) => void;
+};
+
+const KINDS: Array<[StatsKind, string]> = [
+  ["visits", "방문·유입"],
+  ["reviews", "AI 리뷰 통계"],
+];
 
 function Bars({ values, labels, peak }: { values: number[]; labels: string[]; peak?: number | null }) {
   const max = Math.max(1, ...values);
@@ -29,7 +48,30 @@ function Bars({ values, labels, peak }: { values: number[]; labels: string[]; pe
   );
 }
 
-export function StatsTab({ loaded, period, onPeriod }: Props) {
+export function StatsTab(props: Props) {
+  const { kind = "visits", onKind, reviewStats, reviewPeriod = "week", onReviewPeriod } = props;
+  const withReviews = Boolean(onKind && reviewStats && onReviewPeriod);
+  return (
+    <div className="stats-wrap">
+      {withReviews && (
+        <div className="sub-tabs" role="tablist" aria-label="통계 종류">
+          {KINDS.map(([key, label]) => (
+            <button key={key} type="button" role="tab" aria-selected={kind === key} onClick={() => onKind?.(key)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {withReviews && kind === "reviews" ? (
+        <ReviewStatsView loaded={reviewStats!} period={reviewPeriod} onPeriod={onReviewPeriod!} onAsk={props.onAsk} />
+      ) : (
+        <Visits loaded={props.loaded} period={props.period} onPeriod={props.onPeriod} />
+      )}
+    </div>
+  );
+}
+
+function Visits({ loaded, period, onPeriod }: Pick<Props, "loaded" | "period" | "onPeriod">) {
   const { data, failed, reload } = loaded;
   return (
     <div className="stats">

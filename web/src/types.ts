@@ -82,6 +82,34 @@ export type ReviewReport = { enabled: boolean; schedule: string | null; next_run
 /** 사장님 말 없이 비서가 먼저 보낸 메시지(정해진 때의 리뷰 보고 등). 서버는 한 번만 건넨다. */
 export type ServerMessage = { id: string; role: "agent"; text: string; next_actions?: Action[] };
 
+/** 통계 탭 › AI 리뷰 통계: 좋아요·아쉬워요 특징 TOP3와 테마별 합계(/reviews/stats). */
+export type ReviewStatsPeriod = "day" | "week" | "month";
+export type FeatureCount = { name: string; theme: string; count: number; change: number | null };
+export type ReviewStats = {
+  period: ReviewStatsPeriod;
+  start: string;
+  end: string;
+  review_count: number;
+  positive: FeatureCount[];
+  negative: FeatureCount[];
+  themes: Array<{ name: string; positive: number; negative: number }>;
+};
+
+/** 왼쪽 [비서 제안] 카드 하나: 통계·리뷰 해석 근거와 네이버 기능, 비서에게 보낼 말(또는 열 탭). */
+export type Suggestion = {
+  kind: string;
+  priority: number;
+  feature: string | null;
+  feature_name: string;
+  source: string;
+  title: string;
+  evidence: string;
+  action: string;
+  ask: string | null;
+  tab: "home" | "menu" | "reviews" | "stats" | null;
+};
+export type Suggestions = { end: string; items: Suggestion[] };
+
 export type ReportFrequency = "daily" | "weekly" | "biweekly" | "monthly";
 
 /** 사이드카 루틴 설정(#33): 리뷰 정기 보고 일정과 답글 초안 미리 쓰기 켜짐 여부. */

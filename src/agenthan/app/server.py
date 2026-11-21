@@ -412,6 +412,22 @@ def create_app(
             result["error"] = {k: outcome[k] for k in ("reason", "message", "issues")}
         return result
 
+    @app.get("/assistant/sessions/{session_id}/reviews/stats")
+    def show_review_stats(
+        session_id: str, period: Literal["day", "week", "month"] = "week"
+    ) -> dict:
+        """통계 탭 › AI 리뷰 통계: 좋아요·아쉬워요 특징 TOP3와 테마별 합계."""
+        session = get(session_id)
+        with session.lock:
+            return screens.review_stats(session.assistant.store.read(), period)
+
+    @app.get("/assistant/sessions/{session_id}/suggestions")
+    def show_suggestions(session_id: str) -> dict:
+        """왼쪽 [비서 제안]: 지난주 통계와 리뷰로 고른 해 볼 일 카드."""
+        session = get(session_id)
+        with session.lock:
+            return screens.suggestions(session.assistant.store.read())
+
     @app.get("/assistant/sessions/{session_id}/report")
     def show_report(session_id: str, period: Literal["week", "day"] = "week") -> dict:
         session = get(session_id)
