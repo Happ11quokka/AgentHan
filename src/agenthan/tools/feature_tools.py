@@ -436,7 +436,12 @@ def _coupon(store, args):
     if invalid:
         return _needs(invalid)
     data = store.read()
-    record = {"id": f"coupon-{len(data['coupons']) + 1}", **args, "status": "saved_not_published"}
+    record = {
+        "id": f"coupon-{len(data['coupons']) + 1}",
+        **args,
+        "min_order": args.get("min_order") or 0,  # 0 = 조건 없음
+        "status": "saved_not_published",
+    }
     data["coupons"].append(record)
     store.write(data)
     return _saved(store, "coupons", record["id"], "saved_not_published")
@@ -704,6 +709,15 @@ _TOOL_LIST = [
             Param("discount_value", "할인 값", kind="integer", minimum=1, hint="원 또는 %"),
             Param("start_date", "시작하는 날", kind="date"),
             Param("end_date", "끝나는 날", kind="date"),
+            Param(
+                "min_order",
+                "최소 주문 금액",
+                kind="integer",
+                required=False,
+                minimum=0,
+                hint="원. 사장님이 'OO원 이상 주문 시' 조건을 먼저 말했을 때만 넣고 묻지 않는다. "
+                "없으면 조건 없는 쿠폰",
+            ),
         ),
         _coupon,
     ),
