@@ -6,10 +6,16 @@
 
 from __future__ import annotations
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from test_owner_http import KEY, NOW, STREAM, _sse
 from test_phone_ws import ORDER_SCRIPT, Phone
 
+from agenthan.core.contracts import Order, OrderLine
+from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.voice.call.fakes import FakeClock
+from agenthan.voice.owner.http import customer_orders_router
+from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.server import create_app
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.ws import WS_PATH
@@ -95,3 +101,85 @@ def test_a_call_that_ended_without_an_order_has_no_order_status(tmp_path) -> Non
         missing = client.get(f"/api/phone/orders/{call_id}")
 
     assert missing.status_code == 404
+
+
+# ---------------------------------------------------------------- 결과와 실시간 갱신 (티켓 05)
+
+
+def _stream_url(order_id: str) -> str:
+    return f"/api/phone/orders/{order_id}/stream"
+
+
+def test_the_order_stream_changes_by_itself_when_the_owner_rejects(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:  # 사장님 화면 켜짐
+            screen = _sse(stream.iter_lines())
+            next(screen)  # snapshot
+            call_id, _ = _order_call(client)
+            with client.stream("GET", _stream_url(call_id)) as live:
+                assert live.status_code == 200
+                assert live.headers["content-type"].startswith("text/event-stream")
+                events = _sse(live.iter_lines())
+                first = next(events)
+                rejected = client.post(f"/api/owner/orders/{call_id}/reject?key={KEY}",
+                                       json={"reason": "busy"})
+                second = next(events)
+            read = client.get(f"/api/phone/orders/{call_id}").json()
+
+    assert (first["event"], first["data"]["stage"], first["data"]["outcome"]) == (
+        "order.status", "checking", None)
+    assert rejected.status_code == 200
+    assert second["event"] == "order.status"
+    assert (second["data"]["stage"], second["data"]["outcome"]) == ("cancelled", "rejected")
+    assert second["data"]["reason"]["code"] == "busy"
+    assert second["data"]["can_cancel"] is False
+    assert second["data"] == read  # 끊겨서 다시 읽어도 같은 현황
+
+
+def test_an_out_of_stock_reject_shows_the_menu_and_the_next_call_hears_it_is_sold_out(
+    tmp_path,
+) -> None:
+    with _client(tmp_path) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            screen = _sse(stream.iter_lines())
+            next(screen)
+            call_id, _ = _order_call(client)
+            client.post(f"/api/owner/orders/{call_id}/reject?key={KEY}",
+                        json={"reason": "out_of_stock", "menu_ids": ["m01"]})
+            body = client.get(f"/api/phone/orders/{call_id}").json()
+            with client.websocket_connect(WS_PATH) as ws:  # 다음 통화: 메도빅 하나요
+                phone = Phone(ws)
+                phone.send(type="call.start", turn=0)
+                phone.until("call.ready", 0)
+                phone.played(0)
+                phone.say(1)
+                phone.until("bot.done", 1)
+                phone.send(type="call.end", turn=1)
+
+    assert (body["stage"], body["outcome"], body["sold_out"]) == (
+        "cancelled", "out_of_stock", ["메도빅"])
+    assert "메도빅" in body["reason"]["text"]
+    heard = " ".join(e["text"] for e in phone.of("bot.say", 1))
+    assert "메도빅은 오늘 다 떨어졌어요" in heard
+
+
+def test_an_order_stream_for_an_unknown_order_is_not_found(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        missing = client.get(_stream_url("call-nope"))
+
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "주문을 찾을 수 없어요"
+
+
+def test_the_order_stream_says_it_ended_after_its_window() -> None:
+    hub = OwnerHub(store=FakeStoreKnowledge.from_fixture(), clock=FakeClock(NOW))
+    app = FastAPI()
+    app.include_router(customer_orders_router(hub, window_s=0.2))
+    with TestClient(app) as client:
+        hub.submit(Order(id="call-1", lines=[OrderLine("m01", 1, name="메도빅", unit_price=7_500)],
+                         pickup_time="2026-11-08T18:30:00+09:00", status="confirmed"))
+        with client.stream("GET", _stream_url("call-1")) as stream:
+            events = list(_sse(stream.iter_lines()))  # 시간이 지나면 서버가 닫는다
+
+    assert [e["event"] for e in events] == ["order.status", "order.end"]
+    assert events[0]["data"]["outcome"] == "auto"

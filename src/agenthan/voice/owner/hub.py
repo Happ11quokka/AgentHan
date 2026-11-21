@@ -77,7 +77,10 @@
   CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다, spec "Papago 실측").
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
 - 손님 주문 현황 (전화 메뉴·주문 현황 티켓 04, `order_status`): 주문 번호(통화 id)로 주문 카드
-  하나를 손님 모양(줄·금액·픽업 시각·단계)으로 돌려준다. 단계 규칙은 `order_status.py`
+  하나를 손님 모양(줄·금액·픽업 시각·단계·결과·사유)으로 돌려준다. 단계·결과 규칙은
+  `order_status.py`. 주문 현황 구독(`watch_order`, 티켓 05)은 처음에 `order.status`(지금 현황),
+  그 뒤 손님 현황이 달라질 때마다 `order.status`(현황 전체)를 받는다. 주문 카드가 바뀌면
+  (`order.update`를 보낼 때) 다시 재서 지난번 보낸 것과 다를 때만 보낸다
 - 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
   주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
   (order), 확인 요청 자동 취소(expired, 주문 승인 티켓 03), 늦은 버튼 답(late_answer, 시간
@@ -297,6 +300,9 @@ class OwnerHub:
         self._subscribers: set[asyncio.Queue[OwnerEvent]] = set()
         # 통화 id → 손님 통화 화면의 문자 스트림 구독자 (티켓 07)
         self._text_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
+        # 주문 번호 → 손님 주문 현황 구독자와 마지막으로 보낸 현황 (전화 주문 현황 티켓 05)
+        self._order_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
+        self._order_sent: dict[str, dict[str, Any]] = {}
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
         # 오늘 품절 (주문 승인 티켓 06): 메뉴 id → 화면 줄(`menu_id`·`name_ko`·`name_owner`, 건
@@ -654,6 +660,48 @@ class OwnerHub:
         if card is None:
             raise UnknownCard(order_id)
         return order_status(card, unspoken=order_id in self._unspoken)
+
+    def watch_order(self, order_id: str) -> AsyncIterator[OwnerEvent]:
+        """손님 주문 현황 구독 (전화 메뉴·주문 현황 티켓 05). 처음에 `order.status`(지금 현황,
+        조회와 같은 모양), 그 뒤 현황이 달라질 때마다 `order.status`. 닫으면 구독을 푼다.
+
+        주문 카드가 없으면 바로 `UnknownCard`(조회와 같다). 시간 제한은 HTTP 쪽이 둔다.
+        """
+        self.order_status(order_id)  # 없으면 UnknownCard
+        return self._watch_order(order_id)
+
+    async def _watch_order(self, order_id: str) -> AsyncIterator[OwnerEvent]:
+        self._bind()
+        queue: asyncio.Queue[OwnerEvent] = asyncio.Queue()
+        watchers = self._order_watchers.setdefault(order_id, set())
+        watchers.add(queue)
+        try:
+            card = self._orders.get(order_id)
+            if card is not None:  # 구독을 연 사이 상한으로 지워졌으면 첫 현황 없이 기다린다
+                status = order_status(card, unspoken=order_id in self._unspoken)
+                self._order_sent[order_id] = status
+                yield OwnerEvent("order.status", status, self._seq)
+            while True:
+                yield await queue.get()
+        finally:
+            watchers.discard(queue)
+            if not watchers:
+                self._order_watchers.pop(order_id, None)
+                self._order_sent.pop(order_id, None)
+
+    def _tell_order_watchers(self, card: dict[str, Any]) -> None:
+        """주문 카드가 바뀌었다. 손님 현황이 지난번 보낸 것과 다르면 그 주문 구독자에게 보낸다."""
+        order_id = card["id"]
+        watchers = self._order_watchers.get(order_id)
+        if not watchers:
+            return
+        status = order_status(card, unspoken=order_id in self._unspoken)
+        if self._order_sent.get(order_id) == status:
+            return
+        self._order_sent[order_id] = status
+        self._seq += 1
+        for queue in watchers:
+            queue.put_nowait(OwnerEvent("order.status", status, self._seq))
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         """그 통화의 손님에게 보낸 문자(보낸 순서). 없거나 모르는 통화면 빈 목록 (티켓 07)."""
@@ -1498,6 +1546,7 @@ class OwnerHub:
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         if name == "order.update":
             self._record_decision(data)
+            self._tell_order_watchers(data)
         self._seq += 1
         event = OwnerEvent(name, data, self._seq)
         for queue in self._subscribers:
