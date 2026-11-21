@@ -82,7 +82,7 @@ from agenthan.voice.dialog.states import State
 from agenthan.voice.nlu.base import Act
 from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.owner.decisions import DecisionRecord
-from agenthan.voice.owner.hub import OwnerHub
+from agenthan.voice.owner.hub import OwnerHub, UnknownCard
 from agenthan.voice.store_config import StoreConfig
 
 SCENARIO_DIR = Path(__file__).parent / "scenarios"
@@ -361,6 +361,15 @@ class _Owner:
             "sold_out_today": sorted(self.hub.sold_out_today()),
         }
 
+    def status(self) -> dict[str, Any] | None:
+        """손님 주문 현황(허브 `order_status`)에서 시나리오가 보는 칸. 주문 카드가 없으면 None."""
+        try:
+            got = self.hub.order_status(self.call_id)
+        except UnknownCard:
+            return None
+        return {"stage": got["stage"], "pickup_label": got["pickup"]["label"],
+                "total": got["amount"]["total"]}
+
 
 @dataclass
 class Run:
@@ -444,4 +453,13 @@ def run(scenario: Scenario) -> Run:
         for key, value in (scenario.expect_owner or {}).items():
             if seen[key] != value:
                 out.failures.append(f"사장님 쪽 {key}: {seen[key]!r} ≠ {value!r}")
+        if scenario.check_status:
+            status, want_status = owner.status(), scenario.expect_status
+            if want_status is None or status is None:
+                if status != want_status:
+                    out.failures.append(f"주문 현황 {status!r} ≠ {want_status!r}")
+            else:
+                for key, value in want_status.items():
+                    if status[key] != value:
+                        out.failures.append(f"주문 현황 {key}: {status[key]!r} ≠ {value!r}")
     return out
