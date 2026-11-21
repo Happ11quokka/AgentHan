@@ -108,3 +108,26 @@ def test_a_timeout_hands_the_order_over_once(tmp_path) -> None:
     assert said(c, 5).startswith("가게에서 아직 확인 중이에요.")
     assert [o.status for o in c.sink.orders] == ["confirmed"]  # 문자 약속 턴의 주문서 하나뿐
     assert owner.ended == ["confirmed"]
+
+
+def test_a_customer_who_hangs_up_mid_change_hands_nothing_over(tmp_path) -> None:
+    """고치는 중(요청을 거둔 뒤 다시 복창)에 끊으면 주문서는 넘어가지 않는다. 거둔 요청은 그대로
+    (카드를 손님 취소로 닫는 것은 허브가 통화 끝 알림으로 한다)."""
+    owner = RecordingOwnerChannel(approval="hold")
+    stt = FakeSttStream(replies=[*SCRIPT, "블린 하나 추가요"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, owner=owner,
+                        settings=SessionSettings(approval_wait_s=5.0)) as c:
+            await to_yes(c)
+            await c.turn(5)  # 다시 복창 ("…맞으세요?")
+            await c.session.feed_event({"type": "call.end", "turn": 5})
+            owner.decide(1, "accept")  # 거둔 요청의 결정: 버린다
+            await asyncio.sleep(0.1)
+            return c
+
+    c = run(call())
+    assert said(c, 5).endswith("맞으세요?")
+    assert owner.withdrawn == [(1, "changed")]
+    assert c.sink.orders == []
+    assert owner.ended == ["hangup"]

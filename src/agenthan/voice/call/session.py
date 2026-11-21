@@ -2279,6 +2279,7 @@ class CallSession:
         if wait is not None and wait.key == ("approval", withdrawn.number):
             self._owner_wait = None
             self._owner_timer.cancel()
+            self._approval_nudge.cancel()
         self._approval_view = ApprovalView("withdrawn", withdrawn.number, reason=withdrawn.reason)
         record = self._log.get(turn)
         if record is not None:
@@ -2447,6 +2448,7 @@ class CallSession:
         if closes_wait(note):
             self._owner_wait = None
             self._owner_timer.cancel()
+            self._approval_nudge.cancel()  # 결정(시간 초과 포함) 뒤에는 재안내가 없다
         else:
             wait.seen_said = True
         self._owner_said(opened, wait, note, timing)

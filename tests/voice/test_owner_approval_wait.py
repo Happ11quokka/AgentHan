@@ -45,3 +45,33 @@ def test_a_request_cancelled_while_waiting_ends_as_a_cancelled_card() -> None:
     # 주문 카드는 통화 뒤 대기가 되지 않는다(통화 카드만 바뀐다)
     assert [(e.name, e.data["status"]) for e in ended] == [("call.update", "missed")]
     assert decisions == [] and texts == []
+
+
+def test_a_call_that_ends_mid_change_closes_the_card_as_customer_cancelled() -> None:
+    """고치는 중(changed)에 통화가 끝났다(손님 끊음 등): 새 요청은 다시 오지 않는다. 카드는
+    "고치는 중"으로 남지 않고 손님 취소와 같게 닫힌다. 통화 뒤 대기·자동 취소 문자는 없다."""
+    decisions: list[OwnerDecision] = []
+
+    async def scenario():
+        hub = _hub()
+        hub.call_started("call-1")
+        screen = Screen(hub)
+        await screen.take()
+        hub.open_approval("call-1", ApprovalRequest(1, _order()), decisions.append)
+        await screen.take()
+        hub.withdraw_approval("call-1", 1, "changed")  # "블린 하나 추가요" / "주문 취소할까요?"
+        await screen.take()
+        hub.call_ended("call-1", "hangup")
+        ended = await screen.take(2)
+        await screen.nothing_more()
+        with pytest.raises(CardBusy):
+            hub.accept("call-1")
+        await screen.close()
+        return ended, hub.customer_texts("call-1")
+
+    ended, texts = asyncio.run(scenario())
+    by_name = {e.name: e.data for e in ended}
+    card = by_name["order.update"]
+    assert (card["status"], card["withdrawn"], card["stage"]) == ("new", "cancelled", "in_call")
+    assert by_name["call.update"]["status"] == "missed"
+    assert decisions == [] and texts == []

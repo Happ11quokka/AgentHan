@@ -185,3 +185,48 @@ def test_cancelling_while_waiting_closes_the_request_as_cancelled(tmp_path) -> N
     assert owner.ended == ["cancelled"]
     assert [e["turn"] for e in c.out.of("bot.hold")] == [4]  # 거둔 뒤에는 대기음이 없다
     assert records(c)[6]["approval_withdrawn"] == {"number": 1, "reason": "cancelled"}
+
+
+def test_no_nudge_when_it_would_not_come_before_the_timeout(tmp_path) -> None:
+    owner = RecordingOwnerChannel(approval="hold")
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner,
+                        settings=waiting(approval_reprompt_s=APPROVAL_WAIT)) as c:
+            await to_yes(c)
+            await bot_turn(c, 5)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert said(c, 5) == LATER
+    assert c.out.of("bot.say", 6) == []
+
+
+def test_a_nudge_held_back_past_the_timeout_or_a_decision_is_never_said(tmp_path) -> None:
+    """재안내 때에 손님이 말하는 중이라 미뤘는데 그 사이 시간 초과·결정이 왔다: 재안내는 없고
+    결정이 먼저다. 결정 대사 뒤에도 재안내는 나오지 않는다(두 타이머가 다투지 않는다)."""
+    for decide in (False, True):
+        owner = RecordingOwnerChannel(approval="hold")
+        stt = FakeSttStream(replies=[*SCRIPT, "메도빅 달아요?"])
+
+        async def call(decide=decide, owner=owner, stt=stt) -> Call:
+            async with Call(tmp_path, stt=stt, owner=owner, settings=waiting()) as c:
+                await to_yes(c)
+                await c.feed(tone(900))  # 재안내 때를 넘겨 말하는 중
+                if decide:
+                    await asyncio.sleep(REPROMPT)
+                    owner.decide(1, "accept")
+                else:
+                    await asyncio.sleep(APPROVAL_WAIT)  # 시간 초과도 넘긴다
+                await c.turn(5)  # 그 말이 턴이 된다
+                await bot_turn(c, 6)
+                await asyncio.wait_for(c.session.wait_done(), WAIT)
+                await asyncio.sleep(REPROMPT)
+                return c
+
+        c = run(call())
+        assert said(c, 5) == CHECKING
+        assert said(c, 6) == (CLOSING if decide else LATER)
+        assert c.out.of("bot.say", 7) == []
+        assert all(r.get("bot_turn") != "approval_nudge" for r in records(c).values())

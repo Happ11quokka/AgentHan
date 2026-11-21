@@ -20,8 +20,9 @@
   결정 시각·바뀐 픽업 시각)이 지난번과 달라졌으면 `decision_sink`로 넘긴다. 결정을 바꾸는 코드는
   카드 칸만 채우고 `order.update`를 보내면 된다. sink가 없으면 메모리(카드)만
 - 통화 뒤 대기와 자동 취소 (주문 승인 티켓 03): 결정 없이 통화가 끝나면(어떤 이유든, 손님이 대기
-  중 취소한 요청은 빼고) 카드는 `stage` after_call, 마감은 요청을 연 시각 + `approval_expire_s`
-  (기본 5분)다. 그 안에 수락하면 확정 문자만 간다(통화는 끝났다). 마감이 지나면 처리 상태
+  중 고치거나 취소한 요청은 빼고. 고치는 중에 끝난 카드는 손님 취소로 닫는다) 카드는 `stage`
+  after_call, 마감은 요청을 연 시각 + `approval_expire_s`(기본 5분)다. 그 안에 수락하면
+  확정 문자만 간다(통화는 끝났다). 마감이 지나면 처리 상태
   expired(자동 취소, 결정을 안 받는다 → `AlreadyDecided`)가 되고 손님에게 자동 취소 문자를 남긴다.
   마감은 허브 시계(`clock.now()`)로 잰다: 허브가 가장 이른 마감에 루프 타이머를 걸어
   `expire_due`를 부르고, 결정(`accept`)·새 구독(`events`) 앞에서도 한 번 부른다(타이머가 늦어도
@@ -699,6 +700,11 @@ class OwnerHub:
             # 마감은 요청을 연 때부터. 지나면 `expire_due`가 자동 취소한다 (티켓 03)
             self._orders[call_id] = {**order, "stage": "after_call",
                                      "deadline_at": self._expires_at(order).isoformat()}
+            self._publish("order.update", self._orders[call_id])
+        elif order is not None and order["status"] == "new" and order["withdrawn"] == "changed":
+            # 손님이 고치는 중(다시 복창·"주문 취소할까요?")에 통화가 끝났다. 새 요청은 오지
+            # 않는다: "고치는 중"으로 남기지 않고 손님 취소와 같게 닫는다(통화 뒤 대기·문자 없음)
+            self._orders[call_id] = {**order, "withdrawn": "cancelled"}
             self._publish("order.update", self._orders[call_id])
         call = self._calls.get(call_id)
         if call is not None and call["status"] == "live":
