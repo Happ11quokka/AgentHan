@@ -2,7 +2,14 @@
 
 import pytest
 
-from agenthan.voice.dialog.rules import apply_rules, frustrated, mentions_coupon, no_and_done
+from agenthan.voice.dialog.rules import (
+    apply_rules,
+    coupon_offer_answer,
+    frustrated,
+    mentions_coupon,
+    no_and_done,
+    without_coupon_clauses,
+)
 from agenthan.voice.nlu.base import Act
 
 
@@ -288,3 +295,39 @@ def test_not_a_coupon_rule(text: str) -> None:
 def test_mentions_coupon(text: str, mentioned: bool) -> None:
     """NLU가 질문(ask_other·ask_menu_info)으로 낸 말에 쿠폰·할인이 있으면 엔진이 쿠폰 답을 한다."""
     assert mentions_coupon(text) is mentioned
+
+
+@pytest.mark.parametrize(
+    ("text", "answer"),
+    [
+        ("네, 쿠폰 쓸게요", "yes"),
+        ("쿠폰 쓸게요", "yes"),
+        ("쿠폰 적용해 주세요", "yes"),
+        ("네, 쿠폰 돼요?", "yes"),
+        ("아니요, 쿠폰 안 써도 돼요", "no"),
+        ("쿠폰 안 써도 돼요", "no"),
+        ("네, 쿠폰 안 써도 돼요", "no"),
+        ("아니요, 쿠폰 쓸게요", None),  # 엇갈린다: 되묻는다
+        ("쿠폰 돼요?", None),  # 묻기만 했다: 권유를 다시 한다
+        ("메도빅 하나요", None),
+        ("네", None),  # 쿠폰 말이 아니면 규칙(yes)이 받는다
+    ],
+)
+def test_coupon_offer_answer(text: str, answer: str | None) -> None:
+    """쿠폰 권유("… 더 담으실까요?")에 쿠폰 말로 한 답 (리뷰): 머리말 예/아니요를 버리지 않는다."""
+    assert coupon_offer_answer(text) == answer
+
+
+@pytest.mark.parametrize(
+    ("text", "rest"),
+    [
+        ("메도빅에 견과류 들어가요? 할인도 되나요?", "메도빅에 견과류 들어가요?"),
+        ("메도빅에 견과류 들어가요 할인도 되나요", "메도빅에 견과류 들어가요"),
+        ("할인돼요? 그리고 주차 돼요?", "그리고 주차 돼요?"),
+        ("메도빅도 할인돼요?", ""),
+        ("쿠폰 받으려면 얼마 더 사야 해요?", ""),
+    ],
+)
+def test_without_coupon_clauses(text: str, rest: str) -> None:
+    """NLU가 질문으로 낸 말에서 쿠폰·할인 마디를 뺀 나머지 (리뷰: 섞인 질문을 버리지 않는다)."""
+    assert without_coupon_clauses(text) == rest

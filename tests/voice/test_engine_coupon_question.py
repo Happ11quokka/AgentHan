@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime
 
+import pytest
+
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.dialog.answerer import AnswerReply, AnswerRequest
 from agenthan.voice.dialog.coupons import Coupon
@@ -37,7 +39,9 @@ PASS_ON = "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께 �
 # HCX가 쿠폰 말을 다른 말과 섞어 질문으로 낸 경우(규칙에 안 걸린 말)
 LONG = "쿠폰 받으려면 얼마 더 사야 해요?"
 MENU_DISCOUNT = "메도빅도 할인돼요?"
+MIXED = "메도빅에 견과류 들어가요? 할인도 되나요?"
 NLU = {
+    MIXED: [Act("ask_menu_info", menu_text="메도빅", menu_guess="메도빅", free_text=MIXED)],
     LONG: [Act("ask_other", free_text=LONG)],
     MENU_DISCOUNT: [Act("ask_menu_info", menu_text="메도빅", menu_guess="메도빅",
                         free_text=MENU_DISCOUNT)],
@@ -155,16 +159,75 @@ def test_a_menu_named_after_the_offer_is_added() -> None:
     assert r.state is State.ASK_PICKUP
 
 
-def test_a_short_cart_at_the_readback_goes_back_to_ordering_with_the_offer() -> None:
+def test_after_the_offer_a_coupon_question_hears_the_facts_not_a_second_offer() -> None:
+    """권유는 통화당 한 번이다(리뷰): 권유를 거절하고 복창을 들은 뒤 물으면 부족액만 알리고 복창을
+    다시 한다. 주문 받기로 돌아가지 않는다."""
     engine = _engine(COUPON)
     talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요")  # 복창 전 권유 (쿠폰 티켓 10)
-    assert talk(engine, "아니요").state is State.CONFIRM
-    r = talk(engine, "할인 돼요?")  # 물으면 이미 권했어도 부족 답으로 다시 권한다
+    readback = talk(engine, "아니요").utterances[-1]
+    r = talk(engine, "할인 돼요?")
+    assert r.utterances == [OFFER.removesuffix(" 더 담으실까요?"), readback]
+    assert r.state is State.CONFIRM and r.readback
+
+
+def test_asking_again_while_the_offer_waits_repeats_the_offer_once() -> None:
+    """권유가 답을 기다리는 중에 또 물으면 그 권유를 다시 한다(새 권유가 아니다). 거절한 뒤
+    시각을 묻는 중에 물으면 부족액만 알리고 시각 질문을 다시 한다."""
+    engine = _engine(COUPON)
+    talk(engine, "메도빅 하나요")
+    assert talk(engine, "쿠폰 돼요?").utterances == [OFFER]
+    r = talk(engine, "쿠폰 돼요?")
     assert r.utterances == [OFFER]
     assert r.state is State.ORDERING
-    r = talk(engine, "아니요")  # 쿠폰 없이 다시 복창
+    pickup_q = talk(engine, "아니요").utterances[-1]
+    r = talk(engine, "쿠폰 돼요?")
+    assert r.utterances == [OFFER.removesuffix(" 더 담으실까요?"), pickup_q]
+    assert r.state is State.ASK_PICKUP
+
+
+def test_a_coupon_question_after_the_readback_does_not_offer() -> None:
+    """권유는 첫 복창 전에만 한다: 쿠폰이 들어간 복창 뒤 메뉴를 빼 모자라졌으면 물어도 권하지
+    않는다."""
+    engine = _engine(COUPON)
+    talk(engine, "메도빅 하나요", "블린 하나요", "그게 다예요", "6시 반이요")
+    assert not engine._coupon_offered
+    talk(engine, "블린 빼 주세요")
+    r = talk(engine, "쿠폰 돼요?")
+    assert not any(u.endswith("더 담으실까요?") for u in r.utterances)
+    assert r.state is not State.ORDERING
+    assert not engine._coupon_offered or engine._coupon_offer is None
+
+
+@pytest.mark.parametrize("answer", ["네, 쿠폰 쓸게요", "쿠폰 쓸게요"])
+def test_yes_in_coupon_words_takes_the_offer(answer: str) -> None:
+    """"네, 쿠폰 쓸게요"는 권유의 "네"다(리뷰): 권한 메뉴를 담고 주문을 마친다. 권유를 되풀이하지
+    않는다."""
+    engine = _engine(COUPON)
+    talk(engine, "메도빅 하나요", "쿠폰 돼요?")
+    r = talk(engine, answer)
+    assert [line.item.id for line in r.cart.lines] == ["m01", "m03"]
+    assert r.state is State.CLARIFY  # 아메리카노 온도를 묻는다(그 뒤 시각)
+    assert OFFER not in r.utterances
+
+
+@pytest.mark.parametrize("answer", ["아니요, 쿠폰 안 써도 돼요", "쿠폰 안 써도 돼요"])
+def test_no_in_coupon_words_declines_the_offer(answer: str) -> None:
+    """"아니요, 쿠폰 안 써도 돼요"는 권유의 "아니요"다(리뷰): 그대로 주문을 마치고, 복창은 쿠폰
+    없이 한다."""
+    engine = _engine(COUPON)
+    talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요")  # 복창 전 권유
+    r = talk(engine, answer)
+    assert [line.item.id for line in r.cart.lines] == ["m01"]
     assert r.state is State.CONFIRM
     assert r.utterances[-1].endswith("모두 7,500원이에요. 맞으세요?")
+
+
+def test_yes_in_coupon_words_before_the_readback_reads_back_with_the_coupon() -> None:
+    engine = _engine(COUPON)
+    talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요")  # 복창 전 권유
+    r = talk(engine, "네, 쿠폰 쓸게요", "따뜻하게요")
+    assert r.state is State.CONFIRM
+    assert "1,000원 빼고" in r.utterances[-1]
 
 
 def test_a_short_cart_that_cannot_grow_hears_the_condition_not_an_offer() -> None:
@@ -223,3 +286,21 @@ def test_coupon_questions_from_the_nlu_are_not_passed_on_but_parking_still_is() 
         assert r.utterances == [PASS_ON, MORE_Q]
         (request,) = r.knowledge_requests
         assert request.text == text
+
+
+def test_a_menu_question_with_a_coupon_question_answers_both() -> None:
+    """"메도빅에 견과류 들어가요? 할인도 되나요?" (리뷰): 메뉴 질문을 버리지 않는다. 메뉴 답 뒤에
+    쿠폰 답을 붙인다. 답변기에는 메뉴 마디만 묻고, 사장님께는 메뉴 질문 하나만 넘긴다(손님 말
+    원문)."""
+    plain = talk(_engine(COUPON), "블린 2개요", "메도빅에 견과류 들어가요?")
+    menu_answer = plain.utterances[0]
+    r = talk(_engine(COUPON), "블린 2개요", MIXED)
+    assert r.utterances == [menu_answer, APPLIES, MORE_Q]
+
+    answerer = _Answerer()
+    engine = _engine(COUPON, answerer=answerer, knowledge=KnowledgeStore())
+    r = talk(engine, "블린 2개요", MIXED)
+    assert answerer.asked[-1] == "메도빅에 견과류 들어가요?"
+    assert r.utterances[-2:] == [APPLIES, MORE_Q]
+    (request,) = r.knowledge_requests
+    assert request.key.menu_id == "m01" and request.text == MIXED

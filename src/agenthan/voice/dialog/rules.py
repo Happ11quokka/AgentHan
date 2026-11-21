@@ -20,12 +20,16 @@
 - 쿠폰·할인 물음("쿠폰 돼요?"·"할인 되나요"·"쿠폰 쓸게요")은 `ask_coupon`이다 (쿠폰 티켓 11).
   발화가 쿠폰·할인 말과 묻는·쓰겠다는 말뿐일 때만 건다. "할인 메뉴 주세요"처럼 다른 말(메뉴 등)이
   섞이면 NLU가 읽는다(주문이 먼저다). NLU가 그 말을 질문으로 내면 엔진이 쿠폰·할인 낱말을 보고
-  쿠폰 답으로 돌린다(`mentions_coupon`). `ask_coupon`은 규칙만 내는 act라 HCX 도구 스키마에는 없다
+  쿠폰 답으로 돌린다(`mentions_coupon`). `ask_coupon`은 규칙만 내는 act라 HCX 도구 스키마에는 없다.
+  쿠폰 권유의 답이 쿠폰 말이면("네, 쿠폰 쓸게요"·"아니요, 쿠폰 안 써도 돼요") 엔진이
+  `coupon_offer_answer`로 그 예/아니요를 읽는다. 질문에 섞인 쿠폰 마디는 `without_coupon_clauses`로
+  떼고 남은 질문도 답한다
 """
 
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from agenthan.voice.nlu.base import Act
 
@@ -120,6 +124,16 @@ _COUPON = re.compile(
     rf"(?:\s*(?:{_COUPON_LINK}\s*)*{_COUPON_VERB})*"
 )
 _COUPON_MENTION = re.compile(_COUPON_WORD)
+# 쿠폰 권유("… 더 담으실까요?")의 답이 쿠폰 말로 올 때 (리뷰). "쿠폰 안 써도 돼요"는 거절,
+# "쿠폰 쓸게요"는 받겠다는 말이다. 둘 다 아니면 머리말 예/아니요를 본다
+_COUPON_DECLINE = re.compile(
+    r"(?:안|못)\s*(?:써|쓸|쓰|해|할|받)|없어도|필요\s*없|괜찮|됐어|됬어|말고")
+_COUPON_ACCEPT = re.compile(
+    r"쓸게|쓸래|쓰고\s*싶|써\s*주|사용할게|사용해\s*주|적용할게|적용해\s*주|받을게|받고\s*싶")
+_YES_LEAD = re.compile(rf"^{_YES_WORD}(?:{_SEP})")
+_NO_LEAD = re.compile(rf"^{_NO_WORD}(?:{_SEP})")
+# 한 말 안의 질문 마디 경계: 문장 부호, 또는 "…요" 뒤 띄어쓰기("들어가요 할인도 되나요")
+_CLAUSE_END = re.compile(r"[?.!]+\s*|(?<=요)\s+")
 
 _REPEAT = re.compile(
     r"다시\s*(?:한\s*번\s*)?(?:말해|말씀해)\s*(?:주세요|주실래요|줄래요)?|뭐라고요|뭐라고\s*하셨어요"
@@ -211,6 +225,43 @@ def no_and_done(text: str) -> bool:
 def mentions_coupon(text: str) -> bool:
     """쿠폰·할인 낱말이 있다 (쿠폰 티켓 11). 엔진이 NLU가 낸 질문 act를 쿠폰 답으로 돌릴 때 본다."""
     return bool(_COUPON_MENTION.search(text))
+
+
+def coupon_offer_answer(text: str) -> Literal["yes", "no"] | None:
+    """쿠폰 권유("… 더 담으실까요?")에 쿠폰 말로 한 답의 뜻 (리뷰). 쿠폰 물음 꼴이 아니면 None.
+
+    "네, 쿠폰 쓸게요"·"쿠폰 쓸게요"는 yes, "아니요, 쿠폰 안 써도 돼요"·"쿠폰은 괜찮아요"는 no다.
+    쓰겠다는 말과 머리말 "아니요"가 엇갈리면 None(되묻는다). "쿠폰 돼요?"처럼 묻기만 하면
+    머리말이 있을 때만 그 예/아니요다.
+    """
+    t = _TRAILING.sub("", text.strip())
+    rest = _LEAD.sub("", t)
+    if not t or not _COUPON.fullmatch(rest):
+        return None
+    if _COUPON_DECLINE.search(rest):
+        return "no"
+    if _COUPON_ACCEPT.search(rest):
+        return None if _NO_LEAD.match(t) else "yes"
+    if _YES_LEAD.match(t):
+        return "yes"
+    if _NO_LEAD.match(t):
+        return "no"
+    return None
+
+
+def without_coupon_clauses(text: str) -> str:
+    """질문 한 말에서 쿠폰·할인 말이 든 마디를 뺀 나머지 (리뷰). 엔진은 나머지를 메뉴·가게
+    질문으로 답하고 쿠폰 답을 뒤에 붙인다.
+
+    "메도빅에 견과류 들어가요? 할인도 되나요?" → "메도빅에 견과류 들어가요?".
+    "메도빅도 할인돼요?"·"쿠폰 받으려면 얼마 더 사야 해요?"처럼 마디가 모두 쿠폰 말이면 "".
+    """
+    clauses, start = [], 0
+    for m in _CLAUSE_END.finditer(text):
+        clauses.append(text[start:m.end()])
+        start = m.end()
+    clauses.append(text[start:])
+    return " ".join(c.strip() for c in clauses if c.strip() and not _COUPON_MENTION.search(c))
 
 
 def apply_rules(text: str) -> list[Act] | None:
