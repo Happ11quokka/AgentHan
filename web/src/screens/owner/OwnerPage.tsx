@@ -23,6 +23,7 @@
 // 주문 승인 티켓 05: 확인 대기 카드의 [거절] → 사유 시트(`OrderReject.tsx`), 거절 카드는 회색 "거절 · 사유".
 // 주문 승인 티켓 06: 재료 소진은 주문 메뉴 다중 선택. 품절을 건 카드에 "품절로 바꿨어요 [되돌리기]".
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { BrandLogo } from '../../components/BrandMark.tsx'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { RejectButton, RejectedResult, SoldOutMark } from './OrderReject.tsx'
@@ -284,6 +285,7 @@ export default function OwnerPage() {
   return (
     <main className="owner" lang={lang}>
       <header className="owner-head">
+        <BrandLogo collapsed={false} />
         <h1>{text.title}</h1>
         <p className={`owner-status owner-status-${state.connection}`} role="status">
           {text.connection[state.connection]}
