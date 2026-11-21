@@ -57,7 +57,7 @@ DB를 켜면 바뀌는 것:
 | `embedding_cache` | 내용 해시 → 벡터(메뉴·리뷰·질문 공통). 같은 글은 CLOVA를 다시 안 부른다 |
 | `embeddings` | 검색 대상 벡터 `(store_id, kind=menu·review·doc, ref_id)` + HNSW 인덱스 |
 | `eval_cases` | 골드셋·holdout 채점 문항 |
-| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled, 결정 전 ''), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다 |
+| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled, 결정 전 ''), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다. 쓴 쿠폰(마이그레이션 006): `coupon_id`·`coupon_name`·`discount`(없으면 ''·''·0), `total`은 낼 금액(할인 뒤), 할인 전 = `total` + `discount` |
 | `assistant_store_docs` | 비서 대화 가게 파일 사본 |
 
 ## 명령
