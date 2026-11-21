@@ -35,7 +35,9 @@ def test_card_rejects_fabrication_and_has_comparisons():
 
 
 def test_punct_polish_off_skips_the_model_call(monkeypatch):
-    """AGENTHAN_PUNCT_POLISH=off면 문장부호만 다듬는 HCX 호출 없이 정해진 문장을 쓴다(턴당 2~3초 절약)."""
+    """AGENTHAN_PUNCT_POLISH=off면 문장부호만 다듬는 HCX 호출 없이 정해진 문장을 쓴다.
+
+    턴당 2~3초 절약."""
     answer = report.explain("통계", chat=failing_chat)
     template = report.make_card(answer, chat=failing_chat)
     monkeypatch.setenv("AGENTHAN_PUNCT_POLISH", "off")
