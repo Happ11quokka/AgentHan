@@ -20,7 +20,7 @@ KNOWLEDGE = FakeStoreKnowledge(
     [MenuItem(id="m01", name_ko="메도빅", name_native="Медовик", price=7500)]
 )
 NAMES = {
-    "Сырники": {"name_ko": "시르니키", "description_ko": "러시아식 치즈 팬케이크."},
+    "Ватрушка": {"name_ko": "바트루시카", "description_ko": "치즈를 올려 구운 동그란 빵."},
     "Пельмени": {"name_ko": "펠메니", "description_ko": "러시아식 만두."},
     "김밥": {"name_ko": "김밥", "description_ko": "밥과 채소를 김에 만 음식."},
 }
@@ -66,12 +66,12 @@ ITEMS = {
     "kind": "menu_board",
     "items": [
         {"name": "Медовик", "price": 8000},
-        {"name": "Сырники", "price": 8500},
+        {"name": "Ватрушка", "price": 8500},
         {"name": "김밥", "price": 4000},
         {"name": "Пельмени", "price": None},
     ],
     "photos": [
-        {"box": [0.57, 0.13, 0.9, 0.5], "label": "Сырники"},
+        {"box": [0.57, 0.13, 0.9, 0.5], "label": "Ватрушка"},
         {"box": [0.07, 0.13, 0.4, 0.5], "label": "Медовник"},  # 이름표를 조금 틀리게 읽어도 붙는다
         {"box": [0.1, 0.6, 0.3, 0.8], "label": None},  # 이름표 없는 사진은 버린다
         {"box": [0.4, 0.6, 0.6, 0.8], "label": "Борщ"},  # 맞는 메뉴가 없는 사진도 버린다
@@ -85,7 +85,7 @@ def test_read_board_returns_kind_items_and_boxes_in_one_call():
     assert kind == "menu_board" and len(fake.calls) == 1
     assert [(i.name, i.price) for i in items] == [
         ("Медовик", 8000),
-        ("Сырники", 8500),
+        ("Ватрушка", 8500),
         ("김밥", 4000),
         ("Пельмени", None),
     ]
@@ -165,11 +165,11 @@ def menus(store):
 def test_register_saves_right_away_and_marks_what_is_still_filling(tmp_path):
     store, _, result = run_board(tmp_path)
     assert result.updated == ["메도빅"] and result.no_price == ["Пельмени"]
-    assert result.created == ["Сырники", "김밥"]
+    assert result.created == ["Ватрушка", "김밥"]
     saved = menus(store)
     assert saved["메도빅"]["price"] == 8000 and saved["메도빅"]["ai"] == ["price"]
     assert saved["메도빅"]["filling"] == ["photo"]  # 이름·설명은 이미 아는 메뉴라 그대로
-    assert saved["Сырники"]["filling"] == ["name", "description", "photo"]
+    assert saved["Ватрушка"]["filling"] == ["name", "description", "photo"]
     assert saved["김밥"]["filling"] == ["description"]  # 한글 이름은 그대로 두고 설명만
     assert "Пельмени" not in saved
 
@@ -178,10 +178,10 @@ def test_fill_all_fills_names_descriptions_and_white_photos(tmp_path):
     store, fake, result = run_board(tmp_path)
     menu_board.fill_all(store, result.jobs, BOARD, "베이커리", call=fake, cutout=fake_cutout)()
     saved = menus(store)
-    assert set(saved) == {"메도빅", "시르니키", "김밥"}
-    assert saved["시르니키"]["description"] == "러시아식 치즈 팬케이크."
-    assert saved["시르니키"]["name_native"] == "Сырники"
-    assert sorted(saved["시르니키"]["ai"]) == ["description", "name", "photo"]
+    assert set(saved) == {"메도빅", "바트루시카", "김밥"}
+    assert saved["바트루시카"]["description"] == "치즈를 올려 구운 동그란 빵."
+    assert saved["바트루시카"]["name_native"] == "Ватрушка"
+    assert sorted(saved["바트루시카"]["ai"]) == ["description", "name", "photo"]
     assert saved["메도빅"]["photo"] and saved["메도빅"]["photo_version"] == 1
     assert saved["메도빅"]["description"] == "꿀 케이크"
     assert saved["김밥"]["description"].startswith("밥과") and not saved["김밥"].get("photo")
@@ -190,12 +190,12 @@ def test_fill_all_fills_names_descriptions_and_white_photos(tmp_path):
 
 def test_owner_edits_win_over_late_background_values(tmp_path):
     store, fake, result = run_board(tmp_path)
-    syrniki = next(j for j in result.jobs if j.item.name == "Сырники")
+    syrniki = next(j for j in result.jobs if j.item.name == "Ватрушка")
     store.patch_menu(syrniki.menu_id, {"name": "치즈 팬케이크"}, by_owner=True)
     menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
     record = next(m for m in store.read()["menus"] if m["id"] == syrniki.menu_id)
     assert record["name"] == "치즈 팬케이크" and "name" not in record["ai"]
-    assert record["description"] == "러시아식 치즈 팬케이크."  # 고치지 않은 칸은 채운다
+    assert record["description"] == "치즈를 올려 구운 동그란 빵."  # 고치지 않은 칸은 채운다
 
 
 def test_a_failing_menu_does_not_stop_the_others_and_clears_filling(tmp_path):
@@ -206,11 +206,42 @@ def test_a_failing_menu_does_not_stop_the_others_and_clears_filling(tmp_path):
 
     menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=broken)()
     saved = menus(store)
-    assert saved["시르니키"]["description"] and not saved["시르니키"].get("photo")
+    assert saved["바트루시카"]["description"] and not saved["바트루시카"].get("photo")
     assert all(m["filling"] == [] for m in saved.values())
 
 
 # ---------------------------------------------------------------- 저장소
+
+
+def test_glossary_dishes_skip_the_model_and_get_a_checked_description(tmp_path):
+    answer = {
+        "kind": "menu_board",
+        "items": [{"name": "Сырники", "price": 8500}, {"name": "콤포트", "price": 5000}],
+    }
+    store, fake, result = run_board(tmp_path, answer)
+    saved = menus(store)
+    assert saved["시르니키"]["name_native"] == "Сырники"
+    assert saved["시르니키"]["description"].startswith("코티지치즈")
+    assert sorted(saved["시르니키"]["ai"]) == ["description", "name"]
+    assert saved["콤포트"]["ai"] == ["description"] and "음료" in saved["콤포트"]["description"]
+    assert result.jobs == [] and len(fake.calls) == 1  # 읽기 한 번뿐, 설명 호출 없음
+
+
+@pytest.mark.parametrize(
+    ("read", "ko"),
+    [("Медовник", "메도빅"), ("보르쉬", "보르시"), ("Pho", "쌀국수"), ("Пельмени", "펠메니")],
+)
+def test_glossary_lookup(read, ko):
+    from agenthan.agent import dish_glossary
+
+    assert dish_glossary.lookup(read).ko == ko
+
+
+@pytest.mark.parametrize("read", ["Наличные", "김밥", "메도", ""])
+def test_glossary_does_not_guess(read):
+    from agenthan.agent import dish_glossary
+
+    assert dish_glossary.lookup(read) is None
 
 
 def test_owner_patch_validates_and_clears_flags(tmp_path):
@@ -292,8 +323,8 @@ def test_empty_menu_start_then_board_photo_fills_the_menu_tab(api):
     assert body["pending"] == [] and len(body["place"]["menu"]) == 3
     place = wait_filled(api, sid)
     rows = {m["name"]: m for m in place["menu"]}
-    assert rows["시르니키"]["photo_url"].endswith("?v=1")
-    assert api.get(rows["시르니키"]["photo_url"]).content == b"\xff\xd8\xffwhite"
+    assert rows["바트루시카"]["photo_url"].endswith("?v=1")
+    assert api.get(rows["바트루시카"]["photo_url"]).content == b"\xff\xd8\xffwhite"
 
 
 def test_menu_tab_edits_and_deletes_without_a_chat_turn(api):

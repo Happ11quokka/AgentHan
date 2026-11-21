@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
-from agenthan.agent import menu_photo
+from agenthan.agent import dish_glossary, menu_photo
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.core.llm import ClovaV3Error, chat_v3, image_content
 from agenthan.tools.dummy_store import DummyStore, DummyStoreError
@@ -35,7 +35,7 @@ from agenthan.tools.image_cutout import ImageCutoutError, cutout_on_white
 log = logging.getLogger(__name__)
 
 READ_SIDE = 1280  # 메뉴판 읽기용 긴 변 (07-menu-photo-speed.md 3번)
-WORKERS = 4  # 설명·사진 채우기 동시 실행 수 (테스트 키 분당 60회 안쪽)
+WORKERS = 8  # 설명·사진 채우기 동시 실행 수 (메뉴 8개면 한 번에, 서비스 키 기준)
 
 BOARD_PROMPT = (
     "사진을 보고 JSON 하나만 답하라.\n"
@@ -296,6 +296,24 @@ def register(store: DummyStore, items: list[BoardItem], knowledge: StoreKnowledg
         if known:
             rows.append(({"name": known[0].name_ko, "price": item.price, "filling": photo}, item))
             continue
+        dish = dish_glossary.lookup(item.name)
+        if dish is not None:
+            # 외국 음식 사전: 모델 없이 한국어 이름·원어 이름·설명을 바로 쓴다
+            renamed = dish.ko != item.name
+            rows.append(
+                (
+                    {
+                        "name": dish.ko,
+                        "price": item.price,
+                        "name_native": dish.native,
+                        "description": dish.description,
+                        "ai": ["description"] + (["name"] if renamed else []),
+                        "filling": photo,
+                    },
+                    item,
+                )
+            )
+            continue
         korean = bool(re.search(r"[가-힣]", item.name))
         rows.append(
             (
@@ -328,6 +346,7 @@ def fill_one(
     *,
     call: Call = chat_v3,
     cutout=None,
+    menu_list: str = "",
 ) -> None:
     """메뉴 한 줄의 남은 칸(이름·설명·사진)을 채워 저장소에 쓴다. 실패한 칸은 비운 채 끝낸다."""
     tasks: list[Callable[[], None]] = []
@@ -335,7 +354,9 @@ def fill_one(
 
         def text() -> None:
             started = time.monotonic()
-            name_ko, description = menu_photo.localize(job.item.name, store_context, call=call)
+            name_ko, description = menu_photo.localize(
+                job.item.name, store_context, call=call, menu_list=menu_list
+            )
             log.info("menu localize %.2fs %s", time.monotonic() - started, job.item.name)
             fields = {}
             if name_ko and "name" in job.filling:
@@ -382,6 +403,7 @@ def fill_all(
     call: Call = chat_v3,
     cutout=None,
     workers: int = WORKERS,
+    menu_list: str = "",
 ) -> Callable[[], None]:
     """백그라운드에서 돌릴 함수: 메뉴마다 동시에 채운다. 이름·설명과 사진도 서로 기다리지 않는다."""
 
@@ -410,6 +432,7 @@ def fill_all(
                                 store_context,
                                 call=call,
                                 cutout=cutout,
+                                menu_list=menu_list,
                             )
                         )
             for future in futures:
