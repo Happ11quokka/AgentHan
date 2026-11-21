@@ -96,7 +96,8 @@ class ClovaClient:
     ):
         """on_usage: 응답마다 토큰 수를 받는 함수 (평가에서 리뷰 위임 토큰을 모을 때).
         {"prompt_tokens", "completion_tokens", "total_tokens"} 형식으로 넘긴다."""
-        self._key = api_key if api_key is not None else os.getenv("CLOVASTUDIO_API_KEY", "")
+        # 키를 직접 받지 않았으면 부를 때마다 모델에 맞는 키를 고른다(서비스 앱 모델은 서비스 키)
+        self._fixed_key = api_key
         self.host = (host or os.getenv("CLOVASTUDIO_HOST") or DEFAULT_HOST).rstrip("/")
         self.timeout = timeout
         self.max_retries = (
@@ -114,12 +115,24 @@ class ClovaClient:
         return f"ClovaClient(host={self.host!r})"
 
     # ------------------------------------------------------------------ 공통
-    def _post(self, path: str, payload: dict) -> dict:
-        if not self._key or self._key.startswith("Bearer "):
+    @property
+    def _key(self) -> str:
+        return self._key_for(None)
+
+    def _key_for(self, model: str | None) -> str:
+        if self._fixed_key is not None:
+            return self._fixed_key
+        from agenthan.core.llm import api_key
+
+        return api_key(model)
+
+    def _post(self, path: str, payload: dict, *, model: str | None = None) -> dict:
+        key = self._key_for(model)
+        if not key or key.startswith("Bearer "):
             raise ClovaError("CLOVASTUDIO_API_KEY에 키 원문을 넣어 주세요.")
         request_id = str(uuid4())
         headers = {
-            "Authorization": f"Bearer {self._key}",
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-NCP-CLOVASTUDIO-REQUEST-ID": request_id,
@@ -183,7 +196,7 @@ class ClovaClient:
             payload["tools"] = tools
             if tool_choice is not None:
                 payload["toolChoice"] = tool_choice
-        result = self._post(CHAT_PATH.format(model=model), payload)
+        result = self._post(CHAT_PATH.format(model=model), payload, model=model)
         self._report_usage(result.get("usage"))  # 잘린 응답도 토큰은 쓴다
         if result.get("finishReason") == "length":
             raise ClovaError("CLOVA 응답이 출력 한도에서 잘렸습니다.")

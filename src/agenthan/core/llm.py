@@ -33,12 +33,32 @@ call_deadline: ContextVar[float | None] = ContextVar("hcx_deadline", default=Non
 call_managed: ContextVar[bool] = ContextVar("hcx_managed_retry", default=False)
 
 
+SERVICE_KEY_ENV = "CLOVASTUDIO_SERVICE_API_KEY"
+SERVICE_MODELS_ENV = "CLOVASTUDIO_SERVICE_MODELS"
+DEFAULT_SERVICE_MODELS = "HCX-007,HCX-005"
+
+
+def api_key(model: str | None = None) -> str:
+    """이 모델을 부를 CLOVA Studio 키. 없으면 빈 글.
+
+    서비스 앱으로 승인된 모델(`CLOVASTUDIO_SERVICE_MODELS`, 기본 HCX-007·HCX-005)은
+    `CLOVASTUDIO_SERVICE_API_KEY`가 있으면 그 키로 부른다(한도가 테스트 키의 3~5배).
+    서비스 키는 승인 안 된 모델·임베딩·튜닝 작업에 401을 내므로 나머지는 `CLOVASTUDIO_API_KEY`."""
+    service = os.environ.get(SERVICE_KEY_ENV, "").strip()
+    if service and model:
+        models = os.environ.get(SERVICE_MODELS_ENV, DEFAULT_SERVICE_MODELS)
+        if model in {m.strip() for m in models.split(",") if m.strip()}:
+            return service
+    return os.environ.get("CLOVASTUDIO_API_KEY", "")
+
+
 def punct_polish_enabled() -> bool:
     """문장부호만 다듬는 HCX 호출(계획 루프 조언·조회 문장, 리포트 카드)을 할지.
 
     결과는 템플릿 문장과 공백·문장부호만 다를 때만 쓰이므로 꺼도 내용은 같고, 한 턴에 HCX 한 번
     (약 2~3초)이 준다. `AGENTHAN_PUNCT_POLISH=off`면 끈다. 기본은 켜짐(평가·테스트 그대로)."""
-    return os.environ.get("AGENTHAN_PUNCT_POLISH", "on").strip().lower() not in {"off", "0", "false", "no"}
+    value = os.environ.get("AGENTHAN_PUNCT_POLISH", "on").strip().lower()
+    return value not in {"off", "0", "false", "no"}
 
 
 def remaining_time(timeout: float) -> float:
@@ -51,8 +71,12 @@ def remaining_time(timeout: float) -> float:
     return min(timeout, remaining)
 
 
-def make_client(*, max_retries: int | None = None, timeout: float | None = None):
-    """OpenAI 호환 CLOVA Studio 클라이언트. 키가 없으면 KeyError("CLOVASTUDIO_API_KEY")."""
+def make_client(
+    *, model: str | None = None, max_retries: int | None = None, timeout: float | None = None
+):
+    """OpenAI 호환 CLOVA Studio 클라이언트. 키가 없으면 KeyError("CLOVASTUDIO_API_KEY").
+
+    model을 주면 그 모델에 맞는 키(`api_key`)를 쓴다."""
     import ssl
 
     from openai import DefaultHttpxClient, OpenAI  # 테스트에서 가짜 client를 넣도록 지연 import
@@ -61,7 +85,7 @@ def make_client(*, max_retries: int | None = None, timeout: float | None = None)
         timeout = remaining_time(timeout or V3_TIMEOUT)
     if call_managed.get() or call_deadline.get() is not None:
         max_retries = 0
-    key = os.environ.get("CLOVASTUDIO_API_KEY")
+    key = api_key(model)
     if not key:
         raise KeyError("CLOVASTUDIO_API_KEY")
     # SDK 기본 HTTP 클라이언트는 truststore(macOS 키체인)로 인증서를 검증한다.
@@ -136,7 +160,7 @@ def chat_v3(model: str, body: dict, *, timeout: float = V3_TIMEOUT) -> dict:
     responseFormat 등). 429·5xx는 최대 두 번 재시도하고, Retry-After가 10초를 넘으면 바로 실패한다.
     서버 본문과 원래 예외는 밖으로 내보내지 않는다(키가 섞일 수 있다).
     """
-    key = os.environ.get("CLOVASTUDIO_API_KEY")
+    key = api_key(model)
     if not key:
         raise ClovaV3Error("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
     url = f"{V3_HOST}/v3/chat-completions/{model}"
