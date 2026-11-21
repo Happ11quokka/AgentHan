@@ -73,3 +73,32 @@ def test_seed_menus_without_a_clue_get_a_category_default(tmp_path, mock_index):
 def test_an_empty_menu_session_stays_empty(tmp_path, mock_index):
     body = client(tmp_path, mock_index).post("/assistant/sessions?menu=empty").json()
     assert body["place"]["menu"] == []
+
+
+def test_an_owner_rename_picks_the_illustration_of_the_new_name(tmp_path, mock_index):
+    api = client(tmp_path, mock_index)
+    body = api.post("/assistant/sessions").json()
+    sid, first = body["session_id"], body["place"]["menu"][0]
+    url = f"/assistant/sessions/{sid}/menus/{first['id']}"
+
+    renamed = api.patch(url, json={"name": "가나다 수프"}).json()["place"]["menu"]
+    row = next(m for m in renamed if m["id"] == first["id"])
+    assert row["illustration_url"] == "/illustrations/default_soup.svg"
+    assert "illustration" not in row["ai"]
+
+    api.patch(url, json={"name": "가나다 에이드"})
+    again = api.get(f"/assistant/sessions/{sid}/place").json()["place"]["menu"]
+    row = next(m for m in again if m["id"] == first["id"])
+    assert row["illustration_url"] == "/illustrations/default_ade.svg"
+    store = json.loads((tmp_path / sid / "store.json").read_text("utf-8"))
+    saved = next(m for m in store["menus"] if m["id"] == first["id"])
+    assert saved["illustration"] == "default_ade"
+
+
+def test_a_price_edit_keeps_the_illustration(tmp_path, mock_index):
+    api = client(tmp_path, mock_index)
+    body = api.post("/assistant/sessions").json()
+    sid, first = body["session_id"], body["place"]["menu"][0]
+    url = f"/assistant/sessions/{sid}/menus/{first['id']}"
+    row = api.patch(url, json={"price": first["price"] + 500}).json()["place"]["menu"][0]
+    assert row["illustration_url"] == first["illustration_url"]

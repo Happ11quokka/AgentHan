@@ -8,7 +8,7 @@ import json
 import pytest
 
 from agenthan.illustration import library
-from agenthan.illustration.matcher import assign_missing, pick_illustration
+from agenthan.illustration.matcher import assign_illustration, assign_missing, pick_illustration
 
 
 def broken_embed(_text):
@@ -105,11 +105,12 @@ def test_illustration_url_is_the_web_static_path_or_none():
     assert library.illustration_url(None) is None
 
 
-def test_assign_missing_fills_only_menus_without_a_known_illustration():
+def test_assign_missing_fills_menus_without_their_own_illustration():
     menus = [
         {"id": "a", "name": "가나다 케이크"},
         {"id": "b", "name_ko": "가나다 수프"},  # 픽스처 기록은 name_ko
-        {"id": "c", "name": "가나다", "illustration": "default_tea"},  # 이미 정한 그림은 둔다
+        # 기본 그림은 다시 고른다. 같은 그림이 나오면 그대로 둔다
+        {"id": "c", "name": "가나다 티", "illustration": "default_tea"},
         {"id": "d", "name": "가나다 라떼", "illustration": "removed_one"},  # 없어진 그림은 다시
         {"id": "e", "name": "가나다", "category": "Ade"},
     ]
@@ -122,3 +123,20 @@ def test_assign_missing_fills_only_menus_without_a_known_illustration():
         "default_ade",
     ]
     assert assign_missing(menus, broken_embed) is False
+
+
+def test_a_category_default_is_upgraded_when_the_catalog_grows(fake_catalog):
+    """예전에 기본 그림을 받은 메뉴도 카탈로그에 자기 그림이 생기면 세션을 열 때 바뀐다."""
+    menus = [{"id": "a", "name": "메도빅", "illustration": "default_cake"}]
+    assert assign_missing(menus, broken_embed) is True
+    assert menus[0]["illustration"] == "cake_medovik"
+
+
+def test_an_own_illustration_stays_until_the_name_changes(fake_catalog):
+    menu = {"id": "a", "name": "메도빅 홀케이크", "illustration": "cake_medovik"}
+    assert assign_missing([menu], broken_embed) is False
+    assert menu["illustration"] == "cake_medovik"  # 세션을 열어도 그대로
+    menu["name"] = "초코 메도빅"
+    assert assign_illustration(menu, broken_embed) is True
+    assert menu["illustration"] == "cake_medovik_choco"
+    assert assign_illustration(menu, broken_embed) is False  # 같은 이름이면 같은 그림

@@ -10,7 +10,10 @@ import tempfile
 import threading
 import unicodedata
 import uuid
+from collections.abc import Callable
 from pathlib import Path
+
+from agenthan.illustration import assign_illustration
 
 SEED_PATH = Path(__file__).with_name("dummy_store_seed.json")
 DEFAULT_STORE = Path(".agenthan/store.json")
@@ -114,11 +117,22 @@ def _flags(record: dict, key: str) -> list[str]:
 
 
 class DummyStore:
-    def __init__(self, path: str | Path = DEFAULT_STORE):
+    def __init__(
+        self,
+        path: str | Path = DEFAULT_STORE,
+        *,
+        embed: Callable[[str], list[float]] | None = None,
+    ):
+        """embed: 메뉴 대표 그림을 고를 때 넘기는 임베딩 함수(비서의 embed와 같은 것)."""
         self.path = Path(path).expanduser()
         if self.path.resolve() == SEED_PATH.resolve():
             raise DummyStoreError("시드 파일은 실행 저장소로 사용할 수 없습니다.")
         self.lock = _lock_for(self.path)
+        self.embed = embed
+
+    def illustrate(self, record: dict) -> None:
+        """메뉴가 새로 들어오거나 이름이 바뀌면 지금 이름으로 대표 그림을 다시 고른다."""
+        assign_illustration(record, self.embed)
 
     def read(self) -> dict:
         """Before the first valid write, read the seed without creating a file."""
@@ -249,6 +263,8 @@ class DummyStore:
                     record["filling"] = [
                         f for f in item.get("filling", []) if f in MENU_FLAG_FIELDS
                     ]
+                    # 이름을 현지화하는 메뉴는 채우기가 이름을 고칠 때 최종 이름으로 다시 고른다
+                    self.illustrate(record)
                     data["menus"].append(record)
                     action = "created"
                 else:
@@ -309,8 +325,9 @@ class DummyStore:
                     if by_owner:
                         raise DummyStoreError("같은 이름의 메뉴가 이미 있어요.")
                     values.pop("name")
-                else:
+                elif " ".join(name.split()) != record["name"]:
                     record["name"] = " ".join(name.split())
+                    self.illustrate(record)
             if "price" in values:
                 if not valid_price(values["price"]):
                     raise DummyStoreError("가격은 0보다 큰 정수(원)로 넣어 주세요.")
@@ -425,6 +442,7 @@ class DummyStore:
                 "price": price,
                 "aliases": [],
             }
+            self.illustrate(record)
             data["menus"].append(record)
         else:
             action = "updated"

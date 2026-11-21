@@ -103,16 +103,30 @@ def pick_illustration(
     return (_by_ending(key) if key else None) or DEFAULT_IDS["other"]
 
 
-def assign_missing(menus: list[dict], embed: Embed | None = None) -> bool:
-    """그림 id가 없거나 카탈로그에 없는 메뉴에 그림을 정해 넣는다. 하나라도 넣었으면 True.
+def assign_illustration(menu: dict, embed: Embed | None = None) -> bool:
+    """메뉴의 지금 이름(과 분류)으로 그림을 골라 넣는다. 새 메뉴, 이름이 바뀐 메뉴에 쓴다.
+    그림 id가 바뀌었으면 True.
 
     메뉴 이름은 실행 저장소의 name, 픽스처의 name_ko. 분류는 category(있을 때만)."""
+    name = menu.get("name") or menu.get("name_ko") or ""
+    picked = pick_illustration(name, menu.get("category"), embed)
+    changed = menu.get("illustration") != picked
+    menu["illustration"] = picked
+    return changed
+
+
+def assign_missing(menus: list[dict], embed: Embed | None = None) -> bool:
+    """세션을 열 때 한 번: 그림 id가 없거나, 카탈로그에 없거나, 분류 기본 그림인 메뉴를 다시
+    고른다. 하나라도 바뀌었으면 True.
+
+    분류 기본 그림은 카탈로그가 커지면 자기 그림을 찾을 수 있어 다시 고른다. 자기 그림이 정해진
+    메뉴는 이름이 바뀔 때만 다시 고른다(assign_illustration)."""
     known = catalog_ids()
+    defaults = set(DEFAULT_IDS.values())
     changed = False
     for menu in menus:
-        if menu.get("illustration") in known:
+        current = menu.get("illustration")
+        if current in known and current not in defaults:
             continue
-        name = menu.get("name") or menu.get("name_ko") or ""
-        menu["illustration"] = pick_illustration(name, menu.get("category"), embed)
-        changed = True
+        changed = assign_illustration(menu, embed) or changed
     return changed

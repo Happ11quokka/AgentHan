@@ -243,11 +243,13 @@ def claim_drafts(session: Session, review_ids: list[str] | None = None) -> Calla
 
 
 def fill_illustrations(session: Session) -> None:
-    """세션을 열 때 그림이 정해지지 않은 메뉴(예전 세션·시드 가게)에 대표 그림을 한 번 정해 둔다."""
+    """세션을 열 때 그림이 정해지지 않은 메뉴(예전 세션·시드 가게)에 대표 그림을 한 번 정해 둔다.
+    분류 기본 그림을 받은 메뉴는 카탈로그가 커졌을 수 있어 다시 고른다. 새 메뉴·이름이 바뀐
+    메뉴는 저장소가 쓸 때 고른다(DummyStore.illustrate)."""
     store = session.assistant.store
     with store.lock:
         data = store.read()
-        if assign_missing(data["menus"]):
+        if assign_missing(data["menus"], store.embed):
             store.write(data)
 
 
