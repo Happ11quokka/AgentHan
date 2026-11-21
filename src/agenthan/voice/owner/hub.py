@@ -1,7 +1,7 @@
 """사장님 허브 (4단계 spec "사장님 허브"). `OrderSink`와 `OwnerChannel`을 구현해 카드를 메모리에
 두고 구독자에게 보낸다.
 
-    hub = OwnerHub(store=store, clock=clock)
+    hub = OwnerHub(stores=stores, clock=clock)  # 가게 스냅숏 공급자 (`store_snapshot.py`)
     phone_router(..., order_sink=hub, owner=hub, ...)  # 통화 세션이 주문·통화 상황을 넘긴다
     app.include_router(owner_router(hub, key=...))  # 사장님 화면 SSE·POST (`http.py`)
 
@@ -162,6 +162,7 @@ from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
 from agenthan.voice.owner.translate import Translator
+from agenthan.voice.store_snapshot import StoreProvider
 
 log = logging.getLogger(__name__)
 
@@ -220,13 +221,25 @@ class HubLimits:
     order_card_hours: float = 72.0  # 확정 주문 카드 보관 시간 (받은 때부터). 통화 카드보다 길게
 
 
+def _store_reader(
+    store: StoreKnowledge | None, stores: StoreProvider | None
+) -> Callable[[], StoreKnowledge]:
+    """허브가 메뉴를 읽을 때 부르는 함수: 공급자가 있으면 그 지금 가게, 없으면 고정 가게."""
+    if stores is not None:
+        return lambda: stores().store
+    if store is None:
+        raise TypeError("OwnerHub에는 store나 stores가 있어야 한다")
+    return lambda: store
+
+
 class OwnerHub:
     """`OrderSink`·`OwnerChannel` 구현 + 사장님 화면 구독. 이벤트 루프 하나에 묶여 쓴다."""
 
     def __init__(
         self,
         *,
-        store: StoreKnowledge,
+        store: StoreKnowledge | None = None,
+        stores: StoreProvider | None = None,
         clock: Clock,
         question_wait_s: float = OWNER_WAIT_S,
         approval_wait_s: float = APPROVAL_WAIT_S,
@@ -237,7 +250,9 @@ class OwnerHub:
         limits: HubLimits | None = None,
         decision_sink: DecisionSink | None = None,
     ) -> None:
-        self._store = store
+        # 가게 메뉴(원어 이름·품절 되돌리기·번역 때 가릴 메뉴명). 통화 밖이라 읽을 때마다 공급자에게
+        # 지금 가게를 묻는다(전화 메뉴 티켓 01). `store`만 주면 늘 그 가게
+        self._store = _store_reader(store, stores)
         # 사장님 결정 기록(티켓 10): 받는 곳, 주문별 마지막으로 넘긴 결정, 행을 채울 주문서
         self._decision_sink = decision_sink
         self._recorded: dict[str, DecisionRecord] = {}
@@ -266,7 +281,8 @@ class OwnerHub:
         self._lexicon = lexicon_for(owner_lang)
         self._translator = translator  # 사장님 자유 입력 글 → 한국어 (티켓 07)
         # 카드 자유 문장 번역 캐시 (티켓 03, `card_texts.py`)
-        self._translations = CardTexts(translator, store=store, lexicon=self._lexicon)
+        self._translations = CardTexts(translator, current_store=self._store,
+                                      lexicon=self._lexicon)
         self._tasks: set[asyncio.Task[None]] = set()  # 진행 중인 번역 (GC 막기)
         self._orders: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
@@ -500,7 +516,7 @@ class OwnerHub:
         `UnknownCard`. 이미 빠진 메뉴면 그대로 돌려준다(두 화면에서 같이 눌러도 된다).
         """
         self.roll_day()
-        if menu_id not in self._sold_out and self._store.get_menu(menu_id) is None:
+        if menu_id not in self._sold_out and self._store().get_menu(menu_id) is None:
             raise UnknownCard(menu_id)
         if self._sold_out.pop(menu_id, None) is not None:
             log.info("품절 되돌림: %s", menu_id)
@@ -1426,7 +1442,7 @@ class OwnerHub:
 
     def _owner_name(self, menu_id: str, name_ko: str) -> str:
         """사장님이 쓰는 원어 이름(`MenuItem.name_native`, 번역기 안 씀). 비면 한국어 이름."""
-        item = self._store.get_menu(menu_id)
+        item = self._store().get_menu(menu_id)
         return (item.name_native if item else "") or name_ko
 
     def _name_and_unit_price(self, line: OrderLine) -> tuple[str, int]:
@@ -1437,7 +1453,7 @@ class OwnerHub:
         """
         if line.name:
             return line.name, line.unit_price
-        item = self._store.get_menu(line.menu_id)
+        item = self._store().get_menu(line.menu_id)
         if item is None:
             return line.menu_id, 0
         extra = {o.name: o.extra_price for o in item.options}

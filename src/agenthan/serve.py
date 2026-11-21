@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from agenthan.voice import server as voice_server
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink
 from agenthan.voice.settings import VoiceSettings
+from agenthan.voice.store_snapshot import fixed_store
 
 log = logging.getLogger(__name__)
 
@@ -34,11 +35,12 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     settings = settings or VoiceSettings.from_env()
     store_raw, sinks, decisions = phone_db(settings)
     knowledge = phone_knowledge(store_raw, settings)
+    # 전화 가게: 지금은 고정 가게 하나. 통화는 시작할 때 공급자에게 가게 스냅숏을 받는다
+    store = voice_server.load_store(settings, store_raw=store_raw, knowledge=knowledge)
     app = voice_server.create_app(
         settings,
-        store_raw=store_raw,
+        stores=fixed_store(store),
         order_sinks=sinks,
-        knowledge=knowledge,
         decision_sink=decisions,  # 사장님 결정도 DB에 (주문 승인 티켓 10)
     )
     include_assistant(app, settings.env)  # from_env면 os.environ·.env를 합친 값

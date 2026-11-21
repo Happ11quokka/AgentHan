@@ -25,6 +25,7 @@ from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smoke import calls, scripts
 from agenthan.voice.smoke.__main__ import main, summary_line
 from agenthan.voice.store_config import KST, StoreConfig
+from agenthan.voice.store_snapshot import StoreSnapshot, fixed_store
 from agenthan.voice.ws import WS_PATH, phone_router
 
 PHO = Path(__file__).parents[2] / "fixtures" / "phone" / "sample_pho_store.json"
@@ -159,8 +160,7 @@ async def server(replies: tuple[str, ...] = ORDER_REPLIES, sink: MemoryOrderSink
                           now=datetime.fromisoformat("2026-11-08T16:00:00+09:00"),
                           fake_replies=replies, **settings)
     app = FastAPI()
-    app.include_router(phone_router(store=FakeStoreKnowledge.from_fixture(),
-                                    config=StoreConfig.from_fixture(),
+    app.include_router(phone_router(stores=fixed_store(StoreSnapshot.of(*sample())),
                                     order_sink=sink or MemoryOrderSink(), settings=voice))
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning",
                                         lifespan="off"))

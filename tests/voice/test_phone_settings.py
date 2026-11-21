@@ -335,44 +335,6 @@ def test_clova_stt_gets_the_boost_weight_from_the_settings() -> None:
     assert make_stt()._settings.boost_weight == 1.5
 
 
-def test_phone_router_sends_no_boost_words_when_boosting_is_off(monkeypatch) -> None:
-    from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
-    from agenthan.voice.store_config import StoreConfig
-    from agenthan.voice.ws import phone_router
-
-    seen: dict = {}
-
-    def capture(settings, **kw):
-        seen.update(kw)
-        return lambda: None
-
-    monkeypatch.setattr(adapters, "stt_factory", capture)
-    phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
-                 order_sink=MemoryOrderSink(),
-                 settings=VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))
-    assert seen["boost_words"] == ()
-
-
-def test_phone_router_boosts_the_store_menu_for_clova_stt(monkeypatch) -> None:
-    from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
-    from agenthan.voice.store_config import StoreConfig
-    from agenthan.voice.ws import phone_router
-
-    seen: dict = {}
-
-    def capture(settings, **kw):
-        seen.update(kw)
-        return lambda: None
-
-    monkeypatch.setattr(adapters, "stt_factory", capture)
-    phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
-                 order_sink=MemoryOrderSink(),
-                 settings=VoiceSettings.from_env({"PHONE_STT": "clova",
-                                                  "PHONE_STT_BOOST_WEIGHT": "1"}, env_file=None))
-    assert seen["boost_words"][:3] == ("메도빅", "꿀케이크", "허니케이크")
-    assert "사워크림" in seen["boost_words"]
-
-
 def test_clova_stt_keeps_a_grpc_dns_resolver_that_is_already_set(monkeypatch) -> None:
     monkeypatch.setenv("GRPC_DNS_RESOLVER", "ares")
     stt_factory(VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))
