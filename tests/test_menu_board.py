@@ -1,5 +1,6 @@
 """메뉴판 사진 → 메뉴 탭에 바로 등록, 설명·흰 배경 사진은 뒤에서 채운다 (agent/menu_board.py)."""
 
+import base64
 import json
 import time
 
@@ -28,12 +29,17 @@ NAMES = {
 }
 
 
+RED, BLUE = (0, 0, 255), (255, 0, 0)  # BGR: 이름표 자리의 색 (FakeV3가 색으로 이름표를 읽는다)
+
+
 def board_image():
-    """흰 메뉴판 위에 음식 사진 칸 두 개(질감 있는 네모)."""
+    """흰 메뉴판 위에 음식 사진 칸 두 개(질감 있는 네모)와 그 아래 이름표(왼쪽 빨강 Медовик,
+    오른쪽 파랑 Ватрушка)."""
     image = np.full((600, 800, 3), 255, np.uint8)
     rng = np.random.default_rng(1)
-    for x0, y0 in ((60, 80), (460, 80)):
+    for (x0, y0), color in zip(((60, 80), (460, 80)), (RED, BLUE), strict=True):
         image[y0 : y0 + 220, x0 : x0 + 260] = rng.integers(0, 255, (220, 260, 3), dtype=np.uint8)
+        image[350:380, x0 : x0 + 260] = color
     ok, encoded = cv2.imencode(".jpg", image)
     assert ok
     return encoded.tobytes()
@@ -42,11 +48,26 @@ def board_image():
 BOARD = board_image()
 
 
-class FakeV3:
-    """메뉴판 읽기 질문에는 board 답을, 메뉴 하나 질문에는 NAMES를 돌려준다."""
+BOARD_LABELS = {"Медовик": RED, "Ватрушка": BLUE}
 
-    def __init__(self, board: dict | str):
+
+def label_by_color(data: bytes, labels: dict) -> str:
+    """이름표 자리 조각에서 이름표 색이 가장 많이 보이는 이름. 아무 색도 없으면 빈 글자."""
+    piece = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR).astype(int)
+    seen = {
+        name: (np.abs(piece - color).sum(axis=2) < 120).mean() for name, color in labels.items()
+    }
+    name = max(seen, key=seen.get, default="")
+    return name if name and seen[name] > 0.05 else ""
+
+
+class FakeV3:
+    """메뉴판 읽기 질문에는 board 답을, 메뉴 하나 질문에는 NAMES를 돌려준다. 이름표 읽기에는
+    잘라 온 자리의 이름표 색(labels: 이름 → BGR)으로 답한다."""
+
+    def __init__(self, board: dict | str, labels: dict = BOARD_LABELS):
         self.board = board
+        self.labels = labels
         self.calls = []
 
     def __call__(self, model, body):
@@ -59,6 +80,10 @@ class FakeV3:
                 return {"message": {"content": json.dumps(photos, ensure_ascii=False)}}
             if text.startswith("메뉴판 일부를 잘라 낸 그림이다"):  # 사진 위치 다시 묻기
                 return {"message": {"content": '{"box": [0.2, 0.2, 0.8, 0.8]}'}}
+            if text == menu_board.LABEL_PROMPT:  # 사진 아래 이름표 읽기
+                uri = content[0]["dataUri"]["data"]
+                label = label_by_color(base64.b64decode(uri.split(",", 1)[1]), self.labels)
+                return {"message": {"content": json.dumps({"label": label}, ensure_ascii=False)}}
             assert text == menu_board.BOARD_PROMPT
             answer = self.board if isinstance(self.board, str) else json.dumps(self.board)
             return {"message": {"content": answer}}
@@ -138,8 +163,6 @@ def test_big_photos_are_shrunk_for_reading():
     big = cv2.imencode(".jpg", np.zeros((3000, 4000, 3), np.uint8))[1].tobytes()
     fake = FakeV3(ITEMS)
     menu_board.read_board(big, call=fake)
-    import base64
-
     uri = fake.calls[0]["messages"][0]["content"][0]["dataUri"]["data"]
     sent = cv2.imdecode(np.frombuffer(base64.b64decode(uri.split(",", 1)[1]), np.uint8), 1)
     assert max(sent.shape[:2]) == menu_board.READ_SIDE
@@ -611,11 +634,12 @@ def test_names_with_a_subtitle_get_their_photo_and_glossary_entry(tmp_path):
 
 
 def column_board():
-    """크림색 메뉴판 오른쪽 열에 음식 사진 두 장이 위아래로(그 아래 이름표 자리)."""
+    """크림색 메뉴판 오른쪽 열에 음식 사진 두 장이 위아래로, 그 아래 이름표(위 빨강, 아래 파랑)."""
     image = np.full((800, 1000, 3), (205, 230, 245), np.uint8)  # BGR 크림색 종이
     rng = np.random.default_rng(2)
-    for top in (120, 470):
+    for top, color in zip((120, 470), (RED, BLUE), strict=True):
         image[top : top + 220, 650:900] = rng.integers(0, 255, (220, 250, 3), dtype=np.uint8)
+        image[top + 240 : top + 260, 700:850] = color
     ok, encoded = cv2.imencode(".jpg", image)
     assert ok
     return encoded.tobytes()
@@ -632,14 +656,7 @@ def test_photo_cells_are_measured_and_a_missed_photo_found_by_its_label(tmp_path
         "photos": [{"box": [0.68, 0.2, 0.92, 0.45], "label": "김밥"}],
     }
 
-    class Labels(FakeV3):
-        def __call__(self, model, body):
-            content = body["messages"][-1]["content"]
-            if isinstance(content, list) and content[1]["text"] == menu_board.LABEL_PROMPT:
-                return {"message": {"content": '{"label": "떡볶이"}'}}
-            return super().__call__(model, body)
-
-    fake = Labels(answer)
+    fake = FakeV3(answer, labels={"김밥": RED, "떡볶이": BLUE})
     runs = menu_board.photo_runs(board, (0.56, 1.0))
     assert len(runs) == 2
     assert abs(runs[0][1] - 0.15) < 0.03 and abs(runs[1][1] - 470 / 800) < 0.03
@@ -678,14 +695,7 @@ def recovered_board(tmp_path, label="보르시"):
         "photos": [{"box": [0.68, 0.2, 0.92, 0.45], "label": "김밥"}],
     }
 
-    class Labels(FakeV3):
-        def __call__(self, model, body):
-            content = body["messages"][-1]["content"]
-            if isinstance(content, list) and content[1]["text"] == menu_board.LABEL_PROMPT:
-                return {"message": {"content": json.dumps({"label": label}, ensure_ascii=False)}}
-            return super().__call__(model, body)
-
-    fake = Labels(answer)
+    fake = FakeV3(answer, labels={"김밥": RED, label: BLUE})
     store = DummyStore(tmp_path / "store.json")
     store.write({"shop": {"name": "러시아 식당"}, "menus": [], "reviews": []})
     _, items = menu_board.read_board(board, call=fake)
@@ -748,6 +758,129 @@ def test_refine_box_maps_the_answer_back_and_keeps_the_box_on_failure():
         return {"message": {"content": "잘 모르겠어요"}}
 
     assert menu_board.refine_box(BOARD, box, "김밥", call=nonsense) == box
+
+
+FOLK_NAMES = ["메도빅", "펠메니", "보르시", "머랭롤"]
+
+
+def folk_board():
+    """러시아 빵집 메뉴판(2026-11-21 실서버 모양): 오른쪽 열에 액자 칸 네 개(사진 + 그 아래
+    이름표), 칸 사이·아래 민속 장식 띠, 판 아래 나무 식탁. 마지막 머랭롤 사진은 흰 크림·흰
+    접시라 종이색과 거의 같다. → (메뉴판, 사진 칸들, 이름표 세로 범위들)"""
+    width, height = 900, 1500
+    image = np.full((height, width, 3), (40, 80, 130), np.uint8)  # 나무 식탁
+    image[: height - 90] = (205, 230, 245)  # 크림색 종이
+    rng = np.random.default_rng(4)
+    photos, labels, top = [], [], 60
+    for k in range(4):
+        y0, y1 = top + 10, top + 160
+        if k < 3:
+            photo = rng.integers(0, 255, (150, 280, 3), dtype=np.uint8)
+        else:
+            photo = np.full((150, 280, 3), (225, 232, 238), np.uint8)
+            cv2.ellipse(photo, (140, 80), (125, 60), 0, 0, 360, (250, 250, 250), -1)
+            cv2.ellipse(photo, (140, 75), (90, 38), 0, 0, 360, (190, 215, 240), -1)
+            for x in range(80, 210, 22):
+                cv2.circle(photo, (x, 40), 6, (60, 40, 200), -1)
+        image[y0:y1, 560:840] = photo
+        cv2.putText(image, "NAME", (640, y1 + 38), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (40, 30, 150), 3)
+        cv2.rectangle(image, (550, top), (850, y1 + 55), (40, 30, 150), 3)
+        for x in range(520, 880, 45):  # 장식 띠: 열매와 잎
+            cv2.circle(image, (x, y1 + 85), 8, (40, 40, 200), -1)
+            cv2.ellipse(image, (x + 20, y1 + 85), (18, 7), 30, 0, 360, (40, 180, 230), -1)
+        photos.append((560 / width, y0 / height, 840 / width, y1 / height))
+        labels.append((y1 / height, (y1 + 55) / height))
+        top = y1 + 115
+    ok, encoded = cv2.imencode(".jpg", image)
+    assert ok
+    return encoded.tobytes(), photos, labels
+
+
+def run_folk_board(tmp_path, monkeypatch, refined, unreadable=()):
+    """첫 읽기는 사진 4장을 다 주지만 머랭롤 위치는 이름표 쪽으로 어긋난다. 이름표는 그 자리에
+    실제로 있는 칸의 이름으로 읽힌다(이름표 자리가 아니거나 unreadable이면 빈 글자). refined:
+    머랭롤 사진 위치를 다시 물었을 때 모델의 답. → (저장된 메뉴, 메뉴별 자른 위치, 실제 사진 칸)"""
+    board, photos, labels = folk_board()
+    answer = {
+        "kind": "menu_board",
+        "items": [{"name": n, "price": 8000 + 500 * i} for i, n in enumerate(FOLK_NAMES)],
+        "photos": [
+            {"box": [0.6, p[1] + 0.03, 0.95, p[3] + 0.03], "label": n}
+            for p, n in zip(photos, FOLK_NAMES, strict=True)
+        ],
+    }
+    answer["photos"][3]["box"] = [0.6, 0.7, 0.95, 0.8]
+
+    def read_label(board, box, *, call):
+        top = box[3]
+        hits = [n for n, (a, b) in zip(FOLK_NAMES, labels, strict=True) if a - 0.01 <= top < b]
+        return hits[0] if hits and hits[0] not in unreadable else ""
+
+    monkeypatch.setattr(menu_board, "read_label", read_label)
+    monkeypatch.setattr(menu_board, "refine_box", lambda board, box, label, call: refined)
+    cropped = {}
+    real_crop = menu_board.crop
+
+    def crop(data, box, margin=0.02):
+        piece = real_crop(data, box, margin)
+        cropped[piece] = box
+        return piece
+
+    monkeypatch.setattr(menu_board, "crop", crop)
+    store = DummyStore(tmp_path / "store.json")
+    store.write({"shop": {"name": "러시아 빵집"}, "menus": [], "reviews": []})
+    fake = FakeV3(answer)
+    _, items = menu_board.read_board(board, call=fake)
+    result = menu_board.register(store, items, FakeStoreKnowledge([]))
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=fake_cutout, no_photo=result.no_photo
+    )()
+    saved = menus(store)
+    boxes = {}
+    for name in FOLK_NAMES:
+        source = saved[name].get("photo_source")
+        if source:
+            boxes[name] = cropped[(store.path.parent / source).read_bytes()]
+    return saved, boxes, photos
+
+
+def test_a_photo_the_cells_missed_is_not_cut_from_its_label_and_border(tmp_path, monkeypatch):
+    """2026-11-21 실서버: 머랭롤 사진(흰 크림)을 사진 칸 재기가 놓쳤고, 첫 읽기 위치를 다시 물은
+    답이 이름표·장식 띠·판 아래를 잡아 그 조각이 흰 배경 사진이 됐다. 사진 칸 간격으로 빠진
+    칸을 찾아 이름표로 확인하고, 확인 못 한 모델 위치는 쓰지 않는다."""
+    bad = (0.5, 0.68, 0.98, 0.78)  # 사진 아래 끝 + 이름표 + 장식 띠 (실서버 조각 모양)
+    saved, boxes, photos = run_folk_board(tmp_path, monkeypatch, refined=bad)
+    assert set(boxes) == set(FOLK_NAMES)
+    for name, truth in zip(FOLK_NAMES, photos, strict=True):
+        box = boxes[name]
+        assert menu_board._iou(box, truth) > 0.6, (name, box, truth)
+    assert all(m["filling"] == [] for m in saved.values())
+
+
+def test_a_photo_cell_nobody_can_confirm_is_left_to_the_illustration(tmp_path, monkeypatch):
+    """머랭롤 이름표를 못 읽으면(반사·흐림) 간격으로 짐작한 칸도, 다시 물은 위치도 확인할 수
+    없다: 이름표·장식 띠 조각을 붙이지 않고 사진 없이 둔다(메뉴는 일러스트로 보인다)."""
+    bad = (0.5, 0.68, 0.98, 0.78)
+    saved, boxes, photos = run_folk_board(tmp_path, monkeypatch, refined=bad, unreadable={"머랭롤"})
+    assert set(boxes) == {"메도빅", "펠메니", "보르시"}
+    assert not saved["머랭롤"].get("photo") and saved["머랭롤"]["illustration"]
+    assert all(m["filling"] == [] for m in saved.values())
+
+
+def test_a_re_asked_photo_box_over_another_menus_label_is_not_used(tmp_path):
+    """사진 칸을 잴 수 없는 판(사진이 가로로 퍼짐)에서는 위치를 다시 묻는다. 그 답 아래
+    이름표가 다른 메뉴 이름이면 그 조각은 쓰지 않는다."""
+    store, _, result = run_board(tmp_path)
+    swapped = FakeV3(ITEMS, labels={"Медовик": BLUE, "Ватрушка": RED})
+    menu_board.fill_all(store, result.jobs, BOARD, "베이커리", call=swapped, cutout=fake_cutout)()
+    saved = menus(store)
+    assert not saved["메도빅"].get("photo_source") and not saved["바트루시카"].get("photo")
+    assert all(m["filling"] == [] for m in saved.values())
+
+    store, fake, result = run_board(tmp_path / "ok")
+    menu_board.fill_all(store, result.jobs, BOARD, "베이커리", call=fake, cutout=fake_cutout)()
+    saved = menus(store)
+    assert saved["메도빅"]["photo_source"] and saved["바트루시카"]["photo"]
 
 
 # ---------------------------------------------------------------- 채우기 진행(menu_fill)
