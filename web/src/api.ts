@@ -1,4 +1,4 @@
-import type { Action, MenuEdit, OnboardingInput, Period, ReplyOp, ReplyResult, ReportView, ReviewsView, RoutinesChange, Started, Turn, View } from "./types";
+import type { Action, MenuEdit, OnboardingInput, Period, ReplyOp, ReplyResult, ReportView, ReviewStats, ReviewStatsPeriod, ReviewsView, RoutinesChange, Started, Suggestions, Turn, View } from "./types";
 
 /** 화면이 서버와 주고받는 유일한 길. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface AssistantApi {
@@ -20,6 +20,10 @@ export interface AssistantApi {
   runReviewReport(sessionId: string): Promise<View>;
   /** 루틴 설정 스위치·일정(#33): 사장님이 직접 바꾼 값이라 승인 카드 없이 저장한다. 대화 턴이 아니다. */
   setRoutines(sessionId: string, change: RoutinesChange): Promise<View>;
+  /** 통계 탭 › AI 리뷰 통계. */
+  reviewStats(sessionId: string, period: ReviewStatsPeriod): Promise<ReviewStats>;
+  /** 왼쪽 [비서 제안]: 지난주 통계와 리뷰로 고른 해 볼 일. */
+  suggestions(sessionId: string): Promise<Suggestions>;
   /** 메뉴 탭에서 사장님이 직접 고친 값: 승인 카드 없이 바로 저장한다. 대화 턴이 아니다. */
   editMenu(sessionId: string, menuId: string, edit: MenuEdit): Promise<View>;
   /** [사진 다듬기] 2차: CPU 스튜디오 보정(몇 초), GPU 서버가 있으면 SEED Omni(1~2분). message: 사장님께 보일 한 줄. */
@@ -93,6 +97,8 @@ export const httpApi: AssistantApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(change),
     }),
+  reviewStats: (id, period) => call(`${base(id)}/reviews/stats?period=${period}`),
+  suggestions: (id) => call(`${base(id)}/suggestions`),
   editMenu: (id, menuId, edit) =>
     call(`${base(id)}/menus/${encodeURIComponent(menuId)}`, {
       method: "PATCH",

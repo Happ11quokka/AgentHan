@@ -15,6 +15,8 @@ type Props = {
   photoInput: RefObject<HTMLInputElement | null>;
   sideOpen: boolean;
   onToggleNav: () => void;
+  /** 왼쪽 [비서 제안]을 보는 동안 숨긴다(대화 상태와 사진 입력은 그대로 둔다). */
+  hidden?: boolean;
   onToggleSide: () => void;
   /** 화면 알림의 [리뷰 탭에서 보기]: 사이드카 리뷰 탭을 열고 그 카드로 스크롤. */
   onShowReview: (reviewId: string) => void;
@@ -101,7 +103,7 @@ function bundledCards(chat: Conversation): Set<string> {
   return chip ? ids : new Set();
 }
 
-export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview, onInputChange }: Props) {
+export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview, onInputChange, hidden = false }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
@@ -116,6 +118,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
     <main
       className="chat"
       aria-label="비서와 대화"
+      hidden={hidden}
       data-dragging={dragging}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;

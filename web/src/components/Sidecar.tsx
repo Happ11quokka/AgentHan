@@ -1,13 +1,13 @@
 import { useRef } from "react";
 import { avatarState } from "../avatarState";
 import { CONNECTION_TEXT } from "../labels";
-import type { Action, Pending, Period, Place, ReportView, ReviewReport, ReviewsView, Routines, RoutinesChange } from "../types";
+import type { Action, Pending, Period, Place, ReportView, ReviewReport, ReviewStats, ReviewStatsPeriod, ReviewsView, Routines, RoutinesChange } from "../types";
 import type { Loaded } from "../useLoad";
 import { AgentAvatar } from "./AgentAvatar";
 import { Icon } from "./Icon";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
 import { HomeTab, MenuTab, type OnMenuDelete, type OnMenuEdit, type OnMenuPolish } from "./ShopTab";
-import { StatsTab } from "./StatsTab";
+import { type StatsKind, StatsTab } from "./StatsTab";
 
 export type Tab = "home" | "menu" | "reviews" | "stats";
 
@@ -42,6 +42,13 @@ type Props = {
   onRunReport?: () => Promise<string | null>;
   routines?: Routines | null;
   onRoutines?: (change: RoutinesChange) => Promise<string | null>;
+  /** 통계 탭 › AI 리뷰 통계. */
+  statsKind?: StatsKind;
+  onStatsKind?: (k: StatsKind) => void;
+  reviewStats?: Loaded<ReviewStats>;
+  reviewPeriod?: ReviewStatsPeriod;
+  onReviewPeriod?: (p: ReviewStatsPeriod) => void;
+  onAsk?: (text: string) => void;
   /** 메뉴 탭 직접 수정·삭제(승인 카드 없음). 없으면 메뉴 탭은 읽기만. */
   onEditMenu?: OnMenuEdit;
   onDeleteMenu?: OnMenuDelete;
@@ -129,7 +136,19 @@ export function Sidecar(props: Props) {
             onSimulate={props.onSimulateReview}
           />
         )}
-        {tab === "stats" && <StatsTab loaded={props.report} period={props.period} onPeriod={props.onPeriod} />}
+        {tab === "stats" && (
+          <StatsTab
+            loaded={props.report}
+            period={props.period}
+            onPeriod={props.onPeriod}
+            kind={props.statsKind}
+            onKind={props.onStatsKind}
+            reviewStats={props.reviewStats}
+            reviewPeriod={props.reviewPeriod}
+            onReviewPeriod={props.onReviewPeriod}
+            onAsk={props.onAsk}
+          />
+        )}
       </div>
     </aside>
   );

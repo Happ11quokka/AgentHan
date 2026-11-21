@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { ApiError, type AssistantApi } from "../api";
-import type { Action, DraftRow, MenuEdit, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, RoutinesChange, Turn, View } from "../types";
+import type { Action, DraftRow, MenuEdit, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewStats, ReviewStatsPeriod, ReviewsView, RoutinesChange, Suggestions, Turn, View } from "../types";
 
 export const SEED: Place = {
   menu: [
@@ -166,6 +166,53 @@ export function report(period: Period = "week"): ReportView {
   };
 }
 
+export const REVIEW_STATS: ReviewStats = {
+  period: "month",
+  start: "2026-10-09",
+  end: "2026-11-07",
+  review_count: 20,
+  positive: [
+    { name: "맛", theme: "음식", count: 10, change: 3 },
+    { name: "만족도", theme: "전반", count: 2, change: null },
+    { name: "친절", theme: "서비스", count: 1, change: -1 },
+  ],
+  negative: [{ name: "분위기", theme: "분위기", count: 1, change: null }],
+  themes: [
+    { name: "음식", positive: 10, negative: 1 },
+    { name: "분위기", positive: 0, negative: 1 },
+  ],
+};
+
+export const SUGGESTIONS: Suggestions = {
+  end: "2026-11-08",
+  items: [
+    {
+      kind: "keyword_gap",
+      priority: 30,
+      feature: "search_keywords",
+      feature_name: "대표키워드 설정",
+      source: "검색어 통계",
+      title: "대표키워드·메뉴 이름에 없는 검색어로도 들어오고 있어요",
+      evidence: "‘꿀 케이크’로 52번 들어왔어요.",
+      action: "대표키워드에 추가하기",
+      ask: "‘꿀 케이크’를 대표키워드에 추가해 줘",
+      tab: null,
+    },
+    {
+      kind: "reply_gap",
+      priority: 35,
+      feature: "review",
+      feature_name: "리뷰 확인·분석·답글",
+      source: "리뷰",
+      title: "답글이 없는 낮은 별점 리뷰가 있어요",
+      evidence: "별점 3점 이하인데 아직 답글을 달지 않은 리뷰가 4개예요.",
+      action: "답글 초안 받기",
+      ask: null,
+      tab: "reviews",
+    },
+  ],
+};
+
 type Script = Array<Turn | Error>;
 
 /** 순서대로 답하는 가짜 API. say·sendPhoto는 같은 대본을 공유한다. */
@@ -198,6 +245,8 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
     report: vi.fn(async (_id: string, period: Period) => report(period)),
     runReviewReport: vi.fn(async (_id: string): Promise<View> => ({ place: SEED, pending: [], messages: [] })),
     setRoutines: vi.fn(async (_id: string, _change: RoutinesChange): Promise<View> => ({ place: SEED, pending: [] })),
+    reviewStats: vi.fn(async (_id: string, period: ReviewStatsPeriod): Promise<ReviewStats> => ({ ...REVIEW_STATS, period })),
+    suggestions: vi.fn(async (_id: string): Promise<Suggestions> => SUGGESTIONS),
     // 기본: 그 메뉴 칸만 바꾼 SEED를 돌려준다.
     editMenu: vi.fn(async (_id: string, menuId: string, edit: MenuEdit): Promise<View> => ({
       place: { ...SEED, menu: SEED.menu.map((m) => (m.id === menuId ? { ...m, ...edit, ai: [] } : m)) },

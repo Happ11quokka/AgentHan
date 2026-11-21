@@ -2539,6 +2539,411 @@ p {
   font-weight: 800;
 }
 
+/* ── 왼쪽 사이드바 접기 · 비서 제안 · AI 리뷰 통계 ───────── */
+.chat[hidden] {
+  display: none;
+}
+
+.brand {
+  gap: 6px;
+}
+
+.nav-toggle {
+  flex: none;
+}
+
+.nav-suggest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font-weight: 700;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.nav-suggest span:not(.nav-suggest-badge) {
+  flex: 1;
+}
+
+.nav-suggest:hover,
+.nav-suggest[aria-current="page"] {
+  background: var(--green-soft);
+  color: var(--green-ink);
+}
+
+.nav-suggest-badge {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (min-width: 821px) {
+  .app[data-nav-collapsed="true"] {
+    --nav-w: 72px;
+  }
+
+  .nav[data-collapsed="true"] {
+    align-items: center;
+    padding: 16px 0;
+  }
+
+  .nav[data-collapsed="true"] .brand {
+    padding: 0 0 10px;
+  }
+
+  .nav[data-collapsed="true"] .new-chat,
+  .nav[data-collapsed="true"] .nav-suggest {
+    position: relative;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .nav[data-collapsed="true"] .nav-suggest-badge {
+    position: absolute;
+    top: 4px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  .nav[data-collapsed="true"] .quick {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-2);
+  }
+
+  .nav[data-collapsed="true"] .quick button,
+  .nav[data-collapsed="true"] .quick a {
+    position: relative;
+    justify-content: center;
+    width: 44px;
+    padding: 5px;
+  }
+
+  .nav[data-collapsed="true"] .quick-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+}
+
+/* 비서 제안 페이지: 대화 자리에 카드 목록 */
+.suggest {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.suggest-head strong {
+  font-size: 16px;
+}
+
+.suggest-head span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.suggest-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 28px;
+}
+
+.suggest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.suggest-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.suggest-feature {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+.suggest-card h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.suggest-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.suggest-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.suggest-buttons button {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* 통계 탭: 방문·유입 | AI 리뷰 통계 */
+.sub-tabs {
+  display: flex;
+  gap: 20px;
+  margin-top: 6px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sub-tabs button {
+  height: 44px;
+  margin-bottom: -1px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sub-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.stats-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 0;
+}
+
+.stats-period .stats-range {
+  margin: 0;
+}
+
+.underline-radios {
+  display: flex;
+  gap: 14px;
+}
+
+.underline-radios button {
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.underline-radios button[aria-checked="true"] {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.review-stats > .loading,
+.review-stats > .soon {
+  margin: 16px 20px;
+}
+
+.review-stats-about {
+  margin: 12px 20px 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f2f5fb;
+  color: #46506a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.review-stats-about strong {
+  color: #2c3e66;
+}
+
+.review-stats-about ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+}
+
+.review-top h3 {
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.review-top-face {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 6px var(--green-soft), inset 0 0 0 22px var(--green);
+}
+
+.review-top[data-tone="bad"] .review-top-face {
+  box-shadow: inset 0 0 0 6px #f1ebff, inset 0 0 0 22px #8f6ce0;
+}
+
+.review-top-hint {
+  margin: 0 0 6px 30px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.review-top ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.review-top li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.review-top li + li {
+  border-top: 1px solid var(--line);
+}
+
+.review-top-rank {
+  width: 18px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.review-top-name {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.review-top-name strong {
+  font-size: 16px;
+}
+
+.review-top-name small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.review-top-count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.review-top-count b {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-top-count small {
+  font-size: 11px;
+}
+
+.review-top-count small[data-trend="up"] {
+  color: var(--green-ink);
+}
+
+.review-top-count small[data-trend="down"] {
+  color: var(--red);
+}
+
+.review-stats-ask {
+  display: block;
+  width: calc(100% - 40px);
+  height: 44px;
+  margin: 0 20px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.review-themes ul {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-themes li {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.review-theme-bar {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.review-theme-bar i[data-tone="good"] {
+  background: var(--green);
+}
+
+.review-theme-bar i[data-tone="bad"] {
+  background: #8f6ce0;
+}
+
+.review-theme-count {
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 좁은 화면 ─────────────────────────── */
 @media (max-width: 1180px) {
   .app {
