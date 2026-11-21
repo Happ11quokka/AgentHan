@@ -10,6 +10,9 @@ DB가 꺼져 있거나 실패하면 경고만 남기고 버린다(통화·사장
 다른 열만 고친다: 주문은 주문 열, 결정은 `owner_status`·`reject_reason`·`decided_at`·
 `owner_pickup_time`. 통화가 거절·취소로 끝나 주문 기록이 오지 않으면 결정에 실린 주문서로
 행을 채운다.
+
+쿠폰(쿠폰 티켓 09, 마이그레이션 006): 주문 열에 `coupon_id`·`coupon_name`·`discount`가 있고
+`total`은 낼 금액(할인 뒤)이다. 할인 전 금액 = `total` + `discount`. 쿠폰 전 행은 ''·''·0.
 """
 
 from __future__ import annotations
@@ -29,13 +32,15 @@ log = logging.getLogger(__name__)
 
 _ORDER_COLUMNS = (
     "id, store_id, status, lines, total, pickup_time, customer_name, customer_phone,"
-    " transcript, created_at"
+    " transcript, created_at, coupon_id, coupon_name, discount"
 )
+_ORDER_VALUES = ",".join(["%s"] * 13)
 
 
 def _order_values(order: Order, store_id: str) -> tuple:
     lines = [asdict(line) for line in order.lines]
-    total = sum(line.unit_price * line.quantity for line in order.lines)
+    # 낼 금액(할인 뒤). 할인액은 통화가 복창한 쿠폰 계산 결과다 (쿠폰 티켓 09, 마이그레이션 006)
+    total = sum(line.unit_price * line.quantity for line in order.lines) - order.discount
     return (
         order.id,
         store_id,
@@ -47,6 +52,9 @@ def _order_values(order: Order, store_id: str) -> tuple:
         order.customer_phone,
         Jsonb(list(order.transcript)),
         order.created_at,
+        order.coupon_id,
+        order.coupon_name,
+        order.discount,
     )
 
 
@@ -65,11 +73,12 @@ class OwnerDecisionRow:
 
 def save_order(conn, order: Order, store_id: str = "") -> None:
     conn.execute(
-        f"INSERT INTO phone_orders ({_ORDER_COLUMNS}) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        f"INSERT INTO phone_orders ({_ORDER_COLUMNS}) VALUES ({_ORDER_VALUES})"
         " ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, lines = EXCLUDED.lines,"
         " total = EXCLUDED.total, pickup_time = EXCLUDED.pickup_time,"
         " customer_name = EXCLUDED.customer_name, customer_phone = EXCLUDED.customer_phone,"
-        " transcript = EXCLUDED.transcript, received_at = now()",
+        " transcript = EXCLUDED.transcript, coupon_id = EXCLUDED.coupon_id,"
+        " coupon_name = EXCLUDED.coupon_name, discount = EXCLUDED.discount, received_at = now()",
         _order_values(order, store_id),
     )
 
@@ -91,7 +100,7 @@ def save_decision(conn, decision: OwnerDecisionRow, store_id: str = "") -> None:
         return
     conn.execute(
         f"INSERT INTO phone_orders ({_ORDER_COLUMNS}, owner_status, reject_reason, decided_at,"
-        " owner_pickup_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        f" owner_pickup_time) VALUES ({_ORDER_VALUES},%s,%s,%s,%s)"
         " ON CONFLICT (id) DO UPDATE SET owner_status = EXCLUDED.owner_status,"
         " reject_reason = EXCLUDED.reject_reason, decided_at = EXCLUDED.decided_at,"
         " owner_pickup_time = EXCLUDED.owner_pickup_time",

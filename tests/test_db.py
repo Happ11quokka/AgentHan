@@ -182,6 +182,39 @@ def test_order_sink_writes_phone_orders(seeded) -> None:
     assert row == ("sample", "confirmed", 15000, "메도빅")
 
 
+@needs_db
+def test_a_coupon_order_keeps_its_coupon_and_the_payable_total(seeded) -> None:
+    """쿠폰 칸(마이그레이션 006). total은 낼 금액(할인 뒤)이다 (쿠폰 티켓 09)."""
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    order = Order(id="call-coupon-1",
+                  lines=[OrderLine("m01", 1, name="메도빅", unit_price=7500),
+                         OrderLine("m03", 1, name="아메리카노", unit_price=4500)],
+                  status="confirmed", coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인",
+                  discount=1000)
+    sink.submit(order)
+    sink.record_decision(_decision("call-coupon-1", "accepted"))
+    sink.flush()
+    sink.close()
+    with dbconn.connect(seeded) as c:
+        row = c.execute("SELECT total, coupon_id, coupon_name, discount, owner_status"
+                        " FROM phone_orders WHERE id = %s", ("call-coupon-1",)).fetchone()
+    assert row == (11000, "coupon-1", "전화 주문 1,000원 할인", 1000, "accepted")
+
+
+@needs_db
+def test_an_order_row_from_before_coupons_reads_as_no_coupon(seeded) -> None:
+    """마이그레이션 006 전 모양으로 넣은 행(쿠폰 칸 없이)도 그대로 읽힌다: ''·''·0."""
+    with dbconn.connect(seeded) as c:
+        c.execute("INSERT INTO phone_orders (id, status, lines, total) VALUES (%s, %s, %s, %s)",
+                  ("call-old-1", "confirmed", json.dumps([{"menu_id": "m01", "quantity": 1}]),
+                   7500))
+        row = c.execute("SELECT total, coupon_id, coupon_name, discount FROM phone_orders"
+                        " WHERE id = %s", ("call-old-1",)).fetchone()
+    assert row == (7500, "", "", 0)
+
+
 def _decision(order_id: str, status: str, *, order: Order | None = None, **kw):
     from agenthan.db.orders import OwnerDecisionRow
 
