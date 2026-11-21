@@ -25,6 +25,8 @@ type Props = {
   onToggleSide: () => void;
   /** 화면 알림의 [리뷰 탭에서 보기]: 사이드카 리뷰 탭을 열고 그 카드로 스크롤. */
   onShowReview: (reviewId: string) => void;
+  /** 전화 주문 알림의 [주문 보기]: 전화 주문 서랍을 연다. */
+  onShowOrders?: () => void;
   onInputChange: (hasInput: boolean) => void;
 };
 
@@ -32,6 +34,7 @@ type BubbleProps = {
   message: Message;
   onAction: (action: Action) => void;
   onShowReview: (reviewId: string) => void;
+  onShowOrders?: () => void;
   busy: boolean;
   /** 이 답이 띄운 승인 카드가 아직 떠 있다: 카드와 겹치는 인용·질문은 빼고 첫 줄만 보인다. */
   lead: boolean;
@@ -47,7 +50,20 @@ const TASK_CHIPS = new Set(["task.approve", "task.cancel"]);
 const bubbleChips = (actions: Action[] | undefined, bundled: Set<string>) =>
   (actions ?? []).filter((a) => !TASK_CHIPS.has(a.action_id) || bundled.has(String(a.args.task_id)));
 
-function Bubble({ message, onAction, onShowReview, busy, lead, bundled }: BubbleProps) {
+function Bubble({ message, onAction, onShowReview, onShowOrders, busy, lead, bundled }: BubbleProps) {
+  if (message.role === "orders") {
+    return (
+      <div className="notice notice-orders" role="status">
+        <Icon name="receipt" size={14} />
+        <p>{message.text}</p>
+        {onShowOrders && (
+          <button type="button" className="ghost small" onClick={onShowOrders}>
+            주문 보기
+          </button>
+        )}
+      </div>
+    );
+  }
   if (message.role === "notice") {
     return (
       <div className="notice" role="status">
@@ -118,7 +134,7 @@ function bundledCards(chat: Conversation): Set<string> {
   return chip ? ids : new Set();
 }
 
-export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview, onInputChange, hidden = false }: Props) {
+export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide, onShowReview, onShowOrders, onInputChange, hidden = false }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
@@ -186,6 +202,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               message={m}
               onAction={(action) => void chat.act(action)}
               onShowReview={onShowReview}
+              onShowOrders={onShowOrders}
               busy={chat.busy}
               lead={m.role === "agent" && Boolean(m.cardFor) && open.has(m.cardFor!)}
               bundled={bundled}

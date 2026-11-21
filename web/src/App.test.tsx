@@ -503,11 +503,10 @@ describe("왼쪽 AgentHan 도구함", () => {
     expect(screen.queryByRole("dialog", { name: "AgentHan 도구함" })).not.toBeInTheDocument();
   });
 
-  test("전화 주문 카드는 자주 쓰는 일 맨 위에 있고, 손님으로 전화 걸기와 전화 주문 묶음은 없다", async () => {
+  test("전화 주문은 자주 쓰는 일 맨 위에 있고(서랍은 orders/OrderDrawer.test), 손님으로 전화 걸기는 없다", async () => {
     await open();
     const first = screen.getAllByRole("list")[0].querySelector("li");
-    expect(first).toHaveTextContent("전화 주문 카드");
-    expect(screen.getByRole("link", { name: /전화 주문 카드/ }).getAttribute("href")).toMatch(/^\/owner\?.*lang=ko/);
+    expect(first).toHaveTextContent("전화 주문");
     expect(screen.queryByText("손님으로 전화 걸기")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "전화 주문" })).not.toBeInTheDocument();
   });

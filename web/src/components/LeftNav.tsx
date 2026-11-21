@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { quickBadgeText, whenText } from "../labels";
-import { ownerKey as rememberedOwnerKey } from "../screens/owner/ownerStream";
 import type { Recent } from "../storage";
 import { BrandLogo } from "./BrandMark";
 import { Icon, type IconName } from "./Icon";
@@ -29,19 +28,6 @@ export const QUICK: Quick[] = [
     inChat: true,
   },
 ];
-
-/**
- * 자주 쓰는 일 맨 위: 전화 주문(Part C) 사장님 주문 카드 화면을 새 탭으로 연다. 그 화면은 `?key=`가 있어야 열리므로
- * 지금 주소의 key(없으면 이 브라우저가 기억해 둔 key)를 넘긴다. 비서 화면은 한국어라 주문 카드도 한국어(`lang=ko`)로 연다.
- */
-function orderCardLink(search: string) {
-  const ownerKey = rememberedOwnerKey(search);
-  return {
-    label: "전화 주문 카드",
-    hint: "들어온 주문·손님 질문",
-    href: ownerKey ? `/owner?key=${encodeURIComponent(ownerKey)}&lang=ko` : "/owner?lang=ko",
-  };
-}
 
 /**
  * AgentHan 도구함: 비서가 할 수 있는 모든 기능(`src/agenthan/agent/place_features.json`의 18개)을 단계별로 둔다.
@@ -88,9 +74,16 @@ type Props = {
   suggestCount?: number;
   suggestCurrent?: boolean;
   onSuggest?: () => void;
+  /**
+   * 자주 쓰는 일 맨 위 [전화 주문]: 누르면 사이드바 옆에 전화 주문 서랍이 열린다(App이 그린다).
+   * orderCount: 확인 안 한 주문 수(빨간 배지, 0이면 숨김). ordersOpen: 서랍이 열려 있다.
+   */
+  onOrders?: () => void;
+  orderCount?: number;
+  ordersOpen?: boolean;
 };
 
-export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges = {}, collapsed = false, onToggle, suggestCount = 0, suggestCurrent = false, onSuggest }: Props) {
+export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges = {}, collapsed = false, onToggle, suggestCount = 0, suggestCurrent = false, onSuggest, onOrders, orderCount = 0, ordersOpen = false }: Props) {
   const toggleLabel = collapsed ? "사이드바 펼치기" : "사이드바 접기";
   // 도구함: 맨 아래 버튼을 누르면 사이드바 옆에 전체 기능 패널이 열린다. Esc·바깥·도구 고르기로 닫는다.
   const [boxOpen, setBoxOpen] = useState(false);
@@ -102,7 +95,6 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [boxOpen]);
-  const orderCard = orderCardLink(window.location.search);
   const pick = (t: Quick) => {
     setBoxOpen(false);
     onQuick(t);
@@ -140,26 +132,38 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
 
         {!collapsed && <h2 className="nav-title">자주 쓰는 일</h2>}
         <ul className="quick">
-          <li>
-            <a
-              href={orderCard.href}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={collapsed ? orderCard.label : undefined}
-              title={collapsed ? orderCard.label : undefined}
-              aria-describedby={collapsed ? undefined : "quick-order-card"}
-            >
-              <span className="quick-icon" aria-hidden>
-                <Icon name="receipt" />
-              </span>
-              {!collapsed && (
-                <span className="quick-text">
-                  <strong>{orderCard.label}</strong>
-                  <small id="quick-order-card">{orderCard.hint}</small>
+          {onOrders && (
+            <li>
+              <button
+                type="button"
+                className="quick-orders"
+                aria-label={orderCount ? `전화 주문 (확인 안 한 주문 ${orderCount}건)` : "전화 주문"}
+                aria-describedby={collapsed ? undefined : "quick-orders"}
+                aria-expanded={ordersOpen}
+                aria-controls="orders-panel"
+                title={collapsed ? "전화 주문" : undefined}
+                onClick={() => {
+                  setBoxOpen(false);
+                  onOrders();
+                }}
+              >
+                <span className="quick-icon" aria-hidden>
+                  <Icon name="receipt" />
                 </span>
-              )}
-            </a>
-          </li>
+                {!collapsed && (
+                  <span className="quick-text">
+                    <strong>전화 주문</strong>
+                    <small id="quick-orders">들어온 주문 확인·거절</small>
+                  </span>
+                )}
+                {orderCount > 0 && (
+                  <span className="quick-badge" data-tone="urgent" aria-hidden>
+                    {orderCount}
+                  </span>
+                )}
+              </button>
+            </li>
+          )}
           {QUICK.map((q) => (
             <li key={q.key}>
               <button

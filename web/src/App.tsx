@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { httpApi, type AssistantApi } from "./api";
+import { AgentNudge, ARRIVED_SHOW_MS, type ShownNudge } from "./components/AgentNudge";
 import { ChatPane } from "./components/ChatPane";
+import { OrderDrawer } from "./components/OrderDrawer";
 import type { StatsKind } from "./components/StatsTab";
 import { SuggestionsPage } from "./components/SuggestionsPage";
 import { LeftNav, type Quick } from "./components/LeftNav";
@@ -11,6 +13,17 @@ import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./label
 import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow, ReviewStatsPeriod, RoutinesChange, Suggestion } from "./types";
 import { useConversation } from "./useConversation";
 import { useLoad } from "./useLoad";
+import type { Nudge } from "./orders/orderNudges";
+import { httpOrdersApi, type OrdersApi, useOrders } from "./orders/useOrders";
+
+/** 오른쪽 칸이 화면 밖으로 접히는 너비(`styles.css`의 1180px). 접혀 있으면 말풍선을 화면 구석에 띄운다. */
+const NARROW_SIDE = "(max-width: 1180px)";
+function subscribeNarrow(onChange: () => void) {
+  const media = window.matchMedia?.(NARROW_SIDE);
+  media?.addEventListener("change", onChange);
+  return () => media?.removeEventListener("change", onChange);
+}
+const narrowSide = () => window.matchMedia?.(NARROW_SIDE).matches ?? false;
 
 /** 접은 왼쪽 사이드바를 다음에도 기억한다(브라우저마다). */
 const NAV_COLLAPSED_KEY = "agenthan.nav.collapsed";
@@ -57,10 +70,38 @@ const REVIEW_POLL_MS = 2500;
 const NOTICE_REASONS = new Set(["checks", "save_failed", "draft_failed"]);
 
 /** reportPollMs: 정해진 때의 리뷰 보고를 받으려고 세션 조회를 다시 읽는 간격(0이면 안 읽음). */
-type AppProps = { api?: AssistantApi; reviewPollMs?: number; reportPollMs?: number; demo?: boolean };
+/** ordersApi: 전화 주문 SSE·버튼(테스트는 가짜를 넘긴다). */
+type AppProps = { api?: AssistantApi; ordersApi?: OrdersApi; reviewPollMs?: number; reportPollMs?: number; demo?: boolean };
 
-export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, reportPollMs, demo = import.meta.env.DEV }: AppProps) {
+export default function App({ api = httpApi, ordersApi = httpOrdersApi, reviewPollMs = REVIEW_POLL_MS, reportPollMs, demo = import.meta.env.DEV }: AppProps) {
   const chat = useConversation(api, reportPollMs);
+
+  // 전화 주문: 왼쪽 [전화 주문]이 여는 서랍, 오른쪽 비서 말풍선. 마감 임박·지남은 대화창에도 한 줄 남긴다.
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  // 말풍선은 쌓는다: 맨 위 하나만 보이고, 새 주문(잠깐)이 사라지거나 닫으면 그 아래 마감 알림이 다시 보인다.
+  const [nudges, setNudges] = useState<ShownNudge[]>([]);
+  const nudge = nudges.at(-1) ?? null;
+  const { notifyOrders } = chat;
+  const onNudge = useCallback(
+    (n: Nudge) => {
+      setNudges((list) => [...list.filter((m) => m.kind !== n.kind), { ...n, at: Date.now() }]);
+      if (n.kind !== "arrived") notifyOrders(n.text);
+    },
+    [notifyOrders],
+  );
+  const orders = useOrders(ordersApi, onNudge);
+  const dropNudge = useCallback((target: ShownNudge) => setNudges((list) => list.filter((m) => m !== target)), []);
+  useEffect(() => {
+    if (nudge?.kind !== "arrived") return;
+    const timer = setTimeout(() => dropNudge(nudge), ARRIVED_SHOW_MS);
+    return () => clearTimeout(timer);
+  }, [nudge, dropNudge]);
+  const openOrders = useCallback(() => {
+    setNudges([]);
+    setOrdersOpen(true);
+  }, []);
+  const closeOrders = useCallback(() => setOrdersOpen(false), []);
+  const narrow = useSyncExternalStore(subscribeNarrow, narrowSide, () => false);
   const [tab, setTab] = useState<Tab>("home");
   const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
@@ -225,6 +266,9 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
     else void chat.send(HOME_EDIT_ASK[target]);
   };
 
+  // 오른쪽 칸이 접혀 안 보이면 말풍선은 화면 오른쪽 아래에 뜬다.
+  const floatNudge = narrow && !sideOpen;
+
   return (
     <div
       className="app"
@@ -296,7 +340,15 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
           setNavOpen(false);
           setPage("suggest");
         }}
+        onOrders={() => {
+          setNavOpen(false);
+          if (ordersOpen) closeOrders();
+          else openOrders();
+        }}
+        orderCount={orders.waiting.length}
+        ordersOpen={ordersOpen}
       />
+      {ordersOpen && <OrderDrawer orders={orders} onClose={closeOrders} />}
       <ChatPane
         chat={chat}
         photoInput={photoInput}
@@ -304,6 +356,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onToggleNav={() => setNavOpen((o) => !o)}
         onToggleSide={() => setSideOpen((o) => !o)}
         onShowReview={showReview}
+        onShowOrders={openOrders}
         onInputChange={setHasInput}
         hidden={page === "suggest"}
       />
@@ -344,7 +397,9 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onReorderMenus={chat.reorderMenus}
         readingSince={chat.readingSince}
         onClose={() => setSideOpen(false)}
+        nudge={nudge && !floatNudge ? <AgentNudge nudge={nudge} onOpen={openOrders} onClose={() => dropNudge(nudge)} /> : undefined}
       />
+      {nudge && floatNudge && <AgentNudge nudge={nudge} floating onOpen={openOrders} onClose={() => dropNudge(nudge)} />}
       <button
         type="button"
         className="scrim"

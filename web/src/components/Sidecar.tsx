@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { type ReactNode, useRef } from "react";
 import { avatarState } from "../avatarState";
 import { CONNECTION_TEXT } from "../labels";
 import type { Action, Pending, Period, Place, ReportView, ReviewReport, ReviewStats, ReviewStatsPeriod, ReviewsView, Routines, RoutinesChange } from "../types";
@@ -60,6 +60,8 @@ type Props = {
   /** 메뉴판 사진을 읽는 중이면 보낸 시각(ms). 메뉴 탭이 진행 막대를 그린다. */
   readingSince?: number | null;
   onClose: () => void;
+  /** 비서 말풍선(전화 주문 알림). 있으면 얼굴 아래에 띄우고 얼굴은 "주목" 상태가 된다 */
+  nudge?: ReactNode;
 };
 
 export function Sidecar(props: Props) {
@@ -81,7 +83,7 @@ export function Sidecar(props: Props) {
         <AgentAvatar state={avatarState({
           busy: props.busy,
           hasInput: props.hasInput,
-          hasPendingApproval: Boolean(place) && pending.length > 0,
+          hasPendingApproval: (Boolean(place) && pending.length > 0) || Boolean(props.nudge),
         })} />
         <div>
           <strong>사장님 비서</strong>
@@ -90,6 +92,7 @@ export function Sidecar(props: Props) {
             {online ? CONNECTION_TEXT.online : CONNECTION_TEXT.offline}
           </span>
         </div>
+        {props.nudge}
       </section>
 
       <div

@@ -182,7 +182,9 @@ export type Message =
   | { id: number; role: "agent"; text: string; nextActions?: Action[]; cardFor?: string }
   | { id: number; role: "result"; saved: boolean; lines: string[] }
   /** 화면에서만 만든 알림(서버 대화 기록에 없음). reviewId: [리뷰 탭에서 보기]가 열 카드. */
-  | { id: number; role: "notice"; text: string; reviewId: string };
+  | { id: number; role: "notice"; text: string; reviewId: string }
+  /** 전화 주문 알림(확인 마감 임박·지남). [주문 보기]가 전화 주문 서랍을 연다. 서버 대화 기록에 없음. */
+  | { id: number; role: "orders"; text: string };
 
 // ── 리뷰·손님 통계 탭 (/reviews, /report) ──
 export type ReviewRow = {
