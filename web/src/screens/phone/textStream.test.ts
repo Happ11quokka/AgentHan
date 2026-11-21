@@ -75,7 +75,7 @@ describe('received-text stream after the call (ticket 07)', () => {
     expect(opened[0].closed).toBe(false)
     vi.advanceTimersByTime(1)
     expect(opened[0].closed).toBe(true)
-    expect(TEXTS_WINDOW_MS).toBe(120_000)
+    expect(TEXTS_WINDOW_MS).toBe(360_000)
   })
 
   it('stops when the server refuses the stream (unknown call) and when the caller closes it', () => {

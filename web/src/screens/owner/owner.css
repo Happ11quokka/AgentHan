@@ -211,8 +211,15 @@
 }
 
 .owner-auto,
-.owner-withdrawn {
+.owner-withdrawn,
+.owner-expired {
   margin: 0;
+  color: var(--owner-muted);
+}
+
+/* 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 회색, 버튼 없음 */
+.owner-card-expired {
+  background: rgba(127, 127, 127, 0.12);
   color: var(--owner-muted);
 }
 

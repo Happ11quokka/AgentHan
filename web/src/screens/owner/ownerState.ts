@@ -389,9 +389,16 @@ export function canAccept(card: OrderCard): boolean {
 /**
  * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). waiting: 확인 대기(카운트다운·수락 버튼).
  * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
- * closed: 그 밖의 처리 상태(거절·자동 취소, 03·05가 채운다)
+ * expired: 자동 취소(회색, 버튼 없음, 티켓 03). closed: 그 밖의 처리 상태(거절, 05가 채운다)
  */
-export type OrderOutcome = 'waiting' | 'changing' | 'cancelled' | 'accepted' | 'auto' | 'closed'
+export type OrderOutcome =
+  | 'waiting'
+  | 'changing'
+  | 'cancelled'
+  | 'accepted'
+  | 'auto'
+  | 'expired'
+  | 'closed'
 
 export function orderOutcome(card: OrderCard): OrderOutcome {
   if (card.status === 'new') {
@@ -400,6 +407,7 @@ export function orderOutcome(card: OrderCard): OrderOutcome {
     return 'waiting'
   }
   if (card.status === 'accepted') return card.auto_accepted ? 'auto' : 'accepted'
+  if (card.status === 'expired') return 'expired'
   return 'closed'
 }
 
