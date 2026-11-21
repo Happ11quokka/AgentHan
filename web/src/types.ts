@@ -63,6 +63,8 @@ export type Place = {
   keywords?: string[];
   /** 가게 기본 정보. 예전 서버 응답에는 없을 수 있다. */
   business_info?: BusinessInfo;
+  /** 새로 오픈 소식 날짜(YYYY-MM-DD)·매장 QR결제 켜짐. 예전 서버 응답에는 없을 수 있다. */
+  shop_status?: { new_opening: string | null; onsite_payment: boolean };
 } & Partial<Record<RecordSection, RecordRow[]>>;
 
 export type SectionChanges = { added: string[]; updated: string[]; removed: string[] };
