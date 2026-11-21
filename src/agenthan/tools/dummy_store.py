@@ -439,6 +439,26 @@ class DummyStore:
             self._write(data)
             return True
 
+    def reorder_menus(self, ids: list[str]) -> list[str]:
+        """메뉴 탭 [순서 바꾸기]: 사장님이 고른 순서로 메뉴 목록을 다시 저장한다. 저장한 순서를
+        돌려준다(메뉴 id들).
+
+        화면이 순서를 정하는 사이 바뀐 메뉴는 너그럽게 맞춘다: 없는 id는 건너뛰고, ids에 없는
+        메뉴(그 사이 사진으로 올라온 것)는 지금 순서대로 뒤에 둔다. 같은 id가 두 번이면 거절.
+        순서가 그대로면 저장하지 않는다(전화용 가게도 다시 게시하지 않는다)."""
+        if len(set(ids)) != len(ids):
+            raise DummyStoreError("같은 메뉴가 두 번 들어 있어요.")
+        with self.lock:
+            data = self.read()
+            by_id = {m["id"]: m for m in data["menus"]}
+            first = [by_id[i] for i in ids if i in by_id]
+            picked = {m["id"] for m in first}
+            order = first + [m for m in data["menus"] if m["id"] not in picked]
+            if [m["id"] for m in order] != [m["id"] for m in data["menus"]]:
+                data["menus"] = order
+                self._write(data)
+            return [m["id"] for m in order]
+
     def set_shop_info(self, name: str, category: str) -> dict:
         """처음 쓰는 사장님 온보딩(#94): 가게 이름·업종만 바꾸고 나머지 가게 정보는 둔다."""
         values = {"name": name, "category": category}

@@ -236,6 +236,44 @@ def test_a_save_that_leaves_menus_and_coupons_alone_does_not_publish(tmp_path) -
         assert _call(client, 5)[0]["total"] == 8800
 
 
+# ---------------------------------------------------------------- 메뉴 순서
+
+
+def test_the_phone_lists_menus_in_the_order_the_owner_saved(tmp_path) -> None:
+    """메뉴 탭 [순서 바꾸기]로 저장한 순서가 다음 통화가 손님에게 알려 주는 메뉴 순서다."""
+    with _client(tmp_path, ("짜장면 하나요",)) as client:
+        session = _session(client)
+        menus = client.get(f"{SESSIONS}/{session}/place").json()["place"]["menu"]
+        order = ["m06", "m03"] + [m["id"] for m in menus if m["id"] not in ("m06", "m03")]
+        saved = client.put(f"{SESSIONS}/{session}/menus/order", json={"ids": order})
+        assert saved.status_code == 200
+
+        answer = _first_answer(client)
+
+    assert answer.startswith("죄송해요, 그 메뉴는 없어요. 저희는 피로시키, 아메리카노, 메도빅, "
+                             "나폴레옹, ")
+
+
+def test_a_pure_reorder_republishes_but_other_saves_still_do_not(tmp_path) -> None:
+    """순서만 바꾼 저장도 게시 값(메뉴 목록 순서)이 바뀌어 게시한다. 메뉴·쿠폰 밖 저장은 여전히
+    게시하지 않는다."""
+    stores = PhoneStores(StoreSnapshot.of(FakeStoreKnowledge.from_fixture(),
+                                          StoreConfig.from_fixture()))
+    seed = pilot.seed()
+    stores.start(seed)
+    reordered = {**seed, "menus": [*reversed(seed["menus"])]}
+
+    assert stores.saved("chat", reordered)
+    names = [m.name_ko for m in stores().store.list_menu()]
+    assert names == [m["name"] for m in reordered["menus"]]
+    assert stores.doc is not None
+    assert [m["id"] for m in stores.doc["menus"]] == [m["id"] for m in reordered["menus"]]
+
+    noted = {**reordered, "shop": {**reordered["shop"], "notice": "오늘은 7시에 닫아요"}}
+    assert not stores.saved("chat", noted)  # 메뉴·쿠폰 밖 저장
+    assert not stores.saved("chat", reordered)  # 같은 순서 그대로
+
+
 # ---------------------------------------------------------------- 기본 가게·빈 가게
 
 
