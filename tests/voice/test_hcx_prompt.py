@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.nlu.base import NluContext
-from agenthan.voice.nlu.hcx import build_messages
+from agenthan.voice.nlu.hcx import PARSE_TURN_TOOL, build_messages
 
 SAMPLE_WORDS = ("메도빅", "나폴레옹", "블린", "아메리카노", "사워크림", "허니케", "빵집",
                 "베이커리", "디카페인", "홀케이크")
@@ -35,3 +35,11 @@ def test_without_a_catalog_the_menu_names_are_still_given() -> None:
     ctx = NluContext(menu_names=("반미", "분짜"), cart_summary="", last_question="",
                      state="ordering")
     assert "반미, 분짜" in _system(ctx)
+
+
+def test_the_tool_schema_has_no_rule_only_act() -> None:
+    """쿠폰 문의(`ask_coupon`)는 규칙만 낸다. 도구 스키마·골드 재생은 그대로다 (쿠폰 티켓 11)."""
+    enum = PARSE_TURN_TOOL["function"]["parameters"]["properties"]["acts"]["items"][
+        "properties"]["type"]["enum"]
+    assert "ask_coupon" not in enum
+    assert enum[-1] == "unknown"

@@ -2,7 +2,7 @@
 
 import pytest
 
-from agenthan.voice.dialog.rules import apply_rules, frustrated, no_and_done
+from agenthan.voice.dialog.rules import apply_rules, frustrated, mentions_coupon, no_and_done
 from agenthan.voice.nlu.base import Act
 
 
@@ -215,3 +215,76 @@ def test_frustrated(text: str) -> None:
 )
 def test_not_frustrated(text: str) -> None:
     assert not frustrated(text)
+
+
+# ---------------------------------------------------------------- 쿠폰 문의 (쿠폰 티켓 11)
+# HCX 골드셋은 바꾸지 않는다(도구 스키마에 쿠폰 문의가 없다). 골드셋 꼴 사례는 여기 둔다.
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "쿠폰",
+        "할인",
+        "쿠폰 돼요?",
+        "할인 돼요?",
+        "할인돼요?",
+        "할인 되나요",
+        "쿠폰 쓸게요",
+        "쿠폰 쓸 수 있어요?",
+        "쿠폰 있어요?",
+        "쿠폰 있나요?",
+        "혹시 할인 쿠폰 있나요?",
+        "할인 같은 거 없어요?",
+        "할인 같은 건 없나요?",
+        "할인은 안 돼요?",
+        "그럼 할인은요?",
+        "쿠폰은요?",
+        "쿠폰 적용해 주세요",
+        "쿠폰 적용돼요?",
+        "쿠폰 사용 가능해요?",
+        "할인 받을 수 있어요?",
+        "할인 해 주세요",
+        "전화 주문 할인 돼요?",
+        "포장 할인 있어요?",
+        "근데 혹시 쿠폰 써도 돼요?",
+        "네, 쿠폰 쓸게요",
+        "아 그리고 쿠폰도 있어요?",
+    ],
+)
+def test_coupon_question(text: str) -> None:
+    assert apply_rules(text) == [Act("ask_coupon", free_text=text)]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "할인 메뉴 주세요",  # 메뉴 주문이 섞인 말은 주문이 먼저다 (NLU가 읽는다)
+        "할인하는 메뉴 하나 주세요",
+        "할인 해서 메도빅 주세요",
+        "메도빅 하나랑 쿠폰 쓸게요",
+        "쿠폰 있으면 아메리카노 하나 더 할게요",
+        "할인된 가격으로 메도빅 두 개요",
+        "쿠폰 받으려면 얼마 더 사야 해요?",  # 다른 말이 섞인 물음: NLU가 읽고 엔진이 돌린다
+        "메도빅 하나요",
+        "주차 돼요?",
+        "배달 돼요?",
+    ],
+)
+def test_not_a_coupon_rule(text: str) -> None:
+    acts = apply_rules(text)
+    assert acts is None or all(a.type != "ask_coupon" for a in acts)
+
+
+@pytest.mark.parametrize(
+    ("text", "mentioned"),
+    [
+        ("쿠폰 받으려면 얼마 더 사야 해요?", True),
+        ("메도빅도 할인돼요?", True),
+        ("주차 돼요?", False),
+        ("배달 돼요?", False),
+    ],
+)
+def test_mentions_coupon(text: str, mentioned: bool) -> None:
+    """NLU가 질문(ask_other·ask_menu_info)으로 낸 말에 쿠폰·할인이 있으면 엔진이 쿠폰 답을 한다."""
+    assert mentions_coupon(text) is mentioned
