@@ -13,7 +13,7 @@
 |---|---|---|
 | `/` | 사장님 비서 (이 문서의 나머지) | `/assistant` |
 | `/phone` | 손님 전화 주문 통화 화면 (Part C) | `/api/phone/ws` |
-| `/owner?key=…` | 사장님 전화 주문 카드 (Part C, 언어 기본 ru) | `/api/owner/*` SSE |
+| `/owner?key=…` | 사장님 전화 주문 카드 (Part C, 언어 기본 ru, `&lang=ko`면 한국어. 비서 화면 왼쪽 "전화 주문 카드"는 한국어로 연다) | `/api/owner/*` SSE |
 
 `src/main.tsx`가 주소를 보고 둘 중 한 쪽만 불러온다. 전역 CSS가 달라서(`styles.css` / `index.css`) 섞지 않는다.
 Part C 화면은 `src/screens/`(`PhoneApp.tsx`·`phone/`·`owner/`)에 있고, 왼쪽 메뉴 "전화 주문"에서 새 탭으로 연다.

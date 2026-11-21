@@ -29,7 +29,7 @@ export type Quick = (typeof QUICK)[number];
 
 /**
  * 전화 주문(Part C) 화면으로 가는 링크. 사장님 주문 카드 화면은 `?key=`가 있어야 열리므로
- * 지금 주소에 key가 있으면 그대로 넘긴다.
+ * 지금 주소에 key가 있으면 그대로 넘긴다. 비서 화면은 한국어라 주문 카드도 한국어(`lang=ko`)로 연다.
  */
 function phoneLinks(search: string): Array<{ key: string; label: string; hint: string; icon: IconName; href: string }> {
   const ownerKey = new URLSearchParams(search).get("key");
@@ -40,7 +40,7 @@ function phoneLinks(search: string): Array<{ key: string; label: string; hint: s
       label: "전화 주문 카드",
       hint: "들어온 주문·손님 질문",
       icon: "receipt",
-      href: ownerKey ? `/owner?key=${encodeURIComponent(ownerKey)}` : "/owner",
+      href: ownerKey ? `/owner?key=${encodeURIComponent(ownerKey)}&lang=ko` : "/owner?lang=ko",
     },
   ];
 }
