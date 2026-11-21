@@ -1,0 +1,65 @@
+/*
+ * 디자인 토큰: 네이버 그린 + 회색 단계, 라이트 모드만 (ADR-0004).
+ * 비서 본 앱(`styles.css`)과 전화·사장님 화면(`index.css`)이 이 파일 하나를 같이 읽는다.
+ * 화면별 색 변수(`--phone-*`, `--owner-*`)는 여기 토큰을 가리킨다. 새 색이 필요하면 여기에 더한다.
+ */
+:root {
+  --green: #03c75a;
+  --green-press: #00b843;
+  --green-soft: #e8f9ef;
+  --green-ink: #00873d;
+  --ink: #1e1e23;
+  --ink-2: #505058;
+  --ink-3: #8a8a93;
+  --line: #ececf0;
+  --line-2: #e1e1e6;
+  --surface: #ffffff;
+  --surface-2: #f6f7f8;
+  --surface-3: #f0f1f3;
+  --amber: #b26a00;
+  --amber-soft: #fff4e0;
+  --blue: #2d6cdf;
+  --blue-soft: #eaf1ff;
+  --red: #d93b3b;
+  --red-soft: #fdecec;
+  --radius: 16px;
+  --radius-s: 10px;
+  --shadow: 0 1px 2px rgb(20 20 30 / 4%), 0 4px 16px rgb(20 20 30 / 6%);
+  /* OS가 다크 모드여도 밝은 배경·어두운 글자 (폼 컨트롤·스크롤바도 밝게) */
+  color-scheme: light;
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
+  color: var(--ink);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+}
+
+/* ── 브랜드 마크 (`components/BrandMark.tsx`) ── */
+
+/* 워드마크: 굵은 글꼴 + 초록 그라데이션. H는 기울인 가로획(H/N) SVG. */
+.brand-logo {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+/* 워드마크 전체에 같은 초록 3스톱이 이어지게, JS가 --brand-w/--brand-x를 넣는다. */
+.brand-logo-text {
+  background-image: linear-gradient(90deg, #2fd17c 0%, #03c75a 45%, #009a4a 100%);
+  background-size: var(--brand-w, 100%) 100%;
+  background-repeat: no-repeat;
+  background-position: var(--brand-x, 0) 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Pretendard em 박스(2048)에 맞춘 H/N 글리프. viewBox 높이 2443 = 1949+494 */
+.brand-hn {
+  display: inline-block;
+  width: calc(1490 / 2048 * 1em);
+  height: calc(2443 / 2048 * 1em);
+  vertical-align: calc(-494 / 2048 * 1em);
+}
