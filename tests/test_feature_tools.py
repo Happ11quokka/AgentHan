@@ -106,10 +106,10 @@ def test_coupon_min_order_is_optional_and_kept(store):
     assert params["properties"]["min_order"]["minimum"] == 0
 
     plain = execute_feature_tool(store, "create_coupon", VALID["create_coupon"])
-    assert plain["record"]["min_order"] == 0  # 비우면 조건 없는 쿠폰
+    assert "min_order" not in plain["record"]  # 비우면 조건 없는 쿠폰(읽을 때 0)
     with_floor = {**VALID["create_coupon"], "title": "5천 원 이상", "min_order": 5000}
     assert execute_feature_tool(store, "create_coupon", with_floor)["record"]["min_order"] == 5000
-    assert [c["min_order"] for c in store.read()["coupons"]] == [0, 5000]
+    assert [c.get("min_order", 0) for c in store.read()["coupons"]] == [0, 5000]
 
 
 @pytest.mark.parametrize("min_order", [-1, 1.5, "10000", True])

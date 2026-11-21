@@ -379,7 +379,7 @@ def test_coupon_min_order_the_owner_did_not_say_is_dropped_not_asked(tmp_path):
     out = bot.ask("'단골 쿠폰' 500원 할인으로 2026-11-10부터 2026-11-20까지 만들어 줘")
     assert "바꿀까요" in out and "최소 주문" not in out
     assert bot.trace["dropped"] == ["min_order"]
-    assert bot.pending_action["actions"][0]["preview"]["record"]["min_order"] == 0
+    assert "min_order" not in bot.pending_action["actions"][0]["preview"]["record"]
 
 
 def test_keyword_list_sent_as_add_becomes_the_whole_list():

@@ -25,7 +25,7 @@
 | 주문 | `update_order_status` | **order_id**, **status**, reason | 접수·거절·준비 완료·전달 완료, 거절 사유 |
 | 예약 | `update_reservation_status` | **reservation_id**, **status**, reason | 확정·취소·노쇼, 취소 사유 |
 | 대표키워드 | `set_representative_keywords` | add, remove, keywords (하나 이상) | 더하기·빼기·전체 교체. 최대 5개, 넘치면 `too_many_keywords`, 없는 단어를 빼면 `keyword_not_found` |
-| 쿠폰 | `create_coupon` | **title**, **discount_type**, **discount_value**, **start_date**, **end_date**, min_order | 쿠폰 만들기(게시 안 함). min_order는 최소 주문 금액(원, 0 이상 정수). 비우면 0 = 조건 없음이고 옛 쿠폰도 0으로 읽는다. 사장님이 먼저 말할 때만 넣고 비서는 묻지 않는다 |
+| 쿠폰 | `create_coupon` | **title**, **discount_type**, **discount_value**, **start_date**, **end_date**, min_order | 쿠폰 만들기(게시 안 함). min_order는 최소 주문 금액(원, 0 이상 정수). 비우거나 0이면 저장하지 않고, 읽는 쪽은 없으면 0(조건 없음)으로 본다(옛 쿠폰도 같다). 사장님이 먼저 말할 때만 넣고 비서는 묻지 않는다 |
 | 새 오픈 | `register_new_opening` | **opening_date** | 오픈 날짜 등록 |
 | 매장결제 | `set_onsite_payment` | **enabled** | 켜기·끄기 |
 

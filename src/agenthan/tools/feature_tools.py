@@ -436,12 +436,10 @@ def _coupon(store, args):
     if invalid:
         return _needs(invalid)
     data = store.read()
-    record = {
-        "id": f"coupon-{len(data['coupons']) + 1}",
-        **args,
-        "min_order": args.get("min_order") or 0,  # 0 = 조건 없음
-        "status": "saved_not_published",
-    }
+    if not args.get("min_order"):
+        # 조건 없는 쿠폰은 min_order를 저장하지 않는다. 읽는 쪽은 없으면 0(조건 없음)으로 본다.
+        args.pop("min_order", None)
+    record = {"id": f"coupon-{len(data['coupons']) + 1}", **args, "status": "saved_not_published"}
     data["coupons"].append(record)
     store.write(data)
     return _saved(store, "coupons", record["id"], "saved_not_published")
