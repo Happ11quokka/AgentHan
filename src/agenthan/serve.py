@@ -112,8 +112,10 @@ class PhoneStores:
     - 메뉴가 빈 가게는 게시하지 않는다(메뉴판 사진 시연의 빈 가게가 전화를 비우지 않게)
     - 전화 설정은 `base` 그대로다. 꼭 고를 것(`required_options`)은 비서 메뉴에 없으므로 비운다
     - DB(`db_url`)가 있으면 (티켓 03) 게시 값을 DB에 남기고(`db.stores`), 메뉴 벡터는 pgvector
-      (`PgVectorIndex`, 게시된 가게 id 하나)에 둔다. 게시가 바뀌면 다음 검색 때 바뀐 메뉴만
-      임베딩하고 없어진 메뉴는 지운다. DB가 없으면 벡터 없이 이름·별칭·오타 매칭만
+      (`PgVectorIndex`)에 둔다. 메뉴 한 벌마다 벡터 자리가 따로다(`published_vector_store_id`):
+      진행 중인 통화의 옛 메뉴가 늦게 첫 검색을 해도 새 메뉴 벡터를 건드리지 않는다(리뷰). 새 벌은
+      첫 검색 때 임베딩 캐시 표에 없는 글만 임베딩한다. 들고 있는 스냅숏(`KEEP`)에 없는 벌의
+      자리는 게시할 때 지운다. DB가 없으면 벡터 없이 이름·별칭·오타 매칭만
     - 게시 값에는 비서 쿠폰도 실린다(쿠폰 티켓 09). 쿠폰만 바뀐 게시는 검색 색인을 다시 만들지 않고
       스냅숏의 쿠폰만 바꾼다. DB에 남긴 게시 값도 쿠폰을 들고 있어 다시 떠도 쿠폰이 그대로다
       (쿠폰 전에 남긴 게시 값은 쿠폰 없음)
@@ -134,6 +136,7 @@ class PhoneStores:
         self._doc: dict | None = None
         self._saved: str | None = None  # DB에 남긴 게시 값의 내용 해시
         self._built: OrderedDict[str, StoreSnapshot] = OrderedDict()
+        self._built_docs: dict[str, dict] = {}  # 만들어 둔 스냅숏의 게시 값 (벡터 자리 정리)
         self._lock = threading.Lock()  # 게시는 한 번에 하나. 늦게 들어온 게시가 이긴다
 
     def __call__(self) -> StoreSnapshot:
@@ -150,9 +153,9 @@ class PhoneStores:
         게시가 없을 때의 기본값일 뿐이라 다음 배포의 기본 가게가 그대로 들어온다."""
         saved = None
         if self._db_url:
-            from agenthan.db.stores import open_published_phone_store
+            from agenthan.db.stores import load_published_phone_store
 
-            saved = open_published_phone_store(self._db_url)
+            saved = load_published_phone_store(self._db_url)
         if saved and self.put(saved, save=False):
             self._saved = _content_key(saved)
             log.info("전화용 가게: DB에 남은 마지막 게시 값으로 시작 (메뉴 %d개)",
@@ -174,14 +177,18 @@ class PhoneStores:
         with self._lock:
             snapshot = self._built.pop(key, None) or self._build(doc)
             self._built[key] = snapshot
+            self._built_docs[key] = doc
             while len(self._built) > self.KEEP:
-                self._built.popitem(last=False)
+                old, _ = self._built.popitem(last=False)
+                self._built_docs.pop(old, None)
             changed = snapshot is not self._current
-            if snapshot.store is not self._current.store:
-                # 만들어 둔 스냅숏으로 돌아왔으면 pgvector 색인을 다른 게시가 채웠을 수 있다.
-                # 쿠폰만 바뀐 게시는 지금 색인을 그대로 쓴다 (쿠폰 티켓 09)
-                snapshot.store.vector.reset()
             self._current, self._doc = snapshot, doc
+            if changed and self._db_url:
+                from agenthan.db.stores import prune_published_vector_stores
+
+                # 들고 있지 않은 메뉴 벌의 벡터 자리를 지운다(다시 뜬 서버면 지난 실행의 것도)
+                prune_published_vector_stores(
+                    {_vector_store(d) for d in self._built_docs.values()}, self._db_url)
             if save and self._db_url and key != self._saved:
                 from agenthan.db.stores import save_published_phone_store
 
@@ -202,12 +209,15 @@ class PhoneStores:
         # DB가 없으면 벡터 없이 (이름·별칭·오타 매칭)
         knowledge = RagStoreKnowledge(_PublishedMenus(doc, self._reviews), embed=False)
         if self._db_url:
-            from agenthan.db.stores import PUBLISHED_STORE_ID
+            from agenthan.db.stores import ensure_published_vector_store
             from agenthan.rag.vector import PgVectorIndex
 
-            # 메뉴 벡터는 pgvector에. 첫 검색 때 바뀐 메뉴만 임베딩한다(캐시 표 우선)
+            # 메뉴 벡터는 pgvector에, 이 메뉴 한 벌의 자리에. 첫 검색 때 임베딩 캐시 표에 없는 글만
+            # 임베딩한다. 자리를 못 만들면 벡터 검색이 쉬고 이름·별칭·오타 매칭으로 간다
+            vector_store = _vector_store(doc)
+            ensure_published_vector_store(vector_store, self._db_url)
             knowledge.vector = PgVectorIndex(
-                knowledge.vector.docs, PUBLISHED_STORE_ID, self._embed, self._db_url)
+                knowledge.vector.docs, vector_store, self._embed, self._db_url)
         ensure_usable(knowledge.list_menu(), self._config, log)  # 경고는 로그에
         return StoreSnapshot.of(knowledge, self._config, coupons)
 
@@ -229,6 +239,13 @@ def _coupons(doc: dict) -> tuple:
 
 def _content_key(doc: dict) -> str:
     return hashlib.sha1(json.dumps(doc, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def _vector_store(doc: dict) -> str:
+    """게시 값의 메뉴 한 벌 → 그 벡터 자리 id. 쿠폰만 다른 게시는 같은 자리를 쓴다."""
+    from agenthan.db.stores import published_vector_store_id
+
+    return published_vector_store_id(_content_key({"menus": doc["menus"]}))
 
 
 class _PublishedMenus:

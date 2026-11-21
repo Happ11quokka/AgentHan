@@ -27,9 +27,11 @@ DB를 켜면 바뀌는 것:
 - 전화(`agenthan.serve`): 비서가 켜져 있으면(기본) 전화 메뉴는 비서가 게시한 전화용 가게다(전화 메뉴 티켓 02·03).
   게시할 때마다 게시 값(`serve.phone_store_doc`, 메뉴 id·이름·가격·설명·별칭·원어명·품절과 쿠폰 JSON)을
   `stores`의 `phone_published` 줄 `raw`에 남기고, 서버가 다시 뜨면 비서 대화를 열지 않아도 이 값으로
-  시작한다. 남은 값이 없으면 파일럿 가게(기본값, DB에 쓰지 않음). 메뉴 벡터는 `embeddings`
-  (`store_id = phone_published`)에 두고, 게시가 바뀌면 다음 검색 때 바뀐 메뉴만 임베딩하고 없어진
-  메뉴는 지운다. 시드(`db.seed`)와 벡터 채우기(`db.embed`)는 이 줄과 그 메뉴 벡터를 건드리지 않는다.
+  시작한다. 남은 값이 없으면 파일럿 가게(기본값, DB에 쓰지 않음). 메뉴 벡터는 `embeddings`에
+  메뉴 한 벌마다 따로 둔다(`store_id = phone_published@<메뉴 해시>`, `stores`의 `published_vectors` 줄,
+  PR #44 리뷰: 한 자리를 여러 벌이 같이 쓰면 진행 중인 통화의 옛 메뉴가 새 메뉴 벡터를 지웠다). 새 벌은
+  첫 검색 때 임베딩 캐시 표에 없는 글만 임베딩하고, 서버가 들고 있지 않은 벌의 줄은 게시할 때 지운다
+  (벡터도 같이). 시드(`db.seed`)와 벡터 채우기(`db.embed`)는 이 줄들과 그 메뉴 벡터를 건드리지 않는다.
   전화 설정(영업시간·준비 시간·상한·가게 이름)과 리뷰는 지금처럼 `stores.raw`(PHONE_STORE_FIXTURE와
   같은 파일에서 넣은 것)에서 읽는다. 비서를 끄면(`AGENTHAN_ASSISTANT=off`) 메뉴도 그 가게 것이다.
   쿠폰도 같은 게시 값에 실려 온다(쿠폰 티켓 09, 저장한 순서, `min_order`가 없던 옛 값은 0). 예전 게시 값에
@@ -50,7 +52,7 @@ DB를 켜면 바뀌는 것:
 | 어디 | 무엇 |
 |---|---|
 | 전화 가게 지식 (`serve.phone_knowledge`) | DB에 전화 가게가 있으면 `RagStoreKnowledge.from_db(그 가게)`. 메뉴 목록은 JSON과 같고 검색만 Part B. 비서를 켜면(기본) 메뉴는 아래 전화용 가게 것이고 이 가게는 리뷰·전화 설정의 바탕이다 |
-| 전화용 가게 지식 (`serve.PhoneStores`, 비서 켬) | 게시 값 메뉴로 `RagStoreKnowledge`, 벡터는 `PgVectorIndex(phone_published)`. DB가 없으면 벡터 없이 |
+| 전화용 가게 지식 (`serve.PhoneStores`, 비서 켬) | 게시 값 메뉴로 `RagStoreKnowledge`, 벡터는 `PgVectorIndex(phone_published@<메뉴 해시>)`. DB가 없으면 벡터 없이 |
 | 전화: 메뉴 이름을 못 알아들음 (`engine._searched_menus`) | 매처가 거절하면 검색 후보로 되묻는다("꿀 들어간 거" → 메도빅?). 매처가 애매하게(confirm) 고른 메뉴와 검색이 다르면 둘 다 묻는다("얇은 팬케이크" → 메도빅이랑 블린 중에?) |
 | 전화: 손님 질문 답 (`engine._with_related_reviews`) | 질문과 가까운 후기(리뷰 의미 검색) 3개를 답변기 자료 한 줄로. 답변기 스레드에서 |
 | 비서 가게 지식 (`app/pilot.py`) | 대화마다 그 가게 파일 메뉴로 `LiveShopKnowledge`(메뉴 사진 매칭). 메뉴가 바뀌면 다시 색인 |
@@ -61,7 +63,7 @@ DB를 켜면 바뀌는 것:
 
 | 표 | 내용 |
 |---|---|
-| `stores` | 가게. `kind`(real·dummy), `source_format`(rag·phone·owner·snapshot·report·published), `info`, `raw`(원본). `published`는 게시된 전화용 가게 한 줄(`id = phone_published`, kind real, `raw` = 게시 값, 아직 게시가 없으면 NULL). 서버가 띄울 때 없으면 만든다 |
+| `stores` | 가게. `kind`(real·dummy), `source_format`(rag·phone·owner·snapshot·report·published·published_vectors), `info`, `raw`(원본). `published`는 게시된 전화용 가게 한 줄(`id = phone_published`, kind real, `raw` = 게시 값, 처음 게시할 때 만든다). `published_vectors`는 게시 메뉴 한 벌의 벡터 자리(`id = phone_published@<메뉴 해시>`, `raw` 없음, 서버가 들고 있지 않은 벌은 게시 때 지운다) |
 | `menus`, `menu_families` | 메뉴·묶음. 원본 순서 `position`, 원본 한 건 `raw` |
 | `reviews` | 리뷰(작성자는 마스킹된 값만) |
 | `store_docs` | 가게 정보 조각(영업시간·위치·편의·리뷰 요약·문의) — 벡터 검색 대상 |

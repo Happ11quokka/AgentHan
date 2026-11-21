@@ -389,14 +389,23 @@ def db(seeded_db) -> str:
     return seeded_db
 
 
-def _menu_vectors(url: str) -> set[str]:
+def _menu_vectors(url: str, store) -> set[str]:
+    """그 스냅숏 메뉴 한 벌의 벡터 자리에 올라 있는 메뉴 id들."""
     from agenthan.db.conn import connect
-    from agenthan.db.stores import PUBLISHED_STORE_ID
 
     with connect(url) as c:
         return {r[0] for r in c.execute(
             "SELECT ref_id FROM embeddings WHERE store_id = %s AND kind = 'menu'",
-            (PUBLISHED_STORE_ID,))}
+            (store.vector.store_id,))}
+
+
+def _vector_stores(url: str) -> set[str]:
+    from agenthan.db.conn import connect
+    from agenthan.db.stores import PUBLISHED_VECTORS_FORMAT
+
+    with connect(url) as c:
+        return {r[0] for r in c.execute(
+            "SELECT id FROM stores WHERE source_format = %s", (PUBLISHED_VECTORS_FORMAT,))}
 
 
 @needs_db
@@ -464,7 +473,7 @@ def test_semantic_search_follows_the_published_menu_and_embeds_only_changes(db) 
     blin = first._embed_text("m04")
     assert first.vector.search(blin, k=1)[0][0] == "m04"  # 다음 검색 때 메뉴를 모두 올린다
     assert len(embed.texts) == 13
-    assert _menu_vectors(db) == set(first.records)
+    assert _menu_vectors(db, first) == set(first.records)
 
     embed.texts.clear()
     assert stores.publish(_honey_latte(pilot.seed()))
@@ -473,7 +482,7 @@ def test_semantic_search_follows_the_published_menu_and_embeds_only_changes(db) 
     assert second.vector.search(latte, k=1)[0][0] == "m99"  # 새 메뉴를 찾는다
     assert "m04" not in [i for i, _ in second.vector.search(blin, k=20)]  # 지운 메뉴는 없다
     assert embed.texts == [latte]  # 바뀌지 않은 메뉴는 다시 임베딩하지 않는다
-    assert _menu_vectors(db) == set(second.records)
+    assert _menu_vectors(db, second) == set(second.records)
     assert "m99" not in [i for i, _ in first.vector.search(latte, k=20)]  # 진행 중인 통화의 메뉴
 
     # 다시 띄운 서버: 마지막 게시 값으로 시작하고, 이미 올린 벡터를 그대로 쓴다
@@ -486,8 +495,8 @@ def test_semantic_search_follows_the_published_menu_and_embeds_only_changes(db) 
 
 
 @needs_db
-def test_going_back_to_an_earlier_menu_reindexes_it(db) -> None:
-    """같은 게시 값으로 돌아가면 만들어 둔 스냅숏을 다시 쓰지만, 색인은 다음 검색 때 다시 맞춘다."""
+def test_going_back_to_an_earlier_menu_keeps_its_index(db) -> None:
+    """같은 게시 값으로 돌아가면 만들어 둔 스냅숏과 그 메뉴 벡터 자리를 그대로 다시 쓴다."""
     stores = PhoneStores(_base(), db_url=db, embed=FakeEmbed())
     stores.start(pilot.seed())
     stores().store.vector.search("꿀", k=1)
@@ -497,7 +506,43 @@ def test_going_back_to_an_earlier_menu_reindexes_it(db) -> None:
     back = stores().store
     assert back.vector.search(back._embed_text("m04"), k=1)[0][0] == "m04"
     assert "m99" not in [i for i, _ in back.vector.search("꿀을 넣은 달달한 라떼", k=20)]
-    assert _menu_vectors(db) == set(back.records)
+    assert _menu_vectors(db, back) == set(back.records)
+
+
+@needs_db
+def test_an_older_menu_searching_late_leaves_the_new_menu_vectors_alone(db) -> None:
+    """진행 중인 통화가 옛 메뉴로 늦게 첫 검색을 해도(옛 색인을 그때 채운다) 새 게시의 메뉴 벡터를
+    지우거나 덮어쓰지 않는다 (리뷰). 메뉴 한 벌마다 벡터 자리가 따로다."""
+    embed = FakeEmbed()
+    stores = PhoneStores(_base(), db_url=db, embed=embed)
+    stores.start(pilot.seed())
+    old = stores().store  # 통화 1이 이 메뉴로 시작했고 아직 검색하지 않았다
+    assert stores.publish(_honey_latte(pilot.seed()))
+    new = stores().store
+    latte = new._embed_text("m99")
+    assert new.vector.search(latte, k=1)[0][0] == "m99"  # 통화 2가 새 색인을 채운다
+
+    assert old.vector.search(old._embed_text("m04"), k=1)[0][0] == "m04"  # 통화 1이 늦게 채운다
+
+    assert new.vector.search(latte, k=1)[0][0] == "m99"
+    assert _menu_vectors(db, new) == set(new.records)
+    assert "m99" not in [i for i, _ in old.vector.search(latte, k=20)]
+
+
+@needs_db
+def test_vector_stores_the_server_no_longer_holds_are_pruned(db) -> None:
+    """다시 뜬 서버는 지금 게시 말고 지난 실행의 메뉴 벡터 자리를 지운다(벡터도 같이)."""
+    stores = PhoneStores(_base(), db_url=db, embed=FakeEmbed())
+    stores.start(pilot.seed())
+    first = stores().store
+    first.vector.search("꿀", k=1)
+    stores.publish(_honey_latte(pilot.seed()))
+    assert _vector_stores(db) == {first.vector.store_id, stores().store.vector.store_id}
+
+    restarted = PhoneStores(_base(), db_url=db, embed=FakeEmbed())
+    restarted.start(pilot.seed())
+    assert _vector_stores(db) == {restarted().store.vector.store_id}
+    assert _menu_vectors(db, first) == set()
 
 
 @needs_db
@@ -522,7 +567,7 @@ def test_seed_and_embed_scripts_leave_the_published_menu_alone(db) -> None:
     restarted = PhoneStores(_base(), db_url=db, embed=embed)
     restarted.start(pilot.seed())
     assert "꿀 라떼" in [m.name_ko for m in restarted().store.list_menu()]
-    assert "m99" in _menu_vectors(db)
+    assert "m99" in _menu_vectors(db, restarted().store)
 
 
 @needs_db
