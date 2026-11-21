@@ -6,6 +6,7 @@ import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
 import { CouponForm } from "./CouponForm";
 import { Icon } from "./Icon";
+import { ReadingBubble } from "./ReadingBubble";
 import { ReplyText } from "./ReplyText";
 
 const SUGGESTIONS = ["메뉴판 사진으로 메뉴 올리고 싶어요", "일요일에도 10시부터 6시까지 열래요", "요즘 리뷰 어때?"];
@@ -202,7 +203,15 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               onSubmit={(values) => void chat.submitCoupon(values)}
             />
           )}
-          {chat.busy && (
+          {chat.busy && chat.readingSince !== null && (
+            <div className="row agent">
+              <img className="avatar working" src="/agent.png" alt="" />
+              <div className="bubble agent reading">
+                <ReadingBubble since={chat.readingSince} />
+              </div>
+            </div>
+          )}
+          {chat.busy && chat.readingSince === null && (
             <div className="row agent" role="status" aria-label="비서가 답을 쓰는 중">
               <img className="avatar working" src="/agent.png" alt="" />
               <div className="bubble agent typing">

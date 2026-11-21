@@ -93,12 +93,9 @@ describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  test("메뉴판 사진을 읽는 동안 걸린 시간과 진행 막대, 빈 메뉴 자리를 보인다", () => {
+  test("메뉴판 사진을 읽는 동안 메뉴 탭에는 빈 메뉴 자리만 보인다(진행 막대는 대화창)", () => {
     render(<MenuTab place={{ ...SEED, menu: [] }} pending={[]} readingSince={Date.now() - 3000} />);
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("메뉴판 사진을 읽고 있어요");
-    expect(status).toHaveTextContent(/[34]\.\d초/);
-    expect(Number(screen.getByRole("progressbar").getAttribute("aria-valuenow"))).toBeGreaterThan(30);
+    expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByText(/아직 메뉴가 없어요/)).toBeNull();
   });
 

@@ -2339,6 +2339,15 @@ p {
   color: var(--ink-2);
 }
 
+.bubble.reading {
+  width: min(340px, 100%);
+  padding: 4px;
+}
+
+.menu-progress.in-chat {
+  margin: 0;
+}
+
 .menu-item-ghost .menu-body {
   gap: 6px;
 }
