@@ -6,8 +6,9 @@
 
 | 무엇 | 정한 값 | 이유 |
 |---|---|---|
-| DB | PostgreSQL 17 + pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17`) | NCP Cloud DB for PostgreSQL과 같은 SQL. 나중에 주소만 바꿔 옮길 수 있다 |
-| 위치 | 전화 서버(`agenthan-phone`) 안 Docker `db` 서비스, 밖에 포트 안 염 | 추가 요금 없음. Cloud DB는 콘솔 비밀번호 입력이 필요해 보류 |
+| DB | PostgreSQL 17 + pgvector (로컬·예비 `pgvector/pgvector:0.8.7-pg17`, Cloud DB 0.8.0) | 어디서나 같은 SQL. 주소만 바꿔 옮긴다 |
+| 위치 (2026-11-21~) | **NCP Cloud DB for PostgreSQL** `agenthan-db` (고가용성: Primary + Secondary, 자동 Failover) | 자동 백업(7일)·모니터링, 앱 서버 CPU와 분리. 아래 "NCP Cloud DB" |
+| 예비 | 전화 서버 안 Docker `db` 서비스(11/21 전환 시점 데이터 그대로), 밖에 포트 안 염 | Cloud DB가 안 되면 주소만 되돌린다. 발표 뒤 정리 |
 | 가게 | 모든 표에 `store_id`. 더미 19곳 + 실제 1곳(`real`) | 레포·발표는 더미, 실제 데이터는 DB와 서버 `data/`에만 |
 | 검색 | 별칭·규칙·BM25는 지금 Python 그대로, 벡터만 pgvector | 검증된 순위(Recall@1 0.800)를 지킨다 |
 | 벡터 | 메뉴·리뷰·가게 정보 조각, `embeddings` 표 하나 + HNSW(cosine) | 리뷰·가게 정보 의미 검색도 된다 |
@@ -17,8 +18,8 @@
 
 | 환경변수 | 뜻 |
 |---|---|
-| `AGENTHAN_DB_URL` | `postgresql://agenthan:<비밀번호>@db:5432/agenthan`. 비우면 DB를 안 쓴다(테스트·로컬 기본) |
-| `AGENTHAN_DB_PASSWORD` | compose의 `db` 서비스 비밀번호 (서버 `deploy/phone/.env`에만) |
+| `AGENTHAN_DB_URL` | 서버: `postgresql://agenthan:<URL 인코딩한 비밀번호>@pg-4c803s.vpc-cdb-kr.ntruss.com:5432/agenthan` (Cloud DB). 예비 DB면 호스트가 `db`. 비우면 DB를 안 쓴다(테스트·로컬 기본) |
+| `AGENTHAN_DB_PASSWORD` | compose의 `db` 서비스(예비) 비밀번호 (서버 `deploy/phone/.env`에만). Cloud DB 비밀번호는 로컬 `private/team-deploy/clouddb_password.txt` |
 | `AGENTHAN_STORE_ID` | `RagStoreKnowledge.from_db()`·`from_env()`의 기본 가게. 비우면 `dummy_store`, 실제는 `real` |
 
 DB를 켜면 바뀌는 것:
@@ -72,7 +73,7 @@ uv run --env-file .env python -m agenthan.db.embed      # 벡터(CLOVA 키, 캐�
 # 서버 (저장소 루트, data/는 scp로 올려 둔 것)
 docker compose -f deploy/phone/compose.yaml run --rm -v "$PWD/data:/app/data:ro" app python -m agenthan.db.seed
 docker compose -f deploy/phone/compose.yaml run --rm -v "$PWD/data:/app/data:ro" app python -m agenthan.db.embed
-docker compose -f deploy/phone/compose.yaml exec db psql -U agenthan -c "select * from phone_orders order by received_at desc limit 5"
+# (seed·embed는 .env의 AGENTHAN_DB_URL = 지금 Cloud DB로 간다. 조회는 아래 "NCP Cloud DB")
 
 # 테스트 (DB 있는 것은 AGENTHAN_TEST_DB_URL이 있을 때만)
 AGENTHAN_TEST_DB_URL=postgresql://agenthan:devpass@localhost:54329/agenthan_test uv run pytest tests/test_db.py
@@ -80,8 +81,32 @@ AGENTHAN_TEST_DB_URL=postgresql://agenthan:devpass@localhost:54329/agenthan_test
 
 시드는 가게마다 지우고 다시 넣는다(여러 번 돌려도 같다). 주문(`phone_orders`)·비서 사본은 시드가 건드리지 않는다.
 
-## NCP Cloud DB로 옮기려면
+## NCP Cloud DB (2026-11-21 전환)
 
-콘솔에서 Cloud DB for PostgreSQL(17, Standalone, High CPU 2vCPU·4GB, 시간 요금 약 158원/시간)을 `agenthan-vpc`에
-만들고 Extension 관리에서 `vector`를 켠다(사용자 비밀번호 입력은 사람이 한다). 그다음
-`AGENTHAN_DB_URL`만 새 주소로 바꾸고 `seed`·`embed`를 다시 돌린다. 주문 기록은 `pg_dump -t phone_orders`로 옮긴다.
+| 무엇 | 값 |
+|---|---|
+| 서비스 | `agenthan-db` = `agenthan-pg-001`(Primary) + `agenthan-pg-002`(Secondary), PostgreSQL 17.11, High CPU 2vCPU·4GB ×2, 시간 요금 |
+| 주소 | Private 도메인 `pg-4c803s.vpc-cdb-kr.ntruss.com:5432` (Failover 때 도메인이 새 Primary를 가리킨다. IP를 적지 않는다) |
+| 네트워크 | `agenthan-vpc` / `agenthan-public`, Public 도메인 없음. 접근 제어 CIDR `10.0.1.0/24` |
+| ACG | 자동 생성 `cloud-postgresql-2fk2gp`에 Inbound TCP 5432 ← `10.0.1.6/32`(전화 서버) 한 줄을 추가했다 |
+| 확장 | `pg_trgm`은 SQL로, `vector`는 콘솔 상세보기 → Extension 관리 → pgvector 설치(서버 재시작·Failover가 한 번 일어난다). `vector`는 `cdb_admin` 스키마에 깔려서 `ALTER ROLE agenthan SET search_path = "$user", public, cdb_admin`을 해 두었다 |
+| 백업 | 매일 자동, 7일 보관 (콘솔 Backup) |
+
+옮긴 방법 (다시 할 때도 같다):
+
+1. 빈 Cloud DB에 `python -m agenthan.db.migrate` (컨테이너에 `-e AGENTHAN_DB_URL=<Cloud DB 주소>`).
+2. 예전 DB에서 `pg_dump -Fc --no-owner --no-acl` → `pg_restore --data-only --single-transaction -L <목록>`.
+   목록은 `TABLE DATA`만, `schema_migrations` 빼고, 외래 키 순서
+   (stores → menu_families → menus → reviews → store_docs → owner_records → place_stats → embedding_cache →
+   embeddings → eval_cases → phone_orders → assistant_store_docs). 시퀀스는 없다.
+3. 표마다 행 수 비교 → 서버 `deploy/phone/.env`의 `AGENTHAN_DB_URL`만 바꾸고 `docker compose up -d --force-recreate --no-deps app`.
+
+되돌리기: 서버 `/root/.env.before-clouddb`(전환 전 `.env`)의 `AGENTHAN_DB_URL`로 바꾸고 app만 다시 띄운다.
+예비 DB에는 전환 뒤 주문·비서 사본이 없으니, 필요하면 위 2번을 반대 방향으로 한다.
+
+서버에서 Cloud DB를 psql로 볼 때 (예비 db 컨테이너의 psql을 빌려 쓴다):
+
+```bash
+docker compose -f deploy/phone/compose.yaml exec db psql "$(grep ^AGENTHAN_DB_URL= deploy/phone/.env | cut -d= -f2-)" \
+  -c "select * from phone_orders order by received_at desc limit 5"
+```
