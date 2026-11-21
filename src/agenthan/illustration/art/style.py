@@ -306,3 +306,18 @@ def cake_slice(
     arc = [at(math.radians(270 - span / 2 + span * i / 12), 0) for i in range(13)]
     parts.append(polygon([apex(0), *arc], top))
     return "".join(parts)
+
+
+# ── 러시아 요리 색(티켓 04) ──────────────────────────────────────────────────────
+# 보르시의 비트 빛 수프, 사모바르의 놋쇠, 콤포트의 과일 빛 음료, 살구.
+PALETTE.update(
+    {
+        "beet": "#B2334F",
+        "beet_light": "#D0617A",
+        "brass": "#DDA640",
+        "brass_shade": "#B07E22",
+        "compote": "#C65A5E",
+        "compote_light": "#E89482",
+        "apricot": "#F2A54A",
+    }
+)

@@ -1,1 +1,146 @@
-[]
+[
+  {
+    "id": "dish_blini",
+    "name": "블린",
+    "aliases": [],
+    "keywords": [
+      "블린",
+      "블리니",
+      "러시아 팬케이크"
+    ],
+    "category": "savory",
+    "recipe": {
+      "dish": "blini",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "dish_pelmeni",
+    "name": "펠메니",
+    "aliases": [],
+    "keywords": [
+      "펠메니",
+      "뻴메니",
+      "러시아 만두"
+    ],
+    "category": "savory",
+    "recipe": {
+      "dish": "pelmeni",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "dish_borscht",
+    "name": "보르시",
+    "aliases": [],
+    "keywords": [
+      "보르시",
+      "보르쉬",
+      "보르스치",
+      "비트 수프"
+    ],
+    "category": "soup",
+    "recipe": {
+      "dish": "borscht",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "dish_pirozhki",
+    "name": "피로시키",
+    "aliases": [],
+    "keywords": [
+      "피로시키",
+      "피로즈키",
+      "삐로시키",
+      "피로쉬키",
+      "러시아 고로케"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "dish": "pirozhki",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "dish_pirog_potato",
+    "name": "감자 피로그",
+    "aliases": [],
+    "keywords": [
+      "피로그",
+      "삐로그"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "dish": "pirog_potato",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "dish_syrniki",
+    "name": "시르니키",
+    "aliases": [],
+    "keywords": [
+      "시르니키",
+      "시르니크",
+      "쉬르니키",
+      "치즈 팬케이크"
+    ],
+    "category": "cake",
+    "recipe": {
+      "dish": "syrniki",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "dish_oreshki",
+    "name": "오레쉬키",
+    "aliases": [],
+    "keywords": [
+      "오레쉬키",
+      "오레시키",
+      "오레슈키"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "dish": "oreshki",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "dish_compote",
+    "name": "콤포트",
+    "aliases": [
+      "과일 음료"
+    ],
+    "keywords": [
+      "콤포트",
+      "콤폿",
+      "꼼뽀뜨"
+    ],
+    "category": "ade",
+    "recipe": {
+      "dish": "compote",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "dish_russian_tea",
+    "name": "러시아 홍차",
+    "aliases": [
+      "차이"
+    ],
+    "keywords": [
+      "러시아 홍차",
+      "러시안 홍차",
+      "러시안 티",
+      "러시아 차",
+      "사모바르"
+    ],
+    "category": "tea",
+    "recipe": {
+      "dish": "russian_tea",
+      "card": "card_lilac"
+    }
+  }
+]
