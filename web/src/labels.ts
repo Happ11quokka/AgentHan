@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReviewRow } from "./types";
+import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReviewReport, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -130,15 +130,21 @@ export const INBOX_TEXT = {
   draft: "답글 초안",
   posted: "올린 답글",
   post: "올리기",
-  edit: "고치기",
   skip: "건너뛰기",
   editBox: "답글 고치기",
-  postEdited: "이대로 올리기",
-  cancel: "취소",
   redraft: "다시 쓰기",
   writing: "초안 쓰는 중…",
+  getDraft: "답글 초안 받기",
   empty: "답글 기다리는 리뷰가 없어요.",
   simulate: "새 리뷰 도착 (데모)",
+} as const;
+/** 리뷰 탭의 정기 보고 줄(#98). 켜고 끄기는 대화에서 미리보기·승인으로만 한다. */
+export const REPORT_TEXT = {
+  section: "리뷰 정기 보고",
+  off: "정기 보고 꺼짐",
+  howTo: "대화에서 \"매일 리뷰 요약해서 보내 줘\"라고 하면 켤 수 있어요.",
+  runNow: "지금 받아 보기",
+  running: "보고 만드는 중…",
 } as const;
 export const waitingText = (n: number) => `답글 기다리는 리뷰 ${n}개`;
 /** 왼쪽 자주 쓰는 일 배지를 읽어 줄 말. */
@@ -168,6 +174,7 @@ export const REDRAFT_HINTS: Array<[RedraftHint, string]> = [
 ];
 /** 카드 버튼을 누른 뒤 그 카드에만 보이는 '하는 중'. 대화창에는 아무것도 남기지 않는다. */
 export const INBOX_WORKING_TEXT: Record<ReplyOpName, string> = {
+  draft: INBOX_TEXT.writing,
   post: "올리는 중…",
   skip: "건너뛰는 중…",
   redraft: "다시 쓰는 중…",
@@ -259,6 +266,13 @@ export function approval(p: Pending): { blocked: boolean; answer: string; need: 
 }
 
 // ── 바뀐 것 문장 ───────────────────────
+/** 저장 전후 리뷰 정기 보고 설정(#98)이 바뀌었으면 그 한 줄. 가게 정보가 아니라 describeChanges가 못 본다(#112). */
+export function describeReportChange(before: ReviewReport | null, after: ReviewReport | undefined): string[] {
+  if (!before || !after) return [];
+  if (before.enabled === after.enabled && before.schedule === after.schedule) return [];
+  return after.enabled && after.schedule ? [`리뷰 정기 보고: ${after.schedule}`] : ["리뷰 정기 보고 끔"];
+}
+
 /** 두 가게 화면 사이에 바뀐 것을 사장님 문장으로. 승인 카드와 '오늘 한 일'이 같이 쓴다. */
 export function describeChanges(before: Place, after: Place): string[] {
   const lines: string[] = [];

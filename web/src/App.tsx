@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { httpApi, type AssistantApi } from "./api";
 import { ChatPane } from "./components/ChatPane";
 import { LeftNav, type Quick } from "./components/LeftNav";
+import { Onboarding } from "./components/Onboarding";
 import { Sidecar, type Tab } from "./components/Sidecar";
 import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./labels";
-import type { Period, ReplyError, ReplyOp, ReplyResult, ReviewRow } from "./types";
+import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow } from "./types";
 import { useConversation } from "./useConversation";
 import { useLoad } from "./useLoad";
 
@@ -13,10 +14,11 @@ const REVIEW_POLL_MS = 2500;
 /** 카드 버튼이 실패했을 때 채팅에도 알릴 까닭: 검사에 걸려 막힘, 저장·초안 쓰기 실패(서버 쪽 오류). */
 const NOTICE_REASONS = new Set(["checks", "save_failed", "draft_failed"]);
 
-type AppProps = { api?: AssistantApi; reviewPollMs?: number; demo?: boolean };
+/** reportPollMs: 정해진 때의 리뷰 보고를 받으려고 세션 조회를 다시 읽는 간격(0이면 안 읽음). */
+type AppProps = { api?: AssistantApi; reviewPollMs?: number; reportPollMs?: number; demo?: boolean };
 
-export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo = import.meta.env.DEV }: AppProps) {
-  const chat = useConversation(api);
+export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, reportPollMs, demo = import.meta.env.DEV }: AppProps) {
+  const chat = useConversation(api, reportPollMs);
   const [tab, setTab] = useState<Tab>("shop");
   const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
@@ -48,11 +50,13 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
   const replyToReview = useCallback(
     async (review: ReviewRow, op: ReplyOp): Promise<ReplyError | null> => {
       if (!id) return null;
+      // 초안 받기는 사이드카 안에서만: 실패해도 채팅에 알리지 않고 카드에만 보인다.
+      const quiet = op.op === "draft";
       let result: ReplyResult;
       try {
         result = await api.replyToReview(id, review.id, op);
       } catch {
-        notify(replyNoticeText(review, REPLY_SERVER_ERROR), review.id);
+        if (!quiet) notify(replyNoticeText(review, REPLY_SERVER_ERROR), review.id);
         return REPLY_SERVER_ERROR;
       }
       updateReviews((v) => ({ summary: result.summary, reviews: v.reviews.map((r) => (r.id === result.review.id ? result.review : r)) }));
@@ -61,7 +65,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
         if (op.op === "post") addLog([REVIEW_POSTED_TEXT]);
         return null;
       }
-      if (NOTICE_REASONS.has(error.reason)) notify(replyNoticeText(result.review, error), review.id);
+      if (!quiet && NOTICE_REASONS.has(error.reason)) notify(replyNoticeText(result.review, error), review.id);
       return error;
     },
     [api, id, addLog, notify, updateReviews],
@@ -72,6 +76,20 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
     setFocusReview({ id: reviewId, at: Date.now() });
   };
   const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
+
+  // 처음 쓰는 사장님(#94): 가게 이름이나 업종이 빈 대화는 온보딩부터. 데모는 ?onboarding=1로 늘 띄운다.
+  const [forceOnboarding, setForceOnboarding] = useState(() => new URLSearchParams(window.location.search).get("onboarding") === "1");
+  const { shop, onboard } = chat;
+  const finishOnboarding = useCallback(
+    async (values: OnboardingInput) => {
+      const error = await onboard(values);
+      if (!error) setForceOnboarding(false);
+      return error;
+    },
+    [onboard],
+  );
+  if (shop && (forceOnboarding || !shop.name.trim() || !shop.category.trim()))
+    return <Onboarding key={chat.sessionId} initial={shop} onSubmit={finishOnboarding} />;
 
   const quick = (q: Quick) => {
     setNavOpen(false);
@@ -123,6 +141,8 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
         onSimulateReview={demo ? () => void simulateReview() : undefined}
         onReply={replyToReview}
         focusReview={focusReview}
+        reviewReport={chat.reviewReport}
+        onRunReport={chat.runReport}
         onClose={() => setSideOpen(false)}
       />
       <button

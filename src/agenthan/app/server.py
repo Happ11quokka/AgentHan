@@ -8,15 +8,18 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
 import threading
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
+from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
+from agenthan.tools.dummy_store import DummyStoreError
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
@@ -39,18 +42,56 @@ class ButtonAction(BaseModel):
     label: str
 
 
-class ReplyOp(BaseModel):
-    """답글 대기함 카드 버튼. text: 사장님이 고친 문장(post), hint: inbox.HINTS 값(redraft)."""
+def _filled(value: str) -> str:
+    if not value.strip():
+        raise ValueError("빈 값입니다.")
+    return " ".join(value.split())
 
-    op: Literal["post", "skip", "redraft"]
+
+class OnboardingMenu(BaseModel):
+    name: str
+    price: int = Field(gt=0)
+
+    @field_validator("name")
+    @classmethod
+    def filled(cls, value: str) -> str:
+        return _filled(value)
+
+
+class Onboarding(BaseModel):
+    """처음 쓰는 사장님 온보딩(#94). 사장님이 넣은 값만 온다. 메뉴는 0~3개."""
+
+    name: str
+    category: str
+    menus: list[OnboardingMenu] = Field(default=[], max_length=3)
+
+    @field_validator("name", "category")
+    @classmethod
+    def filled(cls, value: str) -> str:
+        return _filled(value)
+
+
+class ReplyOp(BaseModel):
+    """답글 대기함 카드 버튼. draft: 그 리뷰 초안 받기(없거나 실패했을 때만 새로 쓴다).
+    text: 사장님이 고친 문장(post), hint: inbox.HINTS 값(redraft)."""
+
+    op: Literal["draft", "post", "skip", "redraft"]
     text: str | None = None
     hint: str | None = None
 
 
 class Session:
-    def __init__(self, session_id: str, assistant: OwnerAssistant):
+    def __init__(
+        self,
+        session_id: str,
+        assistant: OwnerAssistant,
+        clock: Callable[[], datetime] = datetime.now,
+    ):
         self.id = session_id
         self.assistant = assistant
+        assistant.clock = clock  # 리뷰 보고 미리보기의 '다음 보고' 시각도 같은 시계로
+        # 리뷰 정기 보고(#98): 조회할 때마다 기한 지난 보고를 대화 메시지로 쌓는다
+        self.routine = ReviewRoutine(assistant, clock)
         self.lock = threading.Lock()  # OwnerAssistant keeps turn state; one turn at a time.
 
     def _photo_path(self, name: str) -> str:
@@ -118,7 +159,18 @@ class Session:
                     ),
                 }
             )
-        return {"place": place.snapshot(data, self._menu_photo_url), "pending": pending}
+        shop = data.get("shop", {})
+        self.routine.tick()
+        return {
+            "place": place.snapshot(data, self._menu_photo_url),
+            "pending": pending,
+            # 화면이 온보딩을 띄울지 정한다(#94): 이름이나 업종이 비면 처음 쓰는 가게.
+            "shop": {k: shop.get(k) or "" for k in ("name", "category")},
+            # 리뷰 정기 보고(#98): 지금 설정 한 줄과, 사장님 말 없이 비서가 보낸 새 메시지
+            # (정해진 때의 보고·[지금 받아 보기]). messages는 한 번만 건넨다.
+            "review_report": self.routine.status(),
+            "messages": self.routine.take(),
+        }
 
     def photo(self, name: str) -> tuple[bytes, str] | None:
         """A waiting draft's photo or a saved menu's photo, as (bytes, media type)."""
@@ -156,8 +208,10 @@ def create_app(
     make_assistant: Callable[[Path], OwnerAssistant] = OwnerAssistant,
     root: str | Path = DEFAULT_ROOT,
     prepare_on_start: bool = False,
+    clock: Callable[[], datetime] = datetime.now,
 ) -> FastAPI:
-    """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다."""
+    """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
+    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다)."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -173,7 +227,9 @@ def create_app(
         session_id = uuid.uuid4().hex
         folder = root / session_id
         folder.mkdir(parents=True)
-        session = sessions[session_id] = Session(session_id, make_assistant(folder / "store.json"))
+        session = sessions[session_id] = Session(
+            session_id, make_assistant(folder / "store.json"), clock
+        )
         if prepare_on_start:
             with session.lock:
                 job = claim_drafts(session)
@@ -214,6 +270,21 @@ def create_app(
             reply = session.assistant.ask_photo(data, text)
             return {"reply": reply, **session.view()}
 
+    @app.post("/assistant/sessions/{session_id}/onboarding")
+    def onboard(session_id: str, body: Onboarding) -> dict:
+        """처음 쓰는 사장님(#94): 사장님이 넣은 가게 이름·업종(shop)과 대표 메뉴(menus)를 그대로
+        저장한다. 대화 턴이 아니고 네이버로 보내지 않는다(더미 저장소만)."""
+        session = get(session_id)
+        with session.lock:
+            store = session.assistant.store
+            try:
+                store.set_shop_info(body.name, body.category)
+                for menu in body.menus:
+                    store.upsert_menu(menu.name, menu.price)
+            except DummyStoreError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            return session.view()
+
     @app.get("/assistant/sessions/{session_id}/photos/{name}")
     def show_photo(session_id: str, name: str) -> Response:
         session = get(session_id)
@@ -249,10 +320,19 @@ def create_app(
         in_background(job)
         return {"review_id": review_id, **view}
 
+    @app.post("/assistant/sessions/{session_id}/reviews/report")
+    def run_review_report(session_id: str) -> dict:
+        """리뷰 탭 [지금 받아 보기](시연): 설정과 상관없이 정기 보고 한 회분을 대화 메시지로
+        넣는다(messages). 보고 설정·다음 보고 시각은 바꾸지 않는다."""
+        session = get(session_id)
+        with session.lock:
+            session.routine.run_now()
+            return session.view()
+
     @app.post("/assistant/sessions/{session_id}/reviews/{review_id}/reply")
     def reply_to_review(session_id: str, review_id: str, body: ReplyOp) -> dict:
-        """답글 대기함 카드: 올리기·건너뛰기·다시 쓰기. 대화 턴이 아니다: 비서의 대화 기록·작업
-        원장·trace·planner를 거치지 않고 review/inbox.py와 답글 저장 경로만 쓴다.
+        """답글 대기함 카드: 초안 받기·올리기·건너뛰기·다시 쓰기. 대화 턴이 아니다: 비서의 대화
+        기록·작업 원장·trace·planner를 거치지 않고 review/inbox.py와 답글 저장 경로만 쓴다.
         → {review: 그 리뷰(+draft), summary, error?: {reason, message, issues}}"""
         session = get(session_id)
         if body.op == "redraft" and body.hint not in inbox.HINTS:
@@ -263,13 +343,16 @@ def create_app(
             box = inbox.inbox_of(session.assistant)
             if not box.has_review(review_id):
                 raise HTTPException(404, "없는 리뷰입니다.")
+            job = None
             if body.op == "post":
                 outcome = box.post(review_id, body.text)
             elif body.op == "skip":
                 outcome = box.skip(review_id)
+            elif body.op == "draft":
+                outcome, job = box.begin_draft(review_id)
             else:
                 outcome, job = box.begin_redraft(review_id, body.hint)
-        if body.op == "redraft" and outcome is None:
+        if job is not None:
             outcome = job()  # HCX 호출은 세션 잠금 밖에서 (그 리뷰는 inbox가 잡아 둠)
         with session.lock:
             view = inbox.annotate(

@@ -881,6 +881,18 @@ def test_small_talk_reuses_the_legacy_help_without_rejection(tmp_path):
     assert app.trace["scope_check"] == "none"
 
 
+def test_a_plan_with_nothing_to_do_asks_instead_of_guessing_a_feature(tmp_path):
+    # #92: 리뷰 요약 뒤 회의 잡담("…리뷰 쪽은 잘 받는 것 같고")에 HCX-005가 advice·빈 단계를 냈고,
+    # 안전망 DASH가 '리뷰' 단어로 리뷰 요약을 다시 실행했다(실측 2026-11-21).
+    hcx = HCX([], plans=[{"scope": "advice", "steps": [], "clarify": ""}])
+    app = assistant(tmp_path, hcx)
+    select_routes(app, {"feature_id": "review"})
+    app.route = lambda *_: pytest.fail("할 일 없는 계획에 기능 선택 호출")
+    reply = app.ask("어차피 저희 대회가 다 성인이에요. 그래서 리뷰 쪽은 잘 받는 것 같고")
+    assert len(hcx.plans) == 1 and not hcx.requests and not app.trace["calls"]
+    assert "도와드" in reply and app.trace["feature"] is None
+
+
 def test_hybrid_single_read_uses_legacy_sentence(tmp_path):
     text = "이번 주 정산 예정액은 116,400원이고 입금 예정일은 2026-11-13이에요."
     hcx = HCX(
@@ -3110,3 +3122,331 @@ def test_with_the_store_rag_a_talktalk_answer_sees_menu_facts_and_hours(tmp_path
     material = _store_material(hcx)
     assert material["menu_facts"][0]["name"] == "메도빅"
     assert material["shop"]["hours"]["mon"]
+
+
+# ── 맥락 칩(#97): 리뷰·통계·쿠폰 뒤에 규칙 표(agent/suggest.py)의 칩이 붙는다 ──
+
+
+def chip_labels(chips):
+    return [c["label"] for c in chips]
+
+
+def test_context_chips_after_review_summary_in_chat_and_button(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "agenthan.agent.review_delegate.ask_review_agent",
+        lambda request, session: {"text": "리뷰를 확인했어요.", "blocks": ""},
+    )
+    hcx = HCX([], plans=[new("review")])
+    app = assistant(tmp_path, hcx)
+    app._review_factory = FakeBackend().review_session
+    app.ask("요즘 리뷰 어때?")
+    labels = chip_labels(app.next_actions)
+    assert labels[:2] == ["매일 리뷰 요약 받기", "불만 리뷰 답글 초안"]
+    say = app.next_actions[0]
+    assert say["action_id"] == "chat.say"
+    assert say["args"] == {"text": "매일 리뷰 요약해서 보내 줘"}
+    assert app.next_actions[1]["args"] == {"review_id": "r02"}
+    assert app.trace["next_actions"] == app.next_actions
+
+    before = app.store.read()
+    button = app.run_action("review.summary", {}, "요즘 리뷰")
+    ids = [c["action_id"] for c in button["next_actions"]]
+    assert "chat.say" in ids and ids.count("review.draft_reply") == 1
+    assert app.next_actions == button["next_actions"]
+    assert app.store.read() == before
+
+    # 리뷰 정기 보고가 이미 켜져 있으면 "매일 리뷰 요약 받기"는 뺀다.
+    box = app.review.toolbox
+    box.settings_store.save(box.ctx["store_id"], {"enabled": True, "frequency": "daily"})
+    again = app.run_action("review.summary", {}, "요즘 리뷰")
+    assert "매일 리뷰 요약 받기" not in chip_labels(again["next_actions"])
+
+
+def test_context_chips_after_statistics_in_chat_and_button(tmp_path):
+    hcx = HCX(
+        ["statistics"],
+        call("get_statistics", period="7d"),
+        {"role": "assistant", "content": "조회"},
+        {"role": "assistant", "content": "조회 흐름을 확인했어요."},
+        {"role": "assistant", "content": "[]"},
+    )
+    app = assistant(tmp_path, hcx)
+    app.ask("이번 주 손님 얼마나 왔어?")
+    labels = chip_labels(app.next_actions)
+    assert "대표 키워드 추가" in labels and "매일 리뷰 요약 받기" not in labels
+    assert len(labels) == len(set(labels))
+    assert sum(c["action_id"] == "coupon.create" for c in app.next_actions) == 1
+
+    stats = app.run_action("stats.week", {}, "이번 주 손님")
+    assert chip_labels(stats["next_actions"]) == [
+        "대표 키워드 추가",
+        "쿠폰 만들기",
+        "리뷰 요약 보기",
+    ]
+    assert stats["next_actions"][0]["action_id"] == "keywords.edit"
+    # 맥락 칩은 화면 제안일 뿐이다. 맨 "네"가 칩(쿠폰·키워드)에 대한 동의가 되지 않는다.
+    before = app.store.read()
+    assert "선택해 주세요" not in app.ask("네")
+    assert app.store.read() == before and not app.planner_loop.last_action.get("proposals")
+
+
+def test_context_chips_wait_for_the_coupon_approval_then_follow_it(tmp_path):
+    hcx = HCX(
+        ["coupon"],
+        call(
+            "create_coupon",
+            title="개점 할인",
+            discount_type="percent",
+            discount_value=12,
+            start_date="2026-11-13",
+            end_date="2026-11-15",
+        ),
+    )
+    app = assistant(tmp_path, hcx)
+    app.today = date(2026, 11, 12)
+    app.ask("내일부터 11월 15일까지 개점 할인 12% 쿠폰 만들어줘")
+    ids = [c["action_id"] for c in app.next_actions]
+    assert "task.approve" in ids
+    assert not {"stats.week", "chat.say", "review.summary"} & set(ids)
+    task = next(t for t in app.ledger.open_tasks() if t.preview)
+    done = app.run_action("task.approve", {"task_id": task.id, "version": task.version}, "저장")
+    assert app.store.read()["coupons"]
+    assert chip_labels(done["next_actions"])[0] == "이번 주 통계 보기"
+    assert "task.approve" not in [c["action_id"] for c in done["next_actions"]]
+    assert 1 <= len(done["next_actions"]) <= 3
+
+
+# ── 리뷰 정기 보고 켜고 끄기(#98): 계획기가 조회로 잡거나 goal을 바꿔 적어도 설정 미리보기로 ──
+
+
+def paraphrased(goal, action):
+    """실제 계획기처럼 goal을 바꿔 적고(사장님 원문이 아님) 설정 값은 비운 리뷰 단계."""
+    planned = new("review", review_action=action)
+    planned["steps"][0]["goal"] = goal
+    return planned
+
+
+def routine_app(tmp_path, *plans):
+    app = assistant(tmp_path, HCX([], plans=list(plans)))
+    app._review_factory = FakeBackend().review_session
+    return app
+
+
+def report_settings(app):
+    box = app.planner_loop.session().toolbox
+    return box.settings_store.get(box.ctx["store_id"])
+
+
+@pytest.mark.parametrize("action", ["read", "settings"])
+def test_98_daily_summary_chip_turns_the_routine_on_only_after_approval(tmp_path, action):
+    app = routine_app(tmp_path, paraphrased("리뷰 요약 조회", action))
+    reply = app.ask("매일 리뷰 요약해서 보내 줘")
+    task = app.ledger.active()
+    assert task and task.preview and task.preview["report_settings"]
+    assert task.preview["after"]["enabled"] is True
+    assert task.preview["after"]["frequency"] == "daily"
+    assert report_settings(app)["enabled"] is False  # 승인 전에는 그대로
+    assert "매일 09:00" in reply and "다음 보고" in reply
+    assert [a["action_id"] for a in app.next_actions][:2] == ["task.approve", "task.cancel"]
+    app.ask("네")
+    settings = report_settings(app)
+    assert settings["enabled"] is True and settings["frequency"] == "daily"
+    # #97 칩: 켜졌으니 [매일 리뷰 요약 받기]는 빠진다
+    chips = app.run_action("review.summary", {}, "요즘 리뷰")["next_actions"]
+    assert "매일 리뷰 요약 받기" not in chip_labels(chips)
+
+
+def test_98_weekly_request_keeps_weekday_and_time(tmp_path):
+    app = routine_app(tmp_path, paraphrased("리뷰 요약", "read"))
+    reply = app.ask("매주 월요일 9시에 리뷰 요약 보내 줘")
+    after = app.ledger.active().preview["after"]
+    assert (after["enabled"], after["frequency"], after["weekday"], after["time"]) == (
+        True,
+        "weekly",
+        "mon",
+        "09:00",
+    )
+    assert "매주 월요일 09:00" in reply
+    app.ask("네")
+    assert report_settings(app)["weekday"] == "mon"
+
+
+def test_98_turning_reports_off_also_waits_for_approval(tmp_path):
+    app = routine_app(tmp_path, paraphrased("리뷰 보고", "read"), paraphrased("리뷰 보고", "read"))
+    box = app.planner_loop.session().toolbox
+    box.settings_store.save(
+        box.ctx["store_id"], {**report_settings(app), "enabled": True, "frequency": "daily"}
+    )
+    reply = app.ask("리뷰 보고 꺼 줘")
+    assert app.ledger.active().preview["after"]["enabled"] is False
+    assert "끌까요" in reply and report_settings(app)["enabled"] is True
+    app.ask("취소")
+    assert report_settings(app)["enabled"] is True
+    app.ask("리뷰 보고 꺼 줘")
+    app.ask("네")
+    assert report_settings(app)["enabled"] is False
+    # 꺼졌으니 [매일 리뷰 요약 받기]가 다시 보인다
+    chips = app.run_action("review.summary", {}, "요즘 리뷰")["next_actions"]
+    assert "매일 리뷰 요약 받기" in chip_labels(chips)
+
+
+def test_98_unstated_frequency_uses_the_store_suggestion(tmp_path):
+    from agenthan.agent.review.report import suggest_frequency
+
+    app = routine_app(tmp_path, paraphrased("리뷰 보고", "settings"))
+    reply = app.ask("리뷰 정기 보고 켜 줘")
+    box = app.planner_loop.session().toolbox
+    suggested = suggest_frequency(box.ctx["repo"], box.ctx["store_id"], app.today)["frequency"]
+    task = app.ledger.active()
+    assert task.preview["after"]["enabled"] is True
+    assert task.preview["after"]["frequency"] == suggested
+    assert "제안" in reply
+    assert task.slots["frequency"].source == "lookup"
+    app.ask("네")
+    assert report_settings(app)["frequency"] == suggested
+
+
+def test_98_already_off_says_so_without_a_preview(tmp_path):
+    app = routine_app(tmp_path, paraphrased("리뷰 보고", "read"))
+    reply = app.ask("리뷰 보고 꺼 줘")
+    assert not any(t.preview for t in app.ledger.open_tasks())
+    assert "이미 꺼져" in reply
+
+
+def test_98_plain_review_summary_is_still_a_read(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "agenthan.agent.review_delegate.ask_review_agent",
+        lambda request, session: {"text": "리뷰를 확인했어요.", "blocks": ""},
+    )
+    app = routine_app(tmp_path, paraphrased("리뷰 요약", "read"))
+    assert "리뷰를 확인했어요" in app.ask("최근 리뷰 요약해 줘")
+    assert not any(t.preview for t in app.ledger.open_tasks())
+
+
+# ── 실제 HCX 계획 모양 그대로(#98 검수): advice+draft, advice+draft+ref, store+빈 steps+clarify ──
+
+
+def hcx_draft(goal, ref=None):
+    step = {"kind": "new", "feature": "review", "goal": goal, "review_action": "draft"}
+    if ref:
+        step.update(ref=ref, ref_basis="direct")
+    return step
+
+
+def only_report_previews(app):
+    """답글 초안 미리보기가 없고, 열린 미리보기는 보고 설정뿐이다."""
+    previews = [t.preview for t in app.ledger.open_tasks() if t.preview]
+    return all(p.get("report_settings") and not p.get("drafts") for p in previews)
+
+
+@pytest.mark.parametrize(
+    ("text", "step", "expect"),
+    [
+        (
+            "매일 오후 2시 37분에 리뷰 요약해서 보내 줘",
+            hcx_draft("매일 오후 2시 37분에 리뷰 요약해서 보내 줘"),
+            ("daily", None, "14:37", "매일 14:37"),
+        ),
+        (
+            "매일 리뷰 요약해서 보내 줘",
+            hcx_draft("리뷰 요약 및 발송", ref="r01"),
+            ("daily", None, None, "매일 09:00"),
+        ),
+        (
+            "매주 월요일 9시에 리뷰 요약 보내 줘",
+            hcx_draft("매주 월요일 9시에 리뷰 요약 보내 줘"),
+            ("weekly", "mon", "09:00", "매주 월요일 09:00"),
+        ),
+    ],
+)
+def test_98_real_hcx_advice_draft_plans_turn_the_routine_on(tmp_path, text, step, expect):
+    freq, weekday, time, said = expect
+    app = routine_app(tmp_path, {"scope": "advice", "steps": [step], "clarify": ""})
+    reply = app.ask(text)
+    assert only_report_previews(app)
+    task = app.ledger.active()
+    assert task and task.preview and task.preview.get("report_settings")
+    after = task.preview["after"]
+    assert after["enabled"] is True and after["frequency"] == freq
+    assert weekday is None or after["weekday"] == weekday
+    assert time is None or after["time"] == time
+    assert said in reply and "다음 보고" in reply
+    assert "필요한 값" not in reply
+    assert report_settings(app)["enabled"] is False  # 승인 전에는 그대로
+    app.ask("네")
+    settings = report_settings(app)
+    assert settings["enabled"] is True and settings["frequency"] == freq
+    assert time is None or settings["time"] == time
+
+
+def test_98_real_hcx_empty_store_plan_turns_the_routine_off(tmp_path):
+    app = routine_app(tmp_path, {"scope": "store", "steps": [], "clarify": "할 일 없음"})
+    box = app.planner_loop.session().toolbox
+    box.settings_store.save(
+        box.ctx["store_id"], {**report_settings(app), "enabled": True, "frequency": "daily"}
+    )
+    reply = app.ask("리뷰 보고 꺼 줘")
+    assert only_report_previews(app)
+    assert "끌까요" in reply and "어떤 가게 일" not in reply
+    assert app.ledger.active().preview["after"]["enabled"] is False
+    assert report_settings(app)["enabled"] is True
+    app.ask("네")
+    assert report_settings(app)["enabled"] is False
+
+
+def test_98_report_rule_keeps_other_feature_steps(tmp_path):
+    from agenthan.agent import planner
+
+    loop = routine_app(tmp_path).planner_loop
+    loop.batch = SimpleNamespace(text="매일 리뷰 요약해서 보내 주고 쿠폰도 만들어 줘")
+    plan = planner.Plan(
+        "advice",
+        (
+            planner.Step("coupon", "쿠폰"),
+            planner.Step("review", "리뷰 요약", review_action="draft"),
+        ),
+        None,
+    )
+    out = loop.report_steps(plan)
+    assert [(s.feature, s.review_action) for s in out.steps] == [
+        ("coupon", None),
+        ("review", "settings"),
+    ]
+    assert out.scope == "store"
+    out = loop.report_steps(planner.Plan("store", (planner.Step("coupon", "쿠폰"),), None))
+    assert [(s.feature, s.review_action) for s in out.steps] == [
+        ("coupon", None),
+        ("review", "settings"),
+    ]
+
+
+def test_98_suggest_needs_a_clear_setting_word(tmp_path):
+    from agenthan.agent import planner
+
+    loop = routine_app(tmp_path).planner_loop
+    draft = planner.Plan("advice", (planner.Step("review", "리뷰", review_action="draft"),), None)
+    loop.batch = SimpleNamespace(text="리뷰 정기 보고 켜 줘")
+    out = loop.report_steps(draft)
+    assert out.scope == "store" and out.steps[0].review_action == "settings"
+    loop.batch = SimpleNamespace(text="불만 리뷰를 보고 뭘 할지 추천해 줘")
+    assert loop.report_steps(draft) is draft
+    loop.batch = SimpleNamespace(text="매일 리뷰 보고 답글 써 줘")
+    assert loop.report_steps(draft) is draft
+
+
+@pytest.mark.parametrize("text", ["요즘 리뷰 어때?", "리뷰 요약해 줘"])
+def test_98_plain_summary_words_stay_a_summary(tmp_path, monkeypatch, text):
+    from agenthan.agent import planner
+
+    monkeypatch.setattr(
+        "agenthan.agent.review_delegate.ask_review_agent",
+        lambda request, session: {"text": "리뷰를 확인했어요.", "blocks": ""},
+    )
+    app = routine_app(tmp_path, new("review", review_action="read"))
+    assert "리뷰를 확인했어요" in app.ask(text)
+    assert not any(t.preview for t in app.ledger.open_tasks())
+    # 조언·초안으로 잡혀도 보고 설정 말이 없으면 계획을 그대로 둔다
+    app.planner_loop.batch = SimpleNamespace(text=text)
+    for scope, action in (("advice", "read"), ("advice", "draft"), ("store", "read")):
+        plan = planner.Plan(scope, (planner.Step("review", "리뷰", review_action=action),), None)
+        assert app.planner_loop.report_steps(plan) is plan

@@ -118,6 +118,40 @@ describe("액션", () => {
     expect(chatArea().getByText("오늘 통계", { selector: "p" })).toBeInTheDocument();
   });
 
+  test("말로 보내는 맥락 칩은 그 말을 대화 한 턴으로 보낸다", async () => {
+    const api = fakeApi([
+      {
+        reply: "리뷰 3건을 살펴봤어요.",
+        place: SEED,
+        pending: [],
+        next_actions: [
+          { action_id: "chat.say", label: "매일 리뷰 요약 받기", args: { text: "매일 리뷰 요약해서 보내 줘" } },
+          { action_id: "stats.week", label: "이번 주 통계 보기", args: {} },
+        ],
+      },
+      { reply: "리뷰 보고를 매일 받을까요?", place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await user.click(screen.getByRole("button", { name: "요즘 리뷰 어때?" }));
+    await user.click(await screen.findByRole("button", { name: "매일 리뷰 요약 받기" }));
+    expect(api.say).toHaveBeenCalledWith("s1", "매일 리뷰 요약해서 보내 줘");
+    expect(api.act).toHaveBeenCalledTimes(1);
+    expect(await chatArea().findByText("매일 리뷰 요약해서 보내 줘", { selector: "p" })).toBeInTheDocument();
+    expect(await chatArea().findByText("리뷰 보고를 매일 받을까요?")).toBeInTheDocument();
+  });
+
+  test("기능 버튼이 있는 맥락 칩은 그 액션을 보낸다", async () => {
+    const api = fakeApi([
+      { reply: "조회 1,260회예요.", place: SEED, pending: [], next_actions: [{ action_id: "review.summary", label: "리뷰 요약 보기", args: {} }] },
+      { reply: "리뷰 3건을 살펴봤어요.", place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await user.click(screen.getByRole("button", { name: "이번 주 손님" }));
+    await user.click(await screen.findByRole("button", { name: "리뷰 요약 보기" }));
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", label: "리뷰 요약 보기", args: {} });
+    expect(api.say).not.toHaveBeenCalled();
+  });
+
   test("승인 카드 취소는 해당 작업을 지정한다", async () => {
     const pending = { task_id: "t3", version: 2, feature: "review", kind: "review" as const, reply: "감사합니다" };
     const api = fakeApi([{ reply: "확인해 주세요", place: SEED, pending: [pending] }]);
@@ -429,14 +463,34 @@ describe("사이드카 [리뷰]", () => {
     expect(within(panel).getByText("답글 달림")).toBeInTheDocument();
   });
 
-  test("답글 초안 받기는 그 리뷰의 답글을 비서에게 부탁한다", async () => {
+  test("답글 초안 받기는 대화 턴 없이 그 카드에 초안을 띄운다", async () => {
     const { user, api } = await open();
     await user.click(screen.getByRole("tab", { name: "리뷰" }));
     const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
+    const log = screen.getByRole("main", { name: "비서와 대화" });
+    const before = log.innerHTML;
+    const drafted = { ...REVIEWS.reviews[0], draft: { text: "불편 드려 죄송합니다.", status: "ready" as const, issues: [] } };
+    api.replyToReview.mockResolvedValueOnce({ review: drafted, summary: { ...REVIEWS.summary, waiting: 1 } });
     const [first] = await within(panel).findAllByRole("button", { name: "답글 초안 받기" });
     await user.click(first);
-    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.draft_reply", args: { review_id: "r04" }, label: "답글 초안 받기" });
+    expect(api.replyToReview).toHaveBeenLastCalledWith("s1", "r04", { op: "draft" });
+    expect(await within(panel).findByRole("textbox", { name: "답글 고치기" })).toHaveValue("불편 드려 죄송합니다.");
+    expect(api.act).not.toHaveBeenCalled();
     expect(api.say).not.toHaveBeenCalled();
+    expect(log.innerHTML).toBe(before); // 대화 화면에는 아무것도 더하지 않는다
+  });
+
+  test("답글 초안을 못 받아도 채팅에는 알리지 않고 카드에만 보인다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "리뷰" }));
+    const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
+    const log = screen.getByRole("main", { name: "비서와 대화" });
+    const before = log.innerHTML;
+    api.replyToReview.mockRejectedValueOnce(new Error("500"));
+    const [first] = await within(panel).findAllByRole("button", { name: "답글 초안 받기" });
+    await user.click(first);
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("서버 오류로 처리하지 못했어요");
+    expect(log.innerHTML).toBe(before);
   });
 });
 
@@ -676,11 +730,10 @@ describe("답글 대기함", () => {
       error: { reason: "checks", message: "검사에 걸렸어요(전화번호 등 개인정보)", issues: ["전화번호 등 개인정보"] },
     });
     const c = card(panel, "커피가 맛있어요.");
-    await user.click(c.getByRole("button", { name: "고치기" }));
     const edit = c.getByRole("textbox", { name: "답글 고치기" });
     await user.clear(edit);
     await user.type(edit, "010-1234-5678로 연락 주세요");
-    await user.click(c.getByRole("button", { name: "이대로 올리기" }));
+    await user.click(c.getByRole("button", { name: "올리기" }));
     expect(api.replyToReview).toHaveBeenLastCalledWith("s1", "r18", { op: "post", text: "010-1234-5678로 연락 주세요" });
     expect(await c.findByRole("alert")).toHaveTextContent("확인이 필요해요: 전화번호 등 개인정보");
     expect(c.getByRole("textbox", { name: "답글 고치기" })).toHaveValue("010-1234-5678로 연락 주세요"); // 고친 문장은 그대로
@@ -716,21 +769,17 @@ describe("답글 대기함", () => {
     expect(chatItems()).toBe(before + 1);
   });
 
-  test("[고치기]는 카드 안에서 고쳐 [이대로 올리기]로 고친 문장을 보내고, [취소]는 초안으로 돌아간다", async () => {
+  test("초안은 카드 입력칸에서 바로 고치고 [올리기]로 고친 문장을 보낸다", async () => {
     const { user, api, panel } = await openInbox();
     const c = card(panel, "커피가 맛있어요.");
-    await user.click(c.getByRole("button", { name: "고치기" }));
-    expect(c.getByRole("textbox", { name: "답글 고치기" })).toHaveValue("다음에도 찾아 주세요.");
-    await user.click(c.getByRole("button", { name: "취소" }));
-    expect(c.queryByRole("textbox", { name: "답글 고치기" })).not.toBeInTheDocument();
-    expect(c.getByText("다음에도 찾아 주세요.")).toBeInTheDocument();
-
-    await user.click(c.getByRole("button", { name: "고치기" }));
     const edit = c.getByRole("textbox", { name: "답글 고치기" });
+    expect(edit).toHaveValue("다음에도 찾아 주세요.");
     await user.clear(edit);
     await user.type(edit, "  커피 칭찬 고맙습니다!  ");
     const before = chatItems();
-    await user.click(c.getByRole("button", { name: "이대로 올리기" }));
+    const posted = inboxWith("r18", { has_owner_reply: true, draft: { text: "커피 칭찬 고맙습니다!", status: "posted", issues: [] } }, { waiting: 2, unanswered: 2 });
+    api.replyToReview.mockResolvedValueOnce({ review: posted.reviews.find((r) => r.id === "r18")!, summary: posted.summary });
+    await user.click(c.getByRole("button", { name: "올리기" }));
     expect(api.replyToReview).toHaveBeenLastCalledWith("s1", "r18", { op: "post", text: "커피 칭찬 고맙습니다!" });
     await waitFor(() => expect(c.queryByRole("textbox", { name: "답글 고치기" })).not.toBeInTheDocument());
     expect(chatItems()).toBe(before);
@@ -793,6 +842,86 @@ describe("답글 대기함", () => {
     localStorage.clear();
     const hidden = await openInbox(fakeApi(), { demo: false });
     expect(hidden.panel.queryByRole("button", { name: "새 리뷰 도착 (데모)" })).not.toBeInTheDocument();
+  });
+});
+
+describe("리뷰 정기 보고 (#98)", () => {
+  const ON = { enabled: true, schedule: "매일 09:00", next_run: "2026-11-08T09:00", text: "매일 09:00 리뷰 요약 받는 중" };
+  const REPORT = {
+    id: "report-1",
+    role: "agent" as const,
+    text: "리뷰 정기 보고 (2026-11-07 ~ 2026-11-08)\n리뷰 3건\n답글 안 단 불만 리뷰 1건이 있어요.",
+    next_actions: [{ action_id: "review.draft_reply", label: "불만 리뷰 답글 초안", args: { review_id: "r09" } }],
+  };
+
+  test("리뷰 탭에 설정 한 줄이 보이고 [지금 받아 보기]는 보고를 대화에 한 번 넣는다", async () => {
+    const api = fakeApi([], { place: SEED, pending: [], review_report: ON });
+    api.runReviewReport.mockResolvedValueOnce({ place: SEED, pending: [], review_report: { ...ON, enabled: false, schedule: null, next_run: null, text: "정기 보고 꺼짐" }, messages: [REPORT] });
+    const user = userEvent.setup();
+    render(<App api={api} reportPollMs={0} />);
+    await user.click(await screen.findByRole("tab", { name: "리뷰" }));
+    const panel = within(await screen.findByRole("tabpanel", { name: "리뷰" }));
+    expect(await panel.findByText("정기 보고 꺼짐")).toBeInTheDocument();
+    await user.click(panel.getByRole("button", { name: "지금 받아 보기" }));
+    expect(api.runReviewReport).toHaveBeenCalledWith("s1");
+    expect(await chatArea().findByText(/답글 안 단 불만 리뷰 1건/)).toBeInTheDocument();
+    expect(chatArea().getByRole("button", { name: "불만 리뷰 답글 초안" })).toBeInTheDocument();
+    expect(api.act).not.toHaveBeenCalled();
+  });
+
+  test("켜진 대화는 세션 조회를 다시 읽다가 정해진 때의 보고를 말풍선 하나로 받는다", async () => {
+    const api = fakeApi([], { place: SEED, pending: [], review_report: ON });
+    api.view.mockResolvedValueOnce({ place: SEED, pending: [], review_report: ON, messages: [REPORT] });
+    render(<App api={api} reportPollMs={20} />);
+    expect(await chatArea().findByText(/리뷰 정기 보고/, {}, { timeout: 2000 })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 100)); // 다시 읽어도 같은 보고는 오지 않는다(서버가 한 번만 준다)
+    expect(chatArea().getAllByText(/리뷰 정기 보고/)).toHaveLength(1);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "리뷰" }));
+    expect(await screen.findByText("매일 09:00 리뷰 요약 받는 중")).toBeInTheDocument();
+  });
+
+  // #112: 보고 설정은 가게 정보가 아니다. 저장 전후 review_report가 바뀌면 결과 줄에 남긴다.
+  const OFF = { enabled: false, schedule: null, next_run: null, text: "정기 보고 꺼짐" };
+  const DAILY = { enabled: true, schedule: "매일 14:47", next_run: "2026-11-08T14:47", text: "매일 14:47 리뷰 요약 받는 중" };
+  const SETTING = { task_id: "t9", version: 1, feature: "review", after: SEED, changes: {} };
+  const CHIPS = [
+    { action_id: "task.approve", label: "모두 저장", args: { task_id: "t9", version: 1 } },
+    { action_id: "task.cancel", label: "모두 취소", args: { task_id: "t9" } },
+  ];
+  test.each([
+    ["켜기", OFF, DAILY, "리뷰 정기 보고: 매일 14:47"],
+    ["바꾸기", ON, DAILY, "리뷰 정기 보고: 매일 14:47"],
+    ["끄기", ON, OFF, "리뷰 정기 보고 끔"],
+  ])("보고 설정 %s를 [모두 저장]하면 결과 줄이 저장 완료이고 오늘 한 일에도 남는다", async (_name, before, after, line) => {
+    const api = fakeApi(
+      [
+        { reply: "리뷰 정기 보고를 바꿀까요?", next_actions: CHIPS, place: SEED, pending: [SETTING], review_report: before },
+        { reply: "저장했어요.", place: SEED, pending: [], review_report: after },
+      ],
+      { place: SEED, pending: [], review_report: before },
+    );
+    const { user } = await open(api);
+    await say(user, "매일 리뷰 요약해서 보내 줘");
+    await user.click(await chatArea().findByRole("button", { name: "모두 저장" }));
+    const result = (await chatArea().findByText("저장 완료")).closest(".result") as HTMLElement;
+    expect(within(result).getByText(line)).toBeInTheDocument();
+    expect(chatArea().queryByText(/저장 안 함/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(line).length).toBeGreaterThan(1); // 오늘 한 일
+  });
+
+  test("[모두 취소]면 보고 설정이 그대로라 지금처럼 저장 안 함이다", async () => {
+    const api = fakeApi(
+      [
+        { reply: "리뷰 정기 보고를 바꿀까요?", next_actions: CHIPS, place: SEED, pending: [SETTING], review_report: OFF },
+        { reply: "취소했어요.", place: SEED, pending: [], review_report: OFF },
+      ],
+      { place: SEED, pending: [], review_report: OFF },
+    );
+    const { user } = await open(api);
+    await say(user, "매일 리뷰 요약해서 보내 줘");
+    await user.click(await chatArea().findByRole("button", { name: "모두 취소" }));
+    const result = (await chatArea().findByText(/저장 안 함/)).closest(".result") as HTMLElement;
+    expect(within(result).queryByText(/리뷰 정기 보고/)).not.toBeInTheDocument();
   });
 });
 

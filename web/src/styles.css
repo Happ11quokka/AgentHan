@@ -630,6 +630,39 @@ p {
   color: var(--ink-3);
 }
 
+/* 음식 사진 초안: 사장님이 메뉴 이름을 입력한다(#93). */
+.draft-name-input {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.draft-name-input input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.draft-name-input input:focus {
+  outline: 0;
+  border-color: var(--green);
+}
+
+.draft-name-input button {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-s);
+  font-weight: 600;
+}
+
 .draft-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1380,6 +1413,39 @@ p {
   color: var(--amber);
 }
 
+/* 리뷰 정기 보고 줄 (#98) */
+.report-routine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.report-routine p {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.report-routine p[data-on="true"] {
+  color: var(--green-ink);
+}
+
+.report-routine .report-howto {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.report-routine .inbox-error {
+  flex-basis: 100%;
+}
+
 .review-list {
   list-style: none;
   margin: 0;
@@ -1939,4 +2005,56 @@ img.working {
 }
 @media (prefers-reduced-motion: reduce) {
   img.working { animation: none; }
+}
+
+/* 처음 쓰는 사장님 온보딩(#94): 승인 카드와 같은 틀을 화면 가운데에 */
+.onboarding {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: var(--surface-2);
+}
+
+.onboarding .onboarding-form {
+  margin-left: 0;
+  width: 100%;
+}
+
+.onboarding-form header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.onboarding-form header p,
+.onboarding-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.field .segmented.chips {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field .segmented.chips button {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
+.onboarding-menus {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 8px;
+}
+
+.onboarding-menus legend {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
 }

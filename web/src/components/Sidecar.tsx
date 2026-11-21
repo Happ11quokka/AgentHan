@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { CONNECTION_TEXT } from "../labels";
-import type { Action, LogEntry, Pending, Period, Place, ReportView, ReviewsView } from "../types";
+import type { Action, LogEntry, Pending, Period, Place, ReportView, ReviewReport, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { Icon } from "./Icon";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
@@ -34,6 +34,9 @@ type Props = {
   onReply: OnReply;
   /** [리뷰 탭에서 보기]가 가리키는 카드(at: 누른 때, 같은 카드를 다시 눌러도 다시 스크롤). */
   focusReview: { id: string; at: number } | null;
+  /** 리뷰 정기 보고 설정 한 줄과 [지금 받아 보기](#98). */
+  reviewReport?: ReviewReport | null;
+  onRunReport?: () => Promise<string | null>;
   onClose: () => void;
 };
 
@@ -98,10 +101,11 @@ export function Sidecar(props: Props) {
           <ReviewsTab
             loaded={props.reviews}
             busy={props.busy}
-            onAction={props.onAction}
             onReply={props.onReply}
             focus={props.focusReview}
             onSimulate={props.onSimulateReview}
+            report={props.reviewReport}
+            onRunReport={props.onRunReport}
           />
         )}
         {tab === "stats" && <StatsTab loaded={props.report} period={props.period} onPeriod={props.onPeriod} />}

@@ -38,6 +38,8 @@ ACTIONS = {
         ),
         Action("task.approve", "저장", "approve", inputs=("task_id", "version")),
         Action("task.cancel", "취소", "cancel", inputs=("task_id",)),
+        # 버튼이 없는 기능의 맥락 칩(agent/suggest.py). 화면은 args.text를 대화 한 턴으로 보낸다.
+        Action("chat.say", "말로 보내기", "say", inputs=("text",), missing="conversation"),
         Action(
             "task.continue",
             "남은 작업 이어하기",

@@ -1,5 +1,7 @@
 """Owner screen backend: menu photos go in over HTTP and come back in pending and place (#63)."""
 
+import base64
+
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient
@@ -53,12 +55,16 @@ def test_food_photo_goes_from_upload_to_a_saved_menu_with_its_photo(tmp_path):
     [waiting] = body["pending"]
     assert waiting["feature"] == "menu" and waiting["kind"] == "photo"
     [draft] = waiting["drafts"]
-    assert draft["name_ko"] == "밀푀유 케이크" and draft["price"] is None
+    # The AI guess is only a placeholder for the name the owner types in the card.
+    assert draft["name_ko"] == "" and draft["name_guess"] == "밀푀유 케이크"
+    assert draft["is_food"] is True and draft["price"] is None
     assert "price_missing" in draft["notes"]
     preview = api.get(draft["photo_url"])
     assert preview.status_code == 200 and preview.headers["content-type"] == "image/jpeg"
     assert preview.content[:3] == b"\xff\xd8\xff"
 
+    [draft] = say(api, session_id, "메뉴 이름: 밀푀유 케이크")["pending"][0]["drafts"]
+    assert draft["name_ko"] == "밀푀유 케이크" and draft["change"] == "new"
     say(api, session_id, "가격 8500원")
     body = say(api, session_id, "네")
     assert "저장했어요" in body["reply"] and body["pending"] == []
@@ -72,6 +78,7 @@ def test_pending_shows_what_saving_the_priced_draft_adds(tmp_path):
     api = client(tmp_path, chat=EditChat({"price": 8500}))
     session_id = start(api)
     send_photo(api, session_id, CAKE.read_bytes())
+    say(api, session_id, "메뉴 이름: 밀푀유 케이크")
 
     [waiting] = say(api, session_id, "가격 8500원")["pending"]
     [added] = waiting["changes"]["menu"]["added"]
@@ -113,7 +120,8 @@ def test_food_photo_asks_the_name_and_the_price_in_one_question(tmp_path):
 
     reply = send_photo(api, session_id, CAKE.read_bytes()).json()["reply"]
     question = reply.splitlines()[-1]
-    assert "밀푀유 케이크" in question and "맞나요" in question and "가격" in question
+    assert "메뉴 이름을 입력해 주세요" in question and "가격" in question
+    assert "AI 추측: 밀푀유 케이크" in question
     assert "이대로 저장할까요" not in reply
 
 
@@ -122,6 +130,12 @@ def test_a_yes_without_a_price_saves_nothing_and_keeps_asking(tmp_path):
     session_id = start(api)
     before = send_photo(api, session_id, CAKE.read_bytes()).json()["place"]
 
+    body = say(api, session_id, "네")
+    assert "메뉴 이름을 입력해 주세요" in body["reply"]
+    assert body["place"] == before and body["pending"][0]["changes"] == {}
+
+    body = say(api, session_id, "메뉴 이름: 밀푀유 케이크")
+    assert "가격은 얼마로 올릴까요" in body["reply"]
     body = say(api, session_id, "네")
     assert "가격은 얼마로 올릴까요" in body["reply"]
     assert body["place"] == before
@@ -197,10 +211,15 @@ def test_food_photo_of_an_existing_menu_attaches_the_photo_without_asking_a_pric
 
     body = send_photo(api, session_id, CAKE.read_bytes()).json()
     [draft] = body["pending"][0]["drafts"]
+    assert draft["change"] == "new" and draft["menu_name"] is None  # Not picked by the AI.
+
+    body = say(api, session_id, "메뉴 이름: 메도빅")
+    [draft] = body["pending"][0]["drafts"]
     assert (draft["change"], draft["previous_price"]) == ("photo_attach", 7500)
     assert draft["menu_name"] == "메도빅"  # The screen answers with "메도빅 사진 바꿔".
     question = body["reply"].splitlines()[-1]
-    assert "메도빅" in question and "사진" in question and "가격" not in question
+    assert question.startswith("기존 메뉴 메도빅에 이 사진을 붙일까요?")
+    assert "가격" not in question
 
     body = say(api, session_id, "네")
     assert body["reply"] == question  # A bare yes asks the same question; nothing is saved.
@@ -247,3 +266,41 @@ def test_a_board_line_without_a_price_shows_no_change_until_every_line_is_filled
     rows = {d["name_ko"]: d for d in waiting["drafts"]}
     assert (rows["메도빅"]["change"], rows["메도빅"]["previous_price"]) == (None, 7500)
     assert waiting["changes"] == {}  # Nothing is saved while line 1 has no price.
+
+
+class SizeCheckingV3(FakeV3):
+    """HCX-005 refuses images whose long side is over 2240px (docs/research/01)."""
+
+    def __init__(self):
+        super().__init__()
+        self.sides = []
+
+    def __call__(self, model, body):
+        content = body["messages"][-1]["content"]
+        if isinstance(content, list):
+            uri = content[0]["dataUri"]["data"]
+            raw = base64.b64decode(uri.split(",", 1)[1])
+            image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            self.sides.append(max(image.shape[:2]))
+        return super().__call__(model, body)
+
+
+def phone_photo(width=4032, height=3024, ext=".png"):
+    # Noise keeps the PNG large: a phone camera photo is this wide and often over 10MB.
+    noise = np.random.default_rng(0).integers(0, 256, (height, width, 3), dtype=np.uint8)
+    ok, encoded = cv2.imencode(ext, noise)
+    assert ok
+    return encoded.tobytes()
+
+
+def test_a_big_phone_photo_is_shrunk_before_the_vision_model_reads_it(tmp_path):
+    fake = SizeCheckingV3()
+    api = client(tmp_path, fake=fake)
+    session_id = start(api)
+    image = phone_photo()
+    assert len(image) > 10 * 1024 * 1024
+
+    body = send_photo(api, session_id, image).json()
+
+    assert "밀푀유 케이크" in body["reply"]
+    assert fake.sides and max(fake.sides) <= 2240

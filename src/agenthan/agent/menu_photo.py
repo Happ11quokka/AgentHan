@@ -79,6 +79,8 @@ class MenuDraft:
     is_food: bool = False
     possible_menu_id: str | None = None
     possible_menu_name: str | None = None
+    # 음식 사진: 사장님이 맞는 기존 메뉴 대신 새 메뉴로 올리기로 골랐다(#93).
+    as_new: bool = False
 
     @property
     def complete(self) -> bool:
@@ -100,6 +102,35 @@ def detect_mime(data: bytes) -> str:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
     raise MenuPhotoError("JPG·PNG·WEBP 사진만 읽을 수 있어요.")
+
+
+MAX_SIDE = 2240  # HCX-005 이미지 긴 변 한도 (docs/research/01-agent-hcx-langgraph.md)
+
+
+def fit_for_vision(data: bytes) -> bytes:
+    """폰 사진처럼 긴 변이 MAX_SIDE를 넘거나 10MB를 넘는 사진을 JPEG로 줄인다.
+
+    읽을 수 없는 사진은 그대로 돌려준다(형식 오류는 뒤 단계가 사장님 말로 알린다).
+    """
+    import cv2
+    import numpy as np
+
+    try:
+        # COLOR는 EXIF 방향을 반영한다. 줄인 JPEG에는 EXIF가 없으니 여기서 돌려 둬야 한다.
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    except cv2.error:
+        return data
+    if image is None:
+        return data
+    height, width = image.shape[:2]
+    if max(height, width) <= MAX_SIDE and len(data) <= MAX_IMAGE_BYTES:
+        return data
+    scale = min(1.0, MAX_SIDE / max(height, width))
+    if scale < 1.0:
+        size = (max(1, round(width * scale)), max(1, round(height * scale)))
+        image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    return encoded.tobytes() if ok else data
 
 
 def _content(result: dict) -> str:

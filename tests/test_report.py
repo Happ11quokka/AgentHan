@@ -223,6 +223,48 @@ def test_alert_only_conversation_asks_before_turning_reports_on():
     assert "다음 보고" in out
 
 
+def test_turning_reports_on_without_a_frequency_asks_for_a_suggestion():
+    # '켜 줘'는 주기가 없으니 가게 리뷰 양에 맞춘 주기를 제안한다 (#98)
+    assert parse_report_request("리뷰 정기 보고 켜 줘") == ("suggest", {})
+    assert parse_report_request("리뷰 보고 꺼 줘") == ("off", {})
+    assert parse_report_request("매일 리뷰 요약해서 보내 줘") == ("set", {"frequency": "daily"})
+
+
+def test_report_digest_is_one_short_message_with_unanswered_complaints(tmp_path):
+    from agenthan.agent.review.report import report_digest, schedule_text
+    from agenthan.eval.fake_backend import FakeBackend
+    from agenthan.tools.dummy_store import SEED_PATH, DummyStore
+
+    (tmp_path / "store.json").write_bytes(SEED_PATH.read_bytes())
+    store = DummyStore(tmp_path / "store.json")
+    data = store.read()
+    data["reviews"].append(
+        {
+            "review_id": "r09",
+            "visit_date": "2026-11-06",
+            "rating": 1,
+            "text": "맛이 없어요. 최악이에요.",
+            "has_owner_reply": False,
+        }
+    )
+    store.write(data)
+    box = FakeBackend().review_session(store, today=date(2026, 11, 7)).toolbox
+    r = run_report(**box.ctx, settings={"frequency": "monthly"})
+    assert r["unanswered"]["negative_ids"] == ["r09"]  # 답글 칩이 가리킬 리뷰
+    text = report_digest(r)
+    assert text.startswith("리뷰 정기 보고")
+    assert "아직 답글을 안 단 불만 리뷰가 모두 1건 있어요" in text
+    assert len(text.splitlines()) <= 4
+    quiet = run_report(
+        store_id="황금반점", today=TODAY, repo=REPO, settings={"frequency": "weekly"}
+    )
+    assert "아직 답글을 안 단 불만 리뷰는 없어요" in report_digest(quiet)
+    on = {"enabled": True, "frequency": "weekly", "weekday": "mon", "time": "09:00"}
+    assert schedule_text(on) == "매주 월요일 09:00"
+    assert schedule_text({**on, "frequency": "daily"}) == "매일 09:00"
+    assert schedule_text({**on, "enabled": False}) is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

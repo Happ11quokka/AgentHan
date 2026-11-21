@@ -23,7 +23,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from agenthan.agent import (
@@ -34,6 +34,7 @@ from agenthan.agent import (
     planner,
     report_explainer,
     review_delegate,
+    suggest,
     turn_graph,
     value_source,
 )
@@ -102,6 +103,10 @@ SAID_FOOD_NAME = re.compile(
     r"(?:이거|이건|이것은|이 메뉴는?|이름은)\s*([가-힣A-Za-z][가-힣A-Za-z ]{0,18}?)\s*"
     r"(?:이에요|예요|에요|입니다|이야|야|이요|요)?[.!~]*\s*$"
 )
+# 음식 사진 승인 카드의 이름 입력칸이 보내는 말(#93). 모델 없이 코드가 그대로 이름으로 쓴다.
+FOOD_NAME_INPUT = re.compile(r"^\s*메뉴\s*이름\s*[:：]\s*(\S.{0,39}?)\s*$")
+# 이름이 기존 메뉴와 맞을 때 붙이지 않고 새 메뉴로 올리기("새 메뉴로 올려 줘").
+NEW_MENU = re.compile(r"새\s*메뉴로")
 ASK_WORDS = re.compile(r"줘|주세요|해|올려|저장|등록|바꿔|봐")
 # A reply that adds another change to the shown one, or asks for several at once.
 ADD_HINT = re.compile(r"그리고|추가로|하나\s*더|또\s|(?<=[가-힣])도\s")
@@ -523,8 +528,22 @@ PHOTO_TEXT = {
     "none": "사진에서 메뉴를 찾지 못했어요. 메뉴판이 잘 보이게 다시 찍어 주세요.",
     "saved": "저장했어요 (더미 플레이스, 실제 네이버 반영 없음):",
     "save_failed": "사진이나 메뉴를 저장하지 못했어요. 다시 시도해 주세요.",
-    "attach": "기존 메뉴 {name}에 이 사진을 붙일까요? 맞으면 '{name} 사진 바꿔'라고 말해 주세요.",
-    "need_name_price": "메뉴 이름과 가격을 알려 주세요.",
+    "attach": (
+        "기존 메뉴 {name}에 이 사진을 붙일까요? 붙이려면 '{name} 사진 바꿔', "
+        "새 메뉴로 올리려면 '새 메뉴로 올려 줘'라고 말해 주세요."
+    ),
+    "need_food_name": (
+        "사진만으로는 메뉴 이름을 알 수 없어요. 메뉴 이름을 입력해 주세요 (AI 추측: {guess})."
+    ),
+    "need_food_name_price": (
+        "사진만으로는 메뉴 이름을 알 수 없어요. 메뉴 이름을 입력해 주세요 (AI 추측: {guess}). "
+        "가격도 알려 주세요."
+    ),
+    "food_unnamed": "이름 입력 필요 (AI 추측: {guess})",
+    "same_name": (
+        "같은 이름의 메뉴 {name}이(가) 이미 있어서 새 메뉴로 올릴 수 없어요. "
+        "다른 이름을 입력해 주세요."
+    ),
     "need_name": "메뉴 이름을 알려 주세요. (지금: {name})",
     "confirm_name_price": "이름이 '{name}' 맞나요? 가격은 얼마로 올릴까요?",
     "need_lines": "저장 전에 알려 주세요: {lines}",
@@ -622,6 +641,8 @@ class OwnerAssistant:
         self._act: str | None = None  # Route.act of this owner turn, checked by code.
         self._targets: dict | None = None  # Candidate records for this turn's id parameter.
         self.today = today or date.today()
+        # 지금 시각(리뷰 정기 보고의 다음 보고 시각, #98). 서버가 시계를 바꿔 끼운다
+        self.clock: Callable[[], datetime] = datetime.now
         self._clarify_options: tuple[str, ...] = ()
         self.trace: dict = new_trace(None, "none")
         self.owner_lang = owner_lang
@@ -635,6 +656,8 @@ class OwnerAssistant:
         self._turn_route: Route | None = None
         self._turn_plan_input: dict | None = None  # Shadow planner input, read before the turn.
         self.next_actions: list[dict] = []
+        # next_actions 중 맥락 칩(agent/suggest.py). 화면 제안일 뿐이라 "네"로 동의할 제안이 아니다.
+        self.context_chips: list[dict] = []
         # planner 모드에서 "최근 보여 준 것"(ref)으로 고른 대상. 값 출처는 lookup으로 남는다.
         self._ref_lookup: dict | None = None
         self.turns = turn_graph.build(self)
@@ -998,7 +1021,34 @@ class OwnerAssistant:
         text = text.strip()
         if not text:
             return HELP
-        return turn_graph.run(self.turns, text)
+        reply = turn_graph.run(self.turns, text)
+        if self.agent_mode == "planner":
+            self.next_actions = self._suggest(self.next_actions)
+        return reply
+
+    def _suggest(self, existing: list[dict], action_id: str | None = None) -> list[dict]:
+        """이번 턴에 한 일과 가게 데이터로 맥락 칩을 붙인다(규칙은 agent/suggest.py 표).
+
+        승인 대기 미리보기가 있는 턴에는 붙이지 않는다(저장 버튼을 가리지 않게). 조언 턴은
+        신호→플레이북 칩(planner_loop.advice)이 이미 이번 맥락의 처방이라 더 붙이지 않는다."""
+        self.context_chips = []
+        if any(t.preview for t in self.ledger.open_tasks()):
+            return existing
+        if ((self.trace or {}).get("planner") or {}).get("scope") == "advice":
+            return existing
+        done = suggest.done_in(self.trace or {}, action_id)
+        if not done:
+            return existing
+        settings = None
+        box = getattr(self.review, "toolbox", None)
+        if box is not None and getattr(box, "settings_store", None) is not None:
+            settings = box.settings_store.get(box.ctx["store_id"])
+        facts = suggest.facts(self.store.read(), settings, self.today)
+        merged = suggest.merge(list(existing), done, facts)
+        self.context_chips = copy.deepcopy(merged[len(existing) :])
+        if self.trace is not None:
+            self.trace["next_actions"] = copy.deepcopy(merged)
+        return merged
 
     def run_action(self, action_id: str, args: dict, label: str) -> dict:
         """화면이 선택한 동작을 기능 선택 없이 실행한다."""
@@ -1007,6 +1057,24 @@ class OwnerAssistant:
             raise ValueError("없는 버튼입니다.")
         if not isinstance(args, dict) or set(args) - set(spec.inputs):
             raise ValueError("버튼 입력을 확인해 주세요.")
+        if action_id == "chat.say":
+            # 말로 보내는 칩: 그 말을 사장님 말 한 턴으로 처리한다(화면도 보통 대화로 보낸다).
+            text = args.get("text")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("버튼 입력을 확인해 주세요.")
+            reply = self.ask(text)
+            return {
+                "reply": reply,
+                "next_actions": self.next_actions if self.agent_mode == "planner" else [],
+            }
+        result = self._run_action(spec, action_id, args, label)
+        if self.agent_mode == "planner":
+            self.next_actions = result["next_actions"] = self._suggest(
+                result.get("next_actions") or [], action_id
+            )
+        return result
+
+    def _run_action(self, spec, action_id: str, args: dict, label: str) -> dict:
         if action_id == "task.continue" and self.agent_mode != "planner":
             raise ValueError("계획 모드의 남은 작업 버튼입니다.")
         values = {**spec.fixed, **args}
@@ -2179,6 +2247,7 @@ class OwnerAssistant:
         t = PHOTO_TEXT
         shop = self.store.read()["shop"]
         context = " ".join(filter(None, [shop.get("name"), shop.get("category")]))
+        image = menu_photo.fit_for_vision(image)  # 폰 사진은 HCX-005 해상도 한도를 넘는다 (#91)
         try:
             kind = food_photo.classify_photo(image, call=self.clova_v3)
             if kind == "other":
@@ -2244,12 +2313,15 @@ class OwnerAssistant:
         draft.description = description.strip() if isinstance(description, str) else ""
 
     def _refresh_food_match(self, draft):
+        """사장님이 입력한 이름(name_ko)과 맞는 기존 메뉴를 찾는다. AI 추측 이름·후보로는
+        찾지 않는다(#93). 사장님이 새 메뉴로 고르면(as_new) 비슷한 이름은 넘기지만, 저장된
+        메뉴와 이름이 똑같으면 새로 만들 수 없으니 그 메뉴를 다시 묻는다."""
         draft.possible_menu_id = draft.possible_menu_name = None
-        for name in [draft.name_ko, *draft.candidates]:
-            match = menu_photo.match_known(name, self.knowledge)
-            if match:
-                draft.possible_menu_id, draft.possible_menu_name = match[0].id, match[0].name_ko
-                break
+        if not draft.name_ko.strip():
+            return
+        match = None if draft.as_new else menu_photo.match_known(draft.name_ko, self.knowledge)
+        if match:
+            draft.possible_menu_id, draft.possible_menu_name = match[0].id, match[0].name_ko
         # 저장소가 지식보다 최신일 수도 있다.
         for record in self.store.read()["menus"]:
             if record["name"].casefold() == draft.name_ko.casefold():
@@ -2269,6 +2341,8 @@ class OwnerAssistant:
         lines = []
         for i, d in enumerate(self.menu_drafts or [], 1):
             name = d.name_ko or "?"
+            if d.is_food and not d.name_ko:
+                name = t["food_unnamed"].format(guess=d.name_read or "?")
             if d.name_native and d.name_native != d.name_ko:
                 name += f" ({d.name_native})"
             price = f"{d.price:,}{t['won']}" if d.price else "?"
@@ -2284,17 +2358,13 @@ class OwnerAssistant:
             marks = ([t["existing"]] if d.menu_id else []) + change_marks + [t[n] for n in d.notes]
             if marks:
                 line += f"  [{', '.join(marks)}]"
-            if d.is_food and d.candidates:
+            if d.is_food and d.candidates and not d.name_ko:
                 line += (
                     "\n혹시 "
                     + ", ".join(f"{i}번 {name}" for i, name in enumerate(d.candidates, 1))
-                    + "인가요?"
+                    + "인가요? ('2번 후보'처럼 골라도 돼요)"
                 )
-            if d.is_food and d.possible_menu_name:
-                line += (
-                    f"\n기존 메뉴 {d.possible_menu_name}의 사진을 바꿀까요? "
-                    "(메뉴 이름과 사진 변경을 확인해 주세요)"
-                )
+            # 기존 메뉴와 맞으면 붙일지는 _missing_question이 묻는다(#93).
             lines.append(line)
         return "\n".join(lines)
 
@@ -2313,6 +2383,32 @@ class OwnerAssistant:
             self._clear_photo_preview()
             return self._finish(t["cancel"], [], [])
         draft = self.menu_drafts[0] if self.menu_drafts else None
+        food = draft if draft and draft.is_food and len(self.menu_drafts) == 1 else None
+        typed = FOOD_NAME_INPUT.match(text) if food else None
+        if typed:
+            # 승인 카드의 이름 입력칸(#93): 사장님이 쓴 이름 그대로. 모델을 부르지 않는다.
+            self._apply_draft_edit({"number": 1, "name_ko": typed.group(1)})
+            answer = t["edited"] + "\n" + self._draft_lines()
+            return self._finish(answer + "\n" + self._photo_question(), [], [])
+        if food and food.possible_menu_name and not food.menu_id and NEW_MENU.search(text):
+            same = next(
+                (
+                    m
+                    for m in self.store.read()["menus"]
+                    if menu_photo.normalize(m["name"]) == menu_photo.normalize(food.name_ko)
+                ),
+                None,
+            )
+            if same is not None:
+                return self._finish(
+                    t["same_name"].format(name=same["name"]) + "\n" + self._photo_question(),
+                    [],
+                    [],
+                )
+            food.as_new = True
+            self._refresh_food_match(food)
+            answer = t["edited"] + "\n" + self._draft_lines()
+            return self._finish(answer + "\n" + self._photo_question(), [], [])
         if (
             draft
             and draft.is_food
@@ -2364,7 +2460,9 @@ class OwnerAssistant:
         if len(drafts) == 1 and drafts[0].is_food:
             d = drafts[0]
             if not d.name_ko.strip():
-                return t["need_name_price"]
+                # 사진만으로는 이름을 확정하지 않는다(#93): AI 추측은 참고로만 보인다.
+                key = "need_food_name" if d.price else "need_food_name_price"
+                return t[key].format(guess=d.name_read or "?")
             if d.price:
                 return t["need_name"].format(name=d.name_ko)
             return t["confirm_name_price"].format(name=d.name_ko)
@@ -2493,6 +2591,7 @@ class OwnerAssistant:
             if d.is_food and d.name_ko != old_name:
                 d.name_native = ""
                 d.menu_id = None
+                d.as_new = False
                 d.candidates = []
                 if not isinstance(arguments.get("description"), str):
                     self._regenerate_food_description(d)

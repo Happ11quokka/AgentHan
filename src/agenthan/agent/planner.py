@@ -700,7 +700,9 @@ def parse_ledger_plan(
     if scope in ("out", "small_talk", "history") and steps:
         raise PlanError("out of scope with steps")
     if scope in ("store", "advice") and not steps and clarify is None:
-        raise PlanError("no step and nothing to clarify")
+        # 할 일을 못 찾은 계획이다. 오류로 보면 안전망 DASH가 말속 단어로 기능을 골라 버린다
+        # (회의 잡담 "…리뷰 쪽은 잘 받는 것 같고" → 리뷰 요약, #92). 무엇을 도울지 되묻는다.
+        clarify = "할 일 없음"
     history_ids = data.get("history_ids", [])
     history_ids = history_ids if isinstance(history_ids, list) else [history_ids]
     if scope == "history":

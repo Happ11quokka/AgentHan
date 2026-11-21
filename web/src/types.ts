@@ -54,6 +54,10 @@ export type DraftRow = {
   menu_name: string | null;
   notes: string[];
   photo_url: string | null;
+  /** 음식 사진 초안. 이름은 사장님이 카드에 입력한다(#93). 예전 서버 응답에는 없을 수 있다. */
+  is_food?: boolean;
+  /** 음식 사진에서 AI가 추측한 이름. 확정값이 아니라 입력칸 자리표시자로만 쓴다. */
+  name_guess?: string | null;
 };
 
 export type Pending = {
@@ -69,7 +73,20 @@ export type Pending = {
   drafts?: DraftRow[];
 };
 
-export type View = { place: Place; pending: Pending[] };
+/** 가게 이름·업종. 둘 중 하나라도 비면 처음 쓰는 가게라 온보딩을 띄운다(#94). 예전 서버 응답에는 없다. */
+export type ShopInfo = { name: string; category: string };
+
+/** 리뷰 정기 보고 설정 한 줄(#98). text: "매일 09:00 리뷰 요약 받는 중" / "정기 보고 꺼짐". */
+export type ReviewReport = { enabled: boolean; schedule: string | null; next_run: string | null; text: string };
+
+/** 사장님 말 없이 비서가 먼저 보낸 메시지(정해진 때의 리뷰 보고 등). 서버는 한 번만 건넨다. */
+export type ServerMessage = { id: string; role: "agent"; text: string; next_actions?: Action[] };
+
+/** review_report·messages: 예전 서버 응답에는 없다. */
+export type View = { place: Place; pending: Pending[]; shop?: ShopInfo; review_report?: ReviewReport; messages?: ServerMessage[] };
+
+/** 온보딩에서 사장님이 직접 넣은 값만 (POST /onboarding). 메뉴는 0~3개. */
+export type OnboardingInput = ShopInfo & { menus: Array<{ name: string; price: number }> };
 
 export type Action = { action_id: string; label: string; args: Record<string, unknown> };
 
@@ -110,8 +127,8 @@ export type ReplyDraft = { text: string; status: DraftStatus; issues: string[] }
 export type RedraftHint = "shorter" | "more_apologetic" | "warmer";
 
 /** 답글 대기함 카드 버튼 (POST /reviews/{id}/reply). 대화 턴이 아니다. */
-export type ReplyOpName = "post" | "skip" | "redraft";
-export type ReplyOp = { op: "post"; text?: string } | { op: "skip" } | { op: "redraft"; hint: RedraftHint };
+export type ReplyOpName = "draft" | "post" | "skip" | "redraft";
+export type ReplyOp = { op: "draft" } | { op: "post"; text?: string } | { op: "skip" } | { op: "redraft"; hint: RedraftHint };
 /** reason: checks(검사 거절) | replied | busy | empty | save_failed | draft_failed | server(화면: 서버에 닿지 못함). */
 export type ReplyError = { reason: string; message: string; issues: string[] };
 export type ReplyResult = { review: ReviewRow; summary: ReviewsView["summary"]; error?: ReplyError };

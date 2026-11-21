@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { ApiError, type AssistantApi } from "../api";
-import type { Action, DraftRow, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, Turn, View } from "../types";
+import type { Action, DraftRow, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, Turn, View } from "../types";
 
 export const SEED: Place = {
   menu: [
@@ -187,6 +187,7 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
       if (view instanceof Error) throw view;
       return view;
     }),
+    onboard: vi.fn(async (_id: string, values: OnboardingInput): Promise<View> => ({ place: SEED, pending: [], shop: { name: values.name, category: values.category } })),
     reviews: vi.fn(async (_id: string) => REVIEWS),
     simulateReview: vi.fn(async (_id: string) => ({ ...REVIEWS, review_id: "sim-01" })),
     // 기본: 그 리뷰를 그대로 돌려준다(테스트마다 mockResolvedValue로 결과를 정한다).
@@ -195,6 +196,7 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
       return { review, summary: INBOX.summary };
     }),
     report: vi.fn(async (_id: string, period: Period) => report(period)),
+    runReviewReport: vi.fn(async (_id: string): Promise<View> => ({ place: SEED, pending: [], messages: [] })),
   } satisfies AssistantApi;
   return api;
 }

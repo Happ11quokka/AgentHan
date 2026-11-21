@@ -359,3 +359,67 @@ def test_chat_approval_card_flow_still_works(make):
     assert card["kind"] == "review" and card["review_id"] == "r09"
     done = s.action("task.approve", {"task_id": card["task_id"], "version": card["version"]}).json()
     assert done["pending"] == [] and "저장했어요" in done["reply"]
+
+
+# ---------------------------------------------------------------- 카드 [답글 초안 받기] (#96)
+def test_draft_op_writes_a_fresh_draft_into_the_card_without_a_chat_turn(make):
+    s = make(prepare_on_start=False)
+    s.reviews()
+    inbox.inbox_of(
+        s.assistant
+    )  # 리뷰 도구 상자는 대기함이 처음 쓸 때 만든다 (대화 기록은 비어 있음)
+    state = conversation_state(s.assistant)
+    body = s.reply("r09", "draft").json()
+    assert set(body) == {"review", "summary"}  # error 없음
+    assert body["review"]["id"] == "r09" and body["review"]["has_owner_reply"] is False
+    assert body["review"]["draft"]["status"] == "ready" and body["review"]["draft"]["text"]
+    assert body["summary"]["waiting"] == 1 and body["summary"]["preparing"] == 0
+    [call] = s.writer.calls
+    assert call["text"] == SEED["r09"] and not call.get("edit_request")  # 새로 쓰기
+    # 대화 턴이 아니다: 대화 기록·원장·trace·승인 카드 모두 그대로
+    assert conversation_state(s.assistant) == state
+    assert s.api.get(f"/assistant/sessions/{s.sid}/place").json()["pending"] == []
+    assert review_text(s.store, "r09")["has_owner_reply"] is False  # 올리지는 않는다
+    assert by_id(s.reviews())["r09"]["draft"] == body["review"]["draft"]
+
+
+def test_draft_op_keeps_an_existing_draft_and_retries_a_failed_one(make):
+    writer = Writer(fail=[SEED["r12"][:10]])
+    s = make(writer)
+    rows = by_id(s.reviews())
+    n = len(writer.calls)
+    # 이미 초안이 있으면 다시 쓰지 않고 그대로 돌려준다 (두 번 눌러도 안전)
+    body = s.reply("r14", "draft").json()
+    assert "error" not in body and body["review"]["draft"] == rows["r14"]["draft"]
+    assert len(writer.calls) == n
+    # 실패한 초안은 다시 써 보고, 또 실패하면 draft_failed
+    failed = s.reply("r12", "draft").json()
+    assert failed["error"]["reason"] == "draft_failed"
+    assert failed["review"]["draft"]["status"] == "failed"
+    writer.fail = ()
+    again = s.reply("r12", "draft").json()
+    assert "error" not in again and again["review"]["draft"]["status"] == "ready"
+    # 답글이 달린 리뷰, 고친 문장, 없는 리뷰
+    assert "error" not in s.reply("r19", "post").json()
+    assert s.reply("r19", "draft").json()["error"]["reason"] == "replied"
+    assert s.reply("r13", "draft", text="x").status_code == 400
+    assert s.reply("nope", "draft").status_code == 404
+
+
+def test_draft_op_is_busy_while_that_review_is_being_written(make):
+    gate = threading.Event()
+    s = make(Writer(gate=gate), prepare_on_start=False)
+    s.reviews()
+    results = []
+    worker = threading.Thread(target=lambda: results.append(s.reply("r09", "draft").json()))
+    worker.start()
+    for _ in range(200):  # 그 리뷰를 잡을 때까지
+        if s.reviews(wait=False)["summary"]["preparing"] == 1:
+            break
+        time.sleep(0.01)
+    # HCX를 기다리는 동안 세션 잠금은 풀려 있다: 같은 리뷰를 또 누르면 busy로 바로 답한다
+    assert s.reply("r09", "draft").json()["error"]["reason"] == "busy"
+    gate.set()
+    worker.join(5)
+    assert "error" not in results[0] and results[0]["review"]["draft"]["status"] == "ready"
+    assert len(s.writer.calls) == 1

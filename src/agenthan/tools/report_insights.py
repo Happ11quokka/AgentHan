@@ -22,7 +22,8 @@ def reply_insight(shop: dict) -> Insight | None:
     rows = [
         r
         for r in shop.get("reviews", [])
-        if r.get("rating", 5) <= 3 and not r.get("has_owner_reply")
+        # 네이버 리뷰에는 별점이 없다(rating None). 별점 없는 리뷰는 낮은 별점으로 세지 않는다.
+        if isinstance(r.get("rating"), int) and r["rating"] <= 3 and not r.get("has_owner_reply")
     ]
     if not rows:
         return None
