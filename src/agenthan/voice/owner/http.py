@@ -180,7 +180,7 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
 
     @router.post("/orders/{order_id}/accept")
     async def accept(order_id: str, body: AcceptBody | None = None) -> dict[str, Any]:
-        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(승인 전 카드의 확인 버튼과 같은 주소)."""
+        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(승인 전 카드 버튼과 같은 주소)."""
         delay_min = body.delay_min if body is not None else 0
         with _hub_errors({404: "그런 주문이 없어요",
                           409: "이미 결정했거나 손님이 주문을 고치는 중이에요"}):
