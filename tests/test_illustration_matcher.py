@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from agenthan.illustration import library
+from agenthan.illustration import embedding_index, library
 from agenthan.illustration.matcher import assign_illustration, assign_missing, pick_illustration
 
 
@@ -126,9 +126,12 @@ def test_assign_missing_fills_menus_without_their_own_illustration():
 
 
 def test_a_category_default_is_upgraded_when_the_catalog_grows(fake_catalog):
-    """예전에 기본 그림을 받은 메뉴도 카탈로그에 자기 그림이 생기면 세션을 열 때 바뀐다."""
+    """예전에 기본 그림을 받은 메뉴도 카탈로그에 자기 그림이 생기면(카탈로그 지문이 바뀐 뒤
+    처음 세션을 열 때) 바뀐다. 지문이 그대로면 기본 그림을 다시 고르지 않는다."""
     menus = [{"id": "a", "name": "메도빅", "illustration": "default_cake"}]
-    assert assign_missing(menus, broken_embed) is True
+    assert assign_missing(menus, broken_embed) is False
+    assert menus[0]["illustration"] == "default_cake"
+    assert assign_missing(menus, broken_embed, repick_defaults=True) is True
     assert menus[0]["illustration"] == "cake_medovik"
 
 
@@ -140,3 +143,144 @@ def test_an_own_illustration_stays_until_the_name_changes(fake_catalog):
     assert assign_illustration(menu, broken_embed) is True
     assert menu["illustration"] == "cake_medovik_choco"
     assert assign_illustration(menu, broken_embed) is False  # 같은 이름이면 같은 그림
+
+
+# --- 임베딩 단계(티켓 06): 키워드 다음, 분류 기본 그림 전 ---------------------------------
+
+AXES = ("cake_medovik", "drink_latte", "dish_borsch")
+
+
+def axis(*weights):
+    """AXES 순서의 축에 무게를 둔 1024차원 벡터."""
+    return [*weights, *[0.0] * (1024 - len(weights))]
+
+
+@pytest.fixture
+def embedded_catalog(tmp_path, monkeypatch):
+    """기본 그림 8개 + 메도빅·라떼·보르시, 그리고 가짜 임베딩 인덱스(그림마다 축 하나)."""
+    rows = [
+        {"id": i, "name": c, "aliases": [], "keywords": [], "category": c, "recipe": {}}
+        for c, i in library.DEFAULT_IDS.items()
+    ]
+    for key, name, keyword, category in (
+        ("cake_medovik", "메도빅", "메도빅", "cake"),
+        ("drink_latte", "카페라떼", "라떼", "coffee"),
+        ("dish_borsch", "보르시", "보르시", "soup"),
+    ):
+        rows.append(
+            {"id": key, "name": name, "aliases": [], "keywords": [keyword],
+             "category": category, "recipe": {}}
+        )
+    (tmp_path / "fake.json").write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(library, "CATALOG_DIR", tmp_path)
+    library.load_catalog.cache_clear()
+    order = [*AXES, *(row["id"] for row in rows if row["id"] not in AXES)]
+    items = {}
+    for row in rows:
+        vector = [0.0] * 1024
+        vector[order.index(row["id"])] = 1.0  # 그림마다 서로 다른 축: AXES가 0·1·2번 축
+        items[row["id"]] = {"text": embedding_index.embedding_text(row), "vector": vector}
+    monkeypatch.setattr(embedding_index, "stored", lambda: items)
+    yield items
+    library.load_catalog.cache_clear()
+
+
+def embed_from(vectors, calls=None):
+    """이름 → 벡터 표로 만든 가짜 임베딩. calls에 부른 이름을 쌓는다."""
+
+    def embed(text):
+        if calls is not None:
+            calls.append(text)
+        return vectors[text]
+
+    return embed
+
+
+def test_an_unknown_name_gets_the_nearest_illustration(embedded_catalog):
+    embed = embed_from({"보르쉬": axis(0.1, 0.0, 0.95)})
+    assert pick_illustration("보르쉬", None, embed) == "dish_borsch"
+
+
+def test_a_far_name_falls_back_to_the_category_default(embedded_catalog):
+    embed = embed_from({"가나다": axis(1.0, 1.0, 1.0)})  # 세 그림과 모두 0.58: 기준값 미만
+    assert pick_illustration("가나다", "Tea", embed) == "default_tea"
+    assert pick_illustration("가나다", None, embed) == "default_other"
+
+
+def test_a_category_clue_keeps_the_match_in_its_group(embedded_catalog):
+    """케이크 그림이 조금 더 가까워도 분류가 커피면 커피 그림 안에서 고른다
+    ("바닐라 라떼"가 "바닐라 치즈케이크"로 가지 않게)."""
+    embed = embed_from({"가나다": axis(0.72, 0.69)})
+    assert pick_illustration("가나다", "Coffee", embed) == "drink_latte"
+    assert pick_illustration("가나다", None, embed) == "cake_medovik"
+
+
+def test_a_failing_embedding_or_missing_key_falls_back_without_raising(
+    embedded_catalog, monkeypatch
+):
+    from agenthan.core import embedding
+
+    monkeypatch.delenv("CLOVASTUDIO_API_KEY", raising=False)
+
+    def no_network(*_args, **_kwargs):
+        pytest.fail("그림 고르기 테스트는 네트워크를 쓰지 않는다")
+
+    monkeypatch.setattr(embedding.urllib.request, "urlopen", no_network)
+    assert pick_illustration("보르쉬", "Soup", embedding.embed_text) == "default_soup"
+    assert pick_illustration("보르쉬", "Soup", broken_embed) == "default_soup"
+    assert pick_illustration("보르쉬", None, lambda _: [0.0] * 3) == "default_other"  # 깨진 벡터
+
+
+def test_a_stale_index_line_is_not_a_candidate(embedded_catalog):
+    """그림 이름·별칭이 바뀌었는데 인덱스를 다시 만들지 않았으면 그 벡터는 쓰지 않는다."""
+    embedded_catalog["dish_borsch"]["text"] = "예전 이름"
+    embed = embed_from({"보르쉬": axis(0.1, 0.0, 0.95)})
+    assert pick_illustration("보르쉬", None, embed) == "default_other"
+
+
+def test_exact_names_and_keywords_never_call_the_embedding(embedded_catalog):
+    calls = []
+    embed = embed_from({}, calls)
+    assert pick_illustration("메도빅", None, embed) == "cake_medovik"
+    assert pick_illustration("바닐라 라떼", None, embed) == "drink_latte"
+    assert calls == []
+
+
+def test_each_menu_is_embedded_once_and_not_again_on_reopen(embedded_catalog):
+    calls = []
+    embed = embed_from({"보르쉬": axis(0.1, 0.0, 0.95), "가나다": axis(1.0, 1.0, 1.0)}, calls)
+    menus = [
+        {"id": "a", "name": "보르쉬"},
+        {"id": "b", "name": "가나다"},
+        {"id": "c", "name": "가나다", "category": "Tea"},  # 같은 이름은 한 번만 임베딩
+        {"id": "d", "name": "메도빅"},  # 키워드로 정해지면 부르지 않는다
+    ]
+    assert assign_missing(menus, embed) is True
+    assert [m["illustration"] for m in menus] == [
+        "dish_borsch",
+        "default_other",
+        "default_tea",
+        "cake_medovik",
+    ]
+    assert calls == ["보르쉬", "가나다"]
+    assert assign_missing(menus, embed) is False  # 세션을 다시 열 때: 그림 id가 저장돼 있다
+    assert calls == ["보르쉬", "가나다"]
+
+
+def test_once_the_embedding_fails_the_rest_of_the_batch_skips_it(embedded_catalog):
+    """임베딩 서버가 멈추면 메뉴마다 기다리지 않는다."""
+    calls = []
+
+    def failing(text):
+        calls.append(text)
+        raise TimeoutError("임베딩 서버가 멈춤")
+
+    menus = [{"id": str(i), "name": f"가나다{i} 케이크"} for i in range(5)]
+    assert assign_missing(menus, failing) is True
+    assert {m["illustration"] for m in menus} == {"default_cake"}
+    assert len(calls) == 1
+
+
+def test_the_embedding_pick_is_stable(embedded_catalog):
+    embed = embed_from({"보르쉬": axis(0.5, 0.5)})  # 메도빅·라떼와 똑같이 0.71 → id 순
+    assert {pick_illustration("보르쉬", None, embed) for _ in range(5)} == {"cake_medovik"}

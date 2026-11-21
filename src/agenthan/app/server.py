@@ -5,6 +5,7 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
     uv run --env-file .env uvicorn agenthan.app.server:app
 """
 
+import copy
 import threading
 import uuid
 from collections.abc import Callable
@@ -20,10 +21,13 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
-from agenthan.illustration import assign_missing
+from agenthan.core.embedding import embed_text
+from agenthan.illustration import assign_missing, catalog_version
 from agenthan.tools.dummy_store import DummyStoreError
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
+# 저장소 최상위: 마지막으로 그림을 맞춘 카탈로그 지문(fill_illustrations)
+ILLUSTRATION_VERSION_KEY = "illustration_catalog"
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
 
 
@@ -115,9 +119,15 @@ class Session:
         assistant: OwnerAssistant,
         clock: Callable[[], datetime] = datetime.now,
         drafts: bool = False,
+        illustration_embed: Callable[[str], list[float]] | None = None,
     ):
         self.id = session_id
         self.assistant = assistant
+        # 대표 그림 고르기의 임베딩 단계(None이면 키워드·분류 기본 그림만). create_app 참고.
+        # 그림을 고르는 곳(세션 열 때 채우기, 저장소의 메뉴 추가·이름 변경)이 모두 이것 하나를 쓴다.
+        # 비서의 embed(기능 찾기용)는 그림에 쓰지 않는다.
+        self.illustration_embed = illustration_embed
+        assistant.store.embed = illustration_embed
         # 답글 초안 미리 쓰기(#33): 켜져 있으면 새 리뷰마다 초안을 백그라운드로 미리 쓴다
         self.drafts = drafts
         assistant.clock = clock  # 리뷰 보고 미리보기의 '다음 보고' 시각도 같은 시계로
@@ -244,13 +254,34 @@ def claim_drafts(session: Session, review_ids: list[str] | None = None) -> Calla
 
 def fill_illustrations(session: Session) -> None:
     """세션을 열 때 그림이 정해지지 않은 메뉴(예전 세션·시드 가게)에 대표 그림을 한 번 정해 둔다.
-    분류 기본 그림을 받은 메뉴는 카탈로그가 커졌을 수 있어 다시 고른다. 새 메뉴·이름이 바뀐
-    메뉴는 저장소가 쓸 때 고른다(DummyStore.illustrate)."""
+    그림 카탈로그·임베딩 인덱스가 바뀐 뒤(catalog_version) 처음 열 때는 분류 기본 그림을 받은
+    메뉴도 다시 고른다. 새 메뉴·이름이 바뀐 메뉴는 저장소가 쓸 때 고른다(DummyStore.illustrate).
+
+    임베딩은 저장소 잠금 밖에서 부르고, 잠금을 다시 잡아 그 사이 이름·그림이 그대로인 메뉴에만
+    결과를 넣는다."""
     store = session.assistant.store
+    version = catalog_version()
     with store.lock:
         data = store.read()
-        if assign_missing(data["menus"], store.embed):
-            store.write(data)
+    menus = copy.deepcopy(data["menus"])
+    repick = data.get(ILLUSTRATION_VERSION_KEY) != version
+    changed = assign_missing(menus, session.illustration_embed, repick_defaults=repick)
+    if not changed and not repick:
+        return
+    before = {m["id"]: m for m in data["menus"] if "id" in m}
+    picked = {m["id"]: m["illustration"] for m in menus if "id" in m}
+    with store.lock:
+        data = store.read()
+        for menu in data["menus"]:
+            old = before.get(menu.get("id"))
+            if (
+                old is not None
+                and (old.get("name"), old.get("name_ko")) == (menu.get("name"), menu.get("name_ko"))
+                and old.get("illustration") == menu.get("illustration")
+            ):
+                menu["illustration"] = picked[menu["id"]]
+        data[ILLUSTRATION_VERSION_KEY] = version
+        store.write(data)
 
 
 def in_background(job: Callable[[], None]) -> None:
@@ -262,9 +293,12 @@ def create_app(
     root: str | Path = DEFAULT_ROOT,
     prepare_on_start: bool = False,
     clock: Callable[[], datetime] = datetime.now,
+    illustration_embed: Callable[[str], list[float]] | None = None,
 ) -> FastAPI:
     """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
-    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다)."""
+    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다).
+    illustration_embed: 대표 그림 고르기에서 메뉴 이름을 임베딩하는 함수. 운영 앱은 CLOVA
+    임베딩 v2, 기본값 None은 임베딩 없이 고른다(테스트가 네트워크에 닿지 않게)."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -282,7 +316,11 @@ def create_app(
         folder = root / session_id
         folder.mkdir(parents=True)
         session = sessions[session_id] = Session(
-            session_id, make_assistant(folder / "store.json"), clock, drafts=prepare_on_start
+            session_id,
+            make_assistant(folder / "store.json"),
+            clock,
+            drafts=prepare_on_start,
+            illustration_embed=illustration_embed,
         )
         if menu == "empty":
             store = session.assistant.store
@@ -521,4 +559,6 @@ def create_app(
     return app
 
 
-app = create_app(make_assistant=pilot.assistant, prepare_on_start=True)
+app = create_app(
+    make_assistant=pilot.assistant, prepare_on_start=True, illustration_embed=embed_text
+)

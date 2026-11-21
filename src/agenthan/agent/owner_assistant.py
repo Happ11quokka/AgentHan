@@ -637,7 +637,7 @@ class OwnerAssistant:
         self.plan_call = plan_call or planner.default_call
         if type(max_tool_calls) is not int or max_tool_calls < 1:
             raise ValueError("max_tool_calls must be a positive integer")
-        self.store = DummyStore(store, embed=embed)
+        self.store = DummyStore(store)
         self.chat = chat
         # HCX-DASH-002 select_feature; failures fall back to the thresholded match.
         self.select_chat = select_chat or feature_selector.default_select_chat

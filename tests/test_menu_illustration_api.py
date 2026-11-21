@@ -8,7 +8,7 @@ import test_owner_assistant as base
 from agenthan.agent import owner_assistant as owner
 from agenthan.app import place
 from agenthan.app.server import create_app
-from agenthan.illustration import library
+from agenthan.illustration import embedding_index, library
 from agenthan.tools.dummy_store import SEED_PATH
 
 FakeChat = base.FakeChat
@@ -102,3 +102,102 @@ def test_a_price_edit_keeps_the_illustration(tmp_path, mock_index):
     url = f"/assistant/sessions/{sid}/menus/{first['id']}"
     row = api.patch(url, json={"price": first["price"] + 500}).json()["place"]["menu"][0]
     assert row["illustration_url"] == first["illustration_url"]
+
+
+def test_opening_a_session_embeds_an_unknown_menu_once(tmp_path, mock_index, monkeypatch):
+    """라이브러리에 없는 이름(키워드도 끝말도 없음)은 임베딩으로 가까운 그림을 받고,
+    같은 이름은 한 번만, 다시 열 때는 부르지 않는다."""
+    tea = next(row for row in library.load_catalog() if row["id"] == "default_tea")
+    near_tea = [1.0] + [0.0] * 1023
+    monkeypatch.setattr(
+        embedding_index,
+        "stored",
+        lambda: {"default_tea": {"text": embedding_index.embedding_text(tea), "vector": near_tea}},
+    )
+    calls = []
+
+    def embed(text):
+        calls.append(text)
+        return near_tea
+
+    def make(path):
+        assistant = owner.OwnerAssistant(path, chat=FakeChat(), embed=lambda _: mock_index["menu"])
+        data = assistant.store.read()
+        data["menus"] = [
+            {"id": "x1", "name": "쀍뷁 한 잔", "price": 5000},
+            {"id": "x2", "name": "쀍뷁 한 잔", "price": 6000},
+        ]
+        assistant.store.write(data)
+        return assistant
+
+    api = TestClient(create_app(make_assistant=make, root=tmp_path, illustration_embed=embed))
+    body = api.post("/assistant/sessions").json()
+    urls = [row["illustration_url"] for row in body["place"]["menu"]]
+    assert urls == ["/illustrations/default_tea.svg"] * 2
+    assert calls == ["쀍뷁 한 잔"]
+    api.get(f"/assistant/sessions/{body['session_id']}/place")
+    assert calls == ["쀍뷁 한 잔"]
+
+
+def test_illustrations_use_the_app_embed_not_the_assistants(tmp_path, mock_index):
+    """그림 임베딩은 create_app의 illustration_embed 하나뿐: 비서의 embed(기능 찾기용)는 쓰지
+    않는다. 저장소의 메뉴 추가·이름 변경도 같은 것을 쓴다."""
+    assistant_calls, calls = [], []
+
+    def make(path):
+        def assistant_embed(text):
+            assistant_calls.append(text)
+            return mock_index["menu"]
+
+        return owner.OwnerAssistant(path, chat=FakeChat(), embed=assistant_embed)
+
+    def embed(text):
+        calls.append(text)
+        raise RuntimeError("임베딩 꺼짐")
+
+    api = TestClient(create_app(make_assistant=make, root=tmp_path, illustration_embed=embed))
+    body = api.post("/assistant/sessions").json()
+    sid, first = body["session_id"], body["place"]["menu"][0]
+    row = api.patch(
+        f"/assistant/sessions/{sid}/menus/{first['id']}", json={"name": "쀍뷁 수프"}
+    ).json()["place"]["menu"][0]
+    assert row["illustration_url"] == "/illustrations/default_soup.svg"  # 실패 → 기본 그림
+    assert "쀍뷁 수프" in calls
+    assert "쀍뷁 수프" not in assistant_calls
+
+
+def test_default_illustrations_are_repicked_only_when_the_catalog_changes(
+    tmp_path, mock_index, monkeypatch
+):
+    """기본 그림을 받은 메뉴는 카탈로그 지문이 바뀐 뒤 처음 열 때만 다시 고른다
+    (같은 이름을 세션을 열 때마다 다시 임베딩하지 않는다)."""
+    from agenthan.app import server
+
+    calls = []
+
+    def embed(text):
+        calls.append(text)
+        raise RuntimeError("가까운 그림 없음")
+
+    def make(path):
+        assistant = owner.OwnerAssistant(path, chat=FakeChat())
+        data = assistant.store.read()
+        data["menus"] = [{"id": "x1", "name": "쀍뷁 한 잔", "price": 5000}]
+        assistant.store.write(data)
+        return assistant
+
+    session = server.Session("s", make(tmp_path / "store.json"), illustration_embed=embed)
+    server.fill_illustrations(session)
+    store = session.assistant.store
+    assert store.read()["menus"][0]["illustration"] == "default_other"
+    assert calls == ["쀍뷁 한 잔"]
+
+    server.fill_illustrations(session)  # 다시 열기: 지문이 그대로면 임베딩하지 않는다
+    assert calls == ["쀍뷁 한 잔"]
+
+    monkeypatch.setattr(server, "catalog_version", lambda: "grown")
+    server.fill_illustrations(session)  # 카탈로그가 커졌다: 기본 그림을 한 번 다시 고른다
+    assert calls == ["쀍뷁 한 잔"] * 2
+    assert store.read()[server.ILLUSTRATION_VERSION_KEY] == "grown"
+    server.fill_illustrations(session)
+    assert calls == ["쀍뷁 한 잔"] * 2
