@@ -669,6 +669,76 @@ def test_photo_cells_are_measured_and_a_missed_photo_found_by_its_label(tmp_path
         assert paper < 0.1
 
 
+def recovered_board(tmp_path, label="보르시"):
+    """김밥(사진 있음) + 보르시(사전 메뉴라 처음엔 채울 칸이 없고, 첫 읽기가 사진을 빠뜨림)."""
+    board = column_board()
+    answer = {
+        "kind": "menu_board",
+        "items": [{"name": "김밥", "price": 4000}, {"name": "보르시", "price": 9000}],
+        "photos": [{"box": [0.68, 0.2, 0.92, 0.45], "label": "김밥"}],
+    }
+
+    class Labels(FakeV3):
+        def __call__(self, model, body):
+            content = body["messages"][-1]["content"]
+            if isinstance(content, list) and content[1]["text"] == menu_board.LABEL_PROMPT:
+                return {"message": {"content": json.dumps({"label": label}, ensure_ascii=False)}}
+            return super().__call__(model, body)
+
+    fake = Labels(answer)
+    store = DummyStore(tmp_path / "store.json")
+    store.write({"shop": {"name": "러시아 식당"}, "menus": [], "reviews": []})
+    _, items = menu_board.read_board(board, call=fake)
+    result = menu_board.register(store, items, FakeStoreKnowledge([]))
+    return store, fake, result, board
+
+
+def test_a_recovered_photo_that_crashes_does_not_spin_forever(tmp_path, caplog):
+    """보르시처럼 첫 읽기가 사진을 빠뜨렸다가 이름표로 찾은 메뉴는 jobs에 없다(2026-11-21 서버 로그
+    'fill … for 3 menus', 사진은 4장). 그 사진이 예상 못 한 오류로 죽어도 '채우는 중'이
+    남지 않는다."""
+    store, fake, result, board = recovered_board(tmp_path)
+    assert [j.item.name for j in result.jobs] == ["김밥"]
+    assert [r.item.name for r in result.no_photo] == ["보르시"]
+
+    def crash(data, **kwargs):
+        raise RuntimeError("onnxruntime")
+
+    caplog.set_level("INFO", logger="agenthan.agent.menu_board")
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=crash, no_photo=result.no_photo
+    )()
+    assert all(m["filling"] == [] for m in menus(store).values())
+    assert "menu board fill" in caplog.text and "for 2 menus" in caplog.text
+
+
+def test_each_menu_shows_up_as_soon_as_its_own_photo_is_done(tmp_path):
+    """다 된 칸부터 바로 보인다: 한 메뉴 사진이 늦어도 다른 메뉴 사진은 먼저 저장소에 쓴다."""
+    import threading
+
+    store, fake, result, board = recovered_board(tmp_path)
+    lock, calls, early = threading.Lock(), [], []
+
+    def cutout(data, **kwargs):
+        with lock:
+            first = not calls
+            calls.append(data)
+        if first:  # 첫 사진은 다른 메뉴 사진이 저장소에 보일 때까지 붙잡아 둔다
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and not early:
+                done = [n for n, m in menus(store).items() if m.get("photo")]
+                early.extend(done)
+                time.sleep(0.01)
+        return fake_cutout(data)
+
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=cutout, no_photo=result.no_photo
+    )()
+    assert len(early) == 1  # 늦은 사진을 기다리는 동안 다른 한 메뉴는 이미 사진이 있었다
+    saved = menus(store)
+    assert saved["김밥"]["photo"] and saved["보르시"]["photo"]
+
+
 def test_refine_box_maps_the_answer_back_and_keeps_the_box_on_failure():
     box = (0.5, 0.2, 0.7, 0.4)
     refined = menu_board.refine_box(BOARD, box, "김밥", call=FakeV3(ITEMS))
