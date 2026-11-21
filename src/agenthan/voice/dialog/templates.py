@@ -162,6 +162,14 @@ def menu_list(menu_names: Sequence[str]) -> str:
     return f"저희는 {_join(menu_names[:LIST_MENUS])} 같은 메뉴가 있어요."
 
 
+def menus_of_kind(kind: str, names: Sequence[str]) -> str:
+    """종류 질문의 답. 예: "음료는 아메리카노, 카페라떼, 바닐라라떼, 헤이즐넛라떼 같은 메뉴가
+    있어요."."""
+    if len(names) <= LIST_MENUS:
+        return f"{eun_neun(kind)} {i_ga(_join(names))} 있어요."
+    return f"{eun_neun(kind)} {_join(names[:LIST_MENUS])} 같은 메뉴가 있어요."
+
+
 def not_on_menu(menu_names: Sequence[str], drinks: Sequence[str] | None = None) -> str:
     """없는 메뉴. 손님이 마실 것을 찾았고 가게에 음료가 있으면(`drinks`) 음료만 든다."""
     if drinks:

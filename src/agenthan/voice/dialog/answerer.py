@@ -205,6 +205,10 @@ def checked(reply: AnswerReply, request: AnswerRequest) -> AnswerReply:
     say = " ".join(part for part in _SENTENCE_END.split(say) if not _PUSHY.search(part))
     if not say:
         return replace(UNSURE, reason="empty")
+    if _lists_menus(say, request.facts) > MAX_LISTED_MENUS:
+        # 메뉴 이름을 줄줄이 늘어놓은 답("커피 있어요?" → 열 개): 물은 종류로 줄이고 네 개까지.
+        # 줄인 답은 자료의 메뉴 이름과 "있어요"뿐이라 더 볼 것이 없다
+        return replace(reply, say=_narrowed_list(say, request, force=True))
     if len(say) > MAX_ANSWER_CHARS:
         say = " ".join(_SENTENCE_END.split(say)[:2])
         if len(say) > MAX_ANSWER_CHARS:
@@ -242,7 +246,14 @@ _WORD = re.compile(r"[가-힣A-Za-z]{2,}")
 _WORD_TAIL = re.compile(r"(?:종류|류|으로|로|은|는|이|가|을|를|도|만|요)$")
 
 
-def _narrowed_list(say: str, request: AnswerRequest) -> str:
+def _lists_menus(say: str, facts: Sequence[str]) -> int:
+    """답에 나온 자료의 메뉴 이름 수."""
+    rest = _squash(say)
+    return sum(1 for line in facts if (m := _MENU_NAME.match(line))
+               and _squash(m.group(1)) in rest)
+
+
+def _narrowed_list(say: str, request: AnswerRequest, *, force: bool = False) -> str:
     """메뉴 이름만 늘어놓은 답을 줄인다(실통화 2026-11-22: "케이크 종류 뭐 있어요"에 아홉 개를 다
     읽었다). 손님 말의 낱말("케이크")이 종류·설명에 적힌 메뉴가 있으면 그 메뉴만 남기고, 많아야
     `MAX_LISTED_MENUS`개. 줄일 게 없으면 답 그대로."""
@@ -260,12 +271,40 @@ def _narrowed_list(say: str, request: AnswerRequest) -> str:
         if kind and len(kind) < len(listed):
             picked = kind
             break
-    if picked == listed and len(listed) <= MAX_LISTED_MENUS:
+    if picked == listed and len(listed) <= MAX_LISTED_MENUS and not force:
         return say
     picked = picked[:MAX_LISTED_MENUS]
     if len(picked) == 1:
         return f"{picked[0]} 있어요."
     return f"{', '.join(picked)} 있어요."
+
+
+# 종류로 묻는 말("음료 뭐 있어요?", "케이크 종류는요?"). 답변기가 못 답했을 때 엔진이 자료로 답한다
+_KIND_QUESTION = re.compile(r"(?:뭐|무슨|어떤|뭣|머)\s*(?:\S+\s*)?(?:있|파|팔|되|돼)|종류")
+# 종류 말의 다른 표현 → 메뉴 설명에 쓰는 말
+_KIND_SYNONYMS = {"마실": "음료", "마실거": "음료", "마실것": "음료", "드링크": "음료",
+                  "음료수": "음료", "디저트": "디저트", "케익": "케이크"}
+_KIND_STOP = frozenset({"뭐", "무슨", "어떤", "있어", "있어요", "있나요", "있냐고", "있냐고요",
+                        "메뉴",
+                        "그럼", "그러면", "혹시", "저기", "여기", "거기", "아니", "그냥", "추천"})
+
+
+def menus_of_kind(question: str, menu: Sequence[MenuItem]) -> tuple[str, list[str]]:
+    """종류로 묻는 질문("마실 거 뭐 있냐고요")의 그 종류와, 종류·설명에 그 말이 적힌 메뉴 이름들
+    (오늘 품절은 뺀다). 종류 질문이 아니거나 맞는 메뉴가 없으면 ("", [])."""
+    if not _KIND_QUESTION.search(question):
+        return "", []
+    for raw in _WORD.findall(question):
+        word = _WORD_TAIL.sub("", raw)
+        word = _KIND_SYNONYMS.get(word, word)
+        if len(word) < 2 or word in _KIND_STOP:
+            continue
+        alone = re.compile(rf"(?<![가-힣]){re.escape(word)}")
+        hits = [m.name_ko for m in menu
+                if not m.sold_out and alone.search(f"{m.category} {m.description}")]
+        if hits:
+            return word, hits
+    return "", []
 
 
 def _about(line: str) -> str:

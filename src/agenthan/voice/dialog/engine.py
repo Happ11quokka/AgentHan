@@ -44,6 +44,7 @@ from agenthan.voice.dialog.answerer import (
     AnswerRequest,
     Notes,
     checked,
+    menus_of_kind,
     store_facts,
 )
 from agenthan.voice.dialog.approval import ApprovalRequest, ApprovalWithdrawn, OwnerDecision
@@ -1447,6 +1448,8 @@ class DialogEngine:
             if reply.kind == "answer":
                 self._say(turn, reply.say)
                 return
+            if self._say_menus_of_kind(turn):
+                return
             if unlisted and self._menu_named(reply.menu) is None:
                 # 메뉴판에 없는 메뉴를 물었다("커피 있어요?"): 모른다고 하지 말고 없다고 한다
                 self._say(turn, templates.not_on_menu(self._available_names(),
@@ -1625,6 +1628,8 @@ class DialogEngine:
         self._topic = item or self._topic
         if reply.kind == "answer":
             self._say(turn, reply.say)
+            return
+        if self._say_menus_of_kind(turn):
             return
         if item is None and _ASKS_FOR_DRINK.search(turn.heard):
             # "커피 있어요?": 가게 자료에 없는 마실 것. 사장님께 넘기지 않고 없다고 한다
@@ -2906,6 +2911,15 @@ class DialogEngine:
 
     def _available_names(self) -> list[str]:
         return [m.name_ko for m in self._matcher.available()]
+
+    def _say_menus_of_kind(self, turn: _Turn) -> bool:
+        """답변기가 못 답한 종류 질문("음료 뭐 있어요?")을 가게 메뉴의 종류·설명으로 답한다
+        (실통화 2026-11-22: 음료 23개 메뉴에서 답변기가 "모름"·형식 틀림). 답했으면 True."""
+        kind, names = menus_of_kind(turn.heard, self._matcher.available())
+        if not names:
+            return False
+        self._say(turn, templates.menus_of_kind(kind, names))
+        return True
 
     def _drinks_if_asked(self, turn: _Turn, act: Act) -> list[str]:
         """손님이 없는 마실 것을 찾았으면("아이스 아메리카노") 가게에서 파는 음료 이름들.
