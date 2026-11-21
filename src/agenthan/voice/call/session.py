@@ -829,6 +829,7 @@ class CallSession:
         self._engine = await self._in_thread(
             DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id,
             ask_owner=self._asks_owner, knowledge=self._knowledge, answerer=self._answerer,
+            sold_out=self._sold_out_today(),  # 사장님이 건 오늘 품절 (주문 승인 티켓 06)
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -1432,7 +1433,8 @@ class CallSession:
                 # 늦춘 시각에 손님이 "네" (티켓 04): 늦춰 수락된 확정
                 self._approval_view = replace(view, status="accepted")
             elif result.order.status == "confirmed" and not self._approval_decided():
-                self._approval_view = ApprovalView("skipped")  # 확인 없이 바로 확정(승인 건너뜀)
+                # 확인 없이 바로 확정(승인 건너뜀). 재료 소진 뒤 떨어진 메뉴만 뺀 확정은 수락이다
+                self._approval_view = _rest_accepted(view) or ApprovalView("skipped")
             if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
                 self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -2253,6 +2255,14 @@ class CallSession:
             log.exception("사장님 화면 확인 실패, 승인을 건너뜀 (%s)", self.call_id)
             return False
 
+    def _sold_out_today(self) -> frozenset[str]:
+        """사장님이 건 오늘 품절 메뉴 id들(주문 승인 티켓 06). 사장님 쪽이 실패하면 빈 목록."""
+        try:
+            return frozenset(self._owner.sold_out_today())
+        except Exception:
+            log.exception("오늘 품절 읽기 실패, 가게 메뉴 그대로 (%s)", self.call_id)
+            return frozenset()
+
     def _approval_decided(self) -> bool:
         """손님 화면에 확인 요청 결정(수락·시간 초과)이 실렸나. 아니면 이번 확정은 건너뛴 것."""
         view = self._approval_view
@@ -2472,8 +2482,13 @@ class CallSession:
     def _owner_turn(self, note: WaitNote) -> int | None:
         """사장님 알림을 말하는 봇 턴을 연다(`bot_turn`). 알림 종류마다 엔진 행동이 다르다."""
         if isinstance(note, OwnerDecision):  # 확인 요청 결정 (주문 승인 티켓 02)
-            return self.bot_turn("owner_decision",
-                                 lambda engine, when: engine.owner_decided(note, when))
+            sold_out = self._sold_out_today()  # 결정 직전 오늘 품절을 덮어 쓴다 (티켓 06)
+
+            def decided(engine: DialogEngine, when: datetime) -> TurnResult:
+                engine.apply_sold_out(sold_out)
+                return engine.owner_decided(note, when)
+
+            return self.bot_turn("owner_decision", decided)
         if isinstance(note, OwnerReply):  # 질문 카드 답
             number, answer = note.question, note.answer
             return self.bot_turn(
@@ -2562,6 +2577,14 @@ def _rewindable(result: TurnResult) -> bool:
             and result.owner_question is None and not result.knowledge_requests
             and result.approval_request is None and result.approval_withdrawn is None
             and not result.readback)
+
+
+def _rest_accepted(view: ApprovalView | None) -> ApprovalView | None:
+    """재료 소진 거절 뒤 손님이 떨어진 메뉴만 빼 바로 확정했다(주문 승인 티켓 06): 그 요청의
+    수락이다. 아니면 None."""
+    if view is not None and view.status == "rejected" and view.reason == "out_of_stock":
+        return ApprovalView("accepted", view.number)
+    return None
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:

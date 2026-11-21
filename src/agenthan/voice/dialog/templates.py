@@ -296,7 +296,8 @@ _REJECTED = {
 
 
 def approval_rejected(reason: str) -> str:
-    """사장님 거절 사과. 모르는 사유는 가게 사정 문장 (재료 소진은 티켓 06이 따로 안내한다)."""
+    """사장님 거절 사과. 모르는 사유는 가게 사정 문장. 재료 소진은 떨어진 메뉴가 장바구니에 있으면
+    `approval_out_of_stock`으로 따로 안내한다(티켓 06)."""
     return _REJECTED.get(reason, _REJECTED["closed"])
 
 
@@ -308,6 +309,23 @@ def approval_delayed(at: datetime) -> str:
 def approval_delay_declined() -> str:
     """늦춘 시각에 "아니요": 주문을 취소하고 통화를 끝낸다(다른 시각 협상은 없다, 티켓 04)."""
     return "알겠어요, 이번 주문은 취소할게요. 다음에 또 주문해 주세요."
+
+
+def approval_out_of_stock(names: Sequence[str], *, rest: bool) -> str:
+    """사장님이 통화 중에 재료 소진으로 거절했다 (주문 승인 티켓 06). 떨어진 메뉴를 알리고 빼고
+    주문할지 바꿀지 묻는다. 남은 메뉴가 없으면(`rest` 거짓) 다른 메뉴로 주문할지만 묻는다.
+
+    "김치찌개는 지금 재료가 떨어졌대요. 빼고 주문할까요, 다른 메뉴로 바꾸실까요?"
+    여러 개면 "메도빅이랑 블린은 …".
+    """
+    head = " ".join([*(i_rang(n) for n in names[:-1]), eun_neun(names[-1])])
+    question = "빼고 주문할까요, 다른 메뉴로 바꾸실까요?" if rest else "다른 메뉴로 주문하시겠어요?"
+    return f"{head} 지금 재료가 떨어졌대요. {question}"
+
+
+def ask_replacement() -> str:
+    """재료 소진 질문에 "아니요"만 했다. 무엇으로 바꿀지 묻는다 (주문 승인 티켓 06)."""
+    return "어떤 메뉴로 바꿔 드릴까요?"
 
 
 def not_understood() -> str:

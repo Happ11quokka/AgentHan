@@ -229,9 +229,11 @@ class RecordingOwnerChannel:
 
     def __init__(
         self, *, answer: OwnerAnswer | None = None, texts: list[dict[str, Any]] | None = None,
-        approval: Literal["off", "accept", "hold"] = "off",
+        approval: Literal["off", "accept", "hold"] = "off", sold_out: Sequence[str] = (),
     ) -> None:
         self.notes: list[tuple[Any, ...]] = []
+        # 오늘 품절 메뉴 id들(주문 승인 티켓 06). 시험이 바꾸면 다음 읽기부터 보인다
+        self.sold_out: set[str] = set(sold_out)
         self._answer = answer
         self._approval = approval
         self.texts = list(texts or [])  # `customer_texts`가 돌려줄 손님 문자 (티켓 07)
@@ -252,8 +254,11 @@ class RecordingOwnerChannel:
         self._decide(OwnerDecision(number, kind, delay_min))
 
     def reject(self, number: int, reason: RejectReason, *, menu_ids: tuple[str, ...] = ()) -> None:
-        """사장님이 그 확인 요청을 거절했다(주문 승인 티켓 05, 사유 시트)."""
+        """사장님이 그 확인 요청을 거절했다(주문 승인 티켓 05, 사유 시트). 재료 소진이면 허브처럼
+        그 메뉴들을 오늘 품절에 더한 뒤 넘긴다(티켓 06)."""
         assert self._decide is not None, "열린 확인 요청이 없어요"
+        if reason == "out_of_stock":
+            self.sold_out.update(menu_ids)
         self._decide(OwnerDecision(number, "reject", reason=reason, menu_ids=menu_ids))
 
     def call_started(self, call_id: str) -> None:
@@ -301,6 +306,9 @@ class RecordingOwnerChannel:
 
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         self.notes.append(("withdrawn", call_id, (number, reason)))
+
+    def sold_out_today(self) -> frozenset[str]:
+        return frozenset(self.sold_out)
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         return list(self.texts)

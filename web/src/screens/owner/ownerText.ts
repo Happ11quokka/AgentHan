@@ -14,6 +14,7 @@ import type {
   QuestionCard,
   RejectReason,
   RequestBadge,
+  SoldOutItem,
 } from './ownerState.ts'
 
 export type OwnerLang = 'ru' | 'ko'
@@ -65,7 +66,12 @@ export interface OwnerText {
   reject: string
   rejectTitle: string
   rejectReason: Record<RejectReason, string>
-  rejectSoon: string
+  /** 재료 소진: 떨어진 메뉴 고르기 안내 (티켓 06) */
+  stockOutPick: string
+  /** 카드의 품절 표시 "품절로 바꿨어요"와 되돌리기 (티켓 06) */
+  soldOutMarked: string
+  soldOutUndo: string
+  soldOutUndone: string
   rejectSend: string
   rejectBack: string
   rejectedAs: (reason: string) => string
@@ -160,7 +166,11 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
       closed: 'Магазин не принимает заказы',
       free: 'Написать причину',
     },
-    rejectSoon: 'скоро',
+    // 재료 소진·오늘 품절 (티켓 06): 러시아어 화자 확인 전 초안 (사람 확인 대상)
+    stockOutPick: 'Что закончилось? Можно выбрать несколько',
+    soldOutMarked: 'Сегодня нет в наличии',
+    soldOutUndo: 'Вернуть',
+    soldOutUndone: 'Снова в меню',
     rejectSend: 'Отказать',
     rejectBack: 'Назад',
     rejectedAs: (reason) => `Отказано · ${reason}`,
@@ -263,7 +273,10 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
       closed: '영업·가게 사정',
       free: '직접 쓰기',
     },
-    rejectSoon: '준비 중',
+    stockOutPick: '떨어진 메뉴를 고르세요(여러 개 가능)',
+    soldOutMarked: '품절로 바꿨어요',
+    soldOutUndo: '되돌리기',
+    soldOutUndone: '되돌렸어요',
     rejectSend: '거절 보내기',
     rejectBack: '돌아가기',
     rejectedAs: (reason) => `거절 · ${reason}`,
@@ -442,6 +455,35 @@ export function rejectedView(
     label: text.rejectedAs(reason ? (text.rejectReason[reason] ?? reason) : text.reject),
     written: card.reject_text ?? '',
     writtenKo: card.reject_text_ko ?? '',
+  }
+}
+
+export interface SoldOutMarkView {
+  /** "품절로 바꿨어요" */
+  label: string
+  /** 그 카드에서 품절로 바꾼 메뉴: 화면 언어 이름, 지금도 품절인지(되돌리기 버튼) */
+  items: { menuId: string; name: string; still: boolean }[]
+}
+
+/**
+ * 카드의 품절 표시 (주문 승인 티켓 06). 그 카드에서 재료 소진으로 바꾼 메뉴가 없으면 null.
+ * 지금도 품절인지는 오늘 품절 목록(`OwnerState.soldOut`)으로 본다(되돌렸거나 날짜가 바뀌면 거짓)
+ */
+export function soldOutMarkView(
+  card: Pick<OrderCard, 'sold_out'>,
+  soldOut: readonly SoldOutItem[],
+  lang: OwnerLang,
+): SoldOutMarkView | null {
+  const marked = card.sold_out ?? []
+  if (marked.length === 0) return null
+  const today = new Set(soldOut.map((item) => item.menu_id))
+  return {
+    label: OWNER_TEXT[lang].soldOutMarked,
+    items: marked.map((item) => ({
+      menuId: item.menu_id,
+      name: lang === 'ko' ? item.name_ko : item.name_owner || item.name_ko,
+      still: today.has(item.menu_id),
+    })),
   }
 }
 

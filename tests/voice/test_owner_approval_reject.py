@@ -163,13 +163,15 @@ def test_a_withdrawn_request_or_an_unknown_card_cannot_be_rejected() -> None:
         hub.reject("nope", "busy")
 
 
-def test_an_empty_written_reason_and_out_of_stock_are_refused_for_now() -> None:
+def test_an_empty_written_reason_and_an_out_of_stock_without_menus_are_refused() -> None:
     hub = _hub()
     _requested(hub)
     with pytest.raises(ValueError):
         hub.reject("call-1", "free", text="   ")
     with pytest.raises(ValueError):
-        hub.reject("call-1", "out_of_stock", menu_ids=["m01"])  # 재료 소진은 티켓 06
+        hub.reject("call-1", "out_of_stock")  # 떨어진 메뉴를 골라야 한다 (티켓 06)
+    with pytest.raises(ValueError):
+        hub.reject("call-1", "out_of_stock", menu_ids=["m04"])  # 주문에 없는 메뉴
     with pytest.raises(ValueError):
         hub.reject("call-1", "rain")  # type: ignore[arg-type]
     assert hub.customer_texts("call-1") == []  # 거절되지 않았다
