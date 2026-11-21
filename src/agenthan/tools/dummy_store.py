@@ -272,8 +272,11 @@ class DummyStore:
         start: tuple[str, ...] = (),
         photo: bytes | None = None,
         photo_mime: str | None = None,
+        photo_source: bytes | None = None,
     ) -> dict | None:
         """메뉴 한 줄의 이름·가격·설명·사진을 고친다. 없는 메뉴면 None.
+
+        photo_source: 흰 배경으로 만들기 전 원본 조각(JPEG). 사진 다듬기(2차)가 다시 쓴다.
 
         by_owner=True: 사장님이 메뉴 탭에서 직접 고친 값. 그 칸의 AI 표시와 채우는 중 표시를
         지우고, 뒤에서 채우던 값이 늦게 와도 덮어쓰지 않는다.
@@ -315,6 +318,13 @@ class DummyStore:
                 record["description"] = " ".join(text.split()) if isinstance(text, str) else ""
             if "photo" in values:
                 self._save_photo(record, photo, photo_mime)
+                if photo_source is not None:
+                    source = self.path.parent / "photos" / f"{record['id']}-source.jpg"
+                    try:
+                        source.write_bytes(photo_source)
+                        record["photo_source"] = f"photos/{source.name}"
+                    except OSError:
+                        pass  # 원본이 없으면 다듬기는 지금 사진으로 한다
             written = set(values)
             if by_owner:
                 ai -= written

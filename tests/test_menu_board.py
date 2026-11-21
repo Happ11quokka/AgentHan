@@ -332,13 +332,21 @@ def test_polish_target_needs_polish_words_and_a_menu_name():
     assert menu_board.polish_target("사진 예쁘게 해 줘", menus) is None
 
 
-def test_polish_is_off_without_a_gpu_server(tmp_path, monkeypatch):
+def test_without_a_gpu_server_polish_is_the_cpu_studio_touch_up(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENTHAN_IMAGE_POLISH_URL", raising=False)
-    store = filled_store(tmp_path)
+    store, fake, result = run_board(tmp_path)
+    # 진짜 GrabCut으로 채워 원본 조각(photo_source)까지 남긴다
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake)()
     medovik = menus(store)["메도빅"]
+    assert medovik["photo_source"].endswith("-source.jpg")
     message, job = menu_board.start_polish(store, medovik["id"])
-    assert job is None and "준비하고 있어요" in message
-    assert menus(store)["메도빅"]["filling"] == []
+    assert "보정하고 있어요" in message and menus(store)["메도빅"]["filling"] == ["polish"]
+    job()
+    after = menus(store)["메도빅"]
+    assert after["filling"] == [] and after["photo_version"] == 2
+    photo = (tmp_path / after["photo"]).read_bytes()
+    image = cv2.imdecode(np.frombuffer(photo, np.uint8), cv2.IMREAD_COLOR)
+    assert image.shape == (1024, 1024, 3) and (image[5, 5] >= 250).all()  # 흰 배경 정사각형
 
 
 def test_polish_replaces_the_photo_in_the_background(tmp_path):
@@ -355,7 +363,9 @@ def test_polish_replaces_the_photo_in_the_background(tmp_path):
     assert menu_board.start_polish(store, medovik["id"], polish=omni)[1] is None  # 이미 다듬는 중
     job()
     after = menus(store)["메도빅"]
-    assert seen == [(b"\xff\xd8\xffwhite", "메도빅")]
+    # 흰 배경 사진이 아니라 메뉴판에서 자른 원본 조각으로 다시 만든다
+    source = (tmp_path / medovik["photo_source"]).read_bytes()
+    assert seen == [(source, "메도빅")] and source != b"\xff\xd8\xffwhite"
     assert (
         after["filling"] == [] and after["photo_version"] == 2 and after["photo"].endswith(".png")
     )
@@ -382,16 +392,19 @@ def test_polish_without_a_photo_asks_for_one(tmp_path):
     assert job is None and "사진이 없어요" in message
 
 
-def test_polish_button_and_chat_both_answer_when_off(api, monkeypatch):
+def test_polish_button_and_chat_both_start_the_touch_up(api, monkeypatch):
     monkeypatch.delenv("AGENTHAN_IMAGE_POLISH_URL", raising=False)
     sid = api.post("/assistant/sessions?menu=empty").json()["session_id"]
     api.post(f"/assistant/sessions/{sid}/photos", files={"image": ("m.jpg", BOARD, "image/jpeg")})
     place = wait_filled(api, sid)
     row = next(m for m in place["menu"] if m["photo_url"])
     body = api.post(f"/assistant/sessions/{sid}/menus/{row['id']}/polish").json()
-    assert body["started"] is False and "준비하고 있어요" in body["message"]
+    assert body["started"] is True and "보정하고 있어요" in body["message"]
+    place = wait_filled(api, sid)
+    assert next(m for m in place["menu"] if m["id"] == row["id"])["photo_url"].endswith("?v=2")
     assert api.post(f"/assistant/sessions/{sid}/menus/nope/polish").status_code == 404
     reply = api.post(
         f"/assistant/sessions/{sid}/messages", json={"text": f"{row['name']} 사진 더 예쁘게 해 줘"}
     ).json()["reply"]
-    assert "준비하고 있어요" in reply
+    assert "보정하고 있어요" in reply
+    wait_filled(api, sid)

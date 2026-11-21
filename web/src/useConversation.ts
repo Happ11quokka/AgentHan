@@ -67,7 +67,7 @@ export type Conversation = {
   changeRoutines: (change: RoutinesChange) => Promise<string | null>;
   /** 메뉴 탭에서 직접 고친 값을 저장한다(승인 카드 없음). 성공하면 null, 실패하면 사장님께 보일 문장. */
   editMenu: (menuId: string, edit: MenuEdit) => Promise<string | null>;
-  /** [AI로 다듬기]: 사진 다듬기를 부탁한다. 사장님께 보일 한 줄(시작함·준비 중·실패)을 돌려준다. */
+  /** [사진 다듬기]: 사진 다듬기를 부탁한다. 사장님께 보일 한 줄(시작함·준비 중·실패)을 돌려준다. */
   polishMenu: (menuId: string) => Promise<string>;
   /** 메뉴 탭에서 메뉴 한 줄을 지운다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   deleteMenu: (menuId: string) => Promise<string | null>;

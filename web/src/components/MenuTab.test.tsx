@@ -16,7 +16,7 @@ const filling: Place = {
 function setup(place: Place = filling) {
   const onEdit = vi.fn(async () => null as string | null);
   const onDelete = vi.fn(async () => null as string | null);
-  const onPolish = vi.fn(async () => "메도빅 사진을 AI로 다듬기 시작했어요. 1~2분쯤 걸려요.");
+  const onPolish = vi.fn(async () => "메도빅 사진을 보정하고 있어요. 몇 초면 메뉴 탭 사진이 바뀌어요.");
   const user = userEvent.setup();
   render(<MenuTab place={place} pending={[]} onEdit={onEdit} onDelete={onDelete} onPolish={onPolish} />);
   const row = (name: string) => within(screen.getByText(name, { exact: false }).closest("li") as HTMLElement);
@@ -76,18 +76,18 @@ describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
     expect(onDelete).toHaveBeenCalledWith("m01");
   });
 
-  test("사진이 있는 메뉴만 [AI로 사진 다듬기]가 있고, 누르면 걸리는 시간을 알려 준다", async () => {
+  test("사진이 있는 메뉴만 [사진 다듬기]가 있고, 누르면 안내 한 줄을 보인다", async () => {
     const { user, onPolish, row } = setup();
-    expect(row("Сырники").queryByRole("button", { name: "AI로 사진 다듬기" })).toBeNull();
+    expect(row("Сырники").queryByRole("button", { name: "사진 다듬기" })).toBeNull();
     const medovik = row("메도빅");
-    await user.click(medovik.getByRole("button", { name: "AI로 사진 다듬기" }));
+    await user.click(medovik.getByRole("button", { name: "사진 다듬기" }));
     expect(onPolish).toHaveBeenCalledWith("m01");
-    expect(medovik.getByText(/1~2분쯤 걸려요/)).toBeInTheDocument();
+    expect(medovik.getByText(/몇 초면/)).toBeInTheDocument();
   });
 
   test("다듬는 중에는 사진에 표시하고 위 안내 줄은 띄우지 않는다", () => {
     const { row } = setup({ ...SEED, menu: [{ ...filling.menu[0], filling: ["polish"] }] });
-    expect(row("메도빅").getByText("AI로 다듬는 중 (1~2분)")).toBeInTheDocument();
+    expect(row("메도빅").getByText("다듬는 중")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
   });
 

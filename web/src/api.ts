@@ -22,7 +22,7 @@ export interface AssistantApi {
   setRoutines(sessionId: string, change: RoutinesChange): Promise<View>;
   /** 메뉴 탭에서 사장님이 직접 고친 값: 승인 카드 없이 바로 저장한다. 대화 턴이 아니다. */
   editMenu(sessionId: string, menuId: string, edit: MenuEdit): Promise<View>;
-  /** [AI로 다듬기]: SEED Omni로 흰 배경 사진을 다시 그린다(2차, 1~2분). message: 사장님께 보일 한 줄. */
+  /** [사진 다듬기] 2차: CPU 스튜디오 보정(몇 초), GPU 서버가 있으면 SEED Omni(1~2분). message: 사장님께 보일 한 줄. */
   polishMenu(sessionId: string, menuId: string): Promise<View & { message: string; started: boolean }>;
   /** 메뉴판에서 잘못 읽은 줄을 지운다. 대화 턴이 아니다. */
   deleteMenu(sessionId: string, menuId: string): Promise<View>;

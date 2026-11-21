@@ -247,16 +247,21 @@ def crop(data: bytes, box: Box, margin: float = 0.02) -> bytes:
     return encoded.tobytes()
 
 
-def white_photo(board: bytes, box: Box, regions: list[Box], cutout=None) -> bytes:
-    """메뉴판의 음식 사진 칸을 잘라 흰 배경 정사각형으로. 배경을 못 지우면 자른 사진에
-    흰 여백만 둘러 쓴다(메뉴판 사진은 이미 음식 사진이라 그대로도 쓸 만하다).
+def white_photo(board: bytes, box: Box, regions: list[Box], cutout=None) -> tuple[bytes, bytes]:
+    """메뉴판의 음식 사진 칸을 잘라 흰 배경 정사각형으로. (흰 배경 사진, 자른 원본 조각).
+    배경을 못 지우면 자른 사진에 흰 여백만 둘러 쓴다(메뉴판 사진은 이미 음식 사진이라 쓸 만하다).
 
     윤곽선 칸에 맞춰졌으면 칸 테두리에 딱 맞게 자른다: 메뉴판 바탕이 섞이지 않아야 GrabCut이
     사진 속 식탁·나무 바탕을 배경으로 잡는다(여백 2%면 바탕이 남았다, 실측 2026-11-21).
-    512px·5회: 사진 한 장 0.2~0.5초."""
+    512px·5회: 사진 한 장 0.2~0.5초. 오픈 배경 제거 모델을 켰으면(AGENTHAN_CUTOUT_MODEL=rembg)
+    그 마스크로 자른다."""
+    from agenthan.tools import image_studio
+
     snapped = snap(box, regions)
     piece = crop(board, snapped, 0.0 if snapped in regions else 0.02)
-    return (cutout or cutout_on_white)(piece, work_side=512, iterations=5).image
+    if cutout is None and image_studio.model_name() == "rembg":
+        return image_studio.studio(piece, enhance=False, shadow=False), piece
+    return (cutout or cutout_on_white)(piece, work_side=512, iterations=5).image, piece
 
 
 # ---------------------------------------------------------------- 등록과 채우기
@@ -345,7 +350,7 @@ def fill_one(
         def photo() -> None:
             started = time.monotonic()
             try:
-                image = white_photo(board, job.item.box, regions, cutout)
+                image, piece = white_photo(board, job.item.box, regions, cutout)
             except (ImageCutoutError, ValueError):
                 store.patch_menu(job.menu_id, {}, by_owner=False, done=("photo",))
                 return
@@ -357,6 +362,7 @@ def fill_one(
                 done=("photo",),
                 photo=image,
                 photo_mime="image/jpeg",
+                photo_source=piece,
             )
 
         tasks.append(photo)
@@ -427,15 +433,15 @@ def fill_all(
 # ---------------------------------------------------------------- 2차: 사진 다듬기 (SEED Omni)
 
 POLISH_TEXT = {
-    "off": (
-        "사진 다듬기(HyperCLOVA X SEED Omni)는 GPU 서버를 준비하고 있어요. "
-        "지금은 메뉴판에서 잘라 만든 흰 배경 사진을 쓰고 있어요."
-    ),
     "no_photo": "{name}에는 아직 사진이 없어요. 음식 사진을 먼저 올려 주세요.",
     "busy": "{name} 사진은 지금 다듬고 있어요. 조금만 기다려 주세요.",
-    "started": (
+    "started_omni": (
         "{name} 사진을 AI(HyperCLOVA X SEED Omni)로 다듬기 시작했어요. 한 장에 1~2분쯤 걸려요. "
         "다 되면 메뉴 탭 사진이 바로 바뀌어요."
+    ),
+    "started_studio": (
+        "{name} 사진을 배달앱 메뉴 사진처럼 보정하고 있어요(밝기·색·가운데 정렬·그림자). "
+        "몇 초면 메뉴 탭 사진이 바뀌어요."
     ),
 }
 
@@ -443,8 +449,12 @@ POLISH_TEXT = {
 def start_polish(
     store: DummyStore, menu_id: str, *, polish=None
 ) -> tuple[str, Callable[[], None] | None]:
-    """메뉴 사진 다듬기를 시작한다. (사장님께 할 말, 백그라운드에서 돌릴 일 또는 None)."""
-    from agenthan.tools import image_polish
+    """메뉴 사진 다듬기를 시작한다. (사장님께 할 말, 백그라운드에서 돌릴 일 또는 None).
+
+    GPU 서버(SEED Omni, AGENTHAN_IMAGE_POLISH_URL)가 있으면 그것으로 다시 그리고, 없으면 CPU
+    스튜디오 보정(tools/image_studio.py)을 한다. 메뉴판에서 자른 원본 조각이 있으면 그걸로 다시
+    만든다(흰 배경 사진을 또 보정하면 가장자리가 무뎌진다)."""
+    from agenthan.tools import image_polish, image_studio
 
     record = next((m for m in store.read()["menus"] if m["id"] == menu_id), None)
     if record is None:
@@ -454,18 +464,31 @@ def start_polish(
         return POLISH_TEXT["no_photo"].format(name=name), None
     if "polish" in (record.get("filling") or []):
         return POLISH_TEXT["busy"].format(name=name), None
-    if polish is None and not image_polish.enabled():
-        return POLISH_TEXT["off"], None
+    folder = store.path.parent
+    source = record.get("photo_source")
+    photo = (
+        folder / (source if source and (folder / source).is_file() else record["photo"])
+    ).read_bytes()
+    if polish is None:
+        if image_polish.enabled():
+            polish, key = image_polish.polish, "started_omni"
+        else:
+
+            def polish(data, _name):
+                return image_studio.studio(data), "image/jpeg"
+
+            key = "started_studio"
+    else:
+        key = "started_omni"
     store.patch_menu(menu_id, {}, by_owner=False, start=("polish",))
-    photo = (store.path.parent / record["photo"]).read_bytes()
 
     def run() -> None:
         started = time.monotonic()
         try:
-            image, mime = (polish or image_polish.polish)(photo, name)
+            image, mime = polish(photo, name)
             store.patch_menu(menu_id, {}, by_owner=False, photo=image, photo_mime=mime)
-            log.info("menu polish %.1fs %s", time.monotonic() - started, name)
-        except (image_polish.ImagePolishError, DummyStoreError):
+            log.info("menu polish %.1fs %s (%s)", time.monotonic() - started, name, key)
+        except (image_polish.ImagePolishError, ImageCutoutError, DummyStoreError, ValueError):
             log.warning("menu polish failed for %s", name, exc_info=True)
         finally:
             try:
@@ -473,7 +496,7 @@ def start_polish(
             except DummyStoreError:
                 pass
 
-    return POLISH_TEXT["started"].format(name=name), run
+    return POLISH_TEXT[key].format(name=name), run
 
 
 POLISH_WORDS = re.compile(r"(사진|이미지).{0,12}(다듬|예쁘|이쁘|보정|깔끔|고급|AI로|에이아이)")

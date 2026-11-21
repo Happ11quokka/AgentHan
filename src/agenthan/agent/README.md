@@ -276,8 +276,10 @@ HCX-005 한 번으로 합치고(긴 변 1280px), 가격이 보이는 메뉴를 �
 윤곽선 칸에 맞춰 잘라 GrabCut 512px·5회)을 백그라운드로 채운다. AI가 채운 칸은 `ai`, 채우는 중인
 칸은 `filling`으로 화면에 보인다. 사장님은 메뉴 탭에서 바로 고치거나(`PATCH /menus/{id}`) 말로
 고친다(기존 승인 카드). 실측(합성 메뉴판 5개): 답 6.6초, 설명·사진까지 10초.
-사진 다듬기(2차, "메도빅 사진 더 예쁘게")는 SEED Omni GPU 서버(`tools/image_polish.py`)로 하며,
-주소가 없으면 준비 중이라고 답한다. 근거는 `docs/research/07-menu-photo-speed.md`.
+사진 다듬기(2차, "메도빅 사진 더 예쁘게" 또는 [사진 다듬기])는 자른 원본 조각을 CPU 스튜디오
+보정(`tools/image_studio.py`)으로 다시 만든다. 팀·실습 계정 모두 GPU 생성 한도가 0이라(2026-11-21)
+SEED Omni(`tools/image_polish.py`)는 GPU 서버 주소가 있을 때만 쓴다. 오픈 배경 제거 모델(rembg)은
+`AGENTHAN_CUTOUT_MODEL=rembg`로 켠다(규정 확인 전 기본 꺼짐). 근거는 `docs/research/07-menu-photo-speed.md`.
 아래 1~4(초안 → 승인)는 이제 음식 사진에만 쓴다.
 
 `ask_photo`는 먼저 `menu_photo.fit_for_vision`으로 긴 변 2240px(HCX-005 한도)·10MB를 넘는 사진을

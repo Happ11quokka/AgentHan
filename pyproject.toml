@@ -27,6 +27,11 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[project.optional-dependencies]
+cutout = [
+    "rembg[cpu]>=2.0",
+]
+
 [dependency-groups]
 dev = [
     "grpcio-tools>=1.85.1",

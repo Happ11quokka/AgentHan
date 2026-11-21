@@ -256,11 +256,11 @@ function MenuItemRow({
                   <button
                     type="button"
                     className="menu-polish"
-                    title="HyperCLOVA X SEED Omni로 흰 배경 제품 사진을 다시 그려요. 한 장에 1~2분 걸려요."
+                    title="배달앱 메뉴 사진처럼 밝기·색·구도를 다듬고 바닥 그림자를 넣어요."
                     disabled={saving}
                     onClick={async () => setNote(await onPolish(m.id))}
                   >
-                    AI로 사진 다듬기
+                    사진 다듬기
                   </button>
                 )}
                 <button type="button" className="menu-delete-open" aria-label={`${m.name} 지우기`} onClick={() => setConfirmDelete(true)}>
@@ -277,7 +277,7 @@ function MenuItemRow({
         <span className="menu-photo-wrap">
           <img className="menu-photo" src={m.photo_url} alt="" />
           {ai.has("photo") && <span className="photo-note">메뉴판 사진</span>}
-          {filling.has("polish") && <span className="photo-note busy">AI로 다듬는 중 (1~2분)</span>}
+          {filling.has("polish") && <span className="photo-note busy">다듬는 중</span>}
         </span>
       ) : (
         <span className="menu-photo empty" aria-hidden>

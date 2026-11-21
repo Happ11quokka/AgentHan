@@ -338,8 +338,8 @@ def create_app(
 
     @app.post("/assistant/sessions/{session_id}/menus/{menu_id}/polish")
     def polish_menu_photo(session_id: str, menu_id: str) -> dict:
-        """메뉴 탭 [AI로 다듬기]: SEED Omni로 흰 배경 사진을 다시 그린다(2차, 1~2분).
-        message: 사장님께 보일 한 줄(시작했어요 / 준비 중이에요 / 사진이 없어요)."""
+        """메뉴 탭 [사진 다듬기] 2차: CPU 스튜디오 보정(몇 초), GPU 서버가 있으면 SEED Omni(1~2분).
+        message: 사장님께 보일 한 줄(시작했어요 / 이미 다듬는 중 / 사진이 없어요)."""
         session = get(session_id)
         try:
             message, job = menu_board.start_polish(session.assistant.store, menu_id)
