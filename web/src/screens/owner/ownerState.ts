@@ -6,9 +6,10 @@ import type { CustomerText } from '../customerText.ts'
 /**
  * 사장님 처리 상태 (Part A 어휘 + expired, 주문 승인). new: 확인 대기(확인 요청 카드).
  * accepted: 수락(자동 확정 포함). rejected·expired는 거절·자동 취소 티켓(03·05)이 보낸다.
- * cancelled: 늦춰 수락했는데 손님이 바뀐 시각에 "아니요"(티켓 04)
+ * cancelled: 늦춰 수락했는데 손님이 바뀐 시각에 "아니요"(티켓 04).
+ * customer_cancelled: 손님이 주문 현황에서 취소(확인 대기·늦춘 수락 뒤, 전화 메뉴·주문 현황·쿠폰 티켓 07)
  */
-export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired' | 'cancelled'
+export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired' | 'cancelled' | 'customer_cancelled'
 
 /**
  * 통화 중 늦춘 수락에 손님 답 (티켓 04). asking: 손님이 바뀐 시각을 듣는 중. yes: 받아들임.
@@ -458,6 +459,7 @@ export function canAccept(card: OrderCard): boolean {
  * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
  * expired: 자동 취소(회색, 버튼 없음, 티켓 03). delayed: 늦춰 수락(바뀐 시각, 티켓 04).
  * declined: 늦춘 시각을 손님이 거절해 취소(회색). rejected: 거절(회색 + 사유, 티켓 05).
+ * customer_cancelled: 손님이 주문 현황에서 취소("손님 취소", 회색, 버튼 없음, 전화 주문 현황 티켓 07).
  * closed: 그 밖의 처리 상태(뒤 티켓이 더할 값)
  */
 export type OrderOutcome =
@@ -470,6 +472,7 @@ export type OrderOutcome =
   | 'auto'
   | 'expired'
   | 'rejected'
+  | 'customer_cancelled'
   | 'closed'
 
 export function orderOutcome(card: OrderCard): OrderOutcome {
@@ -485,6 +488,7 @@ export function orderOutcome(card: OrderCard): OrderOutcome {
   if (card.status === 'expired') return 'expired'
   if (card.status === 'rejected') return 'rejected'
   if (card.status === 'cancelled' && card.delay_min) return 'declined'
+  if (card.status === 'customer_cancelled') return 'customer_cancelled'
   return 'closed'
 }
 

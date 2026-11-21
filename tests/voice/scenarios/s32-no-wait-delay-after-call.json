@@ -61,6 +61,6 @@
     "pickup_label": "18:45",
     "original_pickup_label": "18:30",
     "reason": null,
-    "can_cancel": false
+    "can_cancel": true
   }
 }

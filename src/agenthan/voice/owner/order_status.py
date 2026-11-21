@@ -13,7 +13,7 @@
      "pickup": {"time": ISO, "label": "18:30",
                 "original_time": "", "original_label": ""},
      "outcome": 결과 | null, "reason": {"code", "text"} | null,
-     "sold_out": [떨어진 메뉴 이름], "can_cancel": false}
+     "sold_out": [떨어진 메뉴 이름], "can_cancel": 손님이 화면에서 취소할 수 있다}
 
 단계(`stage`, 닫힌 목록. 웹 `orderStatus.ts` `OrderStage`가 같은 값을 든다):
 - checking: 가게 확인 중. 확인 요청이 결정을 기다린다(통화 중에 손님이 고치는 중도 포함).
@@ -21,15 +21,25 @@
   통화에서 듣는 중인 수락도 아직 확인 중이다(통화가 말해야 굳는다)
 - confirmed: 확정. 사장님 수락(늦춘 수락이면 `pickup.time`이 바뀐 시각, `original_*`이 원래 시각)과
   확인 요청 없이 온 자동 확정(사장님 화면 꺼짐·승인 꺼짐)
-- cancelled: 주문 취소. 거절·자동 취소·손님이 통화에서 취소한 요청·늦춘 시각을 거절함
+- cancelled: 주문 취소. 거절·자동 취소·손님이 통화에서 취소한 요청·늦춘 시각을 거절함·손님이 주문
+  현황에서 취소함(카드 처리 상태 customer_cancelled, 티켓 07)
 
 결과(`outcome`, 티켓 05. 웹 `orderStatus.ts` `OrderOutcome`이 같은 값을 든다): 확인 중이면 null.
 확정은 accepted(제시간 수락) · delayed(늦춘 수락) · auto(확인 요청 없이 자동 확정), 취소는
 rejected(거절) · out_of_stock(재료 소진 거절) · expired(5분 무응답 자동 취소) · customer_cancelled
-(손님이 통화에서 거둔 요청·늦춘 시각을 거절함). 사유(`reason`)는 거절일 때만: 사장님이 고른
-사유 코드와 한 줄. 한 줄은 손님 문자 문장(`sms.py`)을 그대로 쓴다. 직접 쓰기(free)는 사장님 글의
-한국어 번역(번역 중이면 "", 번역하지 못했으면 원문). `sold_out`은 재료 소진 거절의 떨어진 메뉴
-이름들. `can_cancel`(손님 취소)은 다음 티켓(07)이 계산한다. 지금은 늘 거짓
+(손님이 통화에서 거둔 요청·늦춘 시각을 거절함·주문 현황에서 취소함). 사유(`reason`)는 거절일
+때만: 사장님이 고른 사유 코드와 한 줄. 한 줄은 손님 문자 문장(`sms.py`)을 그대로 쓴다. 직접
+쓰기(free)는 사장님 글의 한국어 번역(번역 중이면 "", 번역하지 못했으면 원문). `sold_out`은 재료
+소진 거절의 떨어진 메뉴 이름들.
+
+손님 취소(`can_cancel`, 티켓 07): 손님이 주문 현황의 [취소하기]로 취소할 수 있는 두 때만 참이다.
+1) 가게 확인 중인 통화 뒤 확인 요청(통화가 끝나 손님 말을 받을 통화가 없다), 2) 늦춘 수락으로
+확정(손님이 바뀐 시각에 묶이지 않게). 제시간 수락·자동 확정은 가게가 이미 만들기 시작했을 수 있어
+거짓이다(손님 화면은 "취소하려면 가게로 전화 주세요"). 통화 중 확인 요청·통화가 아직 말하지 않은
+결정·늦춘 시각을 손님이 통화에서 듣는 중이면 통화가 손님 말을 받는다(거짓). 취소 API는 허브 카드만
+받는다: 허브 카드로 만든 현황만 `cancellable=True`로 부른다. DB에서 읽은 주문(티켓 06)은 늘 거짓.
+거부 사유(`cancel_refusal`)는 지금 결과(`outcome`) 그대로, 통화가 받는 때는 in_call이다. 손님에게
+보일 한 줄은 `CANCEL_REFUSED`
 
 금액 (쿠폰 티켓 09): `subtotal`은 줄 합계, `total` = `subtotal` - 할인액(낼 금액, 사장님 카드
 `total`과 같다). 쿠폰을 쓴 주문만 `discount`·`coupon_name`(주문서에 적힌 쿠폰, 카드 칸)이 있다.
@@ -57,7 +67,8 @@ def order_stage(card: dict[str, Any], *, unspoken: bool = False) -> OrderStage:
         return "cancelled" if card.get("withdrawn") == "cancelled" else "checking"
     if status == "accepted":
         return "checking" if card.get("delay_reply") == "asking" else "confirmed"
-    return "cancelled"  # rejected · expired · cancelled(늦춘 시각 거절)
+    # rejected · expired · cancelled(늦춘 시각 거절) · customer_cancelled(손님 취소)
+    return "cancelled"
 
 
 def order_outcome(card: dict[str, Any], stage: OrderStage) -> OrderOutcome | None:
@@ -73,7 +84,8 @@ def order_outcome(card: dict[str, Any], stage: OrderStage) -> OrderOutcome | Non
         return "out_of_stock" if card.get("reject_reason") == "out_of_stock" else "rejected"
     if status == "expired":
         return "expired"
-    return "customer_cancelled"  # 통화에서 거둔 요청(withdrawn)·늦춘 시각 거절(cancelled)
+    # 통화에서 거둔 요청(withdrawn)·늦춘 시각 거절(cancelled)·주문 현황에서 취소(customer_cancelled)
+    return "customer_cancelled"
 
 
 def _menu_names(card: dict[str, Any], menu_ids: list[str]) -> list[str]:
@@ -97,8 +109,47 @@ def _reason(card: dict[str, Any], outcome: OrderOutcome | None) -> dict[str, str
     return {"code": code, "text": text}
 
 
-def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, Any]:
-    """허브 주문 카드 → 손님 주문 현황 응답 (모듈 설명의 모양)."""
+# 손님 취소 거부 사유 코드 (티켓 07): 지금 결과(`OrderOutcome`)이거나 in_call(통화가 손님 말을
+# 받는다)
+CancelRefusal = Literal["accepted", "auto", "rejected", "out_of_stock", "expired",
+                        "customer_cancelled", "in_call"]
+
+# 거부 사유 → 손님 화면 한 줄 (티켓 07). 진 쪽 화면은 이 줄과 함께 이긴 결과(현황)를 보인다
+CANCEL_REFUSED: dict[str, str] = {
+    "accepted": "가게가 이미 주문을 확정했어요. 취소하려면 가게로 전화 주세요.",
+    "auto": "가게가 이미 주문을 확정했어요. 취소하려면 가게로 전화 주세요.",
+    "rejected": "가게에서 이미 주문을 취소했어요.",
+    "out_of_stock": "가게에서 이미 주문을 취소했어요.",
+    "expired": "가게에서 확인하지 못해 이미 취소된 주문이에요.",
+    "customer_cancelled": "이미 취소한 주문이에요.",
+    "in_call": "통화 중인 주문은 통화로 말씀해 주세요.",
+}
+
+
+def can_cancel(card: dict[str, Any], stage: OrderStage, outcome: OrderOutcome | None) -> bool:
+    """손님이 주문 현황에서 취소할 수 있다 (모듈 설명 "손님 취소")."""
+    if stage == "checking":
+        # 통화 뒤 확인 요청이 결정을 기다린다(통화 중 결정·늦춘 시각을 듣는 중은 status가 new가
+        # 아니다)
+        return (card["status"] == "new" and not card.get("withdrawn")
+                and card.get("stage") == "after_call")
+    return outcome == "delayed"
+
+
+def cancel_refusal(status: dict[str, Any]) -> CancelRefusal | None:
+    """주문 현황(`order_status` 응답)이 손님 취소를 거부하는 사유 코드. 받으면 None."""
+    if status["can_cancel"]:
+        return None
+    return status["outcome"] or "in_call"  # 확인 중인데 못 받으면 통화가 받는 중이다
+
+
+def order_status(card: dict[str, Any], *, unspoken: bool = False,
+                 cancellable: bool = False) -> dict[str, Any]:
+    """허브 주문 카드 → 손님 주문 현황 응답 (모듈 설명의 모양).
+
+    `cancellable`: 손님 취소 API가 받는 주문(허브 카드)이다. 거짓이면(DB에서 읽은 주문)
+    `can_cancel`도 거짓이다.
+    """
     moved = card["status"] == "accepted" and bool(card.get("owner_pickup_time"))
     if moved:  # 늦춘 수락: 바뀐 시각과 원래 시각
         pickup = {"time": card["owner_pickup_time"], "label": card["owner_pickup_label"],
@@ -126,7 +177,7 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, A
         "reason": _reason(card, outcome),
         "sold_out": (_menu_names(card, card["reject_menu_ids"])
                      if outcome == "out_of_stock" else []),
-        "can_cancel": False,  # 손님 취소 (티켓 07)
+        "can_cancel": cancellable and can_cancel(card, stage, outcome),  # 손님 취소 (티켓 07)
     }
 
 

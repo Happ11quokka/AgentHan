@@ -38,6 +38,15 @@ const status = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
 })
 
 function show(first: OrderStatusJson, ...later: OrderStatusJson[]) {
+  return showWith({}, first, ...later)
+}
+
+/** `post`: 손님 취소 API 가짜 (티켓 07) */
+function showWith(
+  { post }: { post?: (url: string, init?: RequestInit) => Promise<Response> },
+  first: OrderStatusJson,
+  ...later: OrderStatusJson[]
+) {
   const reads = [first, ...later]
   const get = vi.fn(() => Promise.resolve(Response.json(reads.length > 1 ? reads.shift() : reads[0])))
   const sources: FakeSource[] = []
@@ -47,7 +56,9 @@ function show(first: OrderStatusJson, ...later: OrderStatusJson[]) {
     return source
   }
   const onReorder = vi.fn()
-  render(<OrderStatusPanel orderId="call-1" onReorder={onReorder} get={get} openSource={openSource} />)
+  render(
+    <OrderStatusPanel orderId="call-1" onReorder={onReorder} get={get} openSource={openSource} post={post} />,
+  )
   return { get, sources, onReorder, user: userEvent.setup() }
 }
 
@@ -110,5 +121,97 @@ describe('order status screen', () => {
     expect(await screen.findByText(/가게에서 확인하지 못해 주문이 취소됐어요/)).toBeInTheDocument()
     expect(get).toHaveBeenCalledTimes(2)
     await waitFor(() => expect(sources[0].closed).toBe(true))
+  })
+})
+
+// 손님 취소 (티켓 07): [취소하기]는 화면 안에서 한 번 묻고(브라우저 대화상자 없음), 거부되면 이긴 결과를 보인다
+describe('customer cancel', () => {
+  const cancelled = status({ stage: 'cancelled', outcome: 'customer_cancelled', can_cancel: false })
+
+  it('a checking order asks once on the page, then shows "주문을 취소했어요"', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
+    const post = vi.fn(() => Promise.resolve(Response.json(cancelled)))
+    const { user } = showWith({ post }, status({ can_cancel: true }))
+    await screen.findByText('가게에서 주문을 확인하고 있어요')
+
+    await user.click(screen.getByRole('button', { name: '취소하기' }))
+    expect(post).not.toHaveBeenCalled() // 먼저 한 번 묻는다
+    expect(screen.getByText('주문을 취소할까요?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '아니요' }))
+    expect(screen.queryByText('주문을 취소할까요?')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '취소하기' }))
+    await user.click(screen.getByRole('button', { name: '네, 취소할게요' }))
+
+    expect(await screen.findByRole('heading', { name: '주문을 취소했어요' })).toBeInTheDocument()
+    expect(post).toHaveBeenCalledExactlyOnceWith('/api/phone/orders/call-1/cancel', { method: 'POST' })
+    expect(screen.queryByRole('button', { name: '취소하기' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '다시 주문하기' })).toBeInTheDocument()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('a later pickup can be cancelled the same way', async () => {
+    const post = vi.fn(() => Promise.resolve(Response.json(cancelled)))
+    const delayed = status({
+      stage: 'confirmed',
+      outcome: 'delayed',
+      can_cancel: true,
+      pickup: {
+        time: '2026-11-21T18:45:00+09:00',
+        label: '18:45',
+        original_time: '2026-11-21T18:30:00+09:00',
+        original_label: '18:30',
+      },
+    })
+    const { user } = showWith({ post }, delayed)
+    await screen.findByRole('heading', { name: '주문이 확정됐어요' })
+
+    await user.click(screen.getByRole('button', { name: '취소하기' }))
+    await user.click(screen.getByRole('button', { name: '네, 취소할게요' }))
+
+    expect(await screen.findByRole('heading', { name: '주문을 취소했어요' })).toBeInTheDocument()
+  })
+
+  it('an order accepted on time has no button, only "call the store"', async () => {
+    show(status({ stage: 'confirmed', outcome: 'accepted', can_cancel: false }))
+    await screen.findByRole('heading', { name: '주문이 확정됐어요' })
+
+    expect(screen.queryByRole('button', { name: '취소하기' })).not.toBeInTheDocument()
+    expect(screen.getByText('취소하려면 가게로 전화 주세요.')).toBeInTheDocument()
+  })
+
+  it('when the owner accepted first, the refused cancel shows the confirmed order and why', async () => {
+    const message = '가게가 이미 주문을 확정했어요. 취소하려면 가게로 전화 주세요.'
+    const accepted = status({ stage: 'confirmed', outcome: 'accepted', can_cancel: false })
+    const post = vi.fn(() =>
+      Promise.resolve(Response.json({ detail: { code: 'accepted', message, order: accepted } }, { status: 409 })),
+    )
+    const { user } = showWith({ post }, status({ can_cancel: true }))
+    await screen.findByText('가게에서 주문을 확인하고 있어요')
+
+    await user.click(screen.getByRole('button', { name: '취소하기' }))
+    await user.click(screen.getByRole('button', { name: '네, 취소할게요' }))
+
+    expect(await screen.findByRole('heading', { name: '주문이 확정됐어요' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(message)
+    expect(screen.queryByRole('button', { name: '취소하기' })).not.toBeInTheDocument()
+  })
+
+  it('a cancel that could not reach the server can be tried again', async () => {
+    const post = vi
+      .fn<(url: string, init?: RequestInit) => Promise<Response>>()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(Response.json(cancelled))
+    const { user } = showWith({ post }, status({ can_cancel: true }))
+    await screen.findByText('가게에서 주문을 확인하고 있어요')
+
+    await user.click(screen.getByRole('button', { name: '취소하기' }))
+    await user.click(screen.getByRole('button', { name: '네, 취소할게요' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('취소하지 못했어요')
+    expect(screen.getByRole('heading', { name: '가게에서 주문을 확인하고 있어요' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '취소하기' }))
+    await user.click(screen.getByRole('button', { name: '네, 취소할게요' }))
+    expect(await screen.findByRole('heading', { name: '주문을 취소했어요' })).toBeInTheDocument()
   })
 })

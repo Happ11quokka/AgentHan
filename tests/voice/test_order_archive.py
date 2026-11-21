@@ -121,7 +121,8 @@ def test_a_coupon_record_reads_back_with_the_discount() -> None:
 ])
 def test_the_record_gives_the_same_answer_as_the_hub_card(decide, order) -> None:
     """같은 주문: 허브 카드로 만든 응답과 기록으로 만든 응답이 같다(결과·사유·품절 메뉴·쿠폰
-    할인까지)."""
+    할인까지). 손님 취소 가능만 다르다: 기록에서 읽은 주문은 늘 거짓(취소 API는 허브 카드만,
+    티켓 07)."""
     clock = FakeClock(PLACED)
     recorded: list[DecisionRecord] = []
 
@@ -144,7 +145,9 @@ def test_the_record_gives_the_same_answer_as_the_hub_card(decide, order) -> None
         reject_menu_ids=last.reject_menu_ids, reject_text=last.reject_text,
         reject_text_ko=last.reject_text_ko), now=clock.now(), expire=EXPIRE)
     assert archived is not None
-    assert {k: archived[k] for k in live} == live
+    assert archived["can_cancel"] is False
+    assert {k: archived[k] for k in live if k != "can_cancel"} == {
+        k: v for k, v in live.items() if k != "can_cancel"}
 
 
 class _Archive:

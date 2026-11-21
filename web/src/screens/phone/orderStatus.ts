@@ -55,7 +55,7 @@ export interface OrderStatusJson {
   reason: OrderReason | null
   /** 재료 소진 거절의 떨어진 메뉴 이름들 */
   sold_out: string[]
-  /** 손님이 이 화면에서 취소할 수 있다 (티켓 07 전에는 늘 거짓) */
+  /** 손님이 이 화면에서 취소할 수 있다: 가게 확인 중 · 늦춘 수락으로 확정 (티켓 07, `orderCancel.ts`) */
   can_cancel: boolean
 }
 
@@ -224,8 +224,8 @@ export function orderHeadline(order: OrderStatusJson): OrderHeadline {
         case 'out_of_stock':
           if (order.reason?.code === 'free') return head('stop', CANCELLED, REJECTED_FREE, order.reason.text || null)
           return head('stop', CANCELLED, order.reason?.text || null)
-        case 'customer_cancelled':
-          return head('stop', CANCELLED, '주문을 취소했어요.')
+        case 'customer_cancelled': // 손님 취소 (티켓 07): 주문 현황 [취소하기] · 통화에서 취소
+          return head('stop', '주문을 취소했어요')
         default:
           return head('stop', CANCELLED)
       }
