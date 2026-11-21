@@ -4,8 +4,9 @@
 이 모듈이 배달앱 메뉴 사진처럼 다시 만든다. 음식 자체를 새로 그리지 않으므로 모양이 바뀌지 않는다.
 
 1. 음식 영역 마스크: 기본 GrabCut. AGENTHAN_CUTOUT_MODEL=rembg이고 rembg가 설치돼 있으면 오픈
-   배경 제거 모델(U2Net, ONNX CPU)을 쓴다. 네이버 모델이 아니라 "NCP 모델만" 규정 확인 전까지 기본은
-   꺼 둔다(docs/research/07-menu-photo-speed.md, PRD §0 Smart Turn과 같은 회색 지대).
+   배경 제거 모델(U2Net, ONNX CPU, 사진당 0.4초)을 쓴다. 코드 기본은 꺼져 있고, 시연 서버
+   이미지(deploy/phone/Dockerfile)는 모델을 넣어 켠다(2026-11-21 팀 결정). 네이버 모델이 아니라
+   PRD §0 Smart Turn과 같은 자체 호스팅 오픈 모델로 분류한다.
 2. 색 보정: 밝기 대비(CLAHE, L 채널), 화이트밸런스(gray-world 절반), 채도 +12%, 선명도(언샤프).
 3. 구도: 음식을 정사각형 가운데에 12% 여백으로 놓고, 바닥에 부드러운 그림자를 깐다.
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 from collections.abc import Callable
 
 import cv2
@@ -40,6 +42,7 @@ def grabcut_mask(image: np.ndarray) -> np.ndarray:
 
 
 _rembg_session = None
+_rembg_lock = threading.Lock()  # 사진 여러 장을 동시에 자를 때 모델을 한 번만 읽는다
 
 
 def rembg_mask(image: np.ndarray) -> np.ndarray:
@@ -47,8 +50,9 @@ def rembg_mask(image: np.ndarray) -> np.ndarray:
     global _rembg_session
     from rembg import new_session, remove  # 선택 의존성: uv sync --extra cutout
 
-    if _rembg_session is None:
-        _rembg_session = new_session("u2net")
+    with _rembg_lock:
+        if _rembg_session is None:
+            _rembg_session = new_session("u2net")
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     mask = remove(rgb, session=_rembg_session, only_mask=True)
     return np.asarray(mask, dtype=np.uint8)
