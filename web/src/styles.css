@@ -2425,6 +2425,11 @@ p {
   background: #fff;
 }
 
+/* 대표 그림은 자기 연한 배경 카드를 가진다(어두운 화면에서도 그대로). 모서리 밖은 비운다. */
+.menu-photo-wrap .menu-photo.illustration {
+  background: transparent;
+}
+
 .menu-item .menu-photo {
   animation: photo-in 0.35s ease-out;
 }

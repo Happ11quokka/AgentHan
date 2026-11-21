@@ -20,6 +20,7 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
+from agenthan.illustration import assign_missing
 from agenthan.tools.dummy_store import DummyStoreError
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
@@ -241,6 +242,15 @@ def claim_drafts(session: Session, review_ids: list[str] | None = None) -> Calla
     return lambda: box.write_claimed(claimed)
 
 
+def fill_illustrations(session: Session) -> None:
+    """세션을 열 때 그림이 정해지지 않은 메뉴(예전 세션·시드 가게)에 대표 그림을 한 번 정해 둔다."""
+    store = session.assistant.store
+    with store.lock:
+        data = store.read()
+        if assign_missing(data["menus"]):
+            store.write(data)
+
+
 def in_background(job: Callable[[], None]) -> None:
     threading.Thread(target=job, daemon=True).start()
 
@@ -277,6 +287,7 @@ def create_app(
             data = store.read()
             data["menus"] = []
             store.write(data)
+        fill_illustrations(session)
         if prepare_on_start:
             with session.lock:
                 job = claim_drafts(session)

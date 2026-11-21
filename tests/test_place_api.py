@@ -41,6 +41,7 @@ def test_snapshot_has_the_place_and_record_sections():
         "price": 7500,
         "description": SEED["menus"][0]["description"],
         "photo_url": None,
+        "illustration_url": None,  # 시드에는 그림 id가 없다(세션을 열 때 채운다)
         "ai": [],
         "filling": [],
     }
