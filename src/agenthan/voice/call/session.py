@@ -77,7 +77,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -431,6 +431,8 @@ class CallSession:
         self._asks_owner = owner is not None and (settings or SessionSettings()).ask_owner
         # 주문 승인(주문 승인 티켓 02): 사장님 쪽이 붙은 통화만. 턴마다 사장님 화면이 있는지 본다
         self._approval_on = owner is not None and (settings or SessionSettings()).owner_approval
+        # 손님 화면에 보이는 확인 요청 상태(주문 승인 티켓 09). `state` 이벤트의 `approval`
+        self._approval_view: ApprovalView | None = None
         # 사장님 보충 지식 읽기 포트 (티켓 13). 사장님 쪽이 붙은 통화만 엔진에 넣는다(보충 요청을
         # 받을 곳이 있어야 "사장님께 전해 둘게요"라고 한다)
         self._knowledge = knowledge if owner is not None else None
@@ -1412,6 +1414,8 @@ class CallSession:
         if result.knowledge_requests:
             self._pass_on(turn, result.knowledge_requests)
         if result.order is not None:
+            if result.order.status == "confirmed" and not self._approval_decided():
+                self._approval_view = ApprovalView("skipped")  # 확인 없이 바로 확정(승인 건너뜀)
             if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
                 self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -2107,6 +2111,8 @@ class CallSession:
             "dialog": result.state.value if result else None,
             "cart": _cart_json(result.cart if result else Cart()),
             "total": result.cart.total() if result else 0,
+            # 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null
+            "approval": None if self._approval_view is None else asdict(self._approval_view),
         })
 
     def _interruptible(self) -> bool:
@@ -2227,9 +2233,15 @@ class CallSession:
             log.exception("사장님 화면 확인 실패, 승인을 건너뜀 (%s)", self.call_id)
             return False
 
+    def _approval_decided(self) -> bool:
+        """손님 화면에 확인 요청 결정(수락·시간 초과)이 실렸나. 아니면 이번 확정은 건너뛴 것."""
+        view = self._approval_view
+        return view is not None and view.status in ("accepted", "timeout")
+
     def _open_approval(self, turn: int, request: ApprovalRequest) -> None:
         """확인 요청을 연다(주문 승인 티켓 02). 질문 카드와 같은 대기 장치를 쓴다."""
         self._open_owner_wait("approval", request.number, self._settings.approval_wait_s)
+        self._approval_view = ApprovalView("waiting", request.number)
         record = self._log.get(turn)
         if record is not None:
             record.fields["approval_request"] = {"number": request.number,
@@ -2243,6 +2255,7 @@ class CallSession:
         if wait is not None and wait.key == ("approval", withdrawn.number):
             self._owner_wait = None
             self._owner_timer.cancel()
+        self._approval_view = ApprovalView("withdrawn", withdrawn.number, reason=withdrawn.reason)
         record = self._log.get(turn)
         if record is not None:
             record.fields["approval_withdrawn"] = {"number": withdrawn.number,
@@ -2378,6 +2391,8 @@ class CallSession:
         """사장님 알림을 말하는 턴을 열었다. 허브에 알리고 턴 기록에 남긴다(알림 종류마다)."""
         record = self._log.get(turn)
         if isinstance(note, OwnerDecision):
+            self._approval_view = ApprovalView(
+                _DECISION_STATUS.get(note.kind, note.kind), note.request, delay_min=note.delay_min)
             if record is not None:  # 결정 종류(시간 초과 포함)와 기다린·미룬 시간
                 record.fields["approval_decision"] = {"request": note.request, "kind": note.kind,
                                                       "delay_min": note.delay_min, **timing}
@@ -2400,6 +2415,25 @@ class CallSession:
             note(self._owner)
         except Exception:
             log.exception("사장님 쪽 알림 실패 (%s)", self.call_id)
+
+
+# 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). waiting: 사장님 확인 중.
+# 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) ·
+# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정). 늦춘 수락 제안·거절·
+# 자동 취소(티켓 04~07)는 새 값으로 더한다. 모르는 값은 손님 화면이 배지 없이 둔다
+ApprovalStatus = Literal["waiting", "accepted", "timeout", "withdrawn", "skipped"]
+# 사장님 결정 종류 → 손님 화면 상태. 표에 없는 새 결정 종류는 이름을 그대로 싣는다
+_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "timeout": "timeout"}
+
+
+@dataclass(frozen=True)
+class ApprovalView:
+    """`state` 이벤트의 `approval` 칸. 통화 안 마지막 확인 요청의 상태 하나."""
+
+    status: ApprovalStatus | str
+    number: int = 0  # 확인 요청 번호(1부터). 승인을 건너뛰었으면 0
+    delay_min: int = 0  # 늦춘 수락의 분 (티켓 04)
+    reason: str = ""  # withdrawn: changed·cancelled. 거절 사유는 티켓 05~06
 
 
 @dataclass(frozen=True)

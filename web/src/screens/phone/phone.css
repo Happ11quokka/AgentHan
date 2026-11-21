@@ -102,6 +102,58 @@
   color: var(--phone-muted);
 }
 
+/* 사장님 확인 요청 배지 (주문 승인 티켓 09) */
+.phone-approval {
+  flex: none;
+  border: 1px solid var(--phone-line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.phone-approval p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--phone-muted);
+}
+
+.phone-approval-wait {
+  border-style: dashed;
+}
+
+.phone-approval-wait strong::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--phone-muted);
+  vertical-align: middle;
+  animation: phone-approval-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes phone-approval-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-approval-wait strong::before {
+    animation: none;
+  }
+}
+
+.phone-approval-ok {
+  border-color: var(--phone-accent);
+  color: var(--phone-accent);
+}
+
+.phone-approval-stop {
+  border-color: var(--phone-danger);
+  color: var(--phone-danger);
+}
+
 .phone-order {
   border: 1px solid var(--phone-line);
   border-radius: 12px;
