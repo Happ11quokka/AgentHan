@@ -91,6 +91,27 @@ export function CouponForm({ initial, busy, onCancel, onSubmit }: Props) {
           </label>
         </div>
 
+        <label className="field" htmlFor={`${id}-min`}>
+          <span>
+            {T.minOrder} <small>{T.minOrderOptional}</small>
+          </span>
+          <span className="unit-input">
+            <input
+              id={`${id}-min`}
+              aria-label={T.minOrder}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={values.min_order}
+              placeholder={T.minOrderPlaceholder}
+              disabled={busy}
+              onChange={(e) => set("min_order", e.target.value)}
+            />
+            <em aria-hidden>{T.amount}</em>
+          </span>
+        </label>
+
         <p className="coupon-preview">{couponPreview(values)}</p>
         {problem && <p className="form-problem">{problem}</p>}
       </div>

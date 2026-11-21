@@ -6,13 +6,15 @@
 - 서버는 `/assistant` API만 쓴다(`src/agenthan/app/README.md`). 비서 코드는 바꾸지 않는다.
 - 도구 이름·세션 id·영문 코드는 화면에 보이지 않는다. 버튼은 액션 API를 호출하고 응답의 다음 액션을 대화에 표시한다. 일반·리뷰 승인 카드는 작업 ID와 현재 버전으로 승인한다. 사진 초안은 서버가 버전과 액션 승인을 지원하지 않아 기존 대화 방식으로 처리한다.
 - 리뷰·손님 통계 탭은 그 탭이 열려 있을 때만 읽기 API(`reviews`·`report`)로 불러오고, 비서 답이 오면 다시 읽는다.
+- 내 가게 메뉴 사진 칸 우선순위: 사진 채우는 중(흐린 자리) → 사진(`photo_url`) → 대표 그림(`illustration_url`, 작은 "대표 그림" 표시, `public/illustrations/`의 SVG) → 메뉴 이름 첫 글자. [사진 다듬기]는 사진에만 뜬다.
 
 ## 화면 경로
 
 | 주소 | 화면 | 백엔드 |
 |---|---|---|
 | `/` | 사장님 비서 (이 문서의 나머지) | `/assistant` |
-| `/phone` | 손님 전화 주문 통화 화면 (Part C) | `/api/phone/ws` |
+| `/phone` | 손님 전화 주문 통화 화면 (Part C). 주문으로 끝난 통화는 주문 현황으로 바뀌고 주소가 아래로 바뀐다 | `/api/phone/ws` |
+| `/phone/orders/<주문 번호>` | 손님 주문 현황 (Part C, 새로 고치거나 다시 열어도 같은 주문) | `/api/phone/orders/*` (조회·SSE·취소) |
 | `/owner?key=…` | 사장님 전화 주문 카드 (Part C, 언어 기본 ru, `&lang=ko`면 한국어. 비서 화면 왼쪽 "전화 주문 카드"는 한국어로 연다) | `/api/owner/*` SSE |
 
 `src/main.tsx`가 주소를 보고 둘 중 한 쪽만 불러온다. 전역 CSS가 달라서(`styles.css` / `index.css`) 섞지 않는다.
@@ -50,4 +52,6 @@ npm run lint      # oxlint
 | `src/types.ts` | API 응답과 화면 상태의 타입 |
 | `src/useLoad.ts` | 탭이 열릴 때 읽기 전용 데이터 불러오기·다시 불러오기 |
 | `src/components/` | 왼쪽 목록, 대화, 입력창, 승인 카드, 사이드카, 내 가게·리뷰·손님 통계 탭 |
-| `src/styles.css` | 디자인 토큰(네이버 그린 `#03C75A`, Pretendard, 라이트 모드)과 화면 |
+| `src/tokens.css` | 디자인 토큰(네이버 그린 `#03C75A`, Pretendard, 라이트 모드). 비서·전화·사장님 화면이 같이 읽는다 |
+| `src/brandmark.css` | 브랜드 워드마크 모양(`components/BrandMark.tsx`) |
+| `src/styles.css` | 비서 화면 (토큰·워드마크는 위 두 파일을 읽는다) |

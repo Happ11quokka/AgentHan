@@ -12,6 +12,7 @@ from agenthan.tools.feature_tools import (
     TOOLS,
     all_tool_schemas,
     execute_feature_tool,
+    feature_tool_schema,
 )
 
 
@@ -96,6 +97,28 @@ def test_writes_are_persisted(store):
     assert data["shop"]["hours"]["2026-11-08"] == {"closed": True}
     assert data["orders"][0]["status"] == "accepted"
     assert data["coupons"][0]["status"] == "saved_not_published"
+
+
+def test_coupon_min_order_is_optional_and_kept(store):
+    params = feature_tool_schema("coupon")["function"]["parameters"]
+    assert "min_order" not in params["required"]
+    assert params["properties"]["min_order"]["type"] == "integer"
+    assert params["properties"]["min_order"]["minimum"] == 0
+
+    plain = execute_feature_tool(store, "create_coupon", VALID["create_coupon"])
+    assert "min_order" not in plain["record"]  # 비우면 조건 없는 쿠폰(읽을 때 0)
+    with_floor = {**VALID["create_coupon"], "title": "5천 원 이상", "min_order": 5000}
+    assert execute_feature_tool(store, "create_coupon", with_floor)["record"]["min_order"] == 5000
+    assert [c.get("min_order", 0) for c in store.read()["coupons"]] == [0, 5000]
+
+
+@pytest.mark.parametrize("min_order", [-1, 1.5, "10000", True])
+def test_coupon_min_order_must_be_a_whole_won_amount(store, min_order):
+    result = execute_feature_tool(
+        store, "create_coupon", {**VALID["create_coupon"], "min_order": min_order}
+    )
+    assert result["error"] == "needs_input" and result["missing_fields"] == ["최소 주문 금액"]
+    assert not store.path.exists()
 
 
 @pytest.mark.parametrize(

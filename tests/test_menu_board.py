@@ -13,6 +13,7 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app.server import create_app
 from agenthan.core.contracts import MenuItem
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.illustration import pick_illustration
 from agenthan.tools.dummy_store import DummyStore, DummyStoreError
 from agenthan.tools.image_cutout import CutoutResult
 
@@ -23,6 +24,7 @@ NAMES = {
     "Ватрушка": {"name_ko": "바트루시카", "description_ko": "치즈를 올려 구운 동그란 빵."},
     "Пельмени": {"name_ko": "펠메니", "description_ko": "러시아식 만두."},
     "김밥": {"name_ko": "김밥", "description_ko": "밥과 채소를 김에 만 음식."},
+    "Блюдо дня": {"name_ko": "오늘의 수프", "description_ko": "날마다 바뀌는 수프."},
 }
 
 
@@ -216,6 +218,119 @@ def test_a_failing_menu_does_not_stop_the_others_and_clears_filling(tmp_path):
     assert all(m["filling"] == [] for m in saved.values())
 
 
+# ---------------------------------------------------------------- 대표 그림
+
+
+def picked(name):
+    """저장소는 잠금 안에서 임베딩 없이 고른다(임베딩은 app.server.fill_illustrations가 밖에서)."""
+    return pick_illustration(name)
+
+
+def test_board_menus_get_the_illustration_of_their_final_localized_name(tmp_path):
+    answer = {"kind": "menu_board", "items": [{"name": "Блюдо дня", "price": 6000}]}
+    store, fake, result = run_board(tmp_path, answer)
+    first = next(m for m in store.read()["menus"] if m["name"] == "Блюдо дня")
+    assert first["illustration"] == picked("Блюдо дня")  # 등록하자마자 하나는 있다
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    soup = menus(store)["오늘의 수프"]
+    assert soup["illustration"] == picked("오늘의 수프") != picked("Блюдо дня")
+    assert "illustration" not in soup["ai"] + soup["filling"]  # AI 표시 대상이 아니다
+
+
+def test_every_board_menu_has_an_illustration_even_with_a_cut_photo(tmp_path):
+    store, fake, result = run_board(tmp_path)
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    saved = menus(store)
+    assert saved["바트루시카"]["photo"] and saved["메도빅"]["photo"]
+    for name, record in saved.items():
+        assert record["illustration"] == picked(name)
+
+
+def test_an_owner_rename_before_the_fill_keeps_the_owner_name_illustration(tmp_path):
+    answer = {"kind": "menu_board", "items": [{"name": "Блюдо дня", "price": 6000}]}
+    store, fake, result = run_board(tmp_path, answer)
+    store.patch_menu(result.jobs[0].menu_id, {"name": "가나다 에이드"}, by_owner=True)
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    assert menus(store)["가나다 에이드"]["illustration"] == picked("가나다 에이드")
+
+
+def test_menus_added_or_renamed_in_chat_get_an_illustration(tmp_path):
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    store, _, _ = run_board(tmp_path)
+    execute_feature_tool(store, "upsert_menu", {"name": "가나다 에이드", "price": 5000})
+    assert menus(store)["가나다 에이드"]["illustration"] == picked("가나다 에이드")
+    execute_feature_tool(
+        store, "upsert_menu", {"name": "가나다 에이드", "new_name": "가나다 수프"}
+    )
+    assert menus(store)["가나다 수프"]["illustration"] == picked("가나다 수프")
+    store.upsert_menu("가나다 라떼", 6000)  # 사진 초안 승인으로 들어온 메뉴
+    assert menus(store)["가나다 라떼"]["illustration"] == picked("가나다 라떼")
+
+
+def test_store_paths_never_reach_the_embedding_step(tmp_path, monkeypatch):
+    """저장소 잠금 안에서 그림을 고르는 길(메뉴판 등록·채우기의 이름 변경·대화 도구·메뉴 탭·사진
+    승인)은 임베딩 단계에 닿지 않는다. 임베딩은 잠금 밖 app.server.fill_illustrations만 한다."""
+    from agenthan.illustration import matcher
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    def no_embedding(*_args):
+        pytest.fail("저장소 경로가 임베딩을 불렀어요")
+
+    monkeypatch.setattr(matcher, "_nearest", no_embedding)
+    store, fake, result = run_board(tmp_path)
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    execute_feature_tool(store, "upsert_menu", {"name": "쀍뷁", "price": 5000})
+    execute_feature_tool(store, "upsert_menu", {"name": "쀍뷁", "new_name": "쀍뷁 둘"})
+    menu_id = menus(store)["쀍뷁 둘"]["id"]
+    store.patch_menu(menu_id, {"name": "쀍뷁 셋"}, by_owner=True)
+    store.upsert_menu("쀍뷁 넷", 6000)
+    assert menus(store)["쀍뷁 셋"]["illustration"] == "default_other"
+
+
+def test_a_chat_menu_change_does_not_lose_a_concurrent_menu_tab_save(tmp_path):
+    """대화의 메뉴 도구(_menu)는 읽고-고치고-쓰는 동안 저장소 잠금을 잡는다: 그 사이 들어온
+    메뉴 탭 저장(백그라운드 채우기와 같은 잠금)은 기다렸다가 쓰이고, 덮여서 사라지지 않는다."""
+    import threading
+
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    store, _, _ = run_board(tmp_path)
+    kimbap = menus(store)["김밥"]["id"]
+    real_read = store.read
+    other = []
+
+    def read():
+        data = real_read()
+        if not other:  # 대화 도구가 처음 읽은 직후, 메뉴 탭에서 김밥 가격을 고친다
+            edit = {"price": 4700}
+            job = threading.Thread(target=lambda: store.patch_menu(kimbap, edit, by_owner=True))
+            other.append(job)
+            other[0].start()
+            other[0].join(timeout=0.3)  # 잠금이 있으면 여기서 끝나지 못한다
+        return data
+
+    store.read = read
+    execute_feature_tool(store, "upsert_menu", {"name": "가나다 에이드", "price": 5000})
+    other[0].join(timeout=5)
+    saved = menus(store)
+    assert saved["김밥"]["price"] == 4700
+    assert saved["가나다 에이드"]["price"] == 5000
+
+
+def test_a_price_change_keeps_the_illustration(tmp_path):
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    store, _, _ = run_board(tmp_path)
+    data = store.read()
+    record = next(m for m in data["menus"] if m["name"] == "김밥")
+    record["illustration"] = "default_tea"  # 무엇이든 이름이 그대로면 다시 고르지 않는다
+    store.write(data)
+    execute_feature_tool(store, "upsert_menu", {"name": "김밥", "price": 4500})
+    store.patch_menu(record["id"], {"name": "김밥", "price": 4800}, by_owner=True)
+    assert menus(store)["김밥"]["illustration"] == "default_tea"
+
+
 # ---------------------------------------------------------------- 저장소
 
 
@@ -327,9 +442,14 @@ def test_empty_menu_start_then_board_photo_fills_the_menu_tab(api):
         f"/assistant/sessions/{sid}/photos", files={"image": ("m.jpg", BOARD, "image/jpeg")}
     ).json()
     assert body["pending"] == [] and len(body["place"]["menu"]) == 3
+    # 올린 답에 이미 대표 그림 주소가 있다(사진 없는 메뉴는 새로고침 없이 그림이 뜬다)
+    assert all(m["illustration_url"] for m in body["place"]["menu"])
     place = wait_filled(api, sid)
     rows = {m["name"]: m for m in place["menu"]}
     assert rows["바트루시카"]["photo_url"].endswith("?v=1")
+    # 사진이 있어도 그림 주소는 온다(무엇을 보일지는 화면이 정한다)
+    assert rows["바트루시카"]["illustration_url"]
+    assert rows["김밥"]["photo_url"] is None and rows["김밥"]["illustration_url"]
     assert api.get(rows["바트루시카"]["photo_url"]).content == b"\xff\xd8\xffwhite"
 
 
@@ -549,6 +669,76 @@ def test_photo_cells_are_measured_and_a_missed_photo_found_by_its_label(tmp_path
         assert paper < 0.1
 
 
+def recovered_board(tmp_path, label="보르시"):
+    """김밥(사진 있음) + 보르시(사전 메뉴라 처음엔 채울 칸이 없고, 첫 읽기가 사진을 빠뜨림)."""
+    board = column_board()
+    answer = {
+        "kind": "menu_board",
+        "items": [{"name": "김밥", "price": 4000}, {"name": "보르시", "price": 9000}],
+        "photos": [{"box": [0.68, 0.2, 0.92, 0.45], "label": "김밥"}],
+    }
+
+    class Labels(FakeV3):
+        def __call__(self, model, body):
+            content = body["messages"][-1]["content"]
+            if isinstance(content, list) and content[1]["text"] == menu_board.LABEL_PROMPT:
+                return {"message": {"content": json.dumps({"label": label}, ensure_ascii=False)}}
+            return super().__call__(model, body)
+
+    fake = Labels(answer)
+    store = DummyStore(tmp_path / "store.json")
+    store.write({"shop": {"name": "러시아 식당"}, "menus": [], "reviews": []})
+    _, items = menu_board.read_board(board, call=fake)
+    result = menu_board.register(store, items, FakeStoreKnowledge([]))
+    return store, fake, result, board
+
+
+def test_a_recovered_photo_that_crashes_does_not_spin_forever(tmp_path, caplog):
+    """보르시처럼 첫 읽기가 사진을 빠뜨렸다가 이름표로 찾은 메뉴는 jobs에 없다(2026-11-21 서버 로그
+    'fill … for 3 menus', 사진은 4장). 그 사진이 예상 못 한 오류로 죽어도 '채우는 중'이
+    남지 않는다."""
+    store, fake, result, board = recovered_board(tmp_path)
+    assert [j.item.name for j in result.jobs] == ["김밥"]
+    assert [r.item.name for r in result.no_photo] == ["보르시"]
+
+    def crash(data, **kwargs):
+        raise RuntimeError("onnxruntime")
+
+    caplog.set_level("INFO", logger="agenthan.agent.menu_board")
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=crash, no_photo=result.no_photo
+    )()
+    assert all(m["filling"] == [] for m in menus(store).values())
+    assert "menu board fill" in caplog.text and "for 2 menus" in caplog.text
+
+
+def test_each_menu_shows_up_as_soon_as_its_own_photo_is_done(tmp_path):
+    """다 된 칸부터 바로 보인다: 한 메뉴 사진이 늦어도 다른 메뉴 사진은 먼저 저장소에 쓴다."""
+    import threading
+
+    store, fake, result, board = recovered_board(tmp_path)
+    lock, calls, early = threading.Lock(), [], []
+
+    def cutout(data, **kwargs):
+        with lock:
+            first = not calls
+            calls.append(data)
+        if first:  # 첫 사진은 다른 메뉴 사진이 저장소에 보일 때까지 붙잡아 둔다
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and not early:
+                done = [n for n, m in menus(store).items() if m.get("photo")]
+                early.extend(done)
+                time.sleep(0.01)
+        return fake_cutout(data)
+
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=cutout, no_photo=result.no_photo
+    )()
+    assert len(early) == 1  # 늦은 사진을 기다리는 동안 다른 한 메뉴는 이미 사진이 있었다
+    saved = menus(store)
+    assert saved["김밥"]["photo"] and saved["보르시"]["photo"]
+
+
 def test_refine_box_maps_the_answer_back_and_keeps_the_box_on_failure():
     box = (0.5, 0.2, 0.7, 0.4)
     refined = menu_board.refine_box(BOARD, box, "김밥", call=FakeV3(ITEMS))
@@ -558,3 +748,59 @@ def test_refine_box_maps_the_answer_back_and_keeps_the_box_on_failure():
         return {"message": {"content": "잘 모르겠어요"}}
 
     assert menu_board.refine_box(BOARD, box, "김밥", call=nonsense) == box
+
+
+# ---------------------------------------------------------------- 채우기 진행(menu_fill)
+
+
+def test_the_fill_run_keeps_its_start_and_menus_until_everything_is_filled(tmp_path, monkeypatch):
+    """진행 줄의 걸린 초와 'N/M개 완료'는 서버가 정한다: 메뉴 탭을 다시 열어도(다른 탭에 갔다 와도)
+    처음부터 세지 않는다. 늦게 사진을 찾은 메뉴도 같은 일에 더하고, 다 채우면 지운다."""
+    from agenthan.app import place
+    from agenthan.tools import dummy_store
+
+    clock = iter(range(1000, 1100))
+    monkeypatch.setattr(dummy_store, "_now", lambda: float(next(clock)))
+    store, fake, result, board = recovered_board(tmp_path)
+    kimbap, borscht = result.jobs[0].menu_id, result.no_photo[0].menu_id
+    run = store.read()["menu_fill"]
+    assert run["started_at"] == 1000.0 and run["menu_ids"] == [kimbap]
+    assert run["fields"] == [f"{kimbap}/description", f"{kimbap}/photo"]
+
+    store.patch_menu(kimbap, {"description": "김밥 설명"}, by_owner=False)
+    store.patch_menu(borscht, {}, by_owner=False, start=("photo",))  # 이름표로 사진을 찾음
+    run = store.read()["menu_fill"]
+    assert run["started_at"] == 1000.0  # 새로 시작하지 않는다
+    assert run["menu_ids"] == [kimbap, borscht] and len(run["fields"]) == 3
+
+    view = place.snapshot(store.read(), now=1024.6)["menu_fill"]
+    assert view == {
+        "started_at": 1000.0,
+        "seconds": 24.6,
+        "menu_ids": [kimbap, borscht],
+        "fields": 3,
+    }
+
+    store.patch_menu(kimbap, {}, by_owner=False, done=("photo",))
+    store.patch_menu(borscht, {}, by_owner=False, done=("photo",))
+    assert "menu_fill" not in store.read()
+    assert place.snapshot(store.read())["menu_fill"] is None
+
+
+def test_a_polish_alone_is_not_a_fill_run(tmp_path):
+    store, fake, result, board = recovered_board(tmp_path)
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=fake_cutout, no_photo=result.no_photo
+    )()
+    kimbap = result.jobs[0].menu_id
+    store.patch_menu(kimbap, {}, by_owner=False, start=("polish",))
+    assert "menu_fill" not in store.read()
+
+
+def test_the_fill_run_is_not_a_change_to_approve():
+    from agenthan.app import place
+
+    before = {"menu": [], "menu_fill": None}
+    fill = {"started_at": 1.0, "seconds": 2.0, "menu_ids": [], "fields": 0}
+    after = {"menu": [], "menu_fill": fill}
+    assert place.changes(before, after) == {}

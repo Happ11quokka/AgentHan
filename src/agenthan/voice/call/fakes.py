@@ -301,6 +301,8 @@ class RecordingOwnerChannel:
         self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
     ) -> None:
         self.notes.append(("approval", call_id, request))
+        if not request.in_call:  # 통화 뒤 확인 요청: 허브처럼 결정을 통화로 보내지 않는다 (티켓 04)
+            return
         self._decide = reply
         if self.approval == "accept":
             reply(OwnerDecision(request.number, "accept"))

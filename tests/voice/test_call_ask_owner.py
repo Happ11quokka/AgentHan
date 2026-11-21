@@ -82,7 +82,8 @@ def test_a_written_answer_is_promised_by_text_and_the_end_of_call_carries_the_te
             return c
 
     c = run(call())
-    assert said(c, 3) == "사장님이 답을 남기셨어요. 문자로 보내 드릴게요. 더 필요하신 거 있으세요?"
+    assert said(c, 3) == ("사장님이 글로 답을 남기셨어요. 자세한 건 가게에 물어봐 주세요. "
+                          "더 필요하신 거 있으세요?")
     assert said(c, 6) == "네, 6시 반까지 준비해 둘게요. 감사합니다."
     assert c.out.of("call.ended") == [
         {"type": "call.ended", "turn": 6, "reason": "confirmed", "sms": texts}]
@@ -93,7 +94,7 @@ def test_a_written_answer_is_promised_by_text_and_the_end_of_call_carries_the_te
 
 QUIET = 0.3  # 시험용 무응답 대기. 사장님 대기보다 짧아서 꺼지지 않았으면 "여보세요?"가 먼저 나간다
 OWNER_WAIT = 0.9  # 시험용 사장님 답 대기 (기본 20초)
-LATER = "확인해서 문자로 알려 드릴게요."
+LATER = "죄송해요, 사장님이 지금 바로 답하기 어려우세요."
 SEEN = "사장님이 보고 계세요, 조금만요."
 YES = "사장님께 여쭤보니 메도빅에 견과가 들어간대요."  # 들어가요? 질문 (리뷰 P2)
 

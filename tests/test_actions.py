@@ -94,6 +94,19 @@ def test_coupon_version_and_cancel(setup):
     assert not cancelled["pending"]
 
 
+def test_coupon_form_min_order_is_saved(setup):
+    _, _, action, _ = setup
+    first = action("coupon.create", {**COUPON, "min_order": 10000}).json()
+    [pending] = first["pending"]
+    [new] = [c for c in pending["after"]["coupon"] if c["title"] == COUPON["title"]]
+    assert new["min_order"] == 10000
+    done = action(
+        "task.approve", {"task_id": pending["task_id"], "version": pending["version"]}
+    ).json()
+    [saved] = [c for c in done["place"]["coupon"] if c["title"] == COUPON["title"]]
+    assert saved["min_order"] == 10000
+
+
 def test_business_info_form_previews_then_saves(setup):
     _, _, action, _ = setup
     intro = "매일 아침 굽는 메도빅과 러시아 홍차가 있는 이태원 베이커리"

@@ -1,6 +1,7 @@
 // 통화 화면 상태와 서버 이벤트 모양 (WS 계약은 티켓 01 Comments).
 // 화면에 보이는 것과 "지금 마이크 소리를 보내도 되나"를 순수 리듀서 하나로 정한다.
 import type { CustomerText } from '../customerText.ts'
+import { type AmountFields, type Discount, discountOf } from './discount.ts'
 
 export type { CustomerText } from '../customerText.ts'
 
@@ -30,9 +31,11 @@ export interface OrderJson {
  * 확인 중. 결과: accepted(수락, `delay_min`은 늦춘 분) · delayed(늦춘 시각을 손님에게 묻는 중, 티켓 04) ·
  * rejected(사장님 거절, `reason`은 사유, 티켓 05) · timeout(통화 중에 답이 없어 결과는 문자로) ·
  * withdrawn(손님이 고침·취소, `reason`) · skipped(확인 없이 바로 확정). 통화 뒤 결과(수락·거절·자동 취소)는
- * 상태가 아니라 받은 문자로 온다
+ * 상태가 아니라 주문 현황(예전 받은 문자)으로 온다. after_call: 통화 중 대기 0(기본)이라 통화 뒤 확인 요청을 열고 통화를 끝냈다.
+ * 결과는 주문 현황(`orderStatus.ts`)으로 본다 (전화 메뉴·주문 현황 티켓 04)
  */
-export type ApprovalStatus = 'waiting' | 'accepted' | 'delayed' | 'rejected' | 'timeout' | 'withdrawn' | 'skipped'
+export type ApprovalStatus =
+  'waiting' | 'accepted' | 'delayed' | 'rejected' | 'timeout' | 'withdrawn' | 'skipped' | 'after_call'
 
 /** 거절 사유(서버 `RejectReason`, 사장님 화면 `RejectReason`과 같은 값) */
 export type ApprovalRejectReason = 'out_of_stock' | 'busy' | 'closed' | 'free'
@@ -69,7 +72,12 @@ export type ServerEvent =
       interruptible: boolean
       dialog: string | null
       cart: CartLine[]
+      /** 낼 금액. 쿠폰이 붙으면 subtotal·discount·coupon_name·coupon_label도 온다 (쿠폰 티켓 09) */
       total: number
+      subtotal?: number
+      discount?: number
+      coupon_name?: string
+      coupon_label?: string
       /** 사장님 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null. 낡은 서버는 이 칸이 없다 */
       approval?: ApprovalJson | null
     }
@@ -88,7 +96,7 @@ export type ServerEvent =
   | { type: 'bot.duck'; turn: number }
   | { type: 'bot.unduck'; turn: number }
   | { type: 'bot.stop'; turn: number }
-  | { type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number }
+  | ({ type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number } & AmountFields)
   | { type: 'metrics'; turn: number; [key: string]: unknown }
   | { type: 'error'; turn: number; code: string; message: string; retry: boolean }
   /** 대화가 끝나 서버가 통화를 끝낸다(리뷰 S13). 마지막 인사 재생 뒤 소켓이 닫힌다. 위로 보내는 `call.end`는 손님이 끊은 것 */
@@ -135,8 +143,10 @@ export interface CallState {
   cutTurn: number
   captions: Caption[]
   cart: CartLine[]
+  /** 낼 금액(쿠폰 할인 뒤). `discount`는 쿠폰이 붙었을 때만 (쿠폰 티켓 09) */
   total: number
-  order: { order: OrderJson; cart: CartLine[]; total: number } | null
+  discount: Discount | null
+  order: { order: OrderJson; cart: CartLine[]; total: number; discount?: Discount | null } | null
   mic: Record<string, unknown> | null
   error: { message: string; retry: boolean } | null
   /** AudioContext가 suspended·interrupted라 탭으로 다시 켜야 함 */
@@ -145,9 +155,12 @@ export interface CallState {
   slowLink: boolean
   /** 서버가 통화를 끝낸 이유(`call.ended`): confirmed · handoff · cancelled · no_input. 손님이 끊었으면 null */
   endReason: string | null
-  /** 이 통화의 id(`call.ready`). 통화가 끝나면 이 id로 "받은 문자" 스트림을 연다 (티켓 07) */
+  /** 이 통화의 id(`call.ready`). 확정 주문으로 끝나면 주문 번호다 (주문 현황, 전화 주문 현황 티켓 04) */
   callId: string | null
-  /** 받은 문자(보낸 순서). `call.ended`와 통화 뒤 문자 스트림으로 온다 (티켓 07) */
+  /**
+   * 통화 끝(`call.ended`)에 온 손님 문자(보낸 순서, 티켓 07). 화면에 따로 보이지 않고 확인 배지가 결과를 읽는다.
+   * 통화 뒤 결정은 주문 현황이 보인다 (전화 주문 현황 티켓 05)
+   */
   texts: CustomerText[]
   /** 이 통화의 마지막 사장님 확인 요청 상태(`state.approval`, 주문 승인 티켓 09). 없으면 null */
   approval: ApprovalJson | null
@@ -171,8 +184,6 @@ export type CallAction =
   | { type: 'link.slow'; slow: boolean }
   | { type: 'socket.closed'; code?: number }
   | { type: 'hangup' }
-  /** 문자 스트림(`/api/phone/calls/{id}/sms`)으로 온 문자. 통화가 끝난 뒤에도 받는다 (티켓 07) */
-  | { type: 'texts'; texts: CustomerText[] }
 
 export const initialCallState: CallState = {
   status: 'idle',
@@ -187,6 +198,7 @@ export const initialCallState: CallState = {
   captions: [],
   cart: [],
   total: 0,
+  discount: null,
   order: null,
   mic: null,
   error: null,
@@ -261,12 +273,10 @@ export function callReducer(state: CallState, action: CallAction): CallState {
         return { ...state, status: 'ended', botTalking: false }
       }
       return state
-    case 'texts':
-      return withTexts(state, action.texts)
   }
 }
 
-/** 받은 문자에 더한다. 이미 받은 id는 버린다(스트림 snapshot은 `call.ended`와 겹친다) */
+/** 받은 문자에 더한다. 이미 받은 id는 버린다 */
 function withTexts(state: CallState, texts: CustomerText[]): CallState {
   const known = new Set(state.texts.map((t) => t.id))
   const fresh = texts.filter((t) => !known.has(t.id))
@@ -296,6 +306,7 @@ function onServer(state: CallState, event: ServerEvent): CallState {
         turn: event.turn,
         cart: event.cart,
         total: event.total,
+        discount: discountOf(event),
         interruptible: event.interruptible === true && !cut,
         approval: event.approval === undefined ? state.approval : event.approval,
       }
@@ -311,7 +322,10 @@ function onServer(state: CallState, event: ServerEvent): CallState {
     case 'bot.say':
       return { ...state, captions: [...state.captions, { who: 'bot', turn: event.turn, text: event.text }] }
     case 'order':
-      return { ...state, order: { order: event.order, cart: event.cart, total: event.total } }
+      return {
+        ...state,
+        order: { order: event.order, cart: event.cart, total: event.total, discount: discountOf(event) },
+      }
     case 'call.ended':
       // 끝난 이유만 남긴다. 마지막 인사가 아직 재생 중일 수 있어 끝내기는 소켓 닫힘이 한다
       return withTexts({ ...state, endReason: event.reason }, event.sms ?? [])

@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { SEED } from "../test/fakeApi";
 import type { Place } from "../types";
 import { MenuTab } from "./ShopTab";
@@ -94,10 +94,72 @@ describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  test("사진이 없는 메뉴는 대표 그림과 '대표 그림' 표시를 보이고, 그림에는 [사진 다듬기]가 없다", () => {
+    const { row } = setup({
+      ...SEED,
+      menu: [{ id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null, illustration_url: "/illustrations/default_cake.svg", ai: [], filling: [] }],
+    });
+    const napoleon = row("나폴레옹");
+    expect(napoleon.getByRole("img", { name: "대표 그림" })).toHaveAttribute("src", "/illustrations/default_cake.svg");
+    expect(napoleon.getByText("대표 그림")).toBeInTheDocument();
+    expect(napoleon.queryByRole("button", { name: "사진 다듬기" })).toBeNull();
+    expect(napoleon.queryByText("나", { selector: ".menu-photo" })).toBeNull();
+  });
+
+  test("사진이 있으면 그림 대신 사진을 보이고 '대표 그림' 표시는 없다", () => {
+    const { row } = setup({ ...SEED, menu: [{ ...filling.menu[0], illustration_url: "/illustrations/default_cake.svg" }] });
+    const medovik = row("메도빅");
+    expect(medovik.queryByRole("img", { name: "대표 그림" })).toBeNull();
+    expect(medovik.queryByText("대표 그림")).toBeNull();
+    expect(medovik.getByRole("button", { name: "사진 다듬기" })).toBeInTheDocument();
+  });
+
+  test("사진을 채우는 중이면 그림이 있어도 흐린 자리를 보인다", () => {
+    const { row } = setup({ ...SEED, menu: [{ ...filling.menu[1], illustration_url: "/illustrations/default_other.svg" }] });
+    expect(row("Сырники").getByLabelText("흰 배경 사진 만드는 중")).toBeInTheDocument();
+    expect(row("Сырники").queryByText("대표 그림")).toBeNull();
+  });
+
+  test("그림 주소도 없으면 이름 첫 글자를 보인다", () => {
+    const { row } = setup({ ...SEED, menu: [{ id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null }] });
+    expect(row("나폴레옹").getByText("나", { selector: ".menu-photo" })).toBeInTheDocument();
+    expect(row("나폴레옹").queryByText("대표 그림")).toBeNull();
+  });
+
   test("메뉴판 사진을 읽는 동안 메뉴 탭에는 빈 메뉴 자리만 보인다(진행 막대는 대화창)", () => {
     render(<MenuTab place={{ ...SEED, menu: [] }} pending={[]} readingSince={Date.now() - 3000} />);
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByText(/아직 메뉴가 없어요/)).toBeNull();
+  });
+
+  describe("채우기 진행 줄은 서버가 정한 시작과 메뉴로 센다", () => {
+    afterEach(() => vi.useRealTimers());
+    // 서버(place.fill_progress): 시작 뒤 24.6초, 이 일의 메뉴 둘 중 메도빅은 이미 다 채움, 칸 4개 중 3개 남음
+    const running: Place = {
+      ...filling,
+      menu_fill: { started_at: 1_763_700_000, seconds: 24.6, menu_ids: ["m01", "m09"], fields: 4 },
+    };
+
+    test("다 채운 메뉴도 센다: 메뉴 1/2개 완료, 걸린 초는 서버 값부터", () => {
+      vi.useFakeTimers();
+      render(<MenuTab place={running} pending={[]} />);
+      expect(screen.getByRole("status")).toHaveTextContent("메뉴 1/2개 완료");
+      expect(screen.getByRole("status")).toHaveTextContent("24.6초");
+      expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "25"); // 1 - 3/4
+    });
+
+    test("다른 탭에 갔다 와도 걸린 초를 처음부터 세지 않는다", () => {
+      vi.useFakeTimers();
+      const first = render(<MenuTab place={running} pending={[]} />);
+      act(() => vi.advanceTimersByTime(2000));
+      expect(screen.getByRole("status")).toHaveTextContent("26.6초");
+      first.unmount(); // 리뷰 탭으로
+      act(() => vi.advanceTimersByTime(3000));
+      // 메뉴 탭으로 돌아옴: 가게 화면은 3초 전에 받은 그대로(seconds 24.6)여도 이어서 센다
+      render(<MenuTab place={running} pending={[]} />);
+      expect(screen.getByRole("status")).toHaveTextContent("29.6초");
+      expect(screen.getByRole("status")).toHaveTextContent("메뉴 1/2개 완료");
+    });
   });
 
   test("메뉴가 없으면 메뉴판 사진을 올리라고 안내한다", () => {

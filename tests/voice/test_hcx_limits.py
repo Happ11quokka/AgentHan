@@ -25,6 +25,7 @@ from agenthan.voice.nlu.prefetch import PrefetchNlu
 from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import SettingsError, VoiceSettings
 from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.store_snapshot import StoreSnapshot, fixed_store
 from agenthan.voice.ws import WS_PATH, phone_router
 
 KEY = "test-key-not-real"
@@ -293,7 +294,8 @@ def _hcx_app(tmp_path, transport: httpx.BaseTransport | None, **env: str) -> Fas
          "PHONE_TURN_MODEL": "off", **env}, env_file=None)
     app = FastAPI()
     app.include_router(phone_router(
-        store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
+        stores=fixed_store(StoreSnapshot.of(FakeStoreKnowledge.from_fixture(),
+                                            StoreConfig.from_fixture())),
         order_sink=MemoryOrderSink(), settings=settings,
         hcx=HcxRuntime(settings, transport=transport) if transport is not None else None,
     ))

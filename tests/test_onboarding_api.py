@@ -55,8 +55,9 @@ def test_onboarding_saves_the_shop_and_menus_the_owner_typed(api, tmp_path):
     assert view["pending"] == []
     data = store_of(tmp_path, sid)
     assert data["shop"] == {"name": "달콤 디저트", "category": "디저트"}
-    # 넣은 값만: 설명·별칭을 지어내지 않는다.
-    assert [set(m) for m in data["menus"]] == [{"id", "name", "price", "aliases"}] * 2
+    # 넣은 값만: 설명·별칭을 지어내지 않는다(대표 그림은 이름에서 저절로 정해진다).
+    fields = {"id", "name", "price", "aliases", "illustration"}
+    assert [set(m) for m in data["menus"]] == [fields] * 2
 
 
 def test_menus_can_be_skipped(api, tmp_path):

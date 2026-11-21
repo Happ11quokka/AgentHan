@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { useElapsed } from "../useElapsed";
 import { ProgressBar } from "./ProgressBar";
-import { approval, DAYS, discountText, hoursText, MARK_TEXT, periodText, won, type RowMark } from "../labels";
-import type { MenuEdit, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
+import { approval, DAYS, discountText, hoursText, MARK_TEXT, minOrderText, periodText, won, type RowMark } from "../labels";
+import type { MenuEdit, MenuFill, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
+import { Icon } from "./Icon";
 import { RoutineSettings } from "./RoutineSettings";
 
 type Mark = RowMark | undefined;
@@ -42,12 +43,22 @@ function Row({ mark, children }: { mark: Mark; children: ReactNode }) {
   );
 }
 
-function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+/** 사이드카 구역 머리의 [수정]: 대화에서 그 일을 이어 가게 한다. */
+function EditButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="icon-button section-edit" aria-label={`${label} 수정`} title="수정" onClick={onClick}>
+      <Icon name="pencil" size={16} />
+    </button>
+  );
+}
+
+function Section({ title, count, onEdit, children }: { title: string; count?: number; onEdit?: () => void; children: ReactNode }) {
   return (
     <section className="shop-section">
       <h3>
         {title}
         {count !== undefined && <span>{count}</span>}
+        {onEdit && <EditButton label={title} onClick={onEdit} />}
       </h3>
       {children}
     </section>
@@ -277,6 +288,14 @@ function MenuItemRow({
           {ai.has("photo") && <span className="photo-note">메뉴판 사진</span>}
           {filling.has("polish") && <span className="photo-note busy">다듬는 중</span>}
         </span>
+      ) : m.illustration_url ? (
+        // 사진이 없을 때만: 메뉴 이름으로 고른 대표 그림. 실제 사진이 아니라는 걸 표시로 알린다.
+        <span className="menu-photo-wrap">
+          <img className="menu-photo illustration" src={m.illustration_url} alt="대표 그림" />
+          <span className="photo-note" aria-hidden>
+            대표 그림
+          </span>
+        </span>
       ) : (
         <span className="menu-photo empty" aria-hidden>
           {m.name.slice(0, 1)}
@@ -286,29 +305,43 @@ function MenuItemRow({
   );
 }
 
-const fillingFields = (menu: MenuRow[]) => menu.reduce((n, m) => n + (m.filling ?? []).filter((f) => f !== "polish").length, 0);
+const busyFields = (m: MenuRow) => (m.filling ?? []).filter((f) => f !== "polish");
+const fillingFields = (menu: MenuRow[]) => menu.reduce((n, m) => n + busyFields(m).length, 0);
 
-/** 메뉴판에서 올린 메뉴의 설명·흰 배경 사진을 채우는 동안: 남은 칸 수로 진행률, 다 된 메뉴 수, 걸린 시간.
- * 채울 칸이 생기면 FillRun이 새로 붙어 그때를 시작 시각으로 삼고, 다 채우면 떨어진다. */
-function FillProgress({ menu }: { menu: MenuRow[] }) {
-  return fillingFields(menu) > 0 ? <FillRun menu={menu} /> : null;
+/** 서버 채우기(menu_fill.started_at)마다 이 기기 시각으로 옮긴 시작(ms). 메뉴 탭을 닫았다 열어도
+ * (다른 탭에 갔다 와도) 남아서 걸린 초를 처음부터 세지 않는다. 받은 값 중 가장 이른 것을 쓴다:
+ * 늦게 받은 응답이나 예전에 받은 가게 화면의 seconds는 실제보다 작다. */
+const fillStarts = new Map<number, number>();
+function fillStart(run: MenuFill): number {
+  const guess = Date.now() - run.seconds * 1000;
+  const start = Math.min(fillStarts.get(run.started_at) ?? guess, guess);
+  fillStarts.set(run.started_at, start);
+  return start;
 }
 
-function FillRun({ menu }: { menu: MenuRow[] }) {
-  const remaining = fillingFields(menu);
-  const busyMenus = menu.filter((m) => m.filling?.some((f) => f !== "polish")).length;
-  const [start] = useState(() => Date.now());
-  // 가장 많았던 남은 칸·메뉴 수(이전 렌더 값과 비교해 렌더 중에 고친다)
+/** 메뉴판에서 올린 메뉴의 설명·흰 배경 사진을 채우는 동안: 남은 칸 수로 진행률, 다 된 메뉴 수, 걸린 시간.
+ * 시작 시각·이 일의 메뉴·칸 수는 서버(menu_fill)가 정한다. 예전 서버면 이 줄이 처음 뜬 때부터 센다. */
+function FillProgress({ menu, run }: { menu: MenuRow[]; run: MenuFill | null }) {
+  return fillingFields(menu) > 0 ? <FillRun menu={menu} run={run} /> : null;
+}
+
+function FillRun({ menu, run }: { menu: MenuRow[]; run: MenuFill | null }) {
+  const mine = run ? menu.filter((m) => run.menu_ids.includes(m.id)) : menu;
+  const remaining = fillingFields(mine);
+  const busyMenus = mine.filter((m) => busyFields(m).length > 0).length;
+  const [mountedAt] = useState(() => Date.now());
+  // 예전 서버: 가장 많았던 남은 칸·메뉴 수(이전 렌더 값과 비교해 렌더 중에 고친다)
   const [peak, setPeak] = useState({ fields: remaining, menus: busyMenus });
   if (remaining > peak.fields || busyMenus > peak.menus)
     setPeak({ fields: Math.max(peak.fields, remaining), menus: Math.max(peak.menus, busyMenus) });
-  const seconds = useElapsed(start);
+  const total = run ? { fields: Math.max(run.fields, remaining), menus: mine.length } : peak;
+  const seconds = useElapsed(run ? fillStart(run) : mountedAt);
   return (
     <ProgressBar
       title="설명과 흰 배경 사진을 채우고 있어요"
-      detail={`메뉴 ${peak.menus - busyMenus}/${peak.menus}개 완료 · 다 된 칸부터 바로 보여요`}
+      detail={`메뉴 ${total.menus - busyMenus}/${total.menus}개 완료 · 다 된 칸부터 바로 보여요`}
       seconds={seconds}
-      ratio={1 - remaining / peak.fields}
+      ratio={total.fields > 0 ? 1 - remaining / total.fields : 0}
     />
   );
 }
@@ -335,7 +368,7 @@ export function MenuTab({
   return (
     <div className="shop">
       <PendingBanner pending={pending} />
-      <FillProgress menu={place.menu} />
+      <FillProgress menu={place.menu} run={place.menu_fill ?? null} />
       <Section title="메뉴" count={view.menu.length}>
         {view.menu.length + removed.menu.length === 0 && readingSince !== null ? (
           <ul className="menu-list" aria-hidden>
@@ -386,16 +419,20 @@ type HomeProps = {
   routines: Routines | null;
   onRoutines?: (change: RoutinesChange) => Promise<string | null>;
   onRunReport?: () => Promise<string | null>;
+  /** 구역 머리의 [수정]. 없으면 버튼도 없다. 실행은 대화에서 한다. */
+  onEdit?: (target: HomeEdit) => void;
 };
 
+export type HomeEdit = "hours" | "coupon" | "keywords" | "routines";
+
 /** 홈 탭: 영업시간 · 쿠폰 · 대표키워드 · 루틴 설정. */
-export function HomeTab({ place, pending, report, routines, onRoutines, onRunReport }: HomeProps) {
+export function HomeTab({ place, pending, report, routines, onRoutines, onRunReport, onEdit }: HomeProps) {
   const { view, marks, removed } = overlay(place, pending);
   return (
     <div className="shop home">
       <PendingBanner pending={pending} />
 
-      <Section title="영업시간">
+      <Section title="영업시간" onEdit={onEdit && (() => onEdit("hours"))}>
         <ul className="hours">
           {DAYS.filter(([k]) => k in view.business_hours).map(([key, label]) => (
             <Row key={key} mark={marks.business_hours.get(key)}>
@@ -408,7 +445,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
         </ul>
       </Section>
 
-      <Section title="쿠폰" count={view.coupon.length}>
+      <Section title="쿠폰" count={view.coupon.length} onEdit={onEdit && (() => onEdit("coupon"))}>
         {view.coupon.length + removed.coupon.length === 0 ? (
           <p className="empty">아직 쿠폰이 없어요.</p>
         ) : (
@@ -418,6 +455,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
                 <div className="coupon-body">
                   <strong>{c.title}</strong>
                   <small>{periodText(c)}</small>
+                  {minOrderText(c) && <small>{minOrderText(c)}</small>}
                 </div>
                 <span className="coupon-value">{discountText(c)}</span>
               </Row>
@@ -427,7 +465,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
       </Section>
 
       {view.keywords !== undefined && (
-        <Section title="대표키워드" count={view.keywords.length}>
+        <Section title="대표키워드" count={view.keywords.length} onEdit={onEdit && (() => onEdit("keywords"))}>
           {view.keywords.length + (removed.keywords?.length ?? 0) === 0 ? (
             <p className="empty">아직 대표키워드가 없어요.</p>
           ) : (
@@ -442,7 +480,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
         </Section>
       )}
 
-      {onRoutines && onRunReport && <RoutineSettings report={report} routines={routines} onChange={onRoutines} onRunReport={onRunReport} />}
+      {onRoutines && onRunReport && <RoutineSettings report={report} routines={routines} onChange={onRoutines} onRunReport={onRunReport} onEdit={onEdit && (() => onEdit("routines"))} />}
     </div>
   );
 }

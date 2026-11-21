@@ -30,7 +30,14 @@ ACTIONS = {
             "coupon.create",
             "쿠폰 만들기",
             "create_coupon",
-            inputs=("title", "discount_type", "discount_value", "start_date", "end_date"),
+            inputs=(
+                "title",
+                "discount_type",
+                "discount_value",
+                "start_date",
+                "end_date",
+                "min_order",
+            ),
         ),
         # 가게 기본 정보 입력 블록의 [미리 보기]. 사장님이 바꾼 칸만 보낸다.
         Action(
