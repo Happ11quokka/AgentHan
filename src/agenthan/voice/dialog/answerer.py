@@ -289,10 +289,17 @@ _KIND_STOP = frozenset({"뭐", "무슨", "어떤", "있어", "있어요", "있�
                         "그럼", "그러면", "혹시", "저기", "여기", "거기", "아니", "그냥", "추천"})
 
 
-def menus_of_kind(question: str, menu: Sequence[MenuItem]) -> tuple[str, list[str]]:
+# 띄어 쓰지 않고 받아 적은 묻는 말("음료는뭐 있어요")을 떼어 낱말을 고른다
+_ASKING = re.compile(r"(뭐|뭣|무슨|어떤)")
+
+
+def menus_of_kind(question: str, menu: Sequence[MenuItem], *,
+                  asked: bool = False) -> tuple[str, list[str]]:
     """종류로 묻는 질문("마실 거 뭐 있냐고요")의 그 종류와, 종류·설명에 그 말이 적힌 메뉴 이름들
-    (오늘 품절은 뺀다). 종류 질문이 아니거나 맞는 메뉴가 없으면 ("", [])."""
-    if not _KIND_QUESTION.search(question):
+    (오늘 품절은 뺀다). 종류 질문이 아니거나 맞는 메뉴가 없으면 ("", []).
+    asked: 묻는 말 모양("뭐 있어요")을 보지 않는다(손님이 메뉴 이름처럼 말한 "커피"를 볼 때)."""
+    question = _ASKING.sub(r" \1 ", question)
+    if not asked and not _KIND_QUESTION.search(question):
         return "", []
     for raw in _WORD.findall(question):
         word = _WORD_TAIL.sub("", raw)

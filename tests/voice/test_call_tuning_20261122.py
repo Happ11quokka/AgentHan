@@ -216,3 +216,36 @@ def test_the_engine_answers_a_kind_question_the_answerer_could_not() -> None:
     nlu = _Nlu({"커피 뭐 있어요?": [Act("ask_other", free_text="커피 뭐 있어요?")]})
     r = _engine(nlu, _Unsure()).handle("커피 뭐 있어요?", NOW)
     assert r.utterances[0] == "커피는 아메리카노가 있어요."  # 시험 가게: 아메리카노만 종류가 커피
+
+
+# ---------------------------------------------------------------- 6. 메뉴 51개
+# 같은 날 04:20 실통화: "음료는뭐 있어요"(띄어 쓰지 않고 받아 적음)와 "커피 있어요"에
+# "그 메뉴는 없어요" + 음료 33개를 읽었다
+
+
+def test_a_glued_kind_question_is_still_a_kind_question() -> None:
+    from agenthan.voice.dialog.answerer import menus_of_kind
+
+    assert menus_of_kind("음료는뭐 있어요.", DRINKS)[0] == "음료"
+
+
+def test_a_kind_word_said_like_a_menu_name_lists_that_kind() -> None:
+    from agenthan.voice.dialog.answerer import menus_of_kind
+
+    assert menus_of_kind("커피", DRINKS, asked=True) == (
+        "커피", ["아메리카노", "카페라떼", "바닐라라떼", "카페모카"])
+    assert menus_of_kind("녹차 스무디", DRINKS, asked=True) == ("", [])
+
+
+def test_the_engine_does_not_say_a_kind_is_missing() -> None:
+    nlu = _Nlu({"커피 있어요?": [Act("ask_menu_info", menu_text="커피", menu_guess="커피",
+                                   free_text="커피 있어요?")]})
+    r = _engine(nlu, _Unsure()).handle("커피 있어요?", NOW)
+    assert r.utterances[0] == "커피는 아메리카노가 있어요."  # 시험 가게: 종류가 커피인 메뉴
+
+
+def test_many_drinks_are_cut_to_four() -> None:
+    names = ["아메리카노", "카페라떼", "바닐라라떼", "헤이즐넛라떼", "카페모카", "레몬에이드"]
+    assert templates.not_on_menu(["메도빅"], names) == (
+        "죄송해요, 그 메뉴는 없어요. 마실 거는 아메리카노, 카페라떼, 바닐라라떼, 헤이즐넛라떼 같은 "
+        "메뉴가 있어요.")

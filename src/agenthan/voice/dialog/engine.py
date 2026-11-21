@@ -1452,8 +1452,7 @@ class DialogEngine:
                 return
             if unlisted and self._menu_named(reply.menu) is None:
                 # 메뉴판에 없는 메뉴를 물었다("커피 있어요?"): 모른다고 하지 말고 없다고 한다
-                self._say(turn, templates.not_on_menu(self._available_names(),
-                                                      self._drinks_if_asked(turn, act)))
+                self._say_not_on_menu(turn, act)
                 return
             if item is None:
                 self._cannot_answer(turn, KnowledgeKey("", "other", _store_gist(question)),
@@ -1461,8 +1460,7 @@ class DialogEngine:
                 return
             unlisted = False
         if unlisted:
-            self._say(turn, templates.not_on_menu(self._available_names(),
-                                                  self._drinks_if_asked(turn, act)))
+            self._say_not_on_menu(turn, act)
             return
         if item is None:
             self._say(turn, templates.dont_know())
@@ -1634,8 +1632,7 @@ class DialogEngine:
         if item is None and _ASKS_FOR_DRINK.search(turn.heard):
             # "커피 있어요?": 가게 자료에 없는 마실 것. 사장님께 넘기지 않고 없다고 한다
             # (실통화 2026-11-22)
-            self._say(turn, templates.not_on_menu(self._available_names(),
-                                                  self._drinks_if_asked(turn, act)))
+            self._say_not_on_menu(turn, act)
             return
         key = KnowledgeKey(item.id if item else "", "other", _store_gist(question))
         self._cannot_answer(turn, key, item.name_ko if item else templates.STORE_QUESTION)
@@ -1751,8 +1748,7 @@ class DialogEngine:
             self._open_menu_clarify(turn, act, suggested, question)
         else:
             self._fail(turn)
-            self._say(turn, templates.not_on_menu(self._available_names(),
-                                                  self._drinks_if_asked(turn, act)))
+            self._say_not_on_menu(turn, act)
             turn.menu_listed = True
         return None
 
@@ -2920,6 +2916,18 @@ class DialogEngine:
             return False
         self._say(turn, templates.menus_of_kind(kind, names))
         return True
+
+    def _say_not_on_menu(self, turn: _Turn, act: Act) -> None:
+        """메뉴판에 없는 이름. 그 말이 종류("커피", "케이크")라 그 종류 메뉴가 있으면 없다고
+        하지 않고 그 메뉴들을 든다(실통화 2026-11-22: "커피 있어요?"에 "그 메뉴는 없어요" +
+        음료 33개). 아니면 없다고 하고 마실 것을 찾았으면 음료를, 아니면 메뉴 몇 개를 든다."""
+        kind, names = menus_of_kind(act.menu_text or turn.heard, self._matcher.available(),
+                                    asked=True)
+        if names:
+            self._say(turn, templates.menus_of_kind(kind, names))
+            return
+        self._say(turn, templates.not_on_menu(self._available_names(),
+                                              self._drinks_if_asked(turn, act)))
 
     def _drinks_if_asked(self, turn: _Turn, act: Act) -> list[str]:
         """손님이 없는 마실 것을 찾았으면("아이스 아메리카노") 가게에서 파는 음료 이름들.
