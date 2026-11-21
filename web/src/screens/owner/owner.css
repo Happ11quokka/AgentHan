@@ -210,6 +210,31 @@
   color: var(--owner-accent);
 }
 
+/* 늦춘 수락 (주문 승인 티켓 04): [수락] 옆 [+15분] [+30분], 통화 중 손님이 답하는 중 표시 */
+.owner-approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.owner-approval-wait {
+  flex: 1 0 100%;
+}
+
+.owner-btn-later {
+  padding: 12px 16px;
+  color: var(--owner-accent);
+  background: transparent;
+  border: 2px solid var(--owner-accent);
+}
+
+.owner-delay-asking {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+
 .owner-auto,
 .owner-withdrawn,
 .owner-expired {

@@ -16,6 +16,13 @@
   세션의 받는 곳으로 결정을 넘긴다. 통화 끝 `submit`은 같은 id의 확인 카드를 그대로 둔다. 확인
   요청 없이 온 확정 주문(승인 꺼짐·사장님 화면 없음)은 `submit`에서 accepted + `auto_accepted`로
   만들고 확정 문자를 그때 보낸다. 사장님 화면 연결 수(`events` 구독자)가 `approval_ready`다
+- 늦춘 수락 (주문 승인 티켓 04, `accept(..., delay_min=15|30)`): 카드는 accepted + `delay_min`,
+  `owner_pickup_time`(바뀐 픽업 시각 ISO)·`owner_pickup_label`(`18:45`). 통화 뒤면 늦춘 수락
+  문자를 바로 보낸다. 통화 중이면 결정을 세션에 넘기고 `delay_reply` asking(손님이 바뀐 시각을
+  듣는 중)으로 둔다. 손님이 "네"면 통화 끝 `submit`으로 확정 주문이 오고 늦춘 수락 문자를 보낸다
+  (yes). "아니요"·취소면 세션이 그 요청을 취소로 거두고 카드는 처리 상태 cancelled(no, 문자
+  없음)가 된다. 답 없이 통화가 끝나면(끊음·무응답) 통화 뒤 늦춘 수락과 같게 문자를 보낸다("").
+  `submit`과 통화 끝 중 먼저 온 쪽이 한 번만 보낸다
 - 결정 기록(티켓 10, `decisions.py`): `order.update`를 보낼 때마다 카드의 결정(처리 상태·사유·
   결정 시각·바뀐 픽업 시각)이 지난번과 달라졌으면 `decision_sink`로 넘긴다. 결정을 바꾸는 코드는
   카드 칸만 채우고 `order.update`를 보내면 된다. sink가 없으면 메모리(카드)만
@@ -112,6 +119,7 @@ from agenthan.voice.call.defaults import APPROVAL_EXPIRE_S, APPROVAL_WAIT_S, OWN
 from agenthan.voice.call.ports import Clock
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.approval import (
+    ACCEPT_DELAYS,
     REJECT_REASONS,
     ApprovalRequest,
     OwnerDecision,
@@ -303,26 +311,38 @@ class OwnerHub:
         확정 문자를 보내고, 통화 중이면 결정을 통화 세션에 넘긴다(손님이 마무리 대사를 듣는다).
         없으면 `UnknownCard`, 이미 결정했거나 자동 취소됐으면 `AlreadyDecided`(두 화면에서 같이
         눌러도 한 번),
-        손님이 고치는 중·취소한 요청이면 `CardBusy`. 늦춘 분은 지금 0만 받는다(`ValueError`,
-        티켓 04가 15·30을 연다).
+        손님이 고치는 중·취소한 요청이면 `CardBusy`. 늦춘 분은 0·15·30만 받는다(`ValueError`).
+        늦춘 수락(티켓 04)은 통화 중이면 문자를 손님 답 뒤로 미룬다(모듈 설명).
         """
         self.expire_due()  # 마감이 지난 카드는 먼저 자동 취소한다(타이머가 늦었어도 409)
         card = self._orders.get(order_id)
         if card is None:
             raise UnknownCard(order_id)
-        if delay_min != 0:
-            raise ValueError(f"늦춘 수락은 아직 받지 않아요: {delay_min!r}")
+        if delay_min not in ACCEPT_DELAYS:
+            raise ValueError(f"늦춘 분은 {ACCEPT_DELAYS} 중 하나예요: {delay_min!r}")
         if card["status"] != "new":
             raise AlreadyDecided(order_id)
         if card["withdrawn"]:
             raise CardBusy(order_id)
-        self._orders[order_id] = {**card, "status": "accepted", "delay_min": delay_min,
-                                  "decided_at": self._clock.now().isoformat()}
-        self._text_order(order_id)  # 확정 문자 + 카드 한 번 보내기
         reply = self._deciders.pop(order_id, None)
+        decided = {**card, "status": "accepted", "delay_min": delay_min,
+                   "decided_at": self._clock.now().isoformat()}
+        if delay_min:
+            moved = _later(card["pickup_time"], delay_min)
+            decided |= {"owner_pickup_time": moved, "owner_pickup_label": clock_label(moved),
+                        "delay_reply": "asking" if reply is not None else ""}
+        self._orders[order_id] = decided
+        if not delay_min:
+            self._text_order(order_id)  # 확정 문자 + 카드 한 번 보내기
+        elif reply is None:
+            self._text_delayed(order_id)  # 통화 뒤: 늦춘 수락 문자 + 카드 한 번 보내기
+        else:
+            self._publish("order.update", decided)  # 문자는 손님이 바뀐 시각에 답한 뒤
         if reply is not None:
-            self._tell_call(reply, OwnerDecision(card["request"], "accept", delay_min), order_id)
+            kind = "delay" if delay_min else "accept"
+            self._tell_call(reply, OwnerDecision(card["request"], kind, delay_min), order_id)
         return self._orders[order_id]
+
 
     def expire_due(self) -> list[str]:
         """자동 취소 (주문 승인 티켓 03): 확인 요청을 연 때 + `approval_expire_s`가 허브 시계로
@@ -545,7 +565,13 @@ class OwnerHub:
                 "auto_accepted": True, "decided_at": now}
             self._text_order(order.id)
             self._translate_later(self._orders[order.id])
-        # 확인 카드가 있으면(수락·대기 중) 그대로 둔다. 결정과 문자는 확인 카드 몫이다
+        elif waiting.get("delay_reply") == "asking":
+            # 늦춘 시각을 묻던 통화가 확정으로 끝났다(티켓 04). 손님이 "네"라고 했으면 주문서의
+            # 픽업이 바뀐 시각이다. 아니면(시간 초과와 겹침 등) 답 없이 끝난 것과 같다
+            said_yes = order.pickup_time == waiting["owner_pickup_time"]
+            self._orders[order.id] = {**waiting, "delay_reply": "yes" if said_yes else ""}
+            self._text_delayed(order.id)
+        # 그 밖의 확인 카드(수락·대기 중)는 그대로 둔다. 결정과 문자는 확인 카드 몫이다
         call = self._calls.get(order.id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered"})  # 화면은 통화 카드를 빼고 주문 카드만
@@ -564,6 +590,11 @@ class OwnerHub:
             "deadline_at": (now + wait).isoformat() if number else "",
             "decided_at": "",  # 사장님이 결정한(자동 확정은 받은) 시각 (허브 시계 ISO)
             "delay_min": 0,  # 늦춘 수락의 분 (티켓 04)
+            # 늦춘 수락의 바뀐 픽업 시각 ISO·`18:45`. 없으면 "" (DB `owner_pickup_time`)
+            "owner_pickup_time": "",
+            "owner_pickup_label": "",
+            # 통화 중 늦춘 수락에 손님 답: asking(묻는 중) · yes · no(주문 취소). 그 밖은 ""
+            "delay_reply": "",
             "auto_accepted": False,  # 확인 요청 없이 확정됨 ("자동 확정(사장님 화면 꺼짐)")
             "withdrawn": "",  # 기다리는 중에 손님이 고침(changed)·취소(cancelled). 결정을 안 받는다
             # 거절 (티켓 05): 사유(out_of_stock·busy·closed·free, DB `reject_reason`), 재료 소진의
@@ -619,6 +650,12 @@ class OwnerHub:
     def _withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         """손님이 고치거나 취소해 요청을 거뒀다. 카드는 결정을 안 받는다(새 요청이 대신한다)."""
         card = self._orders.get(call_id)
+        if (card is not None and card["request"] == number
+                and card.get("delay_reply") == "asking" and reason == "cancelled"):
+            # 늦춘 시각에 손님이 "아니요"·취소 (티켓 04). 사장님 결정은 남기고 주문은 취소로
+            self._orders[call_id] = {**card, "status": "cancelled", "delay_reply": "no"}
+            self._publish("order.update", self._orders[call_id])
+            return
         if card is None or card["status"] != "new" or card["request"] != number:
             return
         self._deciders.pop(call_id, None)
@@ -634,6 +671,14 @@ class OwnerHub:
         self._orders[call_id] = {**card, "sms": self.customer_texts(call_id),
                                  "owner_check": self._owner_check(call_id)}
         self._publish("order.update", self._orders[call_id])
+
+    def _text_delayed(self, call_id: str) -> None:
+        """늦춘 수락 문자(메뉴·합계·바뀐 픽업 시각·"어려우시면 전화 주세요", 티켓 04)를 남기고
+        주문 카드를 한 번 보낸다."""
+        card = self._orders[call_id]
+        self._text_customer(call_id, "delayed", sms.delayed_text(
+            [(line["name_ko"], line["quantity"]) for line in card["lines"]],
+            card["total"], card["owner_pickup_label"]))
 
     def _owner_check(self, call_id: str) -> bool:
         """그 통화에 답을 못 받은 질문(열림·시간 초과)이 있다 → 주문 카드 "사장님 확인 필요"."""
@@ -755,19 +800,25 @@ class OwnerHub:
         self._deciders.pop(call_id, None)  # 끝난 세션을 놓는다. 통화 뒤 결정은 문자로만 간다
         order = self._orders.get(call_id)
         waiting = order is not None and order["status"] == "new" and not order["withdrawn"]
+        asking = order is not None and order.get("delay_reply") == "asking"
         if waiting and order is not None and order["stage"] == "in_call":
             # 결정을 못 받고 통화가 끝났다(손님 끊음·오류·시간 초과 문자 약속 모두): 통화 뒤 대기.
             # 마감은 요청을 연 때부터. 지나면 `expire_due`가 자동 취소한다 (티켓 03)
             self._orders[call_id] = {**order, "stage": "after_call",
                                      "deadline_at": self._expires_at(order).isoformat()}
             self._publish("order.update", self._orders[call_id])
+        elif asking and order is not None:
+            # 늦춘 시각을 묻는 중에 통화가 끝났다(끊음·무응답, 티켓 04): 통화 뒤 늦춘 수락과 같다
+            self._orders[call_id] = {**order, "delay_reply": ""}
+            self._text_delayed(call_id)
         elif order is not None and order["status"] == "new" and order["withdrawn"] == "changed":
             # 손님이 고치는 중(다시 복창·"주문 취소할까요?")에 통화가 끝났다. 새 요청은 오지
             # 않는다: "고치는 중"으로 남기지 않고 손님 취소와 같게 닫는다(통화 뒤 대기·문자 없음)
             self._orders[call_id] = {**order, "withdrawn": "cancelled"}
             self._publish("order.update", self._orders[call_id])
-        # 확인을 기다리는 주문이나 거절한 주문(티켓 05)이 있으면 그 주문 카드가 통화를 대신한다
-        stands_in = waiting or (order is not None and order["status"] == "rejected")
+        # 확인을 기다리는 주문, 늦춘 시각을 묻던 주문(티켓 04), 거절한 주문(티켓 05)이 있으면 그
+        # 주문 카드가 통화를 대신한다
+        stands_in = waiting or asking or (order is not None and order["status"] == "rejected")
         call = self._calls.get(call_id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered" if stands_in else "missed",
@@ -1264,7 +1315,15 @@ def _key(card: dict[str, Any]) -> KnowledgeKey:
     return KnowledgeKey(card["menu_id"], card["kind"], card["subject"], card["yes_no"])
 
 
+def _later(iso: str, minutes: int) -> str:
+    """ISO 시각 + 분 → ISO (늦춘 수락의 바뀐 픽업 시각). 비면 빈 글."""
+    if not iso:
+        return ""
+    return (datetime.fromisoformat(iso) + timedelta(minutes=minutes)).isoformat()
+
+
 def clock_label(iso: str) -> str:
+
     """ISO 8601 시각 → `18:30` (가게 시각 그대로, 24시간제). 비면 빈 글."""
     if not iso:
         return ""

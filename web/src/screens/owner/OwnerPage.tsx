@@ -42,6 +42,7 @@ import {
   approvalClock,
   approvalsWaiting,
   captionLines,
+  effectivePickup,
   followUpCalls,
   initialOwnerState,
   knowledgeCards,
@@ -56,6 +57,8 @@ import {
   writtenAnswer,
 } from './ownerState.ts'
 import {
+  ACCEPT_DELAYS,
+  type AcceptDelay,
   acceptOrder,
   answerQuestion,
   connectOwnerStream,
@@ -91,8 +94,10 @@ import './owner.css'
 const ANSWERS: OwnerAnswer[] = ['yes', 'no', 'unsure']
 
 /**
- * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). 확인 대기: 대기 단계 + 남은 초 + [수락]. 수락: 초록
- * "수락 · 18:30". 자동 확정: 그 표시. 손님이 고치는 중·취소: 버튼 없이 그 표시
+ * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). 확인 대기: 대기 단계 + 남은 초 + [수락] [+15분]
+ * [+30분](티켓 04). 수락: 초록 "수락 · 18:30". 늦춘 수락: 초록 "18:45로 수락 (+15분)"(통화 중이면
+ * 손님이 답하는 중 표시). 손님이 늦춘 시각을 거절: 회색. 자동 확정: 그 표시. 손님이 고치는 중·
+ * 취소: 버튼 없이 그 표시
  */
 function OrderDecision({
   card,
@@ -106,7 +111,7 @@ function OrderDecision({
   nowMs: number
   lang: OwnerLang
   text: OwnerText
-  onAccept: () => void
+  onAccept: (delayMin: AcceptDelay) => void
   /** 거절 사유 시트 보내기 (티켓 05) */
   onReject: (body: RejectBody) => void
 }) {
@@ -121,14 +126,37 @@ function OrderDecision({
             {clock === 'late' ? text.late : approvalLeft(clock, lang)}
           </span>
         </p>
-        <button type="button" className="owner-btn owner-btn-accept" onClick={onAccept}>
+        <button type="button" className="owner-btn owner-btn-accept" onClick={() => onAccept(0)}>
           {text.accept}
         </button>
+        {ACCEPT_DELAYS.filter((m) => m > 0).map((minutes) => (
+          <button
+            key={minutes}
+            type="button"
+            className="owner-btn owner-btn-later"
+            onClick={() => onAccept(minutes)}
+          >
+            {text.acceptLater(minutes)}
+          </button>
+        ))}
         <RejectButton text={text} onReject={onReject} />
       </div>
     )
   }
   if (outcome === 'rejected') return <RejectedResult card={card} lang={lang} />
+  if (outcome === 'delayed') {
+    return (
+      <>
+        <p className="owner-accepted owner-accepted-yes">
+          {text.acceptedLater(card.owner_pickup_label ?? '', card.delay_min ?? 0)}
+        </p>
+        {card.delay_reply === 'asking' && <p className="owner-delay-asking">{text.delayAsking}</p>}
+      </>
+    )
+  }
+  if (outcome === 'declined') {
+    return <p className="owner-withdrawn">{text.delayDeclined(card.owner_pickup_label ?? '')}</p>
+  }
   if (outcome === 'expired') return <p className="owner-expired">{text.expired}</p>
   if (outcome === 'changing' || outcome === 'cancelled') {
     return <p className="owner-withdrawn">{text.withdrawn[outcome === 'changing' ? 'changed' : 'cancelled']}</p>
@@ -215,8 +243,8 @@ export default function OwnerPage() {
   }
 
   // 버튼 POST. 바뀐 카드는 SSE로 온다(응답 카드는 넣지 않는다, 리뷰 C8)
-  function accept(id: string) {
-    void acceptOrder(key.current, id)
+  function accept(id: string, delayMin: AcceptDelay = 0) {
+    void acceptOrder(key.current, id, delayMin)
   }
 
   function reject(id: string, body: RejectBody) {
@@ -325,14 +353,15 @@ export default function OwnerPage() {
             className={[
               'owner-card',
               `owner-card-${card.status}`,
-              `owner-band-${pickupBand(card, hubNow)}`,
+              `owner-band-${pickupBand(effectivePickup(card), hubNow)}`,
               reminded.has(card.id) ? 'owner-card-remind' : '',
-              orderOutcome(card) === 'cancelled' ? 'owner-card-cancelled' : '', // 손님 취소: 회색 (티켓 07)
+              // 손님 취소(티켓 07)·늦춘 시각 거절(티켓 04): 회색
+              ['cancelled', 'declined'].includes(orderOutcome(card)) ? 'owner-card-cancelled' : '',
             ].join(' ')}
           >
             <header className="owner-card-head">
               <span className="owner-pickup">
-                <small className="owner-pickup-label">{text.pickup}</small> {card.pickup_label}
+                <small className="owner-pickup-label">{text.pickup}</small> {effectivePickup(card).pickup_label}
               </span>
               <strong className="owner-total">{card.total_label}</strong>
             </header>
@@ -345,7 +374,7 @@ export default function OwnerPage() {
               nowMs={hubNow}
               lang={lang}
               text={text}
-              onAccept={() => accept(card.id)}
+              onAccept={(delayMin) => accept(card.id, delayMin)}
               onReject={(body) => reject(card.id, body)}
             />
           </article>

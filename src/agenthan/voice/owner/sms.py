@@ -29,7 +29,18 @@ def order_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) 
     return " ".join(parts)
 
 
+def delayed_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) -> str:
+    """늦춘 수락 (주문 승인 티켓 04): 확정 문자와 같은 메뉴·합계에 바뀐 픽업 시각과 "어려우시면 전화
+    주세요". 통화 뒤 수락이든, 통화 중 손님이 바뀐 시각에 "네"라고 했든 같은 문장이다.
+
+    `pickup_label`은 늦춘 시각 `18:45`.
+    """
+    confirmed = order_text(lines, total, "")
+    return f"{confirmed} {pickup_label}에 준비돼요. 어려우시면 전화 주세요."
+
+
 def expired_text() -> str:
+
     """확인 요청 자동 취소 (주문 승인 티켓 03): 사장님이 마감(요청을 연 때부터 5분) 안에 결정하지
     않았다. 손님은 통화에서 "확정 문자를 받으시면 주문 완료예요"를 들었다."""
     return "가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요."

@@ -47,6 +47,14 @@ export interface OwnerText {
   approvalStage: Record<'in_call' | 'after_call', string>
   acceptedAt: (pickup: string) => string
   autoAccepted: string
+  /**
+   * 늦춘 수락 (주문 승인 티켓 04): 버튼 [+15분]·[+30분], 결과 "18:45로 수락 (+15분)", 통화 중 손님이
+   * 바뀐 시각을 듣는 중, 손님이 그 시각을 거절해 취소
+   */
+  acceptLater: (minutes: number) => string
+  acceptedLater: (pickup: string, minutes: number) => string
+  delayAsking: string
+  delayDeclined: (pickup: string) => string
   withdrawn: Record<'changed' | 'cancelled', string>
   /** 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 마감 안에 결정하지 않아 손님에게 취소 문자가 갔다 */
   expired: string
@@ -137,6 +145,10 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     approvalStage: { in_call: 'Клиент ждёт на линии', after_call: 'Клиент ждёт SMS' },
     acceptedAt: (pickup) => `Принят · ${pickup}`,
     autoAccepted: 'Принят автоматически (экран был выключен)',
+    acceptLater: (minutes) => `+${minutes} мин`,
+    acceptedLater: (pickup, minutes) => `Принят на ${pickup} (+${minutes} мин)`,
+    delayAsking: 'Клиент слышит новое время и отвечает',
+    delayDeclined: (pickup) => `Клиенту не подошло ${pickup} · заказ отменён`,
     withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
     expired: 'Автоотмена: заказ не подтверждён вовремя',
     // 거절 문구 (티켓 05): 러시아어 화자 확인 전 초안 (사람 확인 대상)
@@ -170,6 +182,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sms: 'SMS клиенту',
     smsKind: {
       order: 'Подтверждение заказа',
+      delayed: 'Заказ принят на другое время',
       expired: 'Автоотмена заказа',
       rejected: 'Отказ в заказе',
       late_answer: 'Ваш ответ после звонка',
@@ -236,6 +249,10 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     approvalStage: { in_call: '손님 통화 중 확인', after_call: '통화 뒤 확인 (문자로 알림)' },
     acceptedAt: (pickup) => `수락 · ${pickup}`,
     autoAccepted: '자동 확정(사장님 화면 꺼짐)',
+    acceptLater: (minutes) => `+${minutes}분`,
+    acceptedLater: (pickup, minutes) => `${pickup}로 수락 (+${minutes}분)`,
+    delayAsking: '손님이 바뀐 시각을 듣고 답하는 중',
+    delayDeclined: (pickup) => `손님이 ${pickup}를 거절 · 주문 취소`,
     withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
     expired: '자동 취소 · 시간 안에 확인 못 함',
     reject: '거절',
@@ -268,6 +285,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sms: '손님에게 보낸 문자',
     smsKind: {
       order: '주문 확정 안내',
+      delayed: '늦춘 시각 확정 안내',
       expired: '자동 취소 안내',
       rejected: '거절 안내',
       late_answer: '늦은 답(통화에서 못 전함)',

@@ -300,8 +300,19 @@ def approval_rejected(reason: str) -> str:
     return _REJECTED.get(reason, _REJECTED["closed"])
 
 
+def approval_delayed(at: datetime) -> str:
+    """사장님이 시각을 늦춰 수락했다(+15분·+30분, 주문 승인 티켓 04). 받아들일지 손님에게 묻는다."""
+    return f"사장님이 {spoken_time(at)}에 준비 가능하시대요. 괜찮으세요?"
+
+
+def approval_delay_declined() -> str:
+    """늦춘 시각에 "아니요": 주문을 취소하고 통화를 끝낸다(다른 시각 협상은 없다, 티켓 04)."""
+    return "알겠어요, 이번 주문은 취소할게요. 다음에 또 주문해 주세요."
+
+
 def not_understood() -> str:
     return "죄송해요, 제가 잘 못 알아들었어요."
+
 
 
 # ---------------------------------------------------------------- 픽업 규칙 (티켓 04)
