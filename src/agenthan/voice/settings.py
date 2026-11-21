@@ -123,7 +123,9 @@ BargeName = Literal["off", "shadow", "on"]
 MicCloseName = Literal["playback", "state"]
 DEFAULT_TURN_MODEL_PATH = Path("/app/models/smart-turn-v3.2-cpu.onnx")  # Dockerfile이 받는 자리
 
-DEFAULT_FAKE_REPLIES = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
+# 메도빅 두 개(15,000원): 파일럿 쿠폰 최소 주문 금액(10,000원) 이상이라 복창 전 쿠폰 권유 없이
+# "네"로 확정된다 (쿠폰 티켓 10, `smoke.calls.SMOKE_ORDER_MIN`)
+DEFAULT_FAKE_REPLIES = ("메도빅 두 개요", "그게 다예요", "6시 반이요", "네")
 
 
 class SettingsError(ValueError):
