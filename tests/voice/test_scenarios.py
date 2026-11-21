@@ -44,6 +44,9 @@ APPROVAL = [  # 주문 승인 티켓 11: 가게 승인 시나리오 4개 (엔진
     "s41-customer-cancel-after-delay",
     "s42-customer-cancel-refused-after-accept",
     "s49-coupon-order-status",  # 쿠폰 티켓 09: 쿠폰 주문의 사장님 카드·주문 현황 금액
+    # 티켓 13: 비서 메뉴(전화용 가게, 옵션 없음)로 대기 0 주문, 쿠폰을 넣은 시연 흐름
+    "s70-assistant-menu-option-as-request",
+    "s71-assistant-menu-coupon-demo",
 ]
 # 통화 중 대기를 켠 승인 시나리오 (통화 중 결정 경로가 깨지지 않았는지, 티켓 04)
 IN_CALL = APPROVAL[:4]
@@ -58,12 +61,17 @@ COUPON = [  # 쿠폰 티켓 09: 적용 복창·모자람(쿠폰 말 없음)·기
     "s60-coupon-question-applied",
     "s61-coupon-question-short",
     "s62-coupon-question-empty-cart",
+    "s71-assistant-menu-coupon-demo",  # 티켓 13: 비서 메뉴·비서 쿠폰 시연 흐름
 ]
 COUPON_QUESTION = [  # 쿠폰 티켓 11: 쿠폰 문의 4가지
     "s60-coupon-question-applied",
     "s61-coupon-question-short",
     "s62-coupon-question-empty-cart",
     "s63-coupon-question-no-coupon",
+]
+ASSISTANT_MENU = [  # 티켓 13: 비서가 게시한 메뉴(옵션 없음)로 도는 시나리오
+    "s70-assistant-menu-option-as-request",
+    "s71-assistant-menu-coupon-demo",
 ]
 
 
@@ -88,6 +96,7 @@ def test_scenario_files_are_consistent() -> None:
     assert set(COUPON_QUESTION) <= set(ids)
     # 쿠폰이 없는 시나리오는 쿠폰 전 그대로다(고치지 않고 통과한다)
     assert sorted(s.id for s in SCENARIOS if s.coupons) == COUPON
+    assert sorted(s.id for s in SCENARIOS if s.menus) == ASSISTANT_MENU
     required = [s for s in SCENARIOS if s.id in REQUIRED]
     assert not any(s.xfail for s in required), "필수 시나리오 10개는 xfail이면 안 된다"
     approval = [s for s in SCENARIOS if s.approval]
