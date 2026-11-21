@@ -14,6 +14,9 @@ DB가 꺼져 있거나 실패하면 경고만 남기고 버린다(통화·사장
 주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 서버가 다시 떠 사장님 허브에 카드가 없을 때
 `find_order`가 주문 한 줄을 `PhoneOrderRow`로 읽는다. 손님 모양으로 바꾸는 일은 전화 쪽이 한다
 (`agenthan.serve`가 잇는다).
+
+쿠폰(쿠폰 티켓 09, 마이그레이션 006): 주문 열에 `coupon_id`·`coupon_name`·`discount`가 있고
+`total`은 낼 금액(할인 뒤)이다. 할인 전 금액 = `total` + `discount`. 쿠폰 전 행은 ''·''·0.
 """
 
 from __future__ import annotations
@@ -33,8 +36,9 @@ log = logging.getLogger(__name__)
 
 _ORDER_COLUMNS = (
     "id, store_id, status, lines, total, pickup_time, customer_name, customer_phone,"
-    " transcript, created_at"
+    " transcript, created_at, coupon_id, coupon_name, discount"
 )
+_ORDER_VALUES = ",".join(["%s"] * 13)
 
 
 # 사장님 결정 열(002·004). `save_decision`이 이 열만 고친다
@@ -51,7 +55,8 @@ _OWNER_COLUMNS = (
 
 def _order_values(order: Order, store_id: str) -> tuple:
     lines = [asdict(line) for line in order.lines]
-    total = sum(line.unit_price * line.quantity for line in order.lines)
+    # 낼 금액(할인 뒤). 할인액은 통화가 복창한 쿠폰 계산 결과다 (쿠폰 티켓 09, 마이그레이션 006)
+    total = sum(line.unit_price * line.quantity for line in order.lines) - order.discount
     return (
         order.id,
         store_id,
@@ -63,6 +68,9 @@ def _order_values(order: Order, store_id: str) -> tuple:
         order.customer_phone,
         Jsonb(list(order.transcript)),
         order.created_at,
+        order.coupon_id,
+        order.coupon_name,
+        order.discount,
     )
 
 
@@ -85,11 +93,12 @@ class OwnerDecisionRow:
 
 def save_order(conn, order: Order, store_id: str = "") -> None:
     conn.execute(
-        f"INSERT INTO phone_orders ({_ORDER_COLUMNS}) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        f"INSERT INTO phone_orders ({_ORDER_COLUMNS}) VALUES ({_ORDER_VALUES})"
         " ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, lines = EXCLUDED.lines,"
         " total = EXCLUDED.total, pickup_time = EXCLUDED.pickup_time,"
         " customer_name = EXCLUDED.customer_name, customer_phone = EXCLUDED.customer_phone,"
-        " transcript = EXCLUDED.transcript, received_at = now()",
+        " transcript = EXCLUDED.transcript, coupon_id = EXCLUDED.coupon_id,"
+        " coupon_name = EXCLUDED.coupon_name, discount = EXCLUDED.discount, received_at = now()",
         _order_values(order, store_id),
     )
 
@@ -119,7 +128,7 @@ def save_decision(conn, decision: OwnerDecisionRow, store_id: str = "") -> None:
         return
     conn.execute(
         f"INSERT INTO phone_orders ({_ORDER_COLUMNS}, {', '.join(_OWNER_COLUMNS)})"
-        f" VALUES ({', '.join(['%s'] * (10 + len(_OWNER_COLUMNS)))})"
+        f" VALUES ({_ORDER_VALUES}, {', '.join(['%s'] * len(_OWNER_COLUMNS))})"
         f" ON CONFLICT (id) DO UPDATE SET"
         f" {', '.join(f'{c} = EXCLUDED.{c}' for c in _OWNER_COLUMNS)}",
         (*_order_values(replace(decision.order, status="draft"), store_id), *owner),

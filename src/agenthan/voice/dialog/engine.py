@@ -31,7 +31,7 @@ import re
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from agenthan.core.contracts import MenuItem, MenuOption, Order, Review, StoreKnowledge
@@ -48,6 +48,7 @@ from agenthan.voice.dialog.answerer import (
 )
 from agenthan.voice.dialog.approval import ApprovalRequest, ApprovalWithdrawn, OwnerDecision
 from agenthan.voice.dialog.cart import Cart, CartLine
+from agenthan.voice.dialog.coupons import Applied, Coupon, CouponResult, check_coupons
 from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
 from agenthan.voice.dialog.options import find_options
@@ -171,6 +172,8 @@ class TurnResult:
     # 이 턴의 첫 말이 받아들인 대답이다(담기·고치기·빼기 되받기, 마무리). 세션이 `PHONE_ACK_FIRST`
     # 일 때 그 앞에 고정 문장 "네."를 따로 둔다(TTS 첫 바이트, `templates.ack_first`)
     ack: bool = False
+    # 이번 턴 뒤 장바구니의 쿠폰 계산 결과 (쿠폰 티켓 09). 세션이 손님 화면에 낼 금액을 보낸다
+    coupon: CouponResult | None = None
 
 
 @dataclass
@@ -269,7 +272,7 @@ SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
     "_nlu": "fixed", "_answerer": "fixed", "_store": "fixed", "_config": "fixed",
     "_order_id": "fixed", "_menu": "fixed", "_matcher": "fixed", "_catalog": "fixed",
     # 오늘 품절(주문 승인 티켓 06)은 메뉴와 같이 되감지 않는다(사장님이 바꾼 가게 사정이다)
-    "_store_menu": "fixed", "_sold_out_ids": "fixed",
+    "_store_menu": "fixed", "_sold_out_ids": "fixed", "_coupons": "fixed",
     "_ask_owner": "fixed", "_knowledge": "fixed",
     "_facts_reviews": "cache",
     # `_answer_early`는 (손님 말, 이미 낸 답변기 Future)다. 되감은 뒤에는 합친 말이라 글이 달라
@@ -326,6 +329,7 @@ class DialogEngine:
         self, store: StoreKnowledge, nlu: Nlu, config: StoreConfig, *, order_id: str,
         ask_owner: bool = False, knowledge: KnowledgeReader | None = None,
         answerer: Answerer | None = None, sold_out: Iterable[str] = (),
+        coupons: Iterable[Coupon] = (),
     ) -> None:
         """`ask_owner`면 근거 없는 메뉴 질문을 사장님께 묻는다(4단계 티켓 05). 아니면 1단계처럼
         "그건 제가 정확히 모르겠어요". 사장님 쪽이 붙은 통화 세션만 켠다.
@@ -339,6 +343,9 @@ class DialogEngine:
 
         `sold_out`(주문 승인 티켓 06)은 사장님이 오늘 품절로 건 메뉴 id들이다. 가게 메뉴에 품절로
         덮어 쓴다(`apply_sold_out`). 그 메뉴는 기존 품절 안내("오늘 다 떨어졌어요")를 탄다.
+
+        `coupons`(쿠폰 티켓 09)는 통화 시작 때의 가게 쿠폰(저장한 순서)이다. 복창·주문서의 금액은
+        쿠폰 계산(`coupons.check_coupons`) 결과 하나로 만든다(`_coupon`).
         """
         self._nlu = nlu
         self._answerer = answerer
@@ -360,6 +367,7 @@ class DialogEngine:
         self._matcher = MenuMatcher(self._menu)
         self._catalog = menu_catalog(self._menu, config.required_options)
         self._set_menu(frozenset(sold_out))
+        self._coupons: tuple[Coupon, ...] = tuple(coupons)
         self._state = State.GREETING
         self._cart = Cart()
         self._pickup: datetime | None = None
@@ -1006,13 +1014,27 @@ class DialogEngine:
 
     def _readback(self, *, after_fix: bool) -> str:
         assert self._pickup is not None
+        coupon = self._coupon(self._pickup.date())
         return templates.final_readback(
             self._cart.summary(self._unsaid),
             self._pickup,
-            self._cart.total(),
+            coupon.total,
             requests=self._cart.requests(),
             after_fix=after_fix,
+            coupon=(coupon.coupon.title, coupon.discount) if isinstance(coupon, Applied) else None,
         )
+
+    def _coupon(self, day: date) -> CouponResult:
+        """지금 장바구니의 쿠폰 계산 (쿠폰 티켓 09). 금액은 늘 이 결과로 말하고 적는다.
+
+        `day`는 가게 날짜다. 복창·주문서는 픽업 날짜(당일 픽업이라 오늘)를 써서 복창한 결과와
+        주문서가 같은 날로 셈한다(`_order_day`). 권할 메뉴는 이 통화 메뉴(오늘 품절 반영)에서 고른다
+        """
+        return check_coupons(self._cart.total(), self._coupons, day, self._menu)
+
+    def _order_day(self, now: datetime) -> date:
+        """쿠폰을 셈할 가게 날짜: 픽업 시각이 있으면 그 날(당일 픽업), 없으면 이번 턴 날짜."""
+        return self._pickup.date() if self._pickup is not None else now.date()
 
     def _readbacks(self) -> tuple[str, ...]:
         """지금 장바구니로 만든 복창 (앞에 "그럼"이 붙은 것과 안 붙은 것). 시각이 없으면 없음."""
@@ -1053,6 +1075,7 @@ class DialogEngine:
         if turn.order_status is not None:
             turn.order = self._build_order(turn.order_status, turn.now)
         readback = self._state is State.CONFIRM and turn.question in self._readbacks()
+        coupon = self._coupon(self._order_day(turn.now))
         result = TurnResult(list(turn.utterances), self._state, self._cart, turn.order,
                             readback=readback, owner_question=turn.owner_question,
                             knowledge_requests=tuple(turn.knowledge_requests),
@@ -1061,7 +1084,8 @@ class DialogEngine:
                             answer=turn.answer, route=_route(turn), reask=turn.reask,
                             reasks=self._reasks, handoff=turn.handoff,
                             ack=bool(turn.utterances) and any(
-                                turn.utterances[0].startswith(a) for a in turn.acks))
+                                turn.utterances[0].startswith(a) for a in turn.acks),
+                            coupon=coupon)
         if self._state is State.CONFIRM:
             self._read_back = True
         if self._state in TERMINAL:
@@ -2591,7 +2615,13 @@ class DialogEngine:
     # ------------------------------------------------------------ Order
 
     def _build_order(self, status: OrderStatus, now: datetime) -> Order:
-        """`now`는 이 턴의 가게 시각. 주문서를 만든 시각(`created_at`)으로 초까지 남긴다."""
+        """`now`는 이 턴의 가게 시각. 주문서를 만든 시각(`created_at`)으로 초까지 남긴다.
+
+        확정 주문서에는 복창과 같은 쿠폰 계산 결과를 적는다(쿠폰 티켓 09). 넘김 주문에는 쿠폰을
+        넣지 않는다(사장님이 통화하며 정한다)
+        """
+        coupon = self._coupon(self._order_day(now)) if status == "confirmed" else None
+        applied = coupon if isinstance(coupon, Applied) else None
         return Order(
             id=self._order_id,
             lines=self._cart.to_order_lines(),
@@ -2600,6 +2630,9 @@ class DialogEngine:
             status=status,
             transcript=list(self._transcript),
             created_at=now.isoformat(timespec="seconds"),
+            coupon_id=applied.coupon.id if applied else "",
+            coupon_name=applied.coupon.title if applied else "",
+            discount=applied.discount if applied else 0,
         )
 
 

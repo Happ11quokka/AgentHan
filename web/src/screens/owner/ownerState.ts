@@ -62,9 +62,18 @@ export interface OrderCard {
   /** 서버가 넣은 고정 표기 `18:30` (Intl을 쓰지 않는다) */
   pickup_label: string
   lines: OrderCardLine[]
+  /** 낼 금액(쿠폰 할인 뒤) */
   total: number
   /** 서버가 넣은 고정 표기 `25,000₩` */
   total_label: string
+  // 쿠폰 (쿠폰 티켓 09). 할인이 없으면 discount 0·coupon_name "". 쿠폰 전 서버는 안 보낸다
+  /** 할인 전 금액(줄 합계) */
+  subtotal?: number
+  subtotal_label?: string
+  coupon_id?: string
+  coupon_name?: string
+  discount?: number
+  discount_label?: string
   /**
    * 그 통화에 답을 못 받은 손님 질문이 있다(티켓 06). 손님은 "확인해서 문자로 알려 드릴게요"를
    * 들었다. 화면은 "사장님 확인 필요"를 붙인다. 06 전 서버는 안 보낸다

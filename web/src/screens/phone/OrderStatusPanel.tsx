@@ -3,6 +3,8 @@
 // 스트림(`orderStream.ts`)으로 스스로 바뀐다. 스트림이 끊기면 조회 API로 다시 읽는다. 손님은 새로 고침을 누르지
 // 않는다. 취소된 주문에는 [다시 주문하기]가 있다(통화 화면으로).
 import { useEffect, useReducer } from 'react'
+import { DiscountRows } from './DiscountRows.tsx'
+import { discountOf } from './discount.ts'
 import {
   canReorder,
   fetchOrderStatus,
@@ -118,6 +120,7 @@ export default function OrderStatusPanel({ orderId, onReorder, get, openSource }
           </li>
         ))}
       </ul>
+      <DiscountRows discount={discountOf(order.amount)} />
       <p className="phone-total">
         <span>합계</span>
         <strong>{won(order.amount.total)}</strong>

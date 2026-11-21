@@ -8,6 +8,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
+import { DiscountRows } from './DiscountRows.tsx'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
 import {
@@ -120,6 +121,7 @@ export default function PhonePage() {
   const inCall = state.status === 'starting' || state.status === 'live'
   const cart = state.order?.cart ?? state.cart
   const total = state.order?.total ?? state.total
+  const discount = state.order ? (state.order.discount ?? null) : state.discount
   const badge = approvalBadge(state)
   const notice = (
     // AI 응대·개인정보 안내 한 줄 (6단계). 보관 기한은 서버 `PHONE_LOG_KEEP_DAYS` 기본값과 같다
@@ -238,6 +240,7 @@ export default function PhonePage() {
               </li>
             ))}
           </ul>
+          <DiscountRows discount={discount} />
           <p className="phone-total">
             <span>합계</span>
             <strong>{won(total)}</strong>

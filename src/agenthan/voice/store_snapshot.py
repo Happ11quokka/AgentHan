@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from agenthan.core.contracts import StoreKnowledge
+from agenthan.voice.dialog.coupons import Coupon
 from agenthan.voice.store_config import StoreConfig
 from agenthan.voice.stt.boost import menu_boost_words
 
@@ -29,11 +30,15 @@ class StoreSnapshot:
     store: StoreKnowledge
     config: StoreConfig
     boost_words: tuple[str, ...] = ()  # CLOVA 키워드 부스팅 단어 (`stt.boost`)
+    # 가게 쿠폰(저장한 순서, 쿠폰 티켓 09). 게시된 전화용 가게에서 온다. 고정 가게는 없음
+    coupons: tuple[Coupon, ...] = ()
 
     @classmethod
-    def of(cls, store: StoreKnowledge, config: StoreConfig) -> StoreSnapshot:
+    def of(cls, store: StoreKnowledge, config: StoreConfig,
+           coupons: tuple[Coupon, ...] = ()) -> StoreSnapshot:
         """메뉴를 한 번 읽어 파생 값을 만든다. 동기라 이벤트 루프 밖(시작·게시 때)에서 부른다."""
-        return cls(store=store, config=config, boost_words=menu_boost_words(store.list_menu()))
+        return cls(store=store, config=config, boost_words=menu_boost_words(store.list_menu()),
+                   coupons=coupons)
 
 
 StoreProvider = Callable[[], StoreSnapshot]

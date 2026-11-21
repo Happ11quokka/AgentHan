@@ -80,12 +80,21 @@ def phone_store_doc(data: Mapping) -> dict:
     메뉴는 id·이름·가격·설명·품절과 손님이 부르는 다른 이름(별칭·원어명)만 옮긴다. 사진·AI 표시
     같은 화면 값은 빼서, 사진을 채우는 저장으로는 게시 값이 바뀌지 않는다. 비서 메뉴에는 옵션이
     없다(전화는 옵션 말을 그 줄 요청 사항으로 적는다).
+
+    쿠폰(쿠폰 티켓 09)은 저장한 순서 그대로 계산에 쓰는 칸만 옮긴다(게시 상태는 보지 않는다).
+    조건 없는 쿠폰은 `min_order` 키 없이 저장돼 있어 0으로 적는다(티켓 08).
     """
     return {"menus": [
         {"id": str(m["id"]), "name": m["name"], "price": m["price"],
          "description": m.get("description") or "", "aliases": list(m.get("aliases") or ()),
          "name_native": m.get("name_native") or "", "sold_out": bool(m.get("sold_out"))}
         for m in data.get("menus") or ()
+    ], "coupons": [
+        {"id": str(c.get("id") or ""), "title": c.get("title") or "",
+         "discount_type": c.get("discount_type"), "discount_value": c.get("discount_value"),
+         "min_order": c.get("min_order") or 0, "start_date": c.get("start_date"),
+         "end_date": c.get("end_date")}
+        for c in data.get("coupons") or ()
     ]}
 
 
@@ -105,6 +114,9 @@ class PhoneStores:
     - DB(`db_url`)가 있으면 (티켓 03) 게시 값을 DB에 남기고(`db.stores`), 메뉴 벡터는 pgvector
       (`PgVectorIndex`, 게시된 가게 id 하나)에 둔다. 게시가 바뀌면 다음 검색 때 바뀐 메뉴만
       임베딩하고 없어진 메뉴는 지운다. DB가 없으면 벡터 없이 이름·별칭·오타 매칭만
+    - 게시 값에는 비서 쿠폰도 실린다(쿠폰 티켓 09). 쿠폰만 바뀐 게시는 검색 색인을 다시 만들지 않고
+      스냅숏의 쿠폰만 바꾼다. DB에 남긴 게시 값도 쿠폰을 들고 있어 다시 떠도 쿠폰이 그대로다
+      (쿠폰 전에 남긴 게시 값은 쿠폰 없음)
     """
 
     KEEP = 8  # 만들어 둔 스냅숏을 이만큼 들고 있다(두 대화를 오갈 때 다시 만들지 않게)
@@ -165,8 +177,9 @@ class PhoneStores:
             while len(self._built) > self.KEEP:
                 self._built.popitem(last=False)
             changed = snapshot is not self._current
-            if changed:
-                # 만들어 둔 스냅숏으로 돌아왔으면 pgvector 색인을 다른 게시가 채웠을 수 있다
+            if snapshot.store is not self._current.store:
+                # 만들어 둔 스냅숏으로 돌아왔으면 pgvector 색인을 다른 게시가 채웠을 수 있다.
+                # 쿠폰만 바뀐 게시는 지금 색인을 그대로 쓴다 (쿠폰 티켓 09)
                 snapshot.store.vector.reset()
             self._current, self._doc = snapshot, doc
             if save and self._db_url and key != self._saved:
@@ -182,6 +195,10 @@ class PhoneStores:
     def _build(self, doc: dict) -> StoreSnapshot:
         from agenthan.rag import RagStoreKnowledge
 
+        coupons = _coupons(doc)
+        if self._doc is not None and self._doc.get("menus") == doc["menus"]:
+            # 쿠폰만 바뀐 게시: 검색 색인은 그대로 쓴다 (쿠폰 티켓 09)
+            return replace(self._current, coupons=coupons)
         # DB가 없으면 벡터 없이 (이름·별칭·오타 매칭)
         knowledge = RagStoreKnowledge(_PublishedMenus(doc, self._reviews), embed=False)
         if self._db_url:
@@ -192,7 +209,22 @@ class PhoneStores:
             knowledge.vector = PgVectorIndex(
                 knowledge.vector.docs, PUBLISHED_STORE_ID, self._embed, self._db_url)
         ensure_usable(knowledge.list_menu(), self._config, log)  # 경고는 로그에
-        return StoreSnapshot.of(knowledge, self._config)
+        return StoreSnapshot.of(knowledge, self._config, coupons)
+
+
+def _coupons(doc: dict) -> tuple:
+    """게시 값의 쿠폰 → 전화 쿠폰(`Coupon`, 쿠폰 티켓 09). 읽을 수 없는 쿠폰은 로그를 남기고
+    뺀다. 쿠폰 전에 저장된 게시 값(키 없음)은 쿠폰 없음."""
+    from agenthan.voice.dialog.coupons import Coupon
+
+    coupons = []
+    for raw in doc.get("coupons") or ():
+        coupon = Coupon.from_json(raw)
+        if coupon is None:
+            log.warning("전화용 가게: 읽을 수 없는 쿠폰은 뺌 %s", raw)
+        else:
+            coupons.append(coupon)
+    return tuple(coupons)
 
 
 def _content_key(doc: dict) -> str:

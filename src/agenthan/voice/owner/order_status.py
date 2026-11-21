@@ -8,7 +8,8 @@
      "stage": "checking" | "confirmed" | "cancelled",
      "placed_at": 주문서를 만든 가게 시각 ISO,
      "lines": [{"menu_id", "name", "quantity", "options", "request", "subtotal"}],
-     "amount": {"subtotal": 할인 전 금액, "total": 낼 금액},
+     "amount": {"subtotal": 할인 전 금액, "total": 낼 금액,
+                "discount": 할인액, "coupon_name": 쿠폰 이름},  # 할인 두 칸은 쿠폰을 쓴 주문만
      "pickup": {"time": ISO, "label": "18:30",
                 "original_time": "", "original_label": ""},
      "outcome": 결과 | null, "reason": {"code", "text"} | null,
@@ -30,7 +31,10 @@ rejected(거절) · out_of_stock(재료 소진 거절) · expired(5분 무응답
 한국어 번역(번역 중이면 "", 번역하지 못했으면 원문). `sold_out`은 재료 소진 거절의 떨어진 메뉴
 이름들. `can_cancel`(손님 취소)은 다음 티켓(07)이 계산한다. 지금은 늘 거짓
 
-금액: 지금은 할인이 없어 `subtotal` = `total`(줄 합계). 쿠폰(티켓 09)이 할인 칸을 이 묶음에 더한다.
+금액 (쿠폰 티켓 09): `subtotal`은 줄 합계, `total` = `subtotal` - 할인액(낼 금액, 사장님 카드
+`total`과 같다). 쿠폰을 쓴 주문만 `discount`·`coupon_name`(주문서에 적힌 쿠폰, 카드 칸)이 있다.
+쿠폰이 없으면 응답이 쿠폰 전과 똑같다(할인 칸 없음). 카드에 쿠폰 칸이 없으면(쿠폰 전 카드) 할인
+없음으로 읽는다.
 """
 
 from __future__ import annotations
@@ -102,7 +106,8 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, A
     else:
         pickup = {"time": card["pickup_time"], "label": card["pickup_label"],
                   "original_time": "", "original_label": ""}
-    total = sum(line["subtotal"] for line in card["lines"])
+    subtotal = sum(line["subtotal"] for line in card["lines"])
+    discount = card.get("discount", 0)
     stage = order_stage(card, unspoken=unspoken)
     outcome = order_outcome(card, stage)
     return {
@@ -115,7 +120,7 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, A
              "subtotal": line["subtotal"]}
             for line in card["lines"]
         ],
-        "amount": {"subtotal": total, "total": total},
+        "amount": _amount(subtotal, discount, card.get("coupon_name", "")),
         "pickup": pickup,
         "outcome": outcome,
         "reason": _reason(card, outcome),
@@ -123,3 +128,11 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, A
                      if outcome == "out_of_stock" else []),
         "can_cancel": False,  # 손님 취소 (티켓 07)
     }
+
+
+def _amount(subtotal: int, discount: int, coupon_name: str) -> dict[str, Any]:
+    """주문 현황 금액 칸. 할인 칸은 쿠폰을 쓴 주문만 (쿠폰 티켓 09)."""
+    amount: dict[str, Any] = {"subtotal": subtotal, "total": subtotal - discount}
+    if discount:
+        amount |= {"discount": discount, "coupon_name": coupon_name}
+    return amount
