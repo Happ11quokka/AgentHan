@@ -2563,6 +2563,8 @@ class PlannerLoop:
                 if self.batch.scope == "advice" and not executed
                 else ""
             )
+        if not llm.punct_polish_enabled():
+            return original
         try:
             message = self.model(
                 lambda: parse_message(
@@ -2607,6 +2609,8 @@ class PlannerLoop:
                 if self.turn_reads:
                     lines.append(self.read_text())
                 lines.append(self.advice())
+            elif self.turn_reads and phrase and not llm.punct_polish_enabled():
+                lines.append(self.read_text())
             elif self.turn_reads and phrase:
                 original = self.read_text()
                 try:

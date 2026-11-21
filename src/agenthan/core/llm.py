@@ -33,6 +33,14 @@ call_deadline: ContextVar[float | None] = ContextVar("hcx_deadline", default=Non
 call_managed: ContextVar[bool] = ContextVar("hcx_managed_retry", default=False)
 
 
+def punct_polish_enabled() -> bool:
+    """문장부호만 다듬는 HCX 호출(계획 루프 조언·조회 문장, 리포트 카드)을 할지.
+
+    결과는 템플릿 문장과 공백·문장부호만 다를 때만 쓰이므로 꺼도 내용은 같고, 한 턴에 HCX 한 번
+    (약 2~3초)이 준다. `AGENTHAN_PUNCT_POLISH=off`면 끈다. 기본은 켜짐(평가·테스트 그대로)."""
+    return os.environ.get("AGENTHAN_PUNCT_POLISH", "on").strip().lower() not in {"off", "0", "false", "no"}
+
+
 def remaining_time(timeout: float) -> float:
     deadline = call_deadline.get()
     if deadline is None:

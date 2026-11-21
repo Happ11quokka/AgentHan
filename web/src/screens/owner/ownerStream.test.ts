@@ -1,6 +1,6 @@
 // 사장님 화면 POST (서버 `voice/owner/http.py`). fetch는 가짜로 바꿔 끼운다.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { acceptOrder, answerQuestion, previewKnowledge } from './ownerStream.ts'
+import { acceptOrder, answerQuestion, ownerKey, previewKnowledge } from './ownerStream.ts'
 
 function stubFetch(status: number, body: unknown = {}) {
   const calls: { url: string; init: RequestInit }[] = []
@@ -35,5 +35,24 @@ describe('owner actions (review C8)', () => {
       text_ko: '달지 않아요',
       translate_failed: false,
     })
+  })
+})
+
+describe('ownerKey', () => {
+  afterEach(() => localStorage.clear())
+
+  it('주소의 키를 쓰고 기억해, 키 없는 주소(비서 화면 링크)에서도 쓴다', () => {
+    expect(ownerKey('?key=abc&lang=ko')).toBe('abc')
+    expect(ownerKey('?lang=ko')).toBe('abc')
+  })
+
+  it('주소에도 기억에도 없으면 빈 글', () => {
+    expect(ownerKey('')).toBe('')
+  })
+
+  it('새 키가 오면 바꿔 기억한다', () => {
+    ownerKey('?key=old')
+    ownerKey('?key=new')
+    expect(ownerKey('')).toBe('new')
   })
 })
