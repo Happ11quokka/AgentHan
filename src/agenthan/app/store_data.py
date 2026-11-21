@@ -158,14 +158,14 @@ def _story(pilot: dict, menus: list[dict], shop: dict, store: dict) -> dict:
         (f"{name(foods, 4)} 1개, {name(foods, 5)} 1개", "delivery", "completed"),
         (f"{name(foods, 6)} 2개, {name(drinks, 2)} 1잔", "pickup", "completed"),
     ]
-    coupon = dict(pilot["coupons"][0], title=f"평일 오후 {name(drinks, 0)} 1,000원 할인")
     return {
         "talktalk": talktalk,
         "orders": [
             {"id": f"order-{i}", "items": items, "type": kind, "status": status}
             for i, (items, kind, status) in enumerate(orders, 1)
         ],
-        "coupons": [coupon],
+        # 쿠폰은 주문 전체에 적용되니 메뉴 이름을 바꿔 넣을 것이 없다.
+        "coupons": [dict(c) for c in pilot["coupons"]],
     }
 
 

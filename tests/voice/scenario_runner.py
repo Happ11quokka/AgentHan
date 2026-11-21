@@ -45,10 +45,50 @@
                                                # sold_out_today(오늘 품절 메뉴 id들)
 
 "owner"도 턴이라 기대값 칸(expect_state·expect_say …)을 그대로 쓴다. 이음매: 엔진 + 사장님 허브.
-"timeout"은 세션의 통화 중 대기 타이머를 대신한다(허브 시계를 `APPROVAL_WAIT_S`만큼 옮기고 시간
+"timeout"은 세션의 통화 중 대기 타이머를 대신한다(허브 시계를 `approval_wait_s`만큼 옮기고 시간
 초과 결정을 넣는다). 20초·10초 재안내의 실제 시간은 세션 시험(`test_call_approval*.py`)이 본다.
 
-금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
+통화 중 대기 (전화 메뉴·주문 현황 티켓 04). 기본은 0(서버 기본값과 같다): 복창 "네"에 엔진이 통화
+뒤 확인 요청을 열고 "주문 넣어 드렸어요"로 끝낸다. 통화 중 "owner" 턴은 없고, 결정은 통화가 끝난 뒤
+`after_call`로 넣는다. 통화 중에 기다리는 시나리오(s27~s30)는 대기 시간을 적는다:
+
+      "approval_wait_s": 20,                   # 통화 중 대기(초). 0보다 크면 통화가 결정을 기다린다
+      "after_call": [{"owner": "accept"}],     # 통화가 끝난 뒤 사장님 결정(허브 공개 함수, 통화로
+                                               # 가지 않는다). after_call_s보다 먼저 넣는다
+      "expect_status": {"stage": "confirmed",  # 마지막 손님 주문 현황(허브 `order_status`). 칸:
+                        "pickup_label": "18:30"}  # stage · pickup_label · total. 카드가 없으면 null
+                        # 티켓 05: outcome · reason(사유 코드, 없으면 null) · reason_text ·
+                        # sold_out(떨어진 메뉴 이름들) · original_pickup_label · can_cancel
+
+쿠폰 (쿠폰 티켓 09). 가게 쿠폰 목록(비서 쿠폰 JSON 모양, 저장한 순서)을 넣는다. 오늘은 `now`의
+날짜다(가짜 시계). 주문서 기대값에 쿠폰 칸을, 주문 현황 기대값에 금액 칸을 적을 수 있다:
+
+      "coupons": [{"id": "coupon-1", "title": "전화 주문 1,000원 할인", "discount_type": "amount",
+                   "discount_value": 1000, "min_order": 10000,
+                   "start_date": "2026-11-02", "end_date": "2026-12-31"}],
+      "expect_order": {..., "coupon_id": "coupon-1", "coupon_name": "…", "discount": 1000},
+                                               # 없으면 쿠폰 없음(""·""·0)이어야 한다
+      "expect_status": {..., "subtotal": 16500, "discount": 1000, "coupon_name": "…",
+                        "total": 15500}
+
+비서 메뉴 (전화 메뉴·주문 현황·쿠폰 티켓 13). 운영 전화는 비서가 게시한 전화용 가게(옵션
+없는 메뉴)를 읽는다. `menus`를 주면 시험 가게 대신 그 메뉴(게시 값 `serve.phone_store_doc`의
+메뉴 모양)로 돌리고, 꼭 고를 것(`required_options`)을 비운다(운영 `PhoneStores`와 같다).
+옵션 말("아이스로요")은 그 줄의 요청 사항이 된다:
+
+      "menus": [{"id": "m03", "name": "아메리카노", "price": 4500, "aliases": []}],
+
+손님 취소 (티켓 07). `after_call`에 손님 화면 [취소하기]도 넣는다(허브 `cancel_by_customer`, 취소
+API가 부르는 것). 거부를 기대하면 `refused`에 거부 사유 코드를 적는다. 사장님 결정이 늦게 와
+거부돼야 하면(한 주문에 결정 한 번) 그 결정에 `"refused": true`:
+
+      "after_call": [{"owner": "accept", "delay_min": 15},
+                     {"customer": "cancel"},                       # 받아야 한다
+                     {"customer": "cancel", "refused": "customer_cancelled"},
+                     {"owner": "reject", "reason": "busy", "refused": true}],
+
+금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ 쿠폰 계산의
+낼 금액(쿠폰이 없으면 `Cart.total()`), 복창 할인액("○원 빼고") ≠ 쿠폰 계산의 할인액,
 150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴. 무응답 되묻기 앞의 "여보세요?"는 질문으로
 세지 않는다(부르는 말이다).
 """
@@ -62,24 +102,25 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agenthan.core.contracts import Order
+from agenthan.core.contracts import MenuItem, Order
 from agenthan.core.fakes import FakeStoreKnowledge
-from agenthan.voice.call.defaults import APPROVAL_WAIT_S
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import OwnerDecision
+from agenthan.voice.dialog.coupons import Coupon
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
 from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import State
 from agenthan.voice.nlu.base import Act
 from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.owner.decisions import DecisionRecord
-from agenthan.voice.owner.hub import OwnerHub
+from agenthan.voice.owner.hub import AlreadyDecided, NotCancellable, OwnerHub, UnknownCard
 from agenthan.voice.store_config import StoreConfig
 
 SCENARIO_DIR = Path(__file__).parent / "scenarios"
 MAX_SENTENCE = 150
 
 _TOTAL = re.compile(r"모두 ([\d,]+)원")
+_DISCOUNT = re.compile(r"([\d,]+)원 빼고")
 # CONFIRM으로 끝나는 턴의 질문: 최종 복창, 또는 그 자리에서 받은 "주문 취소할까요?"
 _CONFIRM_QUESTION = re.compile(r"모두 [\d,]+원이에요\..*맞으세요\?|주문 취소할까요\?")
 # 가게 승인 시나리오에서 CONFIRM으로 끝나도 되는 말: 확인 대기("확인 중이에요"), 늦춘 시각 질문
@@ -122,9 +163,14 @@ def forbidden(view: TurnView) -> list[str]:
     if view.result.state is State.CONFIRM and not (
             _CONFIRM_QUESTION.search(text) or view.approval and _APPROVAL_CONFIRM.search(text)):
         problems.append(f"복창 없는 CONFIRM: {text}")
+    coupon = view.result.coupon
+    pay = coupon.total if coupon is not None else view.result.cart.total()
     for amount in _TOTAL.findall(text):
-        if int(amount.replace(",", "")) != view.result.cart.total():
-            problems.append(f"복창 총액 {amount}원 ≠ 장바구니 {view.result.cart.total():,}원")
+        if int(amount.replace(",", "")) != pay:
+            problems.append(f"복창 총액 {amount}원 ≠ 낼 금액 {pay:,}원")
+    for amount in _DISCOUNT.findall(text):
+        if coupon is None or int(amount.replace(",", "")) != coupon.discount:
+            problems.append(f"복창 할인액 {amount}원 ≠ 쿠폰 계산 {coupon}")
     for utterance in said:
         for sentence in _SENTENCE_END.split(utterance):
             if len(sentence) > MAX_SENTENCE:
@@ -166,6 +212,14 @@ class Scenario:
     approval: bool = False  # 사장님 화면이 켜진 가게 (주문 승인 티켓 11, 모듈 설명)
     after_call_s: float = 0.0  # 통화가 끝난 뒤 허브 시계를 옮길 초 (자동 취소 마감)
     expect_owner: dict[str, Any] | None = None  # 통화(와 after_call_s) 뒤 사장님 쪽 기대값
+    approval_wait_s: float = 0.0  # 통화 중 대기(초). 0이면 통화 뒤 확인 요청 (티켓 04)
+    after_call: list[dict[str, Any]] = field(default_factory=list)  # 통화 뒤 사장님 결정
+    # 통화(와 통화 뒤 결정·after_call_s) 뒤 손님 주문 현황. null은 주문 카드 없음.
+    # 시나리오에 칸이 없으면(`check_status` 거짓) 보지 않는다
+    expect_status: dict[str, Any] | None = None
+    check_status: bool = False
+    coupons: tuple[dict[str, Any], ...] = ()  # 가게 쿠폰 (쿠폰 티켓 09)
+    menus: tuple[dict[str, Any], ...] = ()  # 비서 메뉴 = 전화용 가게 (티켓 13). 없으면 시험 가게
     path: Path = field(default=Path(), compare=False)
 
     @classmethod
@@ -182,6 +236,12 @@ class Scenario:
             approval=raw.get("approval", False),
             after_call_s=raw.get("after_call_s", 0.0),
             expect_owner=raw.get("expect_owner"),
+            approval_wait_s=raw.get("approval_wait_s", 0.0),
+            after_call=raw.get("after_call", []),
+            expect_status=raw.get("expect_status"),
+            check_status="expect_status" in raw,
+            coupons=tuple(raw.get("coupons", ())),
+            menus=tuple(raw.get("menus", ())),
             path=path,
         )
 
@@ -221,6 +281,9 @@ def _order_view(order: Order | None) -> dict[str, Any] | None:
         ],
         "pickup_time": order.pickup_time,
         "status": order.status,
+        "coupon_id": order.coupon_id,
+        "coupon_name": order.coupon_name,
+        "discount": order.discount,
     }
 
 
@@ -231,19 +294,41 @@ def _expected_order(raw: dict[str, Any] | None) -> dict[str, Any] | None:
         "lines": [{"options": [], "request": "", **line} for line in raw["lines"]],
         "pickup_time": raw.get("pickup_time", ""),
         "status": raw["status"],
+        "coupon_id": raw.get("coupon_id", ""),
+        "coupon_name": raw.get("coupon_name", ""),
+        "discount": raw.get("discount", 0),
     }
 
 
+def _published_menu(raw: dict[str, Any]) -> MenuItem:
+    """게시 값의 메뉴 한 줄 → 옵션 없는 `MenuItem` (비서 메뉴, 티켓 13)."""
+    return MenuItem(
+        id=str(raw["id"]), name_ko=raw["name"], price=int(raw["price"]),
+        description=raw.get("description", ""), name_native=raw.get("name_native", ""),
+        aliases=tuple(raw.get("aliases", ())), sold_out=bool(raw.get("sold_out", False)))
+
+
 def _store(scenario: Scenario) -> FakeStoreKnowledge:
-    store = FakeStoreKnowledge.from_fixture()
+    if scenario.menus:
+        menu = [_published_menu(raw) for raw in scenario.menus]
+    else:
+        menu = FakeStoreKnowledge.from_fixture().list_menu()
     sold = set(scenario.sold_out)
-    return FakeStoreKnowledge(
-        [replace(m, sold_out=True) if m.id in sold else m for m in store.list_menu()])
+    return FakeStoreKnowledge([replace(m, sold_out=True) if m.id in sold else m for m in menu])
+
+
+def _config(scenario: Scenario) -> StoreConfig:
+    config = StoreConfig.from_fixture()
+    # 비서 메뉴에는 옵션이 없어 꼭 고를 것도 없다 (운영 `PhoneStores`와 같다)
+    return replace(config, required_options={}) if scenario.menus else config
 
 
 def make_engine(scenario: Scenario) -> DialogEngine:
+    coupons = [Coupon.from_json(raw) for raw in scenario.coupons]
+    assert None not in coupons, f"읽을 수 없는 쿠폰 {scenario.coupons}"
     return DialogEngine(
-        _store(scenario), FakeNlu(), StoreConfig.from_fixture(), order_id=scenario.id
+        _store(scenario), FakeNlu(), _config(scenario), order_id=scenario.id,
+        coupons=[c for c in coupons if c is not None],
     )
 
 
@@ -263,11 +348,14 @@ class _Owner:
         self.call_id = scenario.id  # = 주문 id
         self.clock = clock
         self.records: list[DecisionRecord] = []  # 허브가 내보낸 결정 기록 (DB로 가는 것)
-        self.hub = OwnerHub(store=_store(scenario), clock=clock, decision_sink=self)
+        self.wait_s = scenario.approval_wait_s
+        self.hub = OwnerHub(store=_store(scenario), clock=clock, decision_sink=self,
+                            approval_wait_s=self.wait_s)
         self.inbox: list[OwnerDecision] = []  # 허브가 통화에 넘긴 결정
         self.open: int | None = None  # 열린 확인 요청 번호
         self.requested: list[dict[str, Any]] = []  # 그 요청의 장바구니
         self.approved: list[dict[str, Any]] | None = None
+        self.problems: list[str] = []  # 통화 뒤 결정·손님 취소가 기대와 다르게 받거나 거부됨
         self.hub.call_started(self.call_id)
 
     def record(self, decision: DecisionRecord) -> None:  # DecisionSink
@@ -281,6 +369,10 @@ class _Owner:
         if (request := result.approval_request) is not None:
             self.hub.open_approval(self.call_id, request, self.inbox.append)
             self.open, self.requested, self.approved = request.number, _cart_rows(result), None
+            if not request.in_call:
+                # 통화 뒤 확인 요청: 주문서가 같은 턴에 넘어간다(시간 초과 문자 약속과 같다).
+                # 결정은 통화로 오지 않는다
+                self.open, self.approved = None, self.requested
         if result.order is not None:
             self.hub.submit(result.order)
 
@@ -289,7 +381,7 @@ class _Owner:
         kind = turn["owner"]
         if kind == "timeout":
             assert self.open is not None, "열린 확인 요청이 없는데 시간 초과"
-            self.clock.set(self.clock.now() + timedelta(seconds=APPROVAL_WAIT_S))
+            self.clock.set(self.clock.now() + timedelta(seconds=self.wait_s))
             decision = OwnerDecision(self.open, "timeout")
         else:
             if kind == "accept":
@@ -310,9 +402,31 @@ class _Owner:
         self.open = None
         return decision
 
-    def ended(self, order: Order | None, after_s: float) -> dict[str, Any]:
-        """통화 끝 → (허브 시계를 옮기고 자동 취소 검사) → 사장님 쪽에서 보이는 것."""
+    def ended(self, order: Order | None, after_s: float,
+              after_call: list[dict[str, Any]]) -> dict[str, Any]:
+        """통화 끝 → 통화 뒤 사장님 결정 → (허브 시계를 옮기고 자동 취소 검사) → 사장님 쪽과 손님
+        주문 현황에서 보이는 것."""
         self.hub.call_ended(self.call_id, order.status if order is not None else "cancelled")
+        for turn in after_call:  # 사장님·손님 화면 버튼 (결정은 통화로 가지 않는다)
+            if "customer" in turn:
+                self._customer_after_call(turn)
+                continue
+            try:
+                if turn["owner"] == "accept":
+                    self.hub.accept(self.call_id, turn.get("delay_min", 0))
+                elif turn["owner"] == "reject":
+                    self.hub.reject(self.call_id, turn["reason"],
+                                    menu_ids=turn.get("menu_ids", ()), text=turn.get("text", ""))
+                else:
+                    raise ValueError(f"모르는 통화 뒤 결정: {turn['owner']!r}")
+            except AlreadyDecided:
+                if not turn.get("refused"):
+                    raise
+            else:
+                if turn.get("refused"):
+                    self.problems.append(
+                        f"통화 뒤 사장님 {_owner_label(turn)}: 거부돼야 하는데 받음")
+        assert self.inbox == [], f"통화 뒤 결정이 통화로 갔다 {self.inbox}"
         if after_s:
             self.clock.set(self.clock.now() + timedelta(seconds=after_s))
             self.hub.expire_due()
@@ -324,6 +438,34 @@ class _Owner:
             "sms": [t["kind"] for t in self.hub.customer_texts(self.call_id)],
             "sold_out_today": sorted(self.hub.sold_out_today()),
         }
+
+    def _customer_after_call(self, turn: dict[str, Any]) -> None:
+        """손님 화면 [취소하기] (티켓 07). `refused`가 있으면 그 사유로 거부돼야 한다."""
+        if turn["customer"] != "cancel":
+            raise ValueError(f"모르는 손님 동작: {turn['customer']!r}")
+        try:
+            self.hub.cancel_by_customer(self.call_id)
+            got = None
+        except NotCancellable as refused:
+            got = refused.code
+        if got != turn.get("refused"):
+            self.problems.append(f"손님 취소: 거부 사유 {got!r} ≠ {turn.get('refused')!r}")
+
+    def status(self) -> dict[str, Any] | None:
+        """손님 주문 현황(허브 `order_status`)에서 시나리오가 보는 칸. 주문 카드가 없으면 None."""
+        try:
+            got = self.hub.order_status(self.call_id)
+        except UnknownCard:
+            return None
+        reason = got["reason"] or {"code": None, "text": None}
+        amount = got["amount"]
+        return {"stage": got["stage"], "pickup_label": got["pickup"]["label"],
+                "original_pickup_label": got["pickup"]["original_label"],
+                "total": amount["total"], "subtotal": amount["subtotal"],
+                "discount": amount.get("discount", 0),
+                "coupon_name": amount.get("coupon_name", ""), "outcome": got["outcome"],
+                "reason": reason["code"], "reason_text": reason["text"],
+                "sold_out": got["sold_out"], "can_cancel": got["can_cancel"]}
 
 
 @dataclass
@@ -340,6 +482,7 @@ def run(scenario: Scenario) -> Run:
     clock = FakeClock(scenario.now)
     owner = _Owner(scenario, clock) if scenario.approval else None
     approval = owner is not None
+    in_call = scenario.approval_wait_s > 0  # 통화 중 대기 (티켓 04)
     out = Run()
     before = engine.start(clock.now())
     out.transcript += [f"AI: {u}" for u in before.utterances]
@@ -358,10 +501,11 @@ def run(scenario: Scenario) -> Run:
         elif event == "not_heard":
             result = engine.not_heard(clock.now())
         elif turn.get("wait_request"):
-            result = engine.handle(guest, clock.now(), wait_request=True, approval=approval)
+            result = engine.handle(guest, clock.now(), wait_request=True, approval=approval,
+                                   wait_in_call=in_call)
             out.transcript.append(f"손님: {guest}")
         else:
-            result = engine.handle(guest, clock.now(), approval=approval)
+            result = engine.handle(guest, clock.now(), approval=approval, wait_in_call=in_call)
             out.transcript.append(f"손님: {guest}")
         if owner is not None:
             owner.took(result)
@@ -402,8 +546,18 @@ def run(scenario: Scenario) -> Run:
     if out.order is not None and _talk(out.order.transcript) != _talk(out.transcript):
         out.failures.append("Order.transcript가 실제 대화와 다르다")
     if owner is not None:
-        seen = owner.ended(out.order, scenario.after_call_s)
+        seen = owner.ended(out.order, scenario.after_call_s, scenario.after_call)
+        out.failures += owner.problems
         for key, value in (scenario.expect_owner or {}).items():
             if seen[key] != value:
                 out.failures.append(f"사장님 쪽 {key}: {seen[key]!r} ≠ {value!r}")
+        if scenario.check_status:
+            status, want_status = owner.status(), scenario.expect_status
+            if want_status is None or status is None:
+                if status != want_status:
+                    out.failures.append(f"주문 현황 {status!r} ≠ {want_status!r}")
+            else:
+                for key, value in want_status.items():
+                    if status[key] != value:
+                        out.failures.append(f"주문 현황 {key}: {status[key]!r} ≠ {value!r}")
     return out

@@ -30,7 +30,14 @@ ACTIONS = {
             "coupon.create",
             "쿠폰 만들기",
             "create_coupon",
-            inputs=("title", "discount_type", "discount_value", "start_date", "end_date"),
+            inputs=(
+                "title",
+                "discount_type",
+                "discount_value",
+                "start_date",
+                "end_date",
+                "min_order",
+            ),
         ),
         Action("hours.edit", "영업시간 수정", "update_business_hours", inputs=("entries",)),
         Action(

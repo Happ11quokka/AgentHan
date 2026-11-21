@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# tsc -b 증분 빌드 정보
+*.tsbuildinfo

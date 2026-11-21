@@ -1,7 +1,7 @@
 import type { CustomerText } from '../customerText.ts'
 import { describe, expect, it } from 'vitest'
 import { type OrderCardLine, WRITTEN_ANSWER_MAX, writtenAnswer } from './ownerState.ts'
-import { OWNER_TEXT, answerLabel, lineView, orderMeta, ownerLang, questionView, sentTextView } from './ownerText.ts'
+import { OWNER_TEXT, answerLabel, discountLine, lineView, orderMeta, ownerLang, questionView, sentTextView } from './ownerText.ts'
 
 function line(over: Partial<OrderCardLine> = {}): OrderCardLine {
   return {
@@ -153,5 +153,24 @@ describe('order time and customer name on the order card (review P1, story 25)',
 
   it('shows nothing for an older server that sends neither', () => {
     expect(orderMeta({}, 'ru')).toBe('')
+  })
+})
+
+describe('coupon order card (coupon ticket 09)', () => {
+  const coupon = {
+    subtotal_label: '12,000₩',
+    coupon_name: '전화 주문 1,000원 할인',
+    discount: 1000,
+    discount_label: '1,000₩',
+  }
+
+  it('shows the amount before the discount, the coupon name and the discount in both languages', () => {
+    expect(discountLine(coupon, 'ko')).toBe('할인 전 12,000₩ · 쿠폰 전화 주문 1,000원 할인 −1,000₩')
+    expect(discountLine(coupon, 'ru')).toBe('До скидки 12,000₩ · Купон 전화 주문 1,000원 할인 −1,000₩')
+  })
+
+  it('has no discount line without a coupon (or from a server before coupons)', () => {
+    expect(discountLine({ ...coupon, discount: 0, coupon_name: '' }, 'ko')).toBe('')
+    expect(discountLine({}, 'ru')).toBe('')
   })
 })

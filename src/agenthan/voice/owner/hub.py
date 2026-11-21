@@ -1,7 +1,7 @@
 """사장님 허브 (4단계 spec "사장님 허브"). `OrderSink`와 `OwnerChannel`을 구현해 카드를 메모리에
 두고 구독자에게 보낸다.
 
-    hub = OwnerHub(store=store, clock=clock)
+    hub = OwnerHub(stores=stores, clock=clock)  # 가게 스냅숏 공급자 (`store_snapshot.py`)
     phone_router(..., order_sink=hub, owner=hub, ...)  # 통화 세션이 주문·통화 상황을 넘긴다
     app.include_router(owner_router(hub, key=...))  # 사장님 화면 SSE·POST (`http.py`)
 
@@ -9,7 +9,8 @@
 - 카드는 통화 id(= `Order.id`)마다 하나다. 이벤트는 카드 전체를 덮어쓴다(바뀐 칸만 보내지 않는다)
 - 주문 카드(`order.update`): 확정 주문. 처리 상태 new(확인 대기) → accepted(수락) (주문 승인 티켓
   02). 복창에 "네"가 오면 통화 세션이 확인 요청을 연다(`open_approval`). 그때 주문 카드를 바로
-  만든다: `request`(요청 번호), `stage`(in_call 통화 중 · after_call 통화 뒤), `requested_at`,
+  만든다: `request`(요청 번호), `stage`(in_call 통화 중 · after_call 통화 뒤. 통화 중 대기 0인
+  기본 설정의 요청은 처음부터 after_call, 전화 메뉴·주문 현황 티켓 04), `requested_at`,
   `deadline_at`(통화 중 = 연 시각 + `approval_wait_s`, 통화 뒤 = 연 시각 + `approval_expire_s`),
   `decided_at`, `delay_min`, `withdrawn`(기다리는 중에 손님이 고침 changed · 취소 cancelled, 결정을
   안 받는다). 결정은 한 번만 받는다(두 번째는 `AlreadyDecided`). 수락하면 확정 문자를 보내고(통화
@@ -75,6 +76,16 @@
   줄을 덮어써 다시 보낸다(실패하면 원문만). AI 말은 번역하지 않는다(`text_owner` = "").
   CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다, spec "Papago 실측").
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
+- 손님 주문 현황 (전화 메뉴·주문 현황 티켓 04, `order_status`): 주문 번호(통화 id)로 주문 카드
+  하나를 손님 모양(줄·금액·픽업 시각·단계·결과·사유)으로 돌려준다. 단계·결과 규칙은
+  `order_status.py`. 카드가 없으면(서버가 다시 뜸·상한으로 지움) 전화 주문 기록(`archive`, DB)의
+  마지막 상태로 같은 모양을 만든다(`lookup_order_status`, 티켓 06, `order_archive.py`). 손님
+  취소(`cancel_by_customer`, 티켓 07)는 가게 확인 중인 통화 뒤 요청과 늦춘 수락만 받아 카드를 처리
+  상태 customer_cancelled("손님 취소", 버튼 없음)로 바꾼다. 사장님 결정과 한 주문에 결정 한 번
+  규칙을 같이 따른다. 허브 카드만 받는다(기록에서 읽은 주문은 `can_cancel` 거짓, 취소는
+  `UnknownCard`). 주문 현황 구독(`watch_order`, 티켓 05)은 처음에 `order.status`(지금 현황), 그 뒤
+  손님 현황이 달라질 때마다 `order.status`(현황 전체)를 받는다. 주문 카드가 바뀌면(`order.update`를
+  보낼 때) 다시 재서 지난번 보낸 것과 다를 때만 보낸다
 - 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
   주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
   (order), 확인 요청 자동 취소(expired, 주문 승인 티켓 03), 늦은 버튼 답(late_answer, 시간
@@ -110,6 +121,11 @@
 `Order.created_at`, 계약 v1 제안 6·7)을 쓴다. 비어 있으면 메뉴명·단가는 `menu_id`로 가게 메뉴에서
 찾고, 받은 시각은 허브 시계로 찍는다. 시각·금액은 번역 없이 코드가 고정 표기(`18:30`, `25,000₩`)로
 넣는다.
+
+주문 카드 금액 (쿠폰 티켓 09): `subtotal`(할인 전, 줄 합계) · `coupon_id`·`coupon_name`·
+`discount`(주문서에 적힌 쿠폰, 없으면 ""·""·0) · `total`(낼 금액 = 할인 전 - 할인). 할인액은 통화가
+복창한 쿠폰 계산 결과(`Order.discount`)이고 허브는 다시 셈하지 않는다. 확정 문자·주문 현황도
+`total`을 쓴다.
 
 사장님 언어 (티켓 03, `OwnerHub(..., translator=..., owner_lang="ru")`).
 카드 줄(주문·통화 카드 같음):
@@ -161,7 +177,11 @@ from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
+from agenthan.voice.owner.order_archive import ArchivedOrder, OrderArchive, archived_order_status
+from agenthan.voice.owner.order_card import clock_label, order_card, won_label
+from agenthan.voice.owner.order_status import CancelRefusal, cancel_refusal, order_status
 from agenthan.voice.owner.translate import Translator
+from agenthan.voice.store_snapshot import StoreProvider
 
 log = logging.getLogger(__name__)
 
@@ -191,6 +211,18 @@ class AlreadyDecided(Exception):
     """이미 결정한(또는 확인 대기가 아닌) 주문 카드다. 결정은 한 번만 받는다 (HTTP 409)."""
 
 
+class NotCancellable(Exception):
+    """손님이 주문 현황에서 취소할 수 없는 주문이다 (티켓 07, HTTP 409).
+
+    `code`: 거부 사유(`order_status.cancel_refusal`), `status`: 지금 손님 현황(진 쪽 화면이 보인다).
+    """
+
+    def __init__(self, code: CancelRefusal, status: dict[str, Any]) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status = status
+
+
 # 넘김 카드에 붙이는 마지막 손님 말 줄 수 (spec 이야기 49)
 HEARD_LINES = 3
 # 통화 자막 줄 수 (spec "Papago 실측": 최근 4줄, 티켓 10)
@@ -207,7 +239,7 @@ _LATE = frozenset({"timeout", "call_ended"})
 _UNDECIDED: dict[str, Any] = {
     "status": "new", "decided_at": "", "delay_min": 0, "owner_pickup_time": "",
     "owner_pickup_label": "", "delay_reply": "", "reject_reason": "", "reject_menu_ids": [],
-    "reject_text": "", "reject_text_ko": ""}
+    "reject_text": "", "reject_text_ko": "", "reject_text_settled": False}
 
 
 @dataclass(frozen=True)
@@ -220,13 +252,25 @@ class HubLimits:
     order_card_hours: float = 72.0  # 확정 주문 카드 보관 시간 (받은 때부터). 통화 카드보다 길게
 
 
+def _store_reader(
+    store: StoreKnowledge | None, stores: StoreProvider | None
+) -> Callable[[], StoreKnowledge]:
+    """허브가 메뉴를 읽을 때 부르는 함수: 공급자가 있으면 그 지금 가게, 없으면 고정 가게."""
+    if stores is not None:
+        return lambda: stores().store
+    if store is None:
+        raise TypeError("OwnerHub에는 store나 stores가 있어야 한다")
+    return lambda: store
+
+
 class OwnerHub:
     """`OrderSink`·`OwnerChannel` 구현 + 사장님 화면 구독. 이벤트 루프 하나에 묶여 쓴다."""
 
     def __init__(
         self,
         *,
-        store: StoreKnowledge,
+        store: StoreKnowledge | None = None,
+        stores: StoreProvider | None = None,
         clock: Clock,
         question_wait_s: float = OWNER_WAIT_S,
         approval_wait_s: float = APPROVAL_WAIT_S,
@@ -236,12 +280,17 @@ class OwnerHub:
         knowledge: KnowledgeStore | None = None,
         limits: HubLimits | None = None,
         decision_sink: DecisionSink | None = None,
+        archive: OrderArchive | None = None,
     ) -> None:
-        self._store = store
+        # 가게 메뉴(원어 이름·품절 되돌리기·번역 때 가릴 메뉴명). 통화 밖이라 읽을 때마다 공급자에게
+        # 지금 가게를 묻는다(전화 메뉴 티켓 01). `store`만 주면 늘 그 가게
+        self._store = _store_reader(store, stores)
         # 사장님 결정 기록(티켓 10): 받는 곳, 주문별 마지막으로 넘긴 결정, 행을 채울 주문서
         self._decision_sink = decision_sink
         self._recorded: dict[str, DecisionRecord] = {}
         self._order_of: dict[str, Order] = {}
+        # 전화 주문 기록(티켓 06): 카드가 없는 주문의 손님 주문 현황을 읽는 곳. 없으면 허브만
+        self._archive = archive
         self._limits = limits or HubLimits()
         # 보충 지식 저장소(티켓 13). 허브가 쓰고, 통화 엔진이 읽는다(`phone_router(knowledge=...)`)
         self.knowledge = knowledge if knowledge is not None else KnowledgeStore()
@@ -266,7 +315,8 @@ class OwnerHub:
         self._lexicon = lexicon_for(owner_lang)
         self._translator = translator  # 사장님 자유 입력 글 → 한국어 (티켓 07)
         # 카드 자유 문장 번역 캐시 (티켓 03, `card_texts.py`)
-        self._translations = CardTexts(translator, store=store, lexicon=self._lexicon)
+        self._translations = CardTexts(translator, current_store=self._store,
+                                      lexicon=self._lexicon)
         self._tasks: set[asyncio.Task[None]] = set()  # 진행 중인 번역 (GC 막기)
         self._orders: dict[str, dict[str, Any]] = {}  # 통화 id → 주문 카드 (넣은 순서 = 온 순서)
         self._calls: dict[str, dict[str, Any]] = {}  # 통화 id → 통화 카드 (넣은 순서 = 걸려 온 순)
@@ -277,6 +327,9 @@ class OwnerHub:
         self._subscribers: set[asyncio.Queue[OwnerEvent]] = set()
         # 통화 id → 손님 통화 화면의 문자 스트림 구독자 (티켓 07)
         self._text_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
+        # 주문 번호 → 손님 주문 현황 구독자와 마지막으로 보낸 현황 (전화 주문 현황 티켓 05)
+        self._order_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
+        self._order_sent: dict[str, dict[str, Any]] = {}
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
         # 오늘 품절 (주문 승인 티켓 06): 메뉴 id → 화면 줄(`menu_id`·`name_ko`·`name_owner`, 건
@@ -500,7 +553,7 @@ class OwnerHub:
         `UnknownCard`. 이미 빠진 메뉴면 그대로 돌려준다(두 화면에서 같이 눌러도 된다).
         """
         self.roll_day()
-        if menu_id not in self._sold_out and self._store.get_menu(menu_id) is None:
+        if menu_id not in self._sold_out and self._store().get_menu(menu_id) is None:
             raise UnknownCard(menu_id)
         if self._sold_out.pop(menu_id, None) is not None:
             log.info("품절 되돌림: %s", menu_id)
@@ -622,6 +675,119 @@ class OwnerHub:
         return self._put_wanted({**card, "status": "filled", "answer_ko": text_ko,
                                  "answer_text": text.strip(),
                                  "saved_at": self._clock.now().isoformat()})
+
+    def order_status(self, order_id: str) -> dict[str, Any]:
+        """손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04, 모양은 `order_status.py`). 주문 번호는
+        통화 id다. 주문 카드가 없으면(확정 없이 끝난 통화·모르는 번호·지워진 카드) `UnknownCard`.
+
+        마감 지난 확인 대기 카드는 먼저 자동 취소한다(타이머가 늦어도 "확인 중"으로 보이지 않게).
+        """
+        self.expire_due()
+        card = self._orders.get(order_id)
+        if card is None:
+            raise UnknownCard(order_id)
+        return self._customer_status(card)
+
+    def _customer_status(self, card: dict[str, Any]) -> dict[str, Any]:
+        """허브 주문 카드 → 손님 현황. 허브 카드는 손님 취소 API가 받는다(`cancellable`)."""
+        return order_status(card, unspoken=card["id"] in self._unspoken, cancellable=True)
+
+    def cancel_by_customer(self, order_id: str) -> dict[str, Any]:
+        """손님 취소 (전화 메뉴·주문 현황·쿠폰 티켓 07): 손님이 주문 현황에서 [취소하기]를 눌렀다.
+        카드를 customer_cancelled로 바꾸고 바뀐 손님 현황을 돌려준다.
+
+        받는 때는 손님 현황의 `can_cancel`(`order_status.py` "손님 취소"): 가게 확인 중인 통화 뒤
+        확인 요청, 늦춘 수락으로 확정. 사장님 결정과 같은 "한 주문에 결정 한 번" 규칙이다: 먼저 온
+        쪽이 이긴다. 손님이 먼저면 카드가 확인 대기가 아니라 사장님 수락·거절이 `AlreadyDecided`,
+        사장님이 먼저(제시간 수락·거절)면 여기서 `NotCancellable`(사유 코드 + 이긴 현황). 마감 지난
+        카드는 먼저 자동 취소한다(expired로 거부). 주문 카드가 없으면 `UnknownCard`.
+
+        손님 스스로 취소했으니 문자는 없다. 카드를 한 번 보내면(`order.update`) 사장님 화면이
+        "손님 취소"로 바뀌고, 결정 기록(DB `owner_status` customer_cancelled)과 주문 현황 구독이
+        같이 간다. 기다리는 카드가 아니게 되니 자동 취소 타이머도 그 카드를 더 세지 않는다.
+        """
+        status = self.order_status(order_id)  # 마감 지난 카드는 먼저 자동 취소, 없으면 UnknownCard
+        if (refused := cancel_refusal(status)) is not None:
+            raise NotCancellable(refused, status)
+        self._deciders.pop(order_id, None)
+        self._orders[order_id] = {**self._orders[order_id], "status": "customer_cancelled",
+                                  "decided_at": self._clock.now().isoformat()}
+        log.info("손님이 주문 현황에서 취소: %s", order_id)
+        self._publish("order.update", self._orders[order_id])
+        self._arm_expiry()
+        return self.order_status(order_id)
+
+    async def lookup_order_status(self, order_id: str) -> dict[str, Any]:
+        """손님 주문 현황 조회 (전화 메뉴·주문 현황·쿠폰 티켓 04·06, `GET /api/phone/orders/{id}`).
+
+        허브의 주문 카드가 먼저다(`order_status`). 없으면 전화 주문 기록(`archive`)의 마지막 상태로
+        같은 모양을 만든다(`order_archive.py`: 마감 지난 결정 전 기록은 자동 취소, 손님 취소 없음).
+        둘 다 없거나 기록 읽기가 없으면 `UnknownCard`. 기록 읽기(DB)는 루프를 막지 않게 스레드에서.
+        """
+        try:
+            return self.order_status(order_id)
+        except UnknownCard:
+            if self._archive is None:
+                raise
+        record = await asyncio.to_thread(self._read_archive, order_id)
+        if order_id in self._orders:  # 읽는 사이 카드가 생겼다(새 통화가 같은 번호일 리는 없다)
+            return self.order_status(order_id)
+        status = None if record is None else archived_order_status(
+            record, now=self._clock.now(), expire=self._approval_expire)
+        if status is None:
+            raise UnknownCard(order_id)
+        return status
+
+    def _read_archive(self, order_id: str) -> ArchivedOrder | None:
+        """루프 밖 스레드에서 돈다. 허브 상태는 건드리지 않는다."""
+        assert self._archive is not None
+        try:
+            return self._archive.load(order_id)
+        except Exception:
+            log.exception("주문 %s 기록 읽기 실패 (%s)", order_id, type(self._archive).__name__)
+            return None
+
+    def watch_order(self, order_id: str) -> AsyncIterator[OwnerEvent]:
+        """손님 주문 현황 구독 (전화 메뉴·주문 현황 티켓 05). 처음에 `order.status`(지금 현황,
+        조회와 같은 모양), 그 뒤 현황이 달라질 때마다 `order.status`. 닫으면 구독을 푼다.
+
+        주문 카드가 없으면 바로 `UnknownCard`(조회와 같다). 시간 제한은 HTTP 쪽이 둔다.
+        """
+        self.order_status(order_id)  # 없으면 UnknownCard
+        return self._watch_order(order_id)
+
+    async def _watch_order(self, order_id: str) -> AsyncIterator[OwnerEvent]:
+        self._bind()
+        queue: asyncio.Queue[OwnerEvent] = asyncio.Queue()
+        watchers = self._order_watchers.setdefault(order_id, set())
+        watchers.add(queue)
+        try:
+            card = self._orders.get(order_id)
+            if card is not None:  # 구독을 연 사이 상한으로 지워졌으면 첫 현황 없이 기다린다
+                status = self._customer_status(card)
+                self._order_sent[order_id] = status
+                yield OwnerEvent("order.status", status, self._seq)
+            while True:
+                yield await queue.get()
+        finally:
+            watchers.discard(queue)
+            if not watchers:
+                self._order_watchers.pop(order_id, None)
+                self._order_sent.pop(order_id, None)
+
+    def _tell_order_watchers(self, card: dict[str, Any]) -> None:
+        """주문 카드가 바뀌었다. 손님 현황이 지난번 보낸 것과 다르면 그 주문 구독자에게 보낸다."""
+        order_id = card["id"]
+        watchers = self._order_watchers.get(order_id)
+        if not watchers:
+            return
+        status = self._customer_status(card)
+        if self._order_sent.get(order_id) == status:
+            return
+        self._order_sent[order_id] = status
+        self._seq += 1
+        for queue in watchers:
+            queue.put_nowait(OwnerEvent("order.status", status, self._seq))
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         """그 통화의 손님에게 보낸 문자(보낸 순서). 없거나 모르는 통화면 빈 목록 (티켓 07)."""
@@ -807,6 +973,9 @@ class OwnerHub:
             "reject_menu_ids": [],
             "reject_text": "",
             "reject_text_ko": "",
+            # 그 글의 번역이 끝났다(됐거나 못 했거나): 손님 주문 현황의 사유 한 줄이 정해졌다.
+            # 번역을 못 했으면 원문이 한 줄이다(`order_status._reason`)
+            "reject_text_settled": False,
             # 이 카드에서 오늘 품절로 바꾼 메뉴(티켓 06): [{"menu_id", "name_ko", "name_owner"}].
             # 지금도 품절인지는 오늘 품절 목록(`owner.sold_out`)으로 본다(되돌리기 버튼)
             "sold_out": [],
@@ -817,14 +986,23 @@ class OwnerHub:
     def _open_approval(
         self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
     ) -> None:
-        """확인 요청 → 확인 대기(new) 주문 카드. 같은 통화에 새 번호로 오면 앞 카드를 대신한다."""
-        card = self._approval_card(request.order, number=request.number, stage="in_call")
+        """확인 요청 → 확인 대기(new) 주문 카드. 같은 통화에 새 번호로 오면 앞 카드를 대신한다.
+
+        통화 뒤 확인 요청(`request.in_call` 거짓, 통화 중 대기 0)은 처음부터 통화 뒤 단계(마감 =
+        연 시각 + `approval_expire_s`)다. 결정을 기다리는 통화가 없으니 받는 곳을 두지 않는다:
+        결정은 바로 굳는다(통화 뒤 결정과 같다).
+        """
+        stage = "in_call" if request.in_call else "after_call"
+        card = self._approval_card(request.order, number=request.number, stage=stage)
         if (before := self._orders.get(call_id)) is not None:
             card["sold_out"] = before.get("sold_out", [])  # 재료 소진 뒤 다시 요청 (티켓 06)
         self._stock_out_open.discard(call_id)  # 바꿔서 다시 요청했다. 취소 문자는 없다
         self._order_of[call_id] = request.order
         self._orders[call_id] = card
-        self._deciders[call_id] = reply
+        if request.in_call:
+            self._deciders[call_id] = reply
+        else:
+            self._deciders.pop(call_id, None)
         self._publish("order.update", card)
         self._translate_later(card)
         self._prune()
@@ -1372,6 +1550,7 @@ class OwnerHub:
             text = sms.rejected_free_text(translated)
         else:
             text = sms.untranslated_rejected_text(card["reject_text"])
+        self._orders[order_id] = {**card, "reject_text_settled": True}
         self._text_customer(order_id, "rejected", text, translate_failed=not translated)
 
     def _text_written_answer(self, question_id: str, translated: str) -> None:
@@ -1389,22 +1568,8 @@ class OwnerHub:
         return {"lines": card_lines, "total": total, "total_label": won_label(total)}
 
     def _order_card(self, order: Order) -> dict[str, Any]:
-        lines = self._card_lines(order.lines)
-        total = sum(line["subtotal"] for line in lines)
         received_at = order.created_at or self._clock.now().isoformat()
-        return {
-            "id": order.id,
-            "status": "new",
-            "received_at": received_at,
-            "received_label": clock_label(received_at),  # 주문 시각 `16:05` (이야기 25, 리뷰 P1)
-            # 손님 이름(성). 지금 통화 엔진은 이름을 받지 않아 비어 있다. 차 있으면 카드에 보인다
-            "customer_name": order.customer_name,
-            "pickup_time": order.pickup_time,
-            "pickup_label": clock_label(order.pickup_time),
-            "lines": lines,
-            "total": total,
-            "total_label": won_label(total),
-        }
+        return order_card(order, self._card_lines(order.lines), received_at)
 
     def _card_lines(self, order_lines: Sequence[OrderLine]) -> list[dict[str, Any]]:
         """주문 카드·통화 카드가 같이 쓰는 줄 모양."""
@@ -1426,7 +1591,7 @@ class OwnerHub:
 
     def _owner_name(self, menu_id: str, name_ko: str) -> str:
         """사장님이 쓰는 원어 이름(`MenuItem.name_native`, 번역기 안 씀). 비면 한국어 이름."""
-        item = self._store.get_menu(menu_id)
+        item = self._store().get_menu(menu_id)
         return (item.name_native if item else "") or name_ko
 
     def _name_and_unit_price(self, line: OrderLine) -> tuple[str, int]:
@@ -1437,7 +1602,7 @@ class OwnerHub:
         """
         if line.name:
             return line.name, line.unit_price
-        item = self._store.get_menu(line.menu_id)
+        item = self._store().get_menu(line.menu_id)
         if item is None:
             return line.menu_id, 0
         extra = {o.name: o.extra_price for o in item.options}
@@ -1457,6 +1622,7 @@ class OwnerHub:
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         if name == "order.update":
             self._record_decision(data)
+            self._tell_order_watchers(data)
         self._seq += 1
         event = OwnerEvent(name, data, self._seq)
         for queue in self._subscribers:
@@ -1557,15 +1723,3 @@ def _later(iso: str, minutes: int) -> str:
     if not iso:
         return ""
     return (datetime.fromisoformat(iso) + timedelta(minutes=minutes)).isoformat()
-
-
-def clock_label(iso: str) -> str:
-    """ISO 8601 시각 → `18:30` (가게 시각 그대로, 24시간제). 비면 빈 글."""
-    if not iso:
-        return ""
-    return datetime.fromisoformat(iso).strftime("%H:%M")
-
-
-def won_label(amount: int) -> str:
-    """원 금액 → `25,000₩` (언어와 상관없는 고정 표기)."""
-    return f"{amount:,}₩"

@@ -6,6 +6,7 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
 """
 
 import copy
+import functools
 import logging
 import threading
 import uuid
@@ -33,7 +34,7 @@ from agenthan.illustration import (
     once_per_name,
     pick_illustration,
 )
-from agenthan.tools.dummy_store import DummyStore, DummyStoreError
+from agenthan.tools.dummy_store import DummyStore, DummyStoreError, watch
 
 log = logging.getLogger(__name__)
 
@@ -390,12 +391,17 @@ def create_app(
     prepare_on_start: bool = False,
     clock: Callable[[], datetime] = datetime.now,
     illustration_embed: Embed | None = None,
+    on_save: Callable[[str, dict], None] | None = None,
 ) -> FastAPI:
     """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
     clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다).
     illustration_embed: 대표 그림 고르기에서 메뉴 이름을 임베딩하는 함수. 운영 앱은 CLOVA
     임베딩 v2, 기본값 None은 임베딩 없이 고른다(테스트가 네트워크에 닿지 않게). 임베딩은
-    세션을 열 때와 메뉴가 바뀐 뒤 백그라운드에서만 부른다(Session.illustrate_later)."""
+    세션을 열 때와 메뉴가 바뀐 뒤 백그라운드에서만 부른다(Session.illustrate_later).
+    on_save: 대화의 가게 파일을 저장할 때마다 (대화 id, 그 가게 한 벌)로 부른다(대화·버튼·메뉴
+        탭·사진의 백그라운드 채우기 모두). 통합 서버가 전화용 가게로 게시한다(전화 메뉴 티켓
+        02). 대화를 시작할 때 파일럿 가게를 깔아 두는 것과 미리보기 사본은 저장으로 치지
+        않는다."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -419,6 +425,8 @@ def create_app(
             drafts=prepare_on_start,
             illustration_embed=illustration_embed,
         )
+        if on_save is not None:
+            watch(session.assistant.store.path, functools.partial(on_save, session_id))
         if menu == "empty":
             store = session.assistant.store
             data = store.read()

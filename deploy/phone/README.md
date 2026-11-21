@@ -1,6 +1,10 @@
 # 전화 주문 NCP 배포 (티켓 09)
 
-폰 → `https://<도메인>` (Caddy, 자동 인증서) → `app:8000` (FastAPI: React 화면 + `/api/phone/ws`, 한 오리진). 가게는 더미 fixture.
+폰 → `https://<도메인>` (Caddy, 자동 인증서) → `app:8000` (FastAPI: React 화면 + `/api/phone/ws`, 한 오리진). 공개 자료는 더미 가게다.
+
+전화 메뉴와 쿠폰은 비서가 게시한 전화용 가게에서 온다(`agenthan.serve`, 비서 기본 켬). 비서에서 메뉴·쿠폰을 저장하면 다음 통화부터 반영되고 서버를 다시 띄우지 않는다. DB가 있으면 마지막 게시 값이 재배포 뒤에도 남고, 없으면 파일럿 가게로 시작한다. 전화 설정(영업시간·준비 시간·상한)과 리뷰는 전화 가게 JSON(`PHONE_STORE_FIXTURE` 또는 DB) 그대로다. `AGENTHAN_ASSISTANT=off`면 메뉴도 그 가게 것이다.
+
+통화는 복창 "네"에서 바로 끝나고(통화 중 대기 0, ADR-0010), 손님은 같은 화면의 주문 현황(`/phone/orders/<주문 번호>`)에서 사장님 결정을 본다. 실제 문자는 보내지 않는다.
 
 | 파일 | 하는 일 |
 |---|---|
@@ -98,6 +102,9 @@ docker compose -f deploy/phone/compose.yaml cp app:/app/logs ./phone-logs   # �
 | `PHONE_OWNER_MAX_CALL_CARDS` · `PHONE_OWNER_CALL_CARD_HOURS` | 50 · 24 | 그대로 | 사장님 화면의 끝난 통화 카드 상한 |
 | `PHONE_OWNER_MAX_ORDER_CARDS` · `PHONE_OWNER_ORDER_CARD_HOURS` | 200 · 72 | 그대로 | 주문 카드 상한 |
 | `PHONE_MAX_ORDER_QTY` · `PHONE_MAX_ORDER_TOTAL` | 가게 JSON(100 · 1,000,000) | 30 · 300000 | 한 통화 총 수량·총액 상한 |
+| `PHONE_OWNER_APPROVAL` | on | on | 확정 전 사장님 수락(ADR-0009). 사장님 화면이 꺼져 있으면 자동 확정 |
+| `PHONE_APPROVAL_WAIT_S` | 0 | 0 | 통화 중 사장님 결정 대기(초). 0이면 "네"에 끊고 주문 현황으로 알린다(ADR-0010). 0보다 크면 예전 통화 중 대기(대기음·재안내 `PHONE_APPROVAL_REPROMPT_S`) |
+| `PHONE_APPROVAL_EXPIRE_MIN` | 5 | 리허설에서 | 확인 요청 자동 취소(분, 요청 연 때부터). 대기(초)보다 길어야 서버가 뜬다 |
 
 ### 메뉴 대표 그림의 실제 가게 별칭 (git 밖 파일)
 

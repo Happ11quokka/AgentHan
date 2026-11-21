@@ -157,6 +157,7 @@ from agenthan.voice.dialog.approval import (
     only_the_rest,
 )
 from agenthan.voice.dialog.cart import Cart
+from agenthan.voice.dialog.coupons import Applied, Coupon, amount_json
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
@@ -249,8 +250,8 @@ class SessionSettings:
     # 상한에서도 손님이 말하는 중이면 미룬다(리뷰 P4). 다만 쉼 없는 말 구간이 이만큼을 넘으면
     # 끊기지 않는 배경 소리로 보고 되묻는다(감사 2번). 안 그러면 소음이 `max_call_s`까지 막는다
     no_input_speech_max_s: float = NO_INPUT_SPEECH_MAX_S
-    # 사장님 질문 답 대기 (4단계 티켓 06). 질문 카드를 보낸 때부터 센다. 넘으면 "확인해서 문자로
-    # 알려 드릴게요" (`PHONE_OWNER_WAIT_S`, 허브 카드 마감과 같은 값)
+    # 사장님 질문 답 대기 (4단계 티켓 06). 질문 카드를 보낸 때부터 센다. 넘으면 "죄송해요, 사장님이
+    # 지금 바로 답하기 어려우세요" (`PHONE_OWNER_WAIT_S`, 허브 카드 마감과 같은 값)
     owner_wait_s: float = OWNER_WAIT_S
     # 통화 중에 사장님께 바로 묻기(질문 카드·늦은 답 문자, 4단계 05~07). 기본 끔(5단계 티켓 09):
     # 사장님은 바빠서 바로 답하기 어렵다. 끄면 "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께
@@ -261,7 +262,9 @@ class SessionSettings:
     # (`OwnerChannel.approval_ready`) 건너뛰고 예전처럼 바로 확정한다
     owner_approval: bool = True
     # 확인 요청의 통화 중 대기. 카드를 보낸 때부터 센다(`PHONE_APPROVAL_WAIT_S`, 허브 카드 마감과
-    # 같은 값). 넘으면 "확인되는 대로 문자로 알려 드릴게요"로 통화를 끝낸다
+    # 같은 값). 넘으면 "확인되면 화면으로 알려 드릴게요"로 통화를 끝낸다. 0이면(기본, 전화 메뉴·
+    # 주문 현황 티켓 04) 기다리지 않는다: 엔진이 통화 뒤 확인 요청을 열고 "주문 넣어 드렸어요"로
+    # 끝낸다. 대기음·재안내·시간 초과 타이머가 없다
     approval_wait_s: float = APPROVAL_WAIT_S
     # 확인 요청을 연 뒤 이만큼에 "조금만 더 기다려 주세요."를 한 번 (`PHONE_APPROVAL_REPROMPT_S`,
     # 주문 승인 티켓 07). 카드를 보낸 때부터 센다. 0이거나 통화 중 대기보다 길면 말하지 않는다
@@ -427,10 +430,12 @@ class CallSession:
         record_dir: Path | None = None,
         answerer: Answerer | None = None,
         wall_clock: Clock | None = None,
+        coupons: Sequence[Coupon] = (),
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
         self._config = config
+        self._coupons = tuple(coupons)  # 통화 시작 때의 가게 쿠폰 (쿠폰 티켓 09)
         self._nlu = nlu
         self._stt = stt
         self._tts = tts
@@ -840,6 +845,7 @@ class CallSession:
             DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id,
             ask_owner=self._asks_owner, knowledge=self._knowledge, answerer=self._answerer,
             sold_out=self._sold_out_today(),  # 사장님이 건 오늘 품절 (주문 승인 티켓 06)
+            coupons=self._coupons,
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -1395,10 +1401,12 @@ class CallSession:
         else:
             text, wait = u.text, u.wait_request
             approval = self._approval_ready()  # 이 턴에 복창 "네"가 오면 사장님께 확인을 요청한다
+            in_call = self._settings.approval_wait_s > 0  # 아니면 통화 뒤 확인 요청 (티켓 04)
             # 되감을 수 있게 턴 전 상태를 떠 둔다 (엔진은 지금 쉬고 있다)
             before = self._before_turn(turn, engine, u)
             result = await self._call_engine(
-                lambda: engine.handle(text, now, wait_request=wait, approval=approval))
+                lambda: engine.handle(text, now, wait_request=wait, approval=approval,
+                                      wait_in_call=in_call))
         self._log.mark(turn, "engine_end")
         stats = self._prefetch.take_stats() if self._prefetch is not None else None
         record = self._log.get(turn)
@@ -1449,7 +1457,7 @@ class CallSession:
             if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
                 self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
-                        "cart": _cart_json(result.cart), "total": result.cart.total()})
+                        "cart": _cart_json(result.cart), **_order_amount(result.order)})
         utterances = result.utterances
         if self._settings.ack_first and result.ack:
             utterances = templates.ack_first(utterances)  # 첫 소리를 고정 문장 "네."로
@@ -2141,7 +2149,8 @@ class CallSession:
             "interruptible": self._interruptible(),
             "dialog": result.state.value if result else None,
             "cart": _cart_json(result.cart if result else Cart()),
-            "total": result.cart.total() if result else 0,
+            # 낼 금액. 쿠폰이 붙으면 할인 칸도 (쿠폰 티켓 09, `_coupon_amount`)
+            **(_coupon_amount(result) if result else {"total": 0}),
             # 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null
             "approval": None if self._approval_view is None else asdict(self._approval_view),
         })
@@ -2288,15 +2297,29 @@ class CallSession:
         return ApprovalView("accepted", view.number)
 
     def _approval_decided(self) -> bool:
-        """손님 화면에 확인 요청 결정(수락·시간 초과)이 실렸나. 아니면 이번 확정은 건너뛴 것."""
+        """손님 화면에 확인 요청 결정(수락·시간 초과)이나 통화 뒤 확인 요청이 실렸나. 아니면 이번
+        확정은 건너뛴 것."""
         view = self._approval_view
-        return view is not None and view.status in ("accepted", "timeout")
+        return view is not None and view.status in ("accepted", "timeout", "after_call")
 
     def _open_approval(self, turn: int, request: ApprovalRequest) -> None:
         """확인 요청을 연다(주문 승인 티켓 02). 질문 카드와 같은 대기 장치를 쓴다.
 
         재안내(티켓 07)도 건다: 카드를 보낸 뒤 `approval_reprompt_s`에 한 번.
+
+        통화 뒤 확인 요청(`request.in_call` 거짓, 통화 중 대기 0, 전화 메뉴·주문 현황 티켓 04)은
+        사장님 쪽에 알리기만 한다. 엔진이 같은 턴에 통화를 끝내고 주문서를 넘긴다. 대기 항목·시간
+        초과·재안내·대기음이 없고, 결정은 통화로 오지 않는다(허브가 받는 곳을 두지 않는다).
         """
+        record = self._log.get(turn)
+        if not request.in_call:
+            self._approval_view = ApprovalView("after_call", request.number)
+            if record is not None:
+                record.fields["approval_request"] = {"number": request.number, "in_call": False,
+                                                     "opened_at": self._clock.now().isoformat()}
+            self._tell_owner(lambda owner: owner.open_approval(self.call_id, request,
+                                                               self._owner_replied))
+            return
         self._open_owner_wait("approval", request.number, self._settings.approval_wait_s)
         self._approval_view = ApprovalView("waiting", request.number)
         self._approval_sent = request
@@ -2305,7 +2328,6 @@ class CallSession:
             self._approval_nudge.arm(nudge_s, request.number)
         else:
             self._approval_nudge.cancel()
-        record = self._log.get(turn)
         if record is not None:
             record.fields["approval_request"] = {"number": request.number,
                                                  "opened_at": self._clock.now().isoformat()}
@@ -2564,14 +2586,16 @@ class CallSession:
 
 
 # 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). 닫힌 목록이고 웹
-# `callState.ts` `ApprovalStatus`가 같은 값을 든다. waiting: 사장님 확인 중. 결과: accepted(수락,
+# `callState.ts` `ApprovalStatus`가 같은 값을 든다. after_call: 통화 뒤 확인 요청을 열고 통화를
+# 끝냄(통화 중 대기 0, 전화 메뉴·주문 현황 티켓 04). 결과는 주문 현황으로 본다.
+# waiting: 사장님 확인 중. 결과: accepted(수락,
 # `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) · withdrawn(손님이
 # 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · delayed(사장님이 `delay_min`분 늦춰
 # 수락해 손님에게 바뀐 시각을 묻는 중, 티켓 04. "네"면 accepted + `delay_min`, "아니요"면 withdrawn
 # cancelled) · rejected(사장님 거절, `reason`은 사유, 티켓 05). 통화 뒤 결과(수락·거절·자동
 # 취소)는 이 상태가 아니라 손님 문자로 간다
 ApprovalStatus = Literal["waiting", "accepted", "delayed", "timeout", "withdrawn", "skipped",
-                         "rejected"]
+                         "rejected", "after_call"]
 # 사장님 결정 종류 → 손님 화면 상태 (모든 결정 종류가 있다)
 _DECISION_STATUS: dict[DecisionKind, ApprovalStatus] = {
     "accept": "accepted", "delay": "delayed", "timeout": "timeout", "reject": "rejected"}
@@ -2691,6 +2715,23 @@ def _cart_json(cart: Cart) -> list[dict[str, Any]]:
     ]
 
 
+def _coupon_amount(result: TurnResult) -> dict[str, Any]:
+    """`state` 이벤트 금액 (쿠폰 티켓 09): 이번 턴 엔진의 쿠폰 계산 결과 그대로. `total`은 낼
+    금액이고, 쿠폰이 붙으면 `subtotal`(할인 전)·`discount`·`coupon_name`을 더한다. 쿠폰이 없으면
+    예전과 같은 모양(`total`만)."""
+    coupon = result.coupon
+    if not isinstance(coupon, Applied):
+        return amount_json(result.cart.total())
+    return amount_json(coupon.subtotal, coupon.discount, coupon.coupon.title)
+
+
+def _order_amount(order: Order) -> dict[str, Any]:
+    """`order` 이벤트 금액 (쿠폰 티켓 09): 주문서에 적힌 쿠폰으로.
+
+    모양은 `_coupon_amount`와 같다."""
+    return amount_json(order.subtotal, order.discount, order.coupon_name)
+
+
 def _order_json(order: Order) -> dict[str, Any]:
     return {
         "id": order.id,
@@ -2704,4 +2745,7 @@ def _order_json(order: Order) -> dict[str, Any]:
         "customer_name": order.customer_name,
         "customer_phone": order.customer_phone,
         "transcript": list(order.transcript),
+        "coupon_id": order.coupon_id,
+        "coupon_name": order.coupon_name,
+        "discount": order.discount,
     }

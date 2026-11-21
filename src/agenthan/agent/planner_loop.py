@@ -2034,7 +2034,8 @@ class PlannerLoop:
                 for r in current
             ):
                 lookup[name] = args[name]
-            if choices or kind == "boolean":
+            if choices or kind == "boolean" or name == "min_order":
+                # 쿠폰 최소 주문 금액은 다른 쿠폰에서 옮겨 올 값이 아니다(사장님이 말한 값만).
                 continue
             for source, value in fields:
                 compatible = source == name or (kind == "date" and source.endswith("date"))

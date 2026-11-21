@@ -1,21 +1,26 @@
 """Local shop data in a JSON file. With AGENTHAN_DB_URL set, every write is also copied to the
 assistant_store_docs table (agenthan.db), and a missing file is read back from that copy.
-No publishing operations."""
+No publishing operations. `watch` lets the integrated server hear every save of one chat's
+store (the phone takes its menu from it)."""
 
 import copy
 import json
+import logging
 import os
 import re
 import tempfile
 import threading
 import unicodedata
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from agenthan.illustration import assign_illustration
 
 SEED_PATH = Path(__file__).with_name("dummy_store_seed.json")
 DEFAULT_STORE = Path(".agenthan/store.json")
+
+log = logging.getLogger(__name__)
 
 
 class DummyStoreError(Exception):
@@ -102,6 +107,29 @@ _LOCKS_GUARD = threading.Lock()
 # 메뉴 줄의 ai·filling에 들어가는 칸 이름. ai: AI가 채워 사장님 확인 전인 칸,
 # filling: 지금 백그라운드에서 채우는 칸(polish: 흰 배경 사진을 이미지 모델로 다듬는 중).
 MENU_FLAG_FIELDS = ("name", "price", "description", "photo", "polish")
+
+
+# 저장 뒤 알림(전화 메뉴 티켓 02). 비서 대화의 가게 파일을 저장하면 통합 서버가 그 가게를
+# 전화용 가게로 게시한다. 경로마다 등록하므로 미리보기용 임시 사본(`_dry_run`·`place.preview`)은
+# 알리지 않는다.
+_WATCHERS: dict[str, Callable[[dict], None]] = {}
+
+
+def watch(path: str | Path, on_saved: Callable[[dict], None]) -> None:
+    """이 경로의 가게 파일을 저장할 때마다 `on_saved(data)`를 부른다. 저장한 스레드에서, 파일과
+    DB 사본을 쓴 뒤에 부른다. 알림이 실패해도 저장은 끝난 것이다(로그만 남긴다)."""
+    with _LOCKS_GUARD:
+        _WATCHERS[_db_key(Path(path).expanduser())] = on_saved
+
+
+def _notify(path: Path, data: dict) -> None:
+    on_saved = _WATCHERS.get(_db_key(path))
+    if on_saved is None:
+        return
+    try:
+        on_saved(data)
+    except Exception:
+        log.exception("가게 저장 알림 실패 (저장은 됨): %s", path)
 
 
 def _lock_for(path: Path) -> threading.RLock:
@@ -204,6 +232,7 @@ class DummyStore:
                 os.fsync(stream.fileno())
             temporary.replace(self.path)
             _db_save(self.path, data)
+            _notify(self.path, data)
             return
         except OSError:
             pass

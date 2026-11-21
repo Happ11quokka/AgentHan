@@ -26,8 +26,18 @@ def order_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) 
     menu = ", ".join(named) + (f" 외 {more}가지" if more > 0 else "")
     parts = ["주문이 확정됐어요.", f"{menu}, 합계 {total:,}원." if menu else f"합계 {total:,}원."]
     if pickup_label:
-        parts.append(f"{pickup_label}에 준비해 둘게요.")
+        parts.append(ready_line(pickup_label))
     return " ".join(parts)
+
+
+def ready_line(pickup_label: str) -> str:
+    """확정 문자의 픽업 문장 "18:30에 준비해 둘게요." 손님 주문 현황도 이 말을 쓴다."""
+    return f"{pickup_label}에 준비해 둘게요."
+
+
+def delayed_ready_line(pickup_label: str) -> str:
+    """늦춘 수락 문자의 끝 "18:45에 준비돼요. 어려우시면 전화 주세요." 주문 현황도 쓴다."""
+    return f"{pickup_label}에 준비돼요. 어려우시면 전화 주세요."
 
 
 def delayed_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) -> str:
@@ -37,24 +47,25 @@ def delayed_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str
     `pickup_label`은 늦춘 시각 `18:45`.
     """
     confirmed = order_text(lines, total, "")
-    return f"{confirmed} {pickup_label}에 준비돼요. 어려우시면 전화 주세요."
+    return f"{confirmed} {delayed_ready_line(pickup_label)}"
 
 
 def expired_text() -> str:
     """확인 요청 자동 취소 (주문 승인 티켓 03): 사장님이 마감(요청을 연 때부터 5분) 안에 결정하지
-    않았다. 손님은 통화에서 "확정 문자를 받으시면 주문 완료예요"를 들었다."""
+    않았다. 손님 주문 현황도 이 말을 쓴다."""
     return "가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요."
 
 
 # 거절 문자 (주문 승인 티켓 05). 통화 중에 거절해 손님이 사과를 들었어도 같은 문자를 남긴다
 _CLOSED = "죄송해요, 가게 사정으로 주문을 받을 수 없어 주문이 취소됐어요."
-_REJECTED_FREE = "죄송해요, 가게 사정으로 주문이 취소됐어요."
+# 직접 쓰기 거절의 앞 문장. 사장님 글은 뒤에 붙는다. 손님 주문 현황도 이 말을 쓴다
+REJECTED_FREE = "죄송해요, 가게 사정으로 주문이 취소됐어요."
 _REJECTED: dict[RejectReason, str] = {
     "busy": ("죄송해요, 가게가 바빠서 주문을 받기 어려워 주문이 취소됐어요. "
              "다음에 다시 주문해 주세요."),
     "closed": _CLOSED,
     "out_of_stock": _CLOSED,  # 떨어진 메뉴 이름이 없을 때만 (보통은 아래 이름 든 문장)
-    "free": _REJECTED_FREE,  # 사장님 글이 붙는 문장은 `rejected_free_text`
+    "free": REJECTED_FREE,  # 사장님 글이 붙는 문장은 `rejected_free_text`
 }
 
 
@@ -72,12 +83,12 @@ def rejected_text(reason: RejectReason, menu_names: Sequence[str] = ()) -> str:
 
 def rejected_free_text(translated: str) -> str:
     """사장님이 직접 쓴 거절 사정의 한국어 번역. 사장님 말을 옮긴 것이라는 표시를 붙인다."""
-    return f"{_REJECTED_FREE} 사장님 말씀(번역): «{translated}»"
+    return f"{REJECTED_FREE} 사장님 말씀(번역): «{translated}»"
 
 
 def untranslated_rejected_text(original: str) -> str:
     """직접 쓴 거절 사정을 번역하지 못했다(번역기 없음·실패). 사장님 글 원문을 그대로."""
-    return f"{_REJECTED_FREE} 사장님 말씀(원문, 번역 실패): «{original}»"
+    return f"{REJECTED_FREE} 사장님 말씀(원문, 번역 실패): «{original}»"
 
 
 def late_answer_text(menu_name: str, answer: str, *, subject: str = "") -> str:

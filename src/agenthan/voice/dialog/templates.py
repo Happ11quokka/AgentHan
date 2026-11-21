@@ -222,7 +222,7 @@ def offer_add(phrase: str) -> str:
 
 
 def request_noted(menu_name: str, request: str) -> str:
-    return f"{menu_name}에 {request}라고 적어 둘게요."
+    return f"{menu_name}에 {_josa(request, '이라고', '라고')} 적어 둘게요."  # 디카페인이라고
 
 
 # ---------------------------------------------------------------- 픽업·확인·마무리
@@ -243,27 +243,83 @@ def final_readback(
     *,
     requests: Sequence[tuple[str, str]] = (),
     after_fix: bool = False,
+    coupon: tuple[str, int] | None = None,
 ) -> str:
     """최종 복창. 장바구니 객체에서 만든다 (D6).
 
     `requests`는 (메뉴 이름, 요청 원문). 정정한 뒤 다시 복창할 때는 "그럼 다시 확인할게요."로
     연다(5단계 티켓 10: "주문 확인할게요. …에 찾으러 오시고, 모두 ○원이에요. 맞으세요?").
+    `coupon`(쿠폰 티켓 09)은 쓴 쿠폰 (이름, 할인액). `total`은 낼 금액(할인 뒤)이다: "…에 찾으러
+    오시고, 전화 주문 1,000원 할인 쿠폰이 있어서 1,000원 빼고 모두 11,000원이에요."
     """
     head = "그럼 다시 확인할게요." if after_fix else "주문 확인할게요."
-    body = f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, 모두 {won(total)}이에요."
+    discount = ""
+    if coupon is not None:
+        name, amount = coupon
+        discount = f"{coupon_phrase(name)}이 있어서 {won(amount)} 빼고 "
+    body = (f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, {discount}"
+            f"모두 {won(total)}이에요.")
     parts = [head, body]
-    parts += [f"{name}에 {request}라고 적어 뒀어요." for name, request in requests]
+    parts += [f"{name}에 {_josa(request, '이라고', '라고')} 적어 뒀어요."  # 디카페인이라고
+              for name, request in requests]
     return " ".join([*parts, "맞으세요?"])
+
+
+def coupon_phrase(title: str) -> str:
+    """쿠폰 이름을 말로: "전화 주문 1,000원 할인" → "전화 주문 1,000원 할인 쿠폰" (쿠폰 티켓 09).
+
+    이름이 이미 "쿠폰"으로 끝나면 그대로, 비었으면 "할인 쿠폰".
+    """
+    title = title.strip()
+    if not title:
+        return "할인 쿠폰"
+    return title if title.endswith("쿠폰") else f"{title} 쿠폰"
+
+
+def coupon_offer(title: str, short: int, suggest_name: str | None) -> str:
+    """쿠폰 금액이 모자랄 때 권하는 말 (쿠폰 티켓 10·11, spec "쿠폰").
+
+    복창 전 권유(티켓 10)와 쿠폰 문의의 부족 답(티켓 11)이 같이 쓴다. `short`는 부족액,
+    `suggest_name`은 한 개로 부족액을 채우는 권할 메뉴(쿠폰 계산 결과). 권할 메뉴가 없으면 메뉴
+    이름 없이 모자란 금액만 말한다.
+    """
+    if suggest_name is None:
+        return f"{won(short)} 더 담으시면 쿠폰을 쓸 수 있어요. 더 담으실까요?"
+    return (f"{coupon_phrase(title)}이 있는데 {won(short)}이 부족해요. {suggest_name} 하나 더 "
+            "하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더 담으실까요?")
+
+
+def coupon_applies(title: str, discount: int) -> str:
+    """쿠폰 문의에 쓸 수 있는 쿠폰이 있을 때 (쿠폰 티켓 11). 뒤에 하던 질문을 다시 한다."""
+    return f"네, {coupon_phrase(title)}이 있어서 {won(discount)} 할인돼요."
+
+
+def coupon_available(title: str, min_order: int) -> str:
+    """장바구니가 빈 채 쿠폰을 물었을 때: 쿠폰 이름과 최소 주문 금액(있으면) (쿠폰 티켓 11)."""
+    condition = f" {won(min_order)} 이상 주문하시면 돼요." if min_order > 0 else ""
+    return f"{coupon_phrase(title)}이 있어요.{condition}"
+
+
+def no_coupon() -> str:
+    """쿠폰 문의에 오늘 쓸 수 있는 쿠폰이 없을 때 (쿠폰 티켓 11)."""
+    return "지금 쓸 수 있는 쿠폰은 없어요."
 
 
 def ask_what_to_fix() -> str:
     return "어떤 걸 고쳐 드릴까요?"
 
 
-def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
-    """마무리. 사장님 답을 못 받은 질문이 있으면 문자 약속을 붙인다 (4단계 티켓 06)."""
-    later = " 여쭤보신 건 확인해서 문자로 알려 드릴게요." if owner_pending else ""
-    return f"네, {spoken_time(pickup)}까지 준비해 둘게요.{later} 감사합니다."
+def closing(pickup: datetime) -> str:
+    """마무리. 사장님 답을 못 받은 질문이 있어도 문자를 약속하지 않는다(리뷰: 문자는 나가지 않고
+    손님 화면에도 없다. 늦은 답은 사장님 카드에만 남는다, ADR 0010)."""
+    return f"네, {spoken_time(pickup)}까지 준비해 둘게요. 감사합니다."
+
+
+def order_placed() -> str:
+    """복창에 "네": 통화 뒤 확인 요청을 열고 통화를 끝낸다 (전화 메뉴·주문 현황 티켓 04, 통화 중
+    대기 0). 결정은 손님 화면의 주문 현황으로 알린다. 확인 요청을 "접수"라고 하지 않는다(용어집).
+    문자는 약속하지 않는다(`closing`과 같다)."""
+    return "주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요. 감사합니다."
 
 
 def approval_hold() -> str:
@@ -282,9 +338,9 @@ def approval_still_checking() -> str:
 
 
 def approval_timeout() -> str:
-    """통화 중 대기 시간 안에 사장님 결정이 없었다 (주문 승인 spec "엔진"). 통화를 끝낸다."""
-    return ("가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요. "
-            "확정 문자를 받으시면 주문 완료예요. 감사합니다.")
+    """통화 중 대기 시간 안에 사장님 결정이 없었다 (주문 승인 spec "엔진"). 통화를 끝낸다.
+    결정은 손님 화면의 주문 현황으로 본다. 문자는 약속하지 않는다(리뷰: 문자는 나가지 않는다)."""
+    return "가게에서 아직 확인 중이에요. 확인되면 화면으로 알려 드릴게요. 감사합니다."
 
 
 # 사장님이 통화 중에 거절했다 (주문 승인 티켓 05). 사유마다 고정 사과 한 마디로 통화를 끝낸다.
@@ -595,9 +651,10 @@ _OWNER_ANSWER = {
     "yes": "사장님께 여쭤보니 네, 된다고 하세요.",
     "no": "사장님께 여쭤보니 안 된다고 하세요.",
     "unsure": "사장님께 여쭤봤는데 사장님도 정확히는 모르신대요.",
-    "timeout": "확인해서 문자로 알려 드릴게요.",  # 답 대기 시간 초과 (티켓 06)
-    # 사장님 자유 입력 답 (티켓 07). 글은 번역해 문자로만 간다. 손님에게 읽지 않는다
-    "free": "사장님이 답을 남기셨어요. 문자로 보내 드릴게요.",
+    # 답 대기 시간 초과 (티켓 06). 늦은 답은 사장님 카드에만 남으므로 문자를 약속하지 않는다(리뷰)
+    "timeout": "죄송해요, 사장님이 지금 바로 답하기 어려우세요.",
+    # 사장님 자유 입력 답 (티켓 07). 글은 손님에게 읽지 않는다(사장님 카드의 문자 칸에만 남는다)
+    "free": "사장님이 글로 답을 남기셨어요. 자세한 건 가게에 물어봐 주세요.",
 }
 # 대화 기록(`Order.transcript`)에 남기는 사장님 답 이름
 _OWNER_ANSWER_LABEL = {"yes": "돼요", "no": "안 돼요", "unsure": "모르겠어요",
@@ -637,7 +694,7 @@ def owner_answer_label(answer: str, *, contains: bool = False) -> str:
 # ---------------------------------------------------------------- 사장님 보충 지식 (4단계 티켓 13)
 
 
-# 메뉴가 아닌 가게 질문(주차·할인)의 보충 요청에 메뉴 이름 대신 쓰는 말 (5단계 티켓 11)
+# 메뉴가 아닌 가게 질문(주차·배달)의 보충 요청에 메뉴 이름 대신 쓰는 말 (5단계 티켓 11)
 STORE_QUESTION = "가게"
 
 

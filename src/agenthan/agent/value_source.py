@@ -97,6 +97,8 @@ def numbers(text: str) -> set[int]:
     found: set[int] = set()
     # 만 right after a non-numeral syllable is the particle "only" (금액만 3000원), not 10000.
     text = re.sub(r"(?<=[가-힣])(?<![영공일이삼사오육칠팔구십백천한두세네섯])만", "뿐", text)
+    # 만들다(쿠폰 만들어 줘)의 만도 수가 아니다.
+    text = re.sub(r"(?<![\d영공일이삼사오육칠팔구십백천한두세네섯])만(?=들)", "뿐", text)
     compact = re.sub(r"(?<=[\d만천백십])\s+(?=[\d영공일이삼사오육칠팔구십백천만])", "", text)
     # One token per number, digits and units together (2만, 1만2천, 12,000).
     for match in re.finditer(

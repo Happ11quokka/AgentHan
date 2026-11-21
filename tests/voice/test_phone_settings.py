@@ -148,13 +148,17 @@ def test_the_approval_reprompt_reaches_the_session_and_zero_turns_it_off() -> No
 
 def test_owner_approval_is_on_by_default_and_its_wait_reaches_the_session() -> None:
     # 주문 승인 티켓 02: 확정 전 사장님 수락(화면이 없으면 건너뜀). 대기 초는 허브 카드 마감과 같다
+    # 통화 중 대기는 기본 0: 기다리지 않고 끊는다(전화 메뉴·주문 현황 티켓 04). 0도 받는다
     default = VoiceSettings.from_env({}, env_file=None)
-    assert (default.owner_approval, default.approval_wait_s) == (True, 20.0)
+    assert (default.owner_approval, default.approval_wait_s) == (True, 0.0)
+    assert default.session_settings().approval_wait_s == 0.0
+    zero = VoiceSettings.from_env({"PHONE_APPROVAL_WAIT_S": "0"}, env_file=None)
+    assert zero.approval_wait_s == 0
     s = VoiceSettings.from_env({"PHONE_OWNER_APPROVAL": "off", "PHONE_APPROVAL_WAIT_S": "12"},
                                env_file=None)
     session = s.session_settings()
     assert (session.owner_approval, session.approval_wait_s) == (False, 12.0)
-    for name, wrong in (("PHONE_OWNER_APPROVAL", "true"), ("PHONE_APPROVAL_WAIT_S", "0")):
+    for name, wrong in (("PHONE_OWNER_APPROVAL", "true"), ("PHONE_APPROVAL_WAIT_S", "-1")):
         with pytest.raises(SettingsError):
             VoiceSettings.from_env({name: wrong}, env_file=None)
 
@@ -333,44 +337,6 @@ def test_clova_stt_gets_the_boost_weight_from_the_settings() -> None:
            "PHONE_STT_BOOST_WEIGHT": "1.5"}
     make_stt = stt_factory(VoiceSettings.from_env(env, env_file=None), boost_words=("메도빅",))
     assert make_stt()._settings.boost_weight == 1.5
-
-
-def test_phone_router_sends_no_boost_words_when_boosting_is_off(monkeypatch) -> None:
-    from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
-    from agenthan.voice.store_config import StoreConfig
-    from agenthan.voice.ws import phone_router
-
-    seen: dict = {}
-
-    def capture(settings, **kw):
-        seen.update(kw)
-        return lambda: None
-
-    monkeypatch.setattr(adapters, "stt_factory", capture)
-    phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
-                 order_sink=MemoryOrderSink(),
-                 settings=VoiceSettings.from_env({"PHONE_STT": "clova"}, env_file=None))
-    assert seen["boost_words"] == ()
-
-
-def test_phone_router_boosts_the_store_menu_for_clova_stt(monkeypatch) -> None:
-    from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
-    from agenthan.voice.store_config import StoreConfig
-    from agenthan.voice.ws import phone_router
-
-    seen: dict = {}
-
-    def capture(settings, **kw):
-        seen.update(kw)
-        return lambda: None
-
-    monkeypatch.setattr(adapters, "stt_factory", capture)
-    phone_router(store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
-                 order_sink=MemoryOrderSink(),
-                 settings=VoiceSettings.from_env({"PHONE_STT": "clova",
-                                                  "PHONE_STT_BOOST_WEIGHT": "1"}, env_file=None))
-    assert seen["boost_words"][:3] == ("메도빅", "꿀케이크", "허니케이크")
-    assert "사워크림" in seen["boost_words"]
 
 
 def test_clova_stt_keeps_a_grpc_dns_resolver_that_is_already_set(monkeypatch) -> None:

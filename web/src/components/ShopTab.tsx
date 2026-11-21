@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useElapsed } from "../useElapsed";
 import { ProgressBar } from "./ProgressBar";
-import { approval, DAYS, discountText, hoursText, MARK_TEXT, periodText, won, type RowMark } from "../labels";
+import { approval, DAYS, discountText, hoursText, MARK_TEXT, minOrderText, periodText, won, type RowMark } from "../labels";
 import type { MenuEdit, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
 import { RoutineSettings } from "./RoutineSettings";
 
@@ -426,6 +426,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
                 <div className="coupon-body">
                   <strong>{c.title}</strong>
                   <small>{periodText(c)}</small>
+                  {minOrderText(c) && <small>{minOrderText(c)}</small>}
                 </div>
                 <span className="coupon-value">{discountText(c)}</span>
               </Row>

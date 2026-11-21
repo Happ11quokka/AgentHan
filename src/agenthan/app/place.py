@@ -67,7 +67,11 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
             for m in data.get("menus", [])
         ],
         "business_hours": {day: copy.deepcopy(hours[day]) for day in DAYS if day in hours},
-        "coupon": copy.deepcopy(data.get("coupons", [])),
+        # 최소 주문 금액이 없던 옛 쿠폰은 조건 없음(0)으로 읽는다.
+        "coupon": [
+            {**copy.deepcopy(c), "min_order": c.get("min_order") or 0}
+            for c in data.get("coupons", [])
+        ],
         "keywords": list(data.get("shop", {}).get("keywords", [])),
         **records,
     }

@@ -28,6 +28,7 @@ from agenthan.voice.call.session import TURN_THREAD_PREFIX
 from agenthan.voice.call.vad import VadSettings
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import KST, StoreConfig
+from agenthan.voice.store_snapshot import StoreSnapshot, fixed_store
 from agenthan.voice.ws import ENGINE_THREAD_PREFIX, WS_PATH, phone_router
 
 ORDER_SCRIPT = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
@@ -51,8 +52,10 @@ def _app(
     app = FastAPI()
     app.include_router(
         phone_router(
-            store=store if store is not None else FakeStoreKnowledge.from_fixture(),
-            config=StoreConfig.from_fixture(),
+            stores=fixed_store(StoreSnapshot.of(
+                store if store is not None else FakeStoreKnowledge.from_fixture(),
+                StoreConfig.from_fixture(),
+            )),
             order_sink=sink if sink is not None else MemoryOrderSink(),
             settings=_settings(tmp_path, **kw),
             stt_factory=stt_factory,
@@ -339,6 +342,7 @@ def test_the_engine_runs_on_the_router_s_own_thread_pool(tmp_path) -> None:
             return super().list_menu()
 
     client = TestClient(_app(tmp_path, store=Store.from_fixture()))
+    threads.clear()  # 조립 때 가게 스냅숏을 만들며 한 번 읽은 것(루프 밖)은 빼고 통화만 본다
     for _ in range(2):
         with client.websocket_connect(WS_PATH) as ws:
             phone = Phone(ws)

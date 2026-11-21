@@ -93,6 +93,19 @@ def test_coupon_version_and_cancel(setup):
     assert not cancelled["pending"]
 
 
+def test_coupon_form_min_order_is_saved(setup):
+    _, _, action, _ = setup
+    first = action("coupon.create", {**COUPON, "min_order": 10000}).json()
+    [pending] = first["pending"]
+    [new] = [c for c in pending["after"]["coupon"] if c["title"] == COUPON["title"]]
+    assert new["min_order"] == 10000
+    done = action(
+        "task.approve", {"task_id": pending["task_id"], "version": pending["version"]}
+    ).json()
+    [saved] = [c for c in done["place"]["coupon"] if c["title"] == COUPON["title"]]
+    assert saved["min_order"] == 10000
+
+
 def test_review_id_and_approval(setup):
     api, sid, action, _ = setup
     reviews = api.get(f"/assistant/sessions/{sid}/reviews").json()["reviews"]

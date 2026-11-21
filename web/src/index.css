@@ -1,11 +1,23 @@
-:root {
-  font-family: system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', sans-serif;
-  line-height: 1.5;
-  color-scheme: light dark;
-}
+/* 전화·사장님 화면 전역. 토큰(색·글꼴·라운드·라이트 모드)은 본 앱과 같은 `tokens.css`를 읽는다 */
+@import "./tokens.css";
+@import "./brandmark.css";
 
+html,
 body {
   margin: 0;
+  /* 라이트 모드 고정: 배경을 직접 칠한다(OS 다크 모드가 기본 배경을 바꾸지 않게) */
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+button {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 main {
