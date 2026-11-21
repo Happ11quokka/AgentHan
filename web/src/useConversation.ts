@@ -1,7 +1,7 @@
 // 대화 상태 한곳: 메시지·가게 화면·승인 대기·오늘 한 일·연결 상태. 사이드카와 승인 카드가 같은 상태를 본다.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type AssistantApi } from "./api";
-import { couponActionLabel, describeChanges, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
+import { couponActionLabel, describeChanges, describeReportChange, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
 import type { Action, LogEntry, Message, OnboardingInput, Pending, Place, ReviewReport, ReviewRow, ServerMessage, ShopInfo, Turn, View } from "./types";
@@ -88,8 +88,8 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const toRetry = useRef<Retryable | null>(null);
   const sentCoupon = useRef<CouponInput | null>(null); // 거절되면 블록을 다시 열 값
   const inFlight = useRef(false); // 렌더 전에 들어온 두 번째 클릭도 막는다
-  const latest = useRef({ place, pending, messages });
-  latest.current = { place, pending, messages };
+  const latest = useRef({ place, pending, messages, reviewReport });
+  latest.current = { place, pending, messages, reviewReport };
 
   useEffect(() => {
     if (sessionId) storage.saveChat(sessionId, { messages, log });
@@ -182,6 +182,8 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     const before = latest.current;
     const resolved = before.pending.length > 0 && turn.pending.length === 0;
     const lines = resolved && before.place ? describeChanges(before.place, turn.place) : [];
+    // 보고 설정(#98)은 가게 정보가 아니라 따로 본다(#112).
+    if (resolved) lines.push(...describeReportChange(before.reviewReport, turn.review_report));
     const answeredReview =
       resolved && answered && before.pending.some((p) => p.kind === "review" && p.task_id === answered.args.task_id);
     if (answeredReview && answered.action_id === "task.approve") lines.push(REVIEW_POSTED_TEXT);
