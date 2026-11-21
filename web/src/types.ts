@@ -6,7 +6,16 @@ export type MenuRow = {
   price: number | null;
   description: string | null;
   photo_url: string | null;
+  /** 메뉴판 사진으로 올린 메뉴: AI가 채워 사장님 확인 전인 칸. 예전 서버 응답에는 없다. */
+  ai?: MenuField[];
+  /** 지금 백그라운드에서 채우는 칸(설명·흰 배경 사진 등). 비면 다 채운 것. */
+  filling?: MenuField[];
 };
+
+export type MenuField = "name" | "price" | "description" | "photo" | "polish";
+
+/** 메뉴 탭에서 사장님이 직접 고친 칸만 (PATCH /menus/{id}). 대화 턴이 아니다. */
+export type MenuEdit = Partial<{ name: string; price: number; description: string }>;
 
 export type DayHours = { closed: boolean; open_time?: string; close_time?: string };
 

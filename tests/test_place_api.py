@@ -41,6 +41,8 @@ def test_snapshot_has_the_place_and_record_sections():
         "price": 7500,
         "description": SEED["menus"][0]["description"],
         "photo_url": None,
+        "ai": [],
+        "filling": [],
     }
     assert list(view["business_hours"]) == ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     assert view["business_hours"]["sun"] == {"closed": True}

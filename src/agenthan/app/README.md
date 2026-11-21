@@ -9,7 +9,12 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `POST /assistant/sessions` | 대화 세션 시작(세션마다 파일럿 매장 복사본에서 시작한 저장소) |
 | `POST /assistant/sessions/{id}/messages` | 사장님 말 한 턴 → `reply`·`place`·`pending`, planner 모드는 `next_actions` 포함 |
 | `POST /assistant/sessions/{id}/actions` | 버튼의 `action_id`·`args`·`label`을 실행하고 같은 응답에 `next_actions` 추가 |
-| `POST /assistant/sessions/{id}/photos` | 메뉴판 사진·음식 사진(multipart `image` + 선택 `text`) → 같은 모양 |
+| (선택) 오픈 배경 제거 모델 | `uv sync --extra cutout` + `AGENTHAN_CUTOUT_MODEL=rembg`: 1차 흰 배경·2차 보정의 음식 영역을 GrabCut 대신 U2Net(CPU, 사진당 0.4초, 처음 한 번 모델 176MB 받음)으로 자른다. 네이버 모델이 아니라 규정 확인 전까지 기본은 꺼짐 |
+| `POST /assistant/sessions?menu=empty` | 시연용: 메뉴만 비운 가게로 시작(메뉴판 사진으로 채우는 장면). 화면은 주소에 `?menu=empty`를 붙이고 [새 대화] |
+| `POST /assistant/sessions/{id}/photos` | 메뉴판 사진·음식 사진(multipart `image` + 선택 `text`) → 같은 모양. 메뉴판은 승인 없이 메뉴 탭에 바로 올리고(`menu[].ai`·`menu[].filling`), 설명·흰 배경 사진은 백그라운드로 채운다(`agent/menu_board.py`) |
+| `PATCH /assistant/sessions/{id}/menus/{menu_id}` | 메뉴 탭 직접 수정 `{name?, price?, description?}` → 세션 조회 응답. 승인 카드 없음, 고친 칸의 `ai` 표시를 지움. 빈 이름·같은 이름·0원 422, 없는 메뉴 404 |
+| `DELETE /assistant/sessions/{id}/menus/{menu_id}` | 메뉴 탭에서 잘못 읽은 줄 지우기 → 세션 조회 응답 |
+| `POST /assistant/sessions/{id}/menus/{menu_id}/polish` | [사진 다듬기] 2차: 메뉴판에서 자른 원본 조각을 CPU 스튜디오 보정(`tools/image_studio.py`: 밝기·색·가운데 정렬·바닥 그림자, 1초 안팎)으로 다시 만든다. GPU 서버(`AGENTHAN_IMAGE_POLISH_URL`, SEED Omni)가 있으면 그쪽(1~2분). `{message, started, ...세션 조회}`. 사진 없는 메뉴는 `started: false` |
 | `GET /assistant/sessions/{id}/photos/{name}` | `draft-<n>`: 기다리는 초안 사진, 메뉴 id: 저장된 메뉴 사진. 다른 세션·없는 사진은 404 |
 | `GET /assistant/sessions/{id}/place` | 지금 `place`·`pending`·`shop`(가게 이름·업종. 둘 중 하나가 비면 화면이 온보딩을 띄움) |
 | `POST /assistant/sessions/{id}/onboarding` | 처음 쓰는 사장님(#94): `name`·`category`(빈칸 422)와 대표 메뉴 `menus` 0~3개(`name`·`price` 양의 정수)를 넣은 값 그대로 `shop`·`menus`에 저장 → 같은 모양. 대화 턴·승인 카드 아님, 실제 발송 없음 |

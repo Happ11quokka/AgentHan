@@ -4,12 +4,17 @@ import { ApiError, type AssistantApi } from "./api";
 import { couponActionLabel, describeChanges, describeReportChange, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
-import type { Action, LogEntry, Message, OnboardingInput, Pending, Place, ReviewReport, ReviewRow, Routines, RoutinesChange, ServerMessage, ShopInfo, Turn, View } from "./types";
+import type { Action, LogEntry, MenuEdit, Message, OnboardingInput, Pending, Place, ReviewReport, ReviewRow, Routines, RoutinesChange, ServerMessage, ShopInfo, Turn, View } from "./types";
 
 const COUPON_ACTION = "coupon.create";
 const SAY_ACTION = "chat.say";
 /** 정해진 때의 리뷰 보고(#98)를 받으려고 세션 조회(/place)를 다시 읽는 간격. */
 export const REPORT_POLL_MS = 60_000;
+/** 메뉴판 사진으로 올린 메뉴의 설명·사진을 채우는 동안 메뉴 탭을 다시 읽는 간격. */
+export const FILL_POLL_MS = 1000;
+
+/** 주소에 ?menu=empty가 있으면 메뉴를 비운 가게로 새 대화를 연다(시연: 메뉴판 사진으로 채우기). */
+const emptyMenuDemo = () => new URLSearchParams(window.location.search).get("menu") === "empty";
 
 /** 오늘부터 14일 동안. 날짜는 사장님 기기의 날짜(YYYY-MM-DD). */
 const isoDay = (d: Date) =>
@@ -60,6 +65,12 @@ export type Conversation = {
   routines: Routines | null;
   /** 루틴 설정 스위치·일정을 바꾼다. 대화 턴이 아니다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   changeRoutines: (change: RoutinesChange) => Promise<string | null>;
+  /** 메뉴 탭에서 직접 고친 값을 저장한다(승인 카드 없음). 성공하면 null, 실패하면 사장님께 보일 문장. */
+  editMenu: (menuId: string, edit: MenuEdit) => Promise<string | null>;
+  /** [사진 다듬기]: 사진 다듬기를 부탁한다. 사장님께 보일 한 줄(시작함·준비 중·실패)을 돌려준다. */
+  polishMenu: (menuId: string) => Promise<string>;
+  /** 메뉴 탭에서 메뉴 한 줄을 지운다. 성공하면 null, 실패하면 사장님께 보일 문장. */
+  deleteMenu: (menuId: string) => Promise<string | null>;
 };
 
 let nextId = 1;
@@ -68,6 +79,7 @@ const newId = () => nextId++;
 const ONBOARD_FAILED = "저장하지 못했어요. 다시 시도해 주세요.";
 const REPORT_FAILED = "리뷰 보고를 받지 못했어요. 다시 시도해 주세요.";
 const ROUTINES_FAILED = "설정을 바꾸지 못했어요. 다시 시도해 주세요.";
+const MENU_FAILED = "메뉴를 저장하지 못했어요. 다시 시도해 주세요.";
 
 /** 서버가 먼저 보낸 메시지 → 대화창의 비서 말풍선(칩은 그대로 누를 수 있다). */
 const fromServer = (m: ServerMessage): Message => ({ id: newId(), role: "agent", text: m.text, nextActions: m.next_actions });
@@ -162,7 +174,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   }, []);
 
   const newChat = useCallback(async () => {
-    const started = await attempt({ kind: "start" }, () => api.start());
+    const started = await attempt({ kind: "start" }, () => api.start(emptyMenuDemo() ? { emptyMenu: true } : undefined));
     if (started) show(started.session_id, started, { messages: [], log: [] });
   }, [api, attempt, show]);
 
@@ -327,6 +339,60 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     return () => clearInterval(timer);
   }, [api, sessionId, reportPollMs, absorb]);
 
+  // 메뉴판 사진으로 올린 메뉴는 설명·흰 배경 사진을 뒤에서 채운다. 채우는 칸이 남아 있는 동안만
+  // 메뉴 탭을 자주 다시 읽어 채워지는 모습을 보인다. 실패는 조용히 넘긴다.
+  const filling = Boolean(place?.menu.some((m) => m.filling?.length));
+  useEffect(() => {
+    if (!sessionId || !filling) return;
+    const timer = setInterval(() => {
+      if (inFlight.current) return; // 비서 답이 오면 그 답이 가게 화면을 함께 가져온다
+      api
+        .view(sessionId)
+        .then((view) => {
+          if (inFlight.current) return;
+          setPlace(view.place);
+          setPending(view.pending);
+        })
+        .catch(() => undefined);
+    }, FILL_POLL_MS);
+    return () => clearInterval(timer);
+  }, [api, sessionId, filling]);
+
+  /** 메뉴 탭 직접 수정·삭제: 대화 턴이 아니다. 가게 화면만 바꾼다. */
+  const changeMenu = useCallback(
+    async (call: (id: string) => Promise<View>) => {
+      if (!sessionId) return MENU_FAILED;
+      try {
+        const view = await call(sessionId);
+        setPlace(view.place);
+        setPending(view.pending);
+        setOnline(true);
+        return null;
+      } catch (e) {
+        if (isOffline(e)) setOnline(false);
+        if (e instanceof ApiError && e.status === 422) return "값을 확인해 주세요. 이름은 비울 수 없고, 같은 이름이 있으면 안 되며, 가격은 0보다 커야 해요.";
+        return isOffline(e) ? friendly(e) : MENU_FAILED;
+      }
+    },
+    [sessionId],
+  );
+  const editMenu = useCallback((menuId: string, edit: MenuEdit) => changeMenu((id) => api.editMenu(id, menuId, edit)), [api, changeMenu]);
+  const polishMenu = useCallback(
+    async (menuId: string) => {
+      if (!sessionId) return MENU_FAILED;
+      try {
+        const view = await api.polishMenu(sessionId, menuId);
+        setPlace(view.place);
+        setPending(view.pending);
+        return view.message;
+      } catch (e) {
+        return isOffline(e) ? friendly(e) : "사진 다듬기를 시작하지 못했어요. 다시 시도해 주세요.";
+      }
+    },
+    [api, sessionId],
+  );
+  const deleteMenu = useCallback((menuId: string) => changeMenu((id) => api.deleteMenu(id, menuId)), [api, changeMenu]);
+
   const openCoupon = useCallback((initial?: CouponInput) => setCouponForm(initial ?? blankCoupon()), []);
   const closeCoupon = useCallback(() => setCouponForm(null), []);
 
@@ -390,6 +456,6 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
     send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
-    routines, changeRoutines,
+    routines, changeRoutines, editMenu, deleteMenu, polishMenu,
   };
 }

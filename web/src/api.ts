@@ -1,8 +1,9 @@
-import type { Action, OnboardingInput, Period, ReplyOp, ReplyResult, ReportView, ReviewStats, ReviewStatsPeriod, ReviewsView, RoutinesChange, Started, Suggestions, Turn, View } from "./types";
+import type { Action, MenuEdit, OnboardingInput, Period, ReplyOp, ReplyResult, ReportView, ReviewStats, ReviewStatsPeriod, ReviewsView, RoutinesChange, Started, Suggestions, Turn, View } from "./types";
 
 /** 화면이 서버와 주고받는 유일한 길. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface AssistantApi {
-  start(): Promise<Started>;
+  /** emptyMenu: 시연용, 메뉴만 비운 가게로 시작한다(메뉴판 사진으로 채우는 장면). */
+  start(options?: { emptyMenu?: boolean }): Promise<Started>;
   act(sessionId: string, action: Action): Promise<Turn>;
   say(sessionId: string, text: string): Promise<Turn>;
   sendPhoto(sessionId: string, image: File, text: string): Promise<Turn>;
@@ -23,6 +24,12 @@ export interface AssistantApi {
   reviewStats(sessionId: string, period: ReviewStatsPeriod): Promise<ReviewStats>;
   /** 왼쪽 [비서 제안]: 지난주 통계와 리뷰로 고른 해 볼 일. */
   suggestions(sessionId: string): Promise<Suggestions>;
+  /** 메뉴 탭에서 사장님이 직접 고친 값: 승인 카드 없이 바로 저장한다. 대화 턴이 아니다. */
+  editMenu(sessionId: string, menuId: string, edit: MenuEdit): Promise<View>;
+  /** [사진 다듬기] 2차: CPU 스튜디오 보정(몇 초), GPU 서버가 있으면 SEED Omni(1~2분). message: 사장님께 보일 한 줄. */
+  polishMenu(sessionId: string, menuId: string): Promise<View & { message: string; started: boolean }>;
+  /** 메뉴판에서 잘못 읽은 줄을 지운다. 대화 턴이 아니다. */
+  deleteMenu(sessionId: string, menuId: string): Promise<View>;
 }
 
 export class ApiError extends Error {
@@ -48,7 +55,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 const base = (id: string) => `/assistant/sessions/${encodeURIComponent(id)}`;
 
 export const httpApi: AssistantApi = {
-  start: () => call("/assistant/sessions", { method: "POST" }),
+  start: (options) => call(`/assistant/sessions${options?.emptyMenu ? "?menu=empty" : ""}`, { method: "POST" }),
   act: (id, action) =>
     call(`${base(id)}/actions`, {
       method: "POST",
@@ -92,4 +99,12 @@ export const httpApi: AssistantApi = {
     }),
   reviewStats: (id, period) => call(`${base(id)}/reviews/stats?period=${period}`),
   suggestions: (id) => call(`${base(id)}/suggestions`),
+  editMenu: (id, menuId, edit) =>
+    call(`${base(id)}/menus/${encodeURIComponent(menuId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(edit),
+    }),
+  polishMenu: (id, menuId) => call(`${base(id)}/menus/${encodeURIComponent(menuId)}/polish`, { method: "POST" }),
+  deleteMenu: (id, menuId) => call(`${base(id)}/menus/${encodeURIComponent(menuId)}`, { method: "DELETE" }),
 };

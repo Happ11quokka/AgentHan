@@ -6,8 +6,8 @@ import type { Loaded } from "../useLoad";
 import { AgentAvatar } from "./AgentAvatar";
 import { Icon } from "./Icon";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
-import { HomeTab, MenuTab } from "./ShopTab";
-import { StatsTab, type StatsKind } from "./StatsTab";
+import { HomeTab, MenuTab, type OnMenuDelete, type OnMenuEdit, type OnMenuPolish } from "./ShopTab";
+import { type StatsKind, StatsTab } from "./StatsTab";
 
 export type Tab = "home" | "menu" | "reviews" | "stats";
 
@@ -49,6 +49,10 @@ type Props = {
   reviewPeriod?: ReviewStatsPeriod;
   onReviewPeriod?: (p: ReviewStatsPeriod) => void;
   onAsk?: (text: string) => void;
+  /** 메뉴 탭 직접 수정·삭제(승인 카드 없음). 없으면 메뉴 탭은 읽기만. */
+  onEditMenu?: OnMenuEdit;
+  onDeleteMenu?: OnMenuDelete;
+  onPolishMenu?: OnMenuPolish;
   onClose: () => void;
 };
 
@@ -122,7 +126,7 @@ export function Sidecar(props: Props) {
             onRunReport={props.onRunReport}
           />
         )}
-        {tab === "menu" && place && <MenuTab place={place} pending={pending} />}
+        {tab === "menu" && place && <MenuTab place={place} pending={pending} onEdit={props.onEditMenu} onDelete={props.onDeleteMenu} onPolish={props.onPolishMenu} />}
         {tab === "reviews" && (
           <ReviewsTab
             loaded={props.reviews}

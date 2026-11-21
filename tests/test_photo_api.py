@@ -11,9 +11,6 @@ from agenthan.app.server import create_app
 from agenthan.core.contracts import MenuItem
 from agenthan.core.fakes import FakeStoreKnowledge
 from test_food_photo import CAKE, EMPTY, EditChat, FakeV3
-from test_menu_photo import JPEG, KNOWLEDGE, tool_call
-from test_menu_photo import FakeChat as BoardChat
-from test_menu_photo import FakeV3 as BoardV3
 
 
 def client(tmp_path, *, fake=None, chat=None, knowledge=EMPTY):
@@ -170,39 +167,6 @@ BOARD_NAMES = {
 }
 
 
-def test_menu_board_updates_existing_menus_and_adds_new_ones_in_one_yes(tmp_path):
-    chat = BoardChat(
-        tool_call({"number": 5, "price": 10000}), {"role": "assistant", "content": "고쳤어요."}
-    )
-    api = client(tmp_path, fake=BoardV3(BOARD, BOARD_NAMES), chat=chat, knowledge=KNOWLEDGE)
-    session_id = start(api)
-
-    body = send_photo(api, session_id, JPEG).json()
-    rows = {d["name_ko"]: d for d in body["pending"][0]["drafts"]}
-    assert (rows["메도빅"]["change"], rows["메도빅"]["previous_price"]) == ("price_change", 7500)
-    assert (rows["나폴레옹"]["change"], rows["나폴레옹"]["previous_price"]) == ("unchanged", 7000)
-    assert rows["시르니키"]["change"] == "new" and rows["시르니키"]["previous_price"] is None
-    assert rows["차이"]["change"] == "new"
-    assert "가격 변경 7,500 → 8,000" in body["reply"] and "변경 없음" in body["reply"]
-    question = body["reply"].splitlines()[-1]
-    assert "5번 펠메니" in question and "가격" in question
-    assert "메도빅" not in question and "시르니키" not in question
-
-    say(api, session_id, "5번 가격 10000원")
-    body = say(api, session_id, "네")
-    assert body["pending"] == []
-    prices = {m["name"]: m["price"] for m in body["place"]["menu"]}
-    assert prices == {
-        "메도빅": 8000,
-        "나폴레옹": 7000,
-        "아메리카노": 4500,
-        "블린": 9000,
-        "시르니키": 8500,
-        "차이": 3000,
-        "펠메니": 10000,
-    }
-
-
 def test_food_photo_of_an_existing_menu_attaches_the_photo_without_asking_a_price(tmp_path):
     medovik = MenuItem(id="m01", name_ko="메도빅", price=7500)
     api = client(tmp_path, fake=FakeV3(name="메도빅"), knowledge=FakeStoreKnowledge([medovik]))
@@ -253,19 +217,6 @@ def test_an_oversized_photo_is_answered(tmp_path):
 
     body = send_photo(api, session_id, huge).json()
     assert "10MB" in body["reply"] and body["pending"] == []
-
-
-def test_a_board_line_without_a_price_shows_no_change_until_every_line_is_filled(tmp_path):
-    # A saved menu the store knowledge does not know yet: no known price fills the gap.
-    board = '[{"name": "Медовик", "price": null}, {"name": "Сырники", "price": 8500}]'
-    names = {**BOARD_NAMES, "Медовик": '{"name_ko": "메도빅", "description_ko": ""}'}
-    api = client(tmp_path, fake=BoardV3(board, names), knowledge=EMPTY)
-    session_id = start(api)
-
-    [waiting] = send_photo(api, session_id, JPEG).json()["pending"]
-    rows = {d["name_ko"]: d for d in waiting["drafts"]}
-    assert (rows["메도빅"]["change"], rows["메도빅"]["previous_price"]) == (None, 7500)
-    assert waiting["changes"] == {}  # Nothing is saved while line 1 has no price.
 
 
 class SizeCheckingV3(FakeV3):

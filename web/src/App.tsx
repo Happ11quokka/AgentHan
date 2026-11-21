@@ -98,6 +98,17 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
     },
     [saveRoutines, reloadReviews],
   );
+  // 메뉴판 사진을 올려 메뉴가 채워지기 시작하면 메뉴 탭을 열어 채워지는 모습을 보인다.
+  // (이전 렌더의 값과 비교해 렌더 중에 바꾼다: 효과 안 setState를 피한다)
+  const filling = Boolean(chat.place?.menu.some((m) => m.filling?.length));
+  const [wasFilling, setWasFilling] = useState(false);
+  if (filling !== wasFilling) {
+    setWasFilling(filling);
+    if (filling) {
+      setTab("menu");
+      setSideOpen(true);
+    }
+  }
   const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
   // 통계 탭 › AI 리뷰 통계: 그 화면을 볼 때만 읽는다.
   const [statsKind, setStatsKind] = useState<StatsKind>("visits");
@@ -241,6 +252,9 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
           setPage("chat");
           void chat.send(text);
         }}
+        onEditMenu={chat.editMenu}
+        onDeleteMenu={chat.deleteMenu}
+        onPolishMenu={chat.polishMenu}
         onClose={() => setSideOpen(false)}
       />
       <button

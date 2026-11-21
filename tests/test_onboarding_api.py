@@ -71,11 +71,12 @@ def test_menus_can_be_skipped(api, tmp_path):
 def test_the_saved_category_is_the_photo_context(api, monkeypatch):
     """저장된 업종은 메뉴 사진 인식이 그대로 쓴다(ask_photo의 shop.category)."""
     seen = []
-    monkeypatch.setattr(owner.food_photo, "classify_photo", lambda image, call: "menu_board")
+    item = owner.menu_board.BoardItem("Сырники", 8500, None)
+    monkeypatch.setattr(owner.menu_board, "read_board", lambda image, call: ("menu_board", [item]))
     monkeypatch.setattr(
-        owner.menu_photo,
-        "draft_menus",
-        lambda image, knowledge, store_context, call: seen.append(store_context) or [],
+        owner.menu_board,
+        "fill_all",
+        lambda store, jobs, image, context, call: seen.append(context) or (lambda: None),
     )
     sid = api.post("/assistant/sessions").json()["session_id"]
     api.post(f"/assistant/sessions/{sid}/onboarding", json={"name": "달콤", "category": "디저트"})
