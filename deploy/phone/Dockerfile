@@ -34,7 +34,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-dev --no-install-project
+    uv sync --locked --no-dev --no-install-project --extra cutout
 
 # Smart Turn 모델 (3단계 티켓 03, 자체 호스팅 오픈 모델 BSD-2). HF 고정 리비전에서 받고 SHA-256이
 # 다르면 빌드가 실패한다. 값은 `voice/smart_turn.py`의 MODEL_URL·MODEL_SHA256과 같다(배포 테스트가 본다).
@@ -48,11 +48,21 @@ ADD --chmod=644 \
     /app/models/smart-turn-v3.2-cpu.onnx
 COPY deploy/phone/NOTICE-smart-turn.txt /app/models/NOTICE-smart-turn.txt
 
+# 메뉴 사진 배경 제거 모델 U2Net (rembg, 자체 호스팅 오픈 모델 Apache-2.0). 메뉴판에서 자른 음식 사진의
+# 1차 흰 배경·2차 [사진 다듬기]가 쓴다(tools/image_studio.py, AGENTHAN_CUTOUT_MODEL=rembg).
+# 실행 중에 받으면 첫 사진이 1분 넘게 걸려서(176MB) 빌드 때 받아 둔다. rembg 0.0.0 릴리스 파일이고
+# SHA-256이 다르면 빌드가 실패한다. U2NET_HOME 바로 아래 u2net.onnx를 rembg가 그대로 찾는다.
+RUN install -d -m 755 /app/models/rembg
+ADD --chmod=644 \
+    --checksum=sha256:8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491 \
+    https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx \
+    /app/models/rembg/u2net.onnx
+
 # 코드. 편집 설치(기본)라 core/fakes.py가 저장소 루트 기준으로 fixtures/를 찾는다(/app/fixtures)
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 COPY fixtures/ fixtures/
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --extra cutout
 
 COPY --from=web /web/dist web/dist
 
@@ -68,7 +78,10 @@ ENV PHONE_TZ=Asia/Seoul \
     AGENTHAN_SESSIONS_DIR=/app/sessions \
     PHONE_TURN_MODEL_PATH=/app/models/smart-turn-v3.2-cpu.onnx \
     ORT_DISABLE_TELEMETRY=1 \
-    GRPC_DNS_RESOLVER=native
+    GRPC_DNS_RESOLVER=native \
+    AGENTHAN_CUTOUT_MODEL=rembg \
+    U2NET_HOME=/app/models/rembg \
+    NUMBA_CACHE_DIR=/tmp/numba
 
 # 어느 커밋의 이미지인지 (/healthz의 version). `deploy.sh up`이 넣는다. 키가 아니다
 ARG GIT_SHA=dev

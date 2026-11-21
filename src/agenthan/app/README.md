@@ -9,7 +9,7 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `POST /assistant/sessions` | 대화 세션 시작(세션마다 파일럿 매장 복사본에서 시작한 저장소) |
 | `POST /assistant/sessions/{id}/messages` | 사장님 말 한 턴 → `reply`·`place`·`pending`, planner 모드는 `next_actions` 포함 |
 | `POST /assistant/sessions/{id}/actions` | 버튼의 `action_id`·`args`·`label`을 실행하고 같은 응답에 `next_actions` 추가 |
-| (선택) 오픈 배경 제거 모델 | `uv sync --extra cutout` + `AGENTHAN_CUTOUT_MODEL=rembg`: 1차 흰 배경·2차 보정의 음식 영역을 GrabCut 대신 U2Net(CPU, 사진당 0.4초, 처음 한 번 모델 176MB 받음)으로 자른다. 네이버 모델이 아니라 규정 확인 전까지 기본은 꺼짐 |
+| (선택) 오픈 배경 제거 모델 | `uv sync --extra cutout` + `AGENTHAN_CUTOUT_MODEL=rembg`: 1차 흰 배경·2차 보정의 음식 영역을 GrabCut 대신 U2Net(CPU, 사진당 0.4초, 처음 한 번 모델 176MB 받음)으로 자른다. 코드 기본은 꺼짐. 시연 서버 이미지(`deploy/phone/Dockerfile`)는 모델 파일을 빌드 때 받아(SHA-256 고정) 켠다 |
 | `POST /assistant/sessions?menu=empty` | 시연용: 메뉴만 비운 가게로 시작(메뉴판 사진으로 채우는 장면). 화면은 주소에 `?menu=empty`를 붙이고 [새 대화] |
 | `POST /assistant/sessions/{id}/photos` | 메뉴판 사진·음식 사진(multipart `image` + 선택 `text`) → 같은 모양. 메뉴판은 승인 없이 메뉴 탭에 바로 올리고(`menu[].ai`·`menu[].filling`), 설명·흰 배경 사진은 백그라운드로 채운다(`agent/menu_board.py`) |
 | `PATCH /assistant/sessions/{id}/menus/{menu_id}` | 메뉴 탭 직접 수정 `{name?, price?, description?}` → 세션 조회 응답. 승인 카드 없음, 고친 칸의 `ai` 표시를 지움. 빈 이름·같은 이름·0원 422, 없는 메뉴 404 |
