@@ -115,6 +115,32 @@ def test_a_decision_is_taken_once_across_accept_and_reject() -> None:
         accepted.reject("call-1", "busy")
 
 
+def test_a_delayed_accept_and_a_rejection_exclude_each_other() -> None:
+    """늦춘 수락(티켓 04)과 거절도 결정은 한 번: 손님이 바뀐 시각을 듣는 중·"아니요" 뒤·통화 뒤."""
+    asking = _hub()
+    _requested(asking)
+    asking.accept("call-1", delay_min=15)  # 통화 중: 손님이 "괜찮으세요?"를 듣는 중
+    with pytest.raises(AlreadyDecided):
+        asking.reject("call-1", "busy")
+    asking.withdraw_approval("call-1", 1, "cancelled")  # 손님 "아니요" → 주문 취소
+    with pytest.raises(AlreadyDecided):
+        asking.reject("call-1", "closed")
+
+    after = _hub()
+    _requested(after)
+    after.call_ended("call-1", "confirmed")
+    after.accept("call-1", delay_min=30)  # 통화 뒤 늦춘 수락
+    with pytest.raises(AlreadyDecided):
+        after.reject("call-1", "busy")
+    assert [t["kind"] for t in after.customer_texts("call-1")] == ["delayed"]
+
+    rejected = _hub()
+    _requested(rejected)
+    rejected.reject("call-1", "busy")
+    with pytest.raises(AlreadyDecided):
+        rejected.accept("call-1", delay_min=15)
+
+
 def test_an_expired_card_cannot_be_rejected() -> None:
     clock = FakeClock(NOW)
     hub = _hub(clock)
