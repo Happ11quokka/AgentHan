@@ -16,6 +16,7 @@ from agenthan.core.contracts import Order, OrderLine
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import ApprovalRequest, OwnerDecision
+from agenthan.voice.owner import sms
 from agenthan.voice.owner.hub import OwnerHub, UnknownCard
 
 NOW = datetime.fromisoformat("2026-11-08T16:02:00+09:00")
@@ -190,6 +191,33 @@ def test_five_silent_minutes_cancel_with_the_expired_outcome() -> None:
 
     assert (status["stage"], status["outcome"], status["reason"]) == (
         "cancelled", "expired", None)
+
+
+def test_the_line_under_the_headline_reuses_the_customer_text_sentences() -> None:
+    """제목 밑 한 줄(`detail`)은 서버가 손님 문자 문장(`sms.py`)으로 준다 (리뷰: 웹이 문장을 다시
+    쓰지 않는다). 확인 중 안내, 확정 픽업 문장, 늦춘 수락, 자동 취소, 거절 사유."""
+    hub, clock, _ = _placed()
+    assert hub.order_status(CALL)["detail"] == "확인되면 이 화면에서 알려 드려요."
+    hub.accept(CALL)
+    assert hub.order_status(CALL)["detail"] == sms.ready_line("18:30") == "18:30에 준비해 둘게요."
+
+    hub, _, _ = _placed()
+    hub.accept(CALL, delay_min=15)
+    assert hub.order_status(CALL)["detail"] == (
+        "픽업 시각이 18:30에서 18:45로 바뀌었어요. 18:45에 준비돼요. 어려우시면 전화 주세요.")
+
+    hub, clock, _ = _placed()
+    clock.set(NOW + timedelta(minutes=5))
+    assert hub.order_status(CALL)["detail"] == sms.expired_text()
+
+    hub, _, _ = _placed()
+    hub.reject(CALL, "busy")
+    status = hub.order_status(CALL)
+    assert status["detail"] == status["reason"]["text"]
+
+    hub, _, _ = _placed()
+    hub.reject(CALL, "free", text="Сегодня закрываемся рано")
+    assert hub.order_status(CALL)["detail"] == sms.REJECTED_FREE  # 사장님 글은 reason.text
 
 
 # ---------------------------------------------------------------- 실시간 갱신 (티켓 05)

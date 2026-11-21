@@ -13,6 +13,7 @@
      "pickup": {"time": ISO, "label": "18:30",
                 "original_time": "", "original_label": ""},
      "outcome": 결과 | null, "reason": {"code", "text"} | null,
+     "detail": 제목 밑 한 줄 | null,
      "sold_out": [떨어진 메뉴 이름], "can_cancel": 손님이 화면에서 취소할 수 있다}
 
 단계(`stage`, 닫힌 목록. 웹 `orderStatus.ts` `OrderStage`가 같은 값을 든다):
@@ -110,6 +111,27 @@ def _reason(card: dict[str, Any], outcome: OrderOutcome | None) -> dict[str, str
     return {"code": code, "text": text}
 
 
+def _detail(stage: OrderStage, outcome: OrderOutcome | None, pickup: dict[str, str],
+            reason: dict[str, str] | None) -> str | None:
+    """화면 맨 위 제목 밑 한 줄 (리뷰: 문자 문장을 웹에 다시 쓰지 않게 서버가 준다). 없으면 None.
+
+    확인 중 안내, 확정 문자의 픽업 문장(늦춘 수락은 바뀐 시각과 늦춘 수락 문자의 끝), 자동 취소
+    문자, 거절 사유 한 줄(직접 쓰기는 앞 문장, 사장님 글은 `reason.text`로 따로).
+    """
+    if stage == "checking":
+        return "확인되면 이 화면에서 알려 드려요."
+    if stage == "confirmed":
+        if pickup["original_label"]:
+            return (f"픽업 시각이 {pickup['original_label']}에서 {pickup['label']}로 바뀌었어요. "
+                    + sms.delayed_ready_line(pickup["label"]))
+        return sms.ready_line(pickup["label"]) if pickup["label"] else None
+    if outcome == "expired":
+        return sms.expired_text()
+    if reason is not None:
+        return sms.REJECTED_FREE if reason["code"] == "free" else reason["text"] or None
+    return None
+
+
 # 손님 취소 거부 사유 코드 (티켓 07): 지금 결과(`OrderOutcome`)이거나 in_call(통화가 손님 말을
 # 받는다)
 CancelRefusal = Literal["accepted", "auto", "rejected", "out_of_stock", "expired",
@@ -160,6 +182,7 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False,
                   "original_time": "", "original_label": ""}
     stage = order_stage(card, unspoken=unspoken)
     outcome = order_outcome(card, stage)
+    reason = _reason(card, outcome)
     return {
         "order_id": card["id"],
         "stage": stage,
@@ -174,7 +197,8 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False,
         "amount": amount_json(card["subtotal"], card["discount"], card["coupon_name"]),
         "pickup": pickup,
         "outcome": outcome,
-        "reason": _reason(card, outcome),
+        "reason": reason,
+        "detail": _detail(stage, outcome, pickup, reason),
         "sold_out": (_menu_names(card, card["reject_menu_ids"])
                      if outcome == "out_of_stock" else []),
         "can_cancel": cancellable and can_cancel(card, stage, outcome),  # 손님 취소 (티켓 07)

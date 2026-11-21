@@ -55,7 +55,7 @@ def test_a_record_reads_back_with_lines_amount_and_pickup() -> None:
         "amount": {"subtotal": 23_000, "total": 23_000},
         "pickup": {"time": "2026-11-08T18:30:00+09:00", "label": "18:30", "original_time": "",
                    "original_label": ""},
-        "outcome": "accepted", "reason": None, "sold_out": [],
+        "outcome": "accepted", "reason": None, "detail": "18:30에 준비해 둘게요.", "sold_out": [],
         "can_cancel": False,  # 허브에 카드가 없는 주문은 손님 취소를 받을 곳이 없다
     }
 
@@ -118,7 +118,7 @@ def test_a_coupon_record_reads_back_with_the_discount() -> None:
     status = _status(order=COUPON_ORDER, owner_status="accepted")
     assert status is not None and status["amount"] == {
         "subtotal": 23_000, "discount": 1_000, "coupon_name": "전화 주문 1,000원 할인",
-        "total": 22_000}
+        "coupon_label": "전화 주문 1,000원 할인 쿠폰", "total": 22_000}
 
 
 @pytest.mark.parametrize("order", [pytest.param(ORDER, id="no_coupon"),

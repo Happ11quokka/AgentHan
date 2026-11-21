@@ -36,6 +36,7 @@ from datetime import date
 from typing import Any, Literal
 
 from agenthan.core.contracts import MenuItem
+from agenthan.voice.dialog import templates
 
 DiscountType = Literal["amount", "percent"]
 
@@ -135,10 +136,13 @@ def payable(subtotal: int, discount: int) -> int:
 
 def amount_json(subtotal: int, discount: int = 0, coupon_name: str = "") -> dict[str, Any]:
     """금액 칸 한 벌 (통화 `state`·`order` 이벤트, 주문 현황 `amount`): `subtotal`(할인 전)·
-    `total`(낼 금액). 쿠폰을 쓴 주문만 `discount`·`coupon_name`이 붙는다(없으면 쿠폰 전과 같다)."""
+    `total`(낼 금액). 쿠폰을 쓴 주문만 `discount`·`coupon_name`·`coupon_label`(화면 쿠폰 줄 이름)이
+    붙는다(없으면 쿠폰 전과 같다)."""
     amount: dict[str, Any] = {"subtotal": subtotal, "total": payable(subtotal, discount)}
     if discount:
-        amount |= {"discount": discount, "coupon_name": coupon_name}
+        # 화면의 쿠폰 줄 이름은 통화가 부르는 이름과 같다("… 쿠폰", `templates.coupon_phrase`)
+        amount |= {"discount": discount, "coupon_name": coupon_name,
+                   "coupon_label": templates.coupon_phrase(coupon_name)}
     return amount
 
 
