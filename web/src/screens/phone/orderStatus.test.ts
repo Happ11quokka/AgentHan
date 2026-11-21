@@ -1,16 +1,19 @@
 // 손님 주문 현황 상태 모듈 (전화 메뉴·주문 현황·쿠폰 티켓 04): 조회 응답 → 단계·문구, 통화가 끝났을 때 주문
-// 현황으로 가는 경우와 안 가는 경우.
+// 현황으로 가는 경우와 안 가는 경우. 티켓 05: 사장님 결정별 결과·사유 문구, 스트림 현황, [다시 주문하기].
 import { describe, expect, it } from 'vitest'
 import { type CallState, initialCallState, type OrderJson } from './callState.ts'
 import {
   callOrderId,
+  canReorder,
   fetchOrderStatus,
   initialOrderStatus,
   orderHeadline,
   type OrderStatusJson,
   orderStatusReducer,
+  orderSettled,
   orderStatusUrl,
   orderSteps,
+  pickupMoved,
 } from './orderStatus.ts'
 
 const status = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
@@ -34,6 +37,10 @@ const status = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
     original_time: '',
     original_label: '',
   },
+  outcome: null,
+  reason: null,
+  sold_out: [],
+  can_cancel: false,
   ...extra,
 })
 
@@ -97,7 +104,7 @@ describe('order status steps and wording', () => {
   })
 
   it('after the owner accepts: "확정" with the pickup time', () => {
-    const order = status({ stage: 'confirmed' })
+    const order = status({ stage: 'confirmed', outcome: 'accepted' })
     expect(orderSteps(order).map((s) => [s.label, s.state])).toEqual([
       ['주문 넣음', 'done'],
       ['가게 확인', 'done'],
@@ -107,17 +114,97 @@ describe('order status steps and wording', () => {
     expect(orderHeadline(order)).toEqual({
       tone: 'ok',
       title: '주문이 확정됐어요',
-      detail: '18:30에 찾으러 오세요.',
+      detail: '18:30에 준비해 둘게요.', // 확정 문자와 같은 말
+      quote: null,
     })
+    expect(pickupMoved(order)).toBeNull()
   })
 
   it('a cancelled order ends at "주문 취소" without a pickup step', () => {
-    const order = status({ stage: 'cancelled' })
+    const order = status({ stage: 'cancelled', outcome: 'rejected', reason: { code: 'busy', text: BUSY } })
     expect(orderSteps(order).map((s) => s.label)).toEqual(['주문 넣음', '가게 확인', '주문 취소'])
     expect(orderHeadline(order)).toMatchObject({
       tone: 'stop',
       title: '주문이 취소됐어요',
     })
+  })
+})
+
+const BUSY = '죄송해요, 가게가 바빠서 주문을 받기 어려워 주문이 취소됐어요. 다음에 다시 주문해 주세요.'
+const STOCK_OUT = '죄송해요, 메도빅은 지금 재료가 떨어져 주문이 취소됐어요. 다른 메뉴로 다시 주문해 주세요.'
+
+describe('what the order status says after each owner decision (티켓 05)', () => {
+  it('a later pickup is confirmed at the new time and shows the original time too', () => {
+    const order = status({
+      stage: 'confirmed',
+      outcome: 'delayed',
+      pickup: {
+        time: '2026-11-21T18:45:00+09:00',
+        label: '18:45',
+        original_time: '2026-11-21T18:30:00+09:00',
+        original_label: '18:30',
+      },
+    })
+    expect(orderSteps(order).map((s) => [s.label, s.state])).toEqual([
+      ['주문 넣음', 'done'],
+      ['가게 확인', 'done'],
+      ['확정', 'done'],
+      ['픽업 18:45', 'current'],
+    ])
+    expect(pickupMoved(order)).toEqual({ from: '18:30', to: '18:45' })
+    expect(orderHeadline(order)).toMatchObject({ tone: 'ok', title: '주문이 확정됐어요' })
+    expect(orderHeadline(order).detail).toBe(
+      '픽업 시각이 18:30에서 18:45로 바뀌었어요. 18:45에 준비돼요. 어려우시면 전화 주세요.',
+    )
+    expect(orderHeadline(order).detail).not.toMatch(/괜찮으세요\?/) // 손님에게 되묻지 않는다
+    expect(canReorder(order)).toBe(false)
+  })
+
+  it('a reject shows the one-line reason the store gave', () => {
+    const order = status({ stage: 'cancelled', outcome: 'rejected', reason: { code: 'busy', text: BUSY } })
+    expect(orderHeadline(order)).toEqual({ tone: 'stop', title: '주문이 취소됐어요', detail: BUSY, quote: null })
+    expect(canReorder(order)).toBe(true)
+  })
+
+  it("a written reject shows the owner's words in Korean once translated", () => {
+    const translating = status({ stage: 'cancelled', outcome: 'rejected', reason: { code: 'free', text: '' } })
+    expect(orderHeadline(translating)).toMatchObject({
+      detail: '죄송해요, 가게 사정으로 주문이 취소됐어요.',
+      quote: null,
+    })
+    const translated = status({
+      stage: 'cancelled',
+      outcome: 'rejected',
+      reason: { code: 'free', text: '오늘은 일찍 닫아요' },
+    })
+    expect(orderHeadline(translated).quote).toBe('오늘은 일찍 닫아요')
+  })
+
+  it('out of stock names the menu that ran out', () => {
+    const order = status({
+      stage: 'cancelled',
+      outcome: 'out_of_stock',
+      reason: { code: 'out_of_stock', text: STOCK_OUT },
+      sold_out: ['메도빅'],
+    })
+    expect(orderHeadline(order)).toMatchObject({ tone: 'stop', title: '주문이 취소됐어요', detail: STOCK_OUT })
+    expect(canReorder(order)).toBe(true)
+  })
+
+  it('five silent minutes say the store could not check it', () => {
+    const order = status({ stage: 'cancelled', outcome: 'expired' })
+    expect(orderHeadline(order).detail).toContain('가게에서 확인하지 못해 주문이 취소됐어요')
+    expect(JSON.stringify(orderHeadline(order))).not.toMatch(/5분|접수/)
+    expect(canReorder(order)).toBe(true)
+  })
+
+  it('only a decided order stops listening; a checking or confirmed order has no reorder button', () => {
+    expect(orderSettled(null)).toBe(false)
+    expect(orderSettled(status())).toBe(false)
+    expect(orderSettled(status({ stage: 'confirmed', outcome: 'accepted' }))).toBe(true)
+    expect(orderSettled(status({ stage: 'cancelled', outcome: 'expired' }))).toBe(true)
+    expect(canReorder(status())).toBe(false)
+    expect(canReorder(status({ stage: 'confirmed', outcome: 'auto' }))).toBe(false)
   })
 })
 
@@ -134,6 +221,26 @@ describe('order status state', () => {
       order: status({ stage: 'confirmed' }),
     })
     expect(s.order?.stage).toBe('confirmed')
+  })
+
+  it('takes each status the stream sends', () => {
+    let s = orderStatusReducer(initialOrderStatus('call-abc'), { type: 'streamed', order: status() })
+    expect(s).toMatchObject({ phase: 'shown', order: { stage: 'checking' } })
+    s = orderStatusReducer(s, {
+      type: 'streamed',
+      order: status({ stage: 'confirmed', outcome: 'accepted' }),
+    })
+    expect(s.order?.outcome).toBe('accepted')
+  })
+
+  it('a late read does not undo a decision the stream already showed', () => {
+    let s = orderStatusReducer(initialOrderStatus('call-abc'), {
+      type: 'streamed',
+      order: status({ stage: 'cancelled', outcome: 'expired' }),
+    })
+    s = orderStatusReducer(s, { type: 'load' })
+    s = orderStatusReducer(s, { type: 'loaded', order: status() }) // 끊김 전에 읽기 시작한 응답
+    expect(s).toMatchObject({ phase: 'shown', order: { stage: 'cancelled', outcome: 'expired' } })
   })
 
   it('drops a response for another order', () => {

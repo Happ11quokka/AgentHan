@@ -194,48 +194,6 @@
   color: var(--phone-muted);
 }
 
-/* 받은 문자 (4단계 티켓 07): 통화가 끝난 뒤 보이는 문자 미리보기 */
-.phone-texts {
-  border: 1px solid var(--phone-line);
-  border-radius: 12px;
-  padding: 12px 14px;
-}
-
-.phone-texts h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
-}
-
-.phone-texts ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.phone-text {
-  background: var(--phone-guest-bg);
-  border-radius: 12px;
-  padding: 8px 12px;
-}
-
-.phone-text p {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.phone-text time,
-.phone-texts-note {
-  display: block;
-  font-size: 12px;
-  color: var(--phone-muted);
-}
-
-.phone-texts-note {
-  margin: 8px 0 0;
-}
-
 .phone-actions {
   display: flex;
   gap: 12px;
@@ -384,6 +342,20 @@
 
 .phone-step-current::before {
   border-color: var(--phone-accent);
+}
+
+/* 직접 쓰기 거절의 사장님 글, 재료 소진 메뉴 (티켓 05) */
+.phone-status-quote {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--phone-line);
+  background: var(--phone-guest-bg);
+  border-radius: 0 8px 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.phone-sold-out {
+  color: var(--phone-danger);
 }
 
 .phone-status-lines {
