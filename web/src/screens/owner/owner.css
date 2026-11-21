@@ -296,6 +296,15 @@
   }
 }
 
+/* 기다리는 중에 손님이 취소한 확인 요청 카드 (주문 승인 티켓 07): 확인 대기 강조·깜빡임 없이 회색 */
+.owner-card.owner-card-cancelled {
+  background: rgba(127, 127, 127, 0.12);
+  border-color: var(--owner-line);
+  color: var(--owner-muted);
+  animation: none;
+  box-shadow: none;
+}
+
 /* 통화 카드 (티켓 02). 맨 위 줄: 통화 중. 그 아래: 손님 연락 필요(넘김)·회색 미완료 */
 .owner-calls {
   margin-top: 24px;

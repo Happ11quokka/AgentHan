@@ -309,6 +309,7 @@ export default function OwnerPage() {
               `owner-card-${card.status}`,
               `owner-band-${pickupBand(card, hubNow)}`,
               reminded.has(card.id) ? 'owner-card-remind' : '',
+              orderOutcome(card) === 'cancelled' ? 'owner-card-cancelled' : '', // 손님 취소: 회색 (티켓 07)
             ].join(' ')}
           >
             <header className="owner-card-head">

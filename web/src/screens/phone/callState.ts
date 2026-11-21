@@ -59,6 +59,8 @@ export type ServerEvent =
   | { type: 'bot.audio.end'; turn: number; seq: number }
   | { type: 'bot.done'; turn: number; sentences: number; interrupted?: boolean }
   | { type: 'bot.thinking'; turn: number }
+  /** 사장님 확인을 기다리는 중에 듣는 중이 됐다(주문 승인 티켓 07). 대기음을 `max_s`초까지 튼다 */
+  | { type: 'bot.hold'; turn: number; max_s?: number }
   /** 손님 소리가 들려 봇 목소리를 줄인다 / 되돌린다 / 멈춘다 (음성 끼어들기, 티켓 06) */
   | { type: 'bot.duck'; turn: number }
   | { type: 'bot.unduck'; turn: number }
