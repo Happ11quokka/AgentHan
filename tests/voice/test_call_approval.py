@@ -232,3 +232,84 @@ def test_a_smoke_call_never_asks_for_approval(tmp_path) -> None:
     c = run(call())
     assert said(c, 4) == CLOSING
     assert owner.approvals == []
+
+
+# 손님 화면의 확인 요청 상태 (주문 승인 티켓 09): `state` 이벤트의 `approval`
+
+
+def approval_steps(c: Call) -> list[tuple[int, dict | None]]:
+    """`state` 이벤트에 실린 확인 요청 상태가 바뀐 곳(턴, 값)을 차례로."""
+    steps: list[tuple[int, dict | None]] = []
+    for event in c.out.of("state"):
+        if not steps or steps[-1][1] != event["approval"]:
+            steps.append((event["turn"], event["approval"]))
+    return steps
+
+
+def view(status: str, number: int, delay_min: int = 0, reason: str = "") -> dict:
+    return {"status": status, "number": number, "delay_min": delay_min, "reason": reason}
+
+
+def test_the_customer_screen_sees_the_wait_and_then_the_accept(tmp_path) -> None:
+    owner = RecordingOwnerChannel(approval="accept")
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner) as c:
+            await to_yes(c)
+            await bot_turn(c, 5)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert approval_steps(c) == [(0, None), (4, view("waiting", 1)), (5, view("accepted", 1))]
+
+
+def test_the_customer_screen_sees_a_timeout_handed_over_to_texts(tmp_path) -> None:
+    owner = RecordingOwnerChannel(approval="hold")
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner,
+                        settings=waiting()) as c:
+            await to_yes(c)
+            await bot_turn(c, 5)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert approval_steps(c)[-2:] == [(4, view("waiting", 1)), (5, view("timeout", 1))]
+
+
+def test_the_customer_screen_sees_a_withdrawn_request_and_the_new_one(tmp_path) -> None:
+    owner = RecordingOwnerChannel(approval="hold")
+    stt = FakeSttStream(replies=[*SCRIPT, "메도빅 두 개로요", "네"])
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=stt, owner=owner,
+                        settings=waiting(approval_wait_s=5.0)) as c:
+            await to_yes(c)
+            await c.turn(5)
+            await c.turn(6)
+            owner.decide(2, "accept")
+            await bot_turn(c, 7)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert [v for _, v in approval_steps(c)] == [
+        None, view("waiting", 1), view("withdrawn", 1, reason="changed"),
+        view("waiting", 2), view("accepted", 2)]
+
+
+def test_a_call_that_skips_approval_shows_the_order_was_confirmed_at_once(tmp_path) -> None:
+    owner = RecordingOwnerChannel()  # 화면 없음
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner) as c:
+            await c.start()
+            for turn in (1, 2, 3, 4):
+                await c.turn(turn)
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    assert approval_steps(c) == [(0, None), (4, view("skipped", 0))]

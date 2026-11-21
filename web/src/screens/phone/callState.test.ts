@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  type ApprovalJson,
   type CallAction,
   type CallState,
   type CustomerText,
@@ -386,5 +387,41 @@ describe('received texts after the call (4단계 티켓 07)', () => {
   it('keeps texts when the customer hung up before the server ended the call', () => {
     const s = run(dial, micReady, ready, { type: 'hangup' }, { type: 'texts', texts: [orderText] })
     expect(s.texts).toEqual([orderText])
+  })
+})
+
+describe('owner approval status on the call screen (주문 승인 티켓 09)', () => {
+  const approval = (status: string, number = 1): ApprovalJson => ({ status, number, delay_min: 0, reason: '' })
+  const stateWith = (turn: number, a: ApprovalJson | null | undefined): CallAction => ({
+    type: 'server',
+    event: {
+      type: 'state',
+      turn,
+      phase: 'speaking',
+      interruptible: false,
+      dialog: 'confirm',
+      cart: [],
+      total: 0,
+      ...(a === undefined ? {} : { approval: a }),
+    },
+  })
+
+  it('starts without a request and follows the status the server puts on state events', () => {
+    expect(run(dial, micReady, ready).approval).toBeNull()
+    const waiting = run(dial, micReady, ready, stateWith(4, approval('waiting')))
+    expect(waiting.approval).toEqual(approval('waiting'))
+    expect(callReducer(waiting, stateWith(5, approval('accepted'))).approval?.status).toBe('accepted')
+  })
+
+  it('keeps the last status when an older server sends state without the field', () => {
+    const s = run(dial, micReady, ready, stateWith(4, approval('waiting')), stateWith(5, undefined))
+    expect(s.approval?.status).toBe('waiting')
+  })
+
+  it('keeps the result after the call ends and starts fresh on redial', () => {
+    const ended: CallAction = { type: 'server', event: { type: 'call.ended', turn: 5, reason: 'confirmed', sms: [] } }
+    const s = run(dial, micReady, ready, stateWith(5, approval('timeout')), ended, { type: 'socket.closed' })
+    expect(s.approval?.status).toBe('timeout')
+    expect(callReducer(s, dial).approval).toBeNull()
   })
 })
