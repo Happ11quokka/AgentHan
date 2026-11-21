@@ -490,7 +490,6 @@ export function effectivePickup(card: OrderCard): { pickup_time: string; pickup_
   return { pickup_time: card.pickup_time, pickup_label: card.pickup_label }
 }
 
-
 /** 사장님 결정을 기다리는 주문 카드가 있다(카운트다운을 다시 그린다) */
 export function approvalsWaiting(state: OwnerState): boolean {
   return state.orders.some(canAccept)

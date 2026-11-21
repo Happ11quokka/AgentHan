@@ -2228,7 +2228,7 @@ class DialogEngine:
         label = _REJECT_LABEL.get(decision.reason, decision.reason)
         self._transcript.append(f"사장님: 거절({label})")
         self._state = State.DONE
-        self._say(turn, templates.approval_rejected(decision.reason))
+        self._say(turn, templates.approval_rejected(decision.reason or "closed"))
 
     def _on_delay_answer(self, turn: _Turn, act: Act) -> bool:
         """늦춘 시각 "괜찮으세요?"의 답 (티켓 04). 처리했으면 True, 평소 처리기로 넘길 act면 False.

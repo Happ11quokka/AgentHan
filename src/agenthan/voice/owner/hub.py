@@ -129,7 +129,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -1307,15 +1307,22 @@ class OwnerHub:
     # --- 자유 입력 답 → 손님 문자 (티켓 07): 사장님 글(ru) → ko. 메뉴명 보호 없음, 다듬지 않음 ---
 
     def _text_written_answer_soon(self, question_id: str) -> None:
+        self._translate_then(lambda: self._translate_written_answer(question_id),
+                             lambda: self._text_written_answer(question_id, ""))
+
+    def _translate_then(self, translate: Callable[[], Coroutine[Any, Any, None]],
+                        untranslated: Callable[[], None]) -> None:
+        """사장님 글 번역 작업(`translate()`가 만드는 코루틴)을 루프에 건다. 번역기가 없거나
+        (키 없음) 루프 밖(동기 코드)이면 번역 없이 `untranslated()`(원문 문자)를 바로 부른다."""
         if self._translator is None:
-            self._text_written_answer(question_id, "")  # 키 없음: 원문 문자
+            untranslated()
             return
         try:
             loop = asyncio.get_running_loop()
-        except RuntimeError:  # 루프 밖(동기 코드): 번역 없이 원문 문자
-            self._text_written_answer(question_id, "")
+        except RuntimeError:
+            untranslated()
             return
-        task = loop.create_task(self._translate_written_answer(question_id))
+        task = loop.create_task(translate())
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -1346,17 +1353,8 @@ class OwnerHub:
     # --- 직접 쓴 거절 사정 → 손님 문자 (주문 승인 티켓 05): 자유 입력 답과 같은 번역 길 ---------
 
     def _text_rejected_soon(self, order_id: str) -> None:
-        if self._translator is None:
-            self._text_rejected(order_id, "")  # 키 없음: 원문 문자
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:  # 루프 밖(동기 코드): 번역 없이 원문 문자
-            self._text_rejected(order_id, "")
-            return
-        task = loop.create_task(self._translate_rejected(order_id))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        self._translate_then(lambda: self._translate_rejected(order_id),
+                             lambda: self._text_rejected(order_id, ""))
 
     async def _translate_rejected(self, order_id: str) -> None:
         original = self._orders[order_id]["reject_text"]
@@ -1562,7 +1560,6 @@ def _later(iso: str, minutes: int) -> str:
 
 
 def clock_label(iso: str) -> str:
-
     """ISO 8601 시각 → `18:30` (가게 시각 그대로, 24시간제). 비면 빈 글."""
     if not iso:
         return ""

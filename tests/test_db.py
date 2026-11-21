@@ -90,7 +90,7 @@ def test_serve_without_db_keeps_files() -> None:
     from agenthan.serve import phone_db
     from agenthan.voice.settings import VoiceSettings
 
-    assert phone_db(VoiceSettings.from_env({}, env_file=None)) == (None, [])
+    assert phone_db(VoiceSettings.from_env({}, env_file=None)) == (None, [], None)
 
 
 # ------------------------------------------------------------------ DB 있음
@@ -183,9 +183,9 @@ def test_order_sink_writes_phone_orders(seeded) -> None:
 
 
 def _decision(order_id: str, status: str, *, order: Order | None = None, **kw):
-    from agenthan.voice.owner.decisions import DecisionRecord
+    from agenthan.db.orders import OwnerDecisionRow
 
-    return DecisionRecord(order_id, status, order=order, **kw)
+    return OwnerDecisionRow(order_id, status, order=order, **kw)
 
 
 def _phone_order(order_id: str) -> Order:
@@ -207,11 +207,32 @@ def _owner_row(url: str, order_id: str) -> tuple:
         ).fetchone()
 
 
+def test_owner_decisions_reach_db_rows_through_serve() -> None:
+    """전화 허브의 결정 기록(voice) → DB 행(db). 두 파트를 잇는 일은 serve만 한다(승인 리뷰)."""
+    from agenthan.db.orders import OwnerDecisionRow
+    from agenthan.serve import DecisionsToDb
+    from agenthan.voice.owner.decisions import DecisionRecord
+
+    rows: list[OwnerDecisionRow] = []
+
+    class Rows:
+        def record_decision(self, row: OwnerDecisionRow) -> None:
+            rows.append(row)
+
+    order = _phone_order("call-r")
+    DecisionsToDb(Rows()).record(DecisionRecord(
+        "call-r", "accepted", "", "2026-11-25T16:00:09+09:00", "2026-11-25T18:45:00+09:00",
+        order=order))
+    assert rows == [OwnerDecisionRow("call-r", "accepted", "", "2026-11-25T16:00:09+09:00",
+                                     "2026-11-25T18:45:00+09:00")]
+    assert rows[0].order is order
+
+
 def test_decisions_without_db_are_dropped_quietly() -> None:
     from agenthan.db.orders import PgOrderSink
 
     sink = PgOrderSink(url="")  # DB 설정 없음: 메모리(사장님 화면)만
-    sink.record(_decision("call-x", "accepted", decided_at="2026-11-25T16:00:00+09:00"))
+    sink.record_decision(_decision("call-x", "accepted", decided_at="2026-11-25T16:00:00+09:00"))
     sink.flush()
     sink.close()
 
@@ -234,7 +255,7 @@ def test_a_decision_before_the_order_record_survives_it(seeded) -> None:
 
     sink = PgOrderSink(url=seeded)
     order = _phone_order("call-d1")
-    sink.record(_decision("call-d1", "accepted", order=order,
+    sink.record_decision(_decision("call-d1", "accepted", order=order,
                           decided_at="2026-11-25T16:00:09+09:00",
                           owner_pickup_time="2026-11-25T18:45:00+09:00"))
     sink.flush()
@@ -253,10 +274,10 @@ def test_decisions_are_plain_values_and_the_last_one_wins(seeded) -> None:
     from agenthan.db.orders import PgOrderSink
 
     sink = PgOrderSink(url=seeded)
-    sink.record(_decision("call-d2", "rejected", order=_phone_order("call-d2"),
+    sink.record_decision(_decision("call-d2", "rejected", order=_phone_order("call-d2"),
                           reject_reason="out_of_stock", decided_at="2026-11-25T16:01:00+09:00"))
     sink.submit(_phone_order("call-d3"))
-    sink.record(_decision("call-d3", "expired", decided_at="2026-11-25T16:07:00+09:00"))
+    sink.record_decision(_decision("call-d3", "expired", decided_at="2026-11-25T16:07:00+09:00"))
     sink.flush()
     sink.close()
     assert _owner_row(seeded, "call-d2") == ("draft", "rejected", "out_of_stock", "16:01:00", "",
@@ -290,7 +311,7 @@ def test_serve_phone_db_uses_db_store(seeded) -> None:
     from agenthan.serve import phone_db
     from agenthan.voice.settings import VoiceSettings
 
-    raw, sinks = phone_db(VoiceSettings.from_env({"AGENTHAN_DB_URL": seeded}, env_file=None))
+    raw, sinks, _ = phone_db(VoiceSettings.from_env({"AGENTHAN_DB_URL": seeded}, env_file=None))
     assert raw["store"]["id"] == "sample"
     assert len(sinks) == 1
     sinks[0].close()
@@ -303,7 +324,7 @@ def test_phone_gets_part_b_knowledge_from_db(seeded) -> None:
     from agenthan.voice.settings import VoiceSettings
 
     settings = VoiceSettings.from_env({"AGENTHAN_DB_URL": seeded}, env_file=None)
-    raw, sinks = phone_db(settings)
+    raw, sinks, _ = phone_db(settings)
     for sink in sinks:
         sink.close()
     kb = phone_knowledge(raw, settings)

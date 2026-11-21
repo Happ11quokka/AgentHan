@@ -60,3 +60,18 @@ def test_call_session_knows_no_web_or_vendor_library() -> None:
         if name.split(".")[0] in banned
     ]
     assert bad == []
+
+
+def test_other_parts_do_not_import_voice() -> None:
+    """반대 방향도 같다: voice 밖 파트(db·app·rag …)는 voice 안을 import하지 않는다(PRD §7,
+    주문 승인 리뷰). `TYPE_CHECKING` 안의 import도 센다. 둘을 묶는 일은 발표 서버(`serve.py`)만."""
+    root = VOICE_DIR.parent
+    composers = {"serve.py"}
+    bad = [
+        f"{path.relative_to(root)}: {name}"
+        for path in root.rglob("*.py")
+        if VOICE_DIR not in path.parents and str(path.relative_to(root)) not in composers
+        for name in _imported_modules(path)
+        if name == "agenthan.voice" or name.startswith("agenthan.voice.")
+    ]
+    assert bad == []
