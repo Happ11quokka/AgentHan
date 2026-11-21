@@ -26,21 +26,24 @@ export interface OrderJson {
 }
 
 /**
- * 사장님 확인 요청 상태(주문 승인 티켓 09, 서버 `session.ApprovalView`). waiting: 사장님 확인 중.
- * 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중에 답이 없어 결과는 문자로) ·
- * withdrawn(손님이 고침·취소, `reason`) · skipped(확인 없이 바로 확정). 늦춘 수락 제안·거절·자동
- * 취소(티켓 04~07)는 서버가 새 값으로 더한다. 모르는 값은 배지 없이 둔다
+ * 사장님 확인 요청 상태(주문 승인 티켓 09, 서버 `session.ApprovalStatus`와 같은 닫힌 목록). waiting: 사장님
+ * 확인 중. 결과: accepted(수락, `delay_min`은 늦춘 분) · delayed(늦춘 시각을 손님에게 묻는 중, 티켓 04) ·
+ * rejected(사장님 거절, `reason`은 사유, 티켓 05) · timeout(통화 중에 답이 없어 결과는 문자로) ·
+ * withdrawn(손님이 고침·취소, `reason`) · skipped(확인 없이 바로 확정). 통화 뒤 결과(수락·거절·자동 취소)는
+ * 상태가 아니라 받은 문자로 온다
  */
-export type ApprovalStatus = 'waiting' | 'accepted' | 'timeout' | 'withdrawn' | 'skipped'
+export type ApprovalStatus = 'waiting' | 'accepted' | 'delayed' | 'rejected' | 'timeout' | 'withdrawn' | 'skipped'
+
+/** 거절 사유(서버 `RejectReason`, 사장님 화면 `RejectReason`과 같은 값) */
+export type ApprovalRejectReason = 'out_of_stock' | 'busy' | 'closed' | 'free'
 
 export interface ApprovalJson {
-  /** `ApprovalStatus` 중 하나. 뒤 티켓이 더할 값도 받도록 넓게 둔다 */
-  status: string
+  status: ApprovalStatus
   /** 통화 안 확인 요청 번호(1부터). 건너뛰었으면 0 */
   number: number
   delay_min: number
-  /** withdrawn: changed·cancelled. 거절 사유는 뒤 티켓 */
-  reason: string
+  /** withdrawn: changed·cancelled. rejected: 거절 사유. 그 밖은 '' */
+  reason: '' | 'changed' | 'cancelled' | ApprovalRejectReason
 }
 
 export type ServerEvent =

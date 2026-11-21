@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import type { ApprovalJson, CustomerText } from './callState.ts'
 
-const view = (status: string, extra: Partial<ApprovalJson> = {}): ApprovalJson => ({
+const view = (status: ApprovalJson['status'], extra: Partial<ApprovalJson> = {}): ApprovalJson => ({
   status,
   number: 1,
   delay_min: 0,
@@ -32,6 +32,24 @@ describe('rejection on the customer screen (주문 승인 티켓 05)', () => {
       detail: '가게가 바빠서 지금은 주문을 받기 어렵대요.',
     })
     expect(cancelledByStore(s)).toBe(true)
+  })
+
+  it('asks to drop or swap while an in-call out-of-stock rejection is on the line (review spec 3)', () => {
+    const live = { approval: view('rejected', { reason: 'out_of_stock' }), texts: [], status: 'live' }
+    expect(approvalBadge(live)).toEqual({
+      tone: 'wait',
+      label: '일부 메뉴가 품절이에요',
+      detail: '빼거나 다른 메뉴로 바꿔 주세요.',
+    })
+    expect(cancelledByStore(live)).toBe(false)
+
+    const ended = { ...live, status: 'ended' } // 빼지도 바꾸지도 않고 끝났다: 취소
+    expect(approvalBadge(ended)).toEqual({
+      tone: 'stop',
+      label: '가게가 주문을 받지 못했어요',
+      detail: '재료가 떨어진 메뉴가 있어요.',
+    })
+    expect(cancelledByStore(ended)).toBe(true)
   })
 
   it('points a written reason to the texts', () => {
