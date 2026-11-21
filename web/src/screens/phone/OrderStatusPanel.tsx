@@ -1,6 +1,8 @@
 // 손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04). 통화가 확정 주문으로 끝나면 통화 화면 대신 보인다.
 // 상태·문구는 순수 모듈 `orderStatus.ts`가 정한다. 이 티켓에서는 열 때 한 번 읽고 [새로 고침]으로 다시 읽는다.
 import { useEffect, useReducer } from 'react'
+import { DiscountRows } from './DiscountRows.tsx'
+import { discountOf } from './discount.ts'
 import { fetchOrderStatus, initialOrderStatus, orderHeadline, orderStatusReducer, orderSteps } from './orderStatus.ts'
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
@@ -79,6 +81,7 @@ export default function OrderStatusPanel({ orderId }: { orderId: string }) {
           </li>
         ))}
       </ul>
+      <DiscountRows discount={discountOf(order.amount)} />
       <p className="phone-total">
         <span>합계</span>
         <strong>{won(order.amount.total)}</strong>

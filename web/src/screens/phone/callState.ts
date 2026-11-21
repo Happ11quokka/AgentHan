@@ -1,6 +1,7 @@
 // 통화 화면 상태와 서버 이벤트 모양 (WS 계약은 티켓 01 Comments).
 // 화면에 보이는 것과 "지금 마이크 소리를 보내도 되나"를 순수 리듀서 하나로 정한다.
 import type { CustomerText } from '../customerText.ts'
+import { type AmountFields, type Discount, discountOf } from './discount.ts'
 
 export type { CustomerText } from '../customerText.ts'
 
@@ -71,7 +72,11 @@ export type ServerEvent =
       interruptible: boolean
       dialog: string | null
       cart: CartLine[]
+      /** 낼 금액. 쿠폰이 붙으면 subtotal·discount·coupon_name도 온다 (쿠폰 티켓 09) */
       total: number
+      subtotal?: number
+      discount?: number
+      coupon_name?: string
       /** 사장님 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null. 낡은 서버는 이 칸이 없다 */
       approval?: ApprovalJson | null
     }
@@ -90,7 +95,7 @@ export type ServerEvent =
   | { type: 'bot.duck'; turn: number }
   | { type: 'bot.unduck'; turn: number }
   | { type: 'bot.stop'; turn: number }
-  | { type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number }
+  | ({ type: 'order'; turn: number; order: OrderJson; cart: CartLine[]; total: number } & AmountFields)
   | { type: 'metrics'; turn: number; [key: string]: unknown }
   | { type: 'error'; turn: number; code: string; message: string; retry: boolean }
   /** 대화가 끝나 서버가 통화를 끝낸다(리뷰 S13). 마지막 인사 재생 뒤 소켓이 닫힌다. 위로 보내는 `call.end`는 손님이 끊은 것 */
@@ -137,8 +142,10 @@ export interface CallState {
   cutTurn: number
   captions: Caption[]
   cart: CartLine[]
+  /** 낼 금액(쿠폰 할인 뒤). `discount`는 쿠폰이 붙었을 때만 (쿠폰 티켓 09) */
   total: number
-  order: { order: OrderJson; cart: CartLine[]; total: number } | null
+  discount: Discount | null
+  order: { order: OrderJson; cart: CartLine[]; total: number; discount?: Discount | null } | null
   mic: Record<string, unknown> | null
   error: { message: string; retry: boolean } | null
   /** AudioContext가 suspended·interrupted라 탭으로 다시 켜야 함 */
@@ -189,6 +196,7 @@ export const initialCallState: CallState = {
   captions: [],
   cart: [],
   total: 0,
+  discount: null,
   order: null,
   mic: null,
   error: null,
@@ -298,6 +306,7 @@ function onServer(state: CallState, event: ServerEvent): CallState {
         turn: event.turn,
         cart: event.cart,
         total: event.total,
+        discount: discountOf(event),
         interruptible: event.interruptible === true && !cut,
         approval: event.approval === undefined ? state.approval : event.approval,
       }
@@ -313,7 +322,10 @@ function onServer(state: CallState, event: ServerEvent): CallState {
     case 'bot.say':
       return { ...state, captions: [...state.captions, { who: 'bot', turn: event.turn, text: event.text }] }
     case 'order':
-      return { ...state, order: { order: event.order, cart: event.cart, total: event.total } }
+      return {
+        ...state,
+        order: { order: event.order, cart: event.cart, total: event.total, discount: discountOf(event) },
+      }
     case 'call.ended':
       // 끝난 이유만 남긴다. 마지막 인사가 아직 재생 중일 수 있어 끝내기는 소켓 닫힘이 한다
       return withTexts({ ...state, endReason: event.reason }, event.sms ?? [])

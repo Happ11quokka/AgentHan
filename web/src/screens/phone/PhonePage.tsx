@@ -5,6 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
+import { DiscountRows } from './DiscountRows.tsx'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
 import { callOrderId } from './orderStatus.ts'
@@ -61,6 +62,7 @@ export default function PhonePage() {
   const inCall = state.status === 'starting' || state.status === 'live'
   const cart = state.order?.cart ?? state.cart
   const total = state.order?.total ?? state.total
+  const discount = state.order ? (state.order.discount ?? null) : state.discount
   const badge = approvalBadge(state)
   const placed = callOrderId(state) // 주문으로 끝난 통화의 주문 번호. 있으면 주문 현황 화면
 
@@ -147,6 +149,7 @@ export default function PhonePage() {
               </li>
             ))}
           </ul>
+          <DiscountRows discount={discount} />
           <p className="phone-total">
             <span>합계</span>
             <strong>{won(total)}</strong>

@@ -176,6 +176,7 @@
 }
 
 .phone-order li,
+.phone-discount,
 .phone-total {
   display: flex;
   justify-content: space-between;
@@ -187,6 +188,12 @@
   margin: 8px 0 0;
   border-top: 1px solid var(--phone-line);
   padding-top: 8px;
+}
+
+/* 쿠폰 주문의 할인 전 금액·쿠폰 줄 (쿠폰 티켓 09) */
+.phone-discount {
+  margin: 0;
+  color: var(--phone-muted);
 }
 
 .phone-pickup {

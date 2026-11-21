@@ -40,6 +40,9 @@ export interface OwnerText {
   dismiss: string
   noOrders: string
   pickup: string
+  /** 쿠폰 주문 카드의 할인 줄 "할인 전 12,000₩ · 쿠폰 전화 주문 할인 −1,000₩" (쿠폰 티켓 09) */
+  beforeDiscount: string
+  coupon: string
   /** 주문 카드 주문 시각 앞말 (리뷰 P1) */
   orderedAt: string
   accept: string
@@ -145,6 +148,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     dismiss: 'Закрыть',
     noOrders: 'Заказов пока нет.',
     pickup: 'Забрать в',
+    beforeDiscount: 'До скидки',
+    coupon: 'Купон',
     orderedAt: 'Заказ в',
     accept: 'Принять',
     accepted: 'Принят',
@@ -253,6 +258,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     dismiss: '닫기',
     noOrders: '아직 들어온 주문이 없어요.',
     pickup: '픽업',
+    beforeDiscount: '할인 전',
+    coupon: '쿠폰',
     orderedAt: '주문',
     accept: '수락',
     accepted: '수락함',
@@ -415,6 +422,20 @@ export function orderMeta(
   const parts = [card.received_label ? `${OWNER_TEXT[lang].orderedAt} ${card.received_label}` : '']
   if (card.customer_name) parts.push(card.customer_name)
   return parts.filter(Boolean).join(' · ')
+}
+
+/**
+ * 쿠폰 주문 카드의 할인 줄 (쿠폰 티켓 09): "할인 전 12,000₩ · 쿠폰 전화 주문 1,000원 할인 −1,000₩".
+ * 카드의 큰 금액(`total_label`)은 낼 금액이다. 쿠폰 이름은 사장님이 비서에 쓴 그대로(번역 안 함).
+ * 할인이 없으면 빈 글(카드가 쿠폰 전과 같다)
+ */
+export function discountLine(
+  card: Partial<Pick<OrderCard, 'discount' | 'discount_label' | 'subtotal_label' | 'coupon_name'>>,
+  lang: OwnerLang,
+): string {
+  if (!card.discount) return ''
+  const text = OWNER_TEXT[lang]
+  return `${text.beforeDiscount} ${card.subtotal_label} · ${text.coupon} ${card.coupon_name} −${card.discount_label}`
 }
 
 export interface CaptionView {

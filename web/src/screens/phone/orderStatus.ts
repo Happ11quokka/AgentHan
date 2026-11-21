@@ -25,8 +25,8 @@ export interface OrderStatusJson {
   /** 주문서를 만든 가게 시각 ISO */
   placed_at: string
   lines: OrderStatusLine[]
-  /** subtotal: 할인 전 금액 · total: 낼 금액 */
-  amount: { subtotal: number; total: number }
+  /** subtotal: 할인 전 금액 · total: 낼 금액. 쿠폰을 쓴 주문만 discount·coupon_name (쿠폰 티켓 09) */
+  amount: { subtotal: number; total: number; discount?: number; coupon_name?: string }
   /** 픽업 시각. 늦춰 확정됐으면 `original_*`이 원래 시각(아니면 '') */
   pickup: {
     time: string

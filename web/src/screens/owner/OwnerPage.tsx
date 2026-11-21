@@ -80,6 +80,7 @@ import {
   answerLabel,
   approvalLeft,
   captionView,
+  discountLine,
   knowledgeView,
   lineView,
   orderMeta,
@@ -368,6 +369,7 @@ export default function OwnerPage() {
               <strong className="owner-total">{card.total_label}</strong>
             </header>
             {orderMeta(card, lang) && <p className="owner-order-meta">{orderMeta(card, lang)}</p>}
+            {discountLine(card, lang) && <p className="owner-discount">{discountLine(card, lang)}</p>}
             <CardLines lines={card.lines} lang={lang} text={text} />
             {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
             <SentTexts texts={card.sms} lang={lang} />
