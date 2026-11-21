@@ -258,6 +258,11 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
       place: { ...SEED, menu: SEED.menu.filter((m) => m.id !== menuId) },
       pending: [],
     })),
+    // 기본: 받은 순서대로 늘어놓은 SEED를 돌려준다.
+    reorderMenus: vi.fn(async (_id: string, ids: string[]): Promise<View> => ({
+      place: { ...SEED, menu: ids.flatMap((i) => SEED.menu.filter((m) => m.id === i)) },
+      pending: [],
+    })),
   } satisfies AssistantApi;
   return api;
 }
