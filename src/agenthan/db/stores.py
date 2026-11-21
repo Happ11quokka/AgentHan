@@ -1,4 +1,5 @@
-"""가게 원본 문서 읽기·쓰기: 전화 가게(phone 형식)와 비서 가게 파일(DummyStore) 사본."""
+"""가게 원본 문서 읽기·쓰기: 전화 가게(phone 형식), 비서 가게 파일(DummyStore) 사본,
+게시된 전화용 가게."""
 
 from __future__ import annotations
 
@@ -11,6 +12,11 @@ from agenthan.db.conn import guarded
 
 log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# 게시된 전화용 가게(전화 메뉴 티켓 03): stores의 한 줄. raw = 게시 값(serve.phone_store_doc),
+# 메뉴 벡터 = embeddings(store_id 이것). 시드(db.seed)는 이 id를 쓰지 않으므로 덮어쓰지 않는다.
+PUBLISHED_STORE_ID = "phone_published"
+PUBLISHED_FORMAT = "published"
 
 
 def _source_key(path: Path) -> str:
@@ -59,3 +65,39 @@ def load_assistant_doc(doc_key: str, url: str | None = None) -> dict | None:
         return row[0] if row else None
 
     return guarded(work, None, url)
+
+
+def open_published_phone_store(url: str | None = None) -> dict | None:
+    """마지막으로 게시된 전화용 가게(게시 값). 아직 게시가 없거나 DB가 꺼지면 None.
+
+    가게 줄이 없으면 빈 값으로 만들어 둔다. 메뉴 벡터(embeddings)가 이 가게 id를 가리키므로,
+    게시 전 기본 가게(파일럿)의 벡터도 올릴 수 있게."""
+
+    def work(conn):
+        conn.execute(
+            "INSERT INTO stores (id, name, kind, source_format)"
+            " VALUES (%s, '전화용 가게', 'real', %s) ON CONFLICT (id) DO NOTHING",
+            (PUBLISHED_STORE_ID, PUBLISHED_FORMAT),
+        )
+        row = conn.execute(
+            "SELECT raw FROM stores WHERE id = %s", (PUBLISHED_STORE_ID,)
+        ).fetchone()
+        return row[0] if row and row[0] else None
+
+    return guarded(work, None, url)
+
+
+def save_published_phone_store(doc: dict, url: str | None = None) -> bool:
+    """게시 값을 남긴다(서버가 다시 떠도 이 메뉴로 시작).
+    실패하면 False(전화는 메모리의 게시 값으로 계속)."""
+
+    def work(conn):
+        conn.execute(
+            "INSERT INTO stores (id, name, kind, source_format, raw)"
+            " VALUES (%s, '전화용 가게', 'real', %s, %s)"
+            " ON CONFLICT (id) DO UPDATE SET raw = EXCLUDED.raw, loaded_at = now()",
+            (PUBLISHED_STORE_ID, PUBLISHED_FORMAT, Jsonb(doc)),
+        )
+        return True
+
+    return guarded(work, False, url)
