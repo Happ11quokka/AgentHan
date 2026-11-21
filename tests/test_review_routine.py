@@ -108,7 +108,7 @@ def test_due_report_arrives_once_as_one_assistant_message(tmp_path):
     assert message["next_actions"] == [
         {
             "action_id": "review.draft_reply",
-            "label": "불만 리뷰 답글 초안",
+            "label": "리뷰 답글 초안",
             "args": {"review_id": "r09"},
         }
     ]

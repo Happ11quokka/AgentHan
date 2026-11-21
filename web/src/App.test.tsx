@@ -1077,7 +1077,7 @@ describe("리뷰 정기 보고 (#98)", () => {
     id: "report-1",
     role: "agent" as const,
     text: "리뷰 정기 보고 (2026-11-07 ~ 2026-11-08)\n리뷰 3건\n답글 안 단 불만 리뷰 1건이 있어요.",
-    next_actions: [{ action_id: "review.draft_reply", label: "불만 리뷰 답글 초안", args: { review_id: "r09" } }],
+    next_actions: [{ action_id: "review.draft_reply", label: "리뷰 답글 초안", args: { review_id: "r09" } }],
   };
 
   test("홈 루틴 설정에 보고 한 줄이 보이고 [지금 한 번 받아 보기]는 보고를 대화에 한 번 넣는다", async () => {
@@ -1090,7 +1090,7 @@ describe("리뷰 정기 보고 (#98)", () => {
     await user.click(panel.getByRole("button", { name: "지금 한 번 받아 보기" }));
     expect(api.runReviewReport).toHaveBeenCalledWith("s1");
     expect(await chatArea().findByText(/답글 안 단 불만 리뷰 1건/)).toBeInTheDocument();
-    expect(chatArea().getByRole("button", { name: "불만 리뷰 답글 초안" })).toBeInTheDocument();
+    expect(chatArea().getByRole("button", { name: "리뷰 답글 초안" })).toBeInTheDocument();
     expect(api.act).not.toHaveBeenCalled();
   });
 

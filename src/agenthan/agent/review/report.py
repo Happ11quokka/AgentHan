@@ -224,7 +224,8 @@ def run_report(
         "unanswered": {
             "total": unanswered["total"],
             "negative_count": unanswered["negative_count"],
-            # 급한 순서의 답글 안 단 불만 리뷰 (보고 메시지의 [불만 리뷰 답글 초안] 칩 대상)
+            # 급한 순서(불만 먼저)의 답글 안 단 리뷰 (보고 메시지의 [리뷰 답글 초안] 칩 대상)
+            "ids": [r["review_id"] for r in unanswered["reviews"]],
             "negative_ids": [
                 r["review_id"]
                 for r in unanswered["reviews"]

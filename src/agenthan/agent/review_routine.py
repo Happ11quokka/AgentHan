@@ -23,7 +23,7 @@ from agenthan.agent.review.report import (
     schedule_text,
 )
 
-DRAFT_CHIP = "불만 리뷰 답글 초안"
+DRAFT_CHIP = "리뷰 답글 초안"
 ALERT_CHIP = "답글 초안 받기"
 
 
@@ -181,7 +181,7 @@ class ReviewRoutine:
         # (시계 날짜로 바꾸면 스냅샷 뒤 기간을 봐서 '리뷰 0건'이 됨, 2026-11-21 검수)
         result = run_report(**box.ctx, settings=settings)
         text = report_digest(result, title)
-        ids = result["unanswered"].get("negative_ids") or []
+        ids = result["unanswered"].get("ids") or []
         chips = (
             [
                 {

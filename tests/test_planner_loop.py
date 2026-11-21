@@ -3150,7 +3150,7 @@ def test_context_chips_after_review_summary_in_chat_and_button(tmp_path, monkeyp
     app._review_factory = FakeBackend().review_session
     app.ask("요즘 리뷰 어때?")
     labels = chip_labels(app.next_actions)
-    assert labels[:2] == ["매일 리뷰 요약 받기", "불만 리뷰 답글 초안"]
+    assert labels[:2] == ["매일 리뷰 요약 받기", "리뷰 답글 초안"]
     say = app.next_actions[0]
     assert say["action_id"] == "chat.say"
     assert say["args"] == {"text": "매일 리뷰 요약해서 보내 줘"}
