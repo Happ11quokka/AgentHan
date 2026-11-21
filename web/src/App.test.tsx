@@ -676,11 +676,10 @@ describe("답글 대기함", () => {
       error: { reason: "checks", message: "검사에 걸렸어요(전화번호 등 개인정보)", issues: ["전화번호 등 개인정보"] },
     });
     const c = card(panel, "커피가 맛있어요.");
-    await user.click(c.getByRole("button", { name: "고치기" }));
     const edit = c.getByRole("textbox", { name: "답글 고치기" });
     await user.clear(edit);
     await user.type(edit, "010-1234-5678로 연락 주세요");
-    await user.click(c.getByRole("button", { name: "이대로 올리기" }));
+    await user.click(c.getByRole("button", { name: "올리기" }));
     expect(api.replyToReview).toHaveBeenLastCalledWith("s1", "r18", { op: "post", text: "010-1234-5678로 연락 주세요" });
     expect(await c.findByRole("alert")).toHaveTextContent("확인이 필요해요: 전화번호 등 개인정보");
     expect(c.getByRole("textbox", { name: "답글 고치기" })).toHaveValue("010-1234-5678로 연락 주세요"); // 고친 문장은 그대로
@@ -716,21 +715,17 @@ describe("답글 대기함", () => {
     expect(chatItems()).toBe(before + 1);
   });
 
-  test("[고치기]는 카드 안에서 고쳐 [이대로 올리기]로 고친 문장을 보내고, [취소]는 초안으로 돌아간다", async () => {
+  test("초안은 카드 입력칸에서 바로 고치고 [올리기]로 고친 문장을 보낸다", async () => {
     const { user, api, panel } = await openInbox();
     const c = card(panel, "커피가 맛있어요.");
-    await user.click(c.getByRole("button", { name: "고치기" }));
-    expect(c.getByRole("textbox", { name: "답글 고치기" })).toHaveValue("다음에도 찾아 주세요.");
-    await user.click(c.getByRole("button", { name: "취소" }));
-    expect(c.queryByRole("textbox", { name: "답글 고치기" })).not.toBeInTheDocument();
-    expect(c.getByText("다음에도 찾아 주세요.")).toBeInTheDocument();
-
-    await user.click(c.getByRole("button", { name: "고치기" }));
     const edit = c.getByRole("textbox", { name: "답글 고치기" });
+    expect(edit).toHaveValue("다음에도 찾아 주세요.");
     await user.clear(edit);
     await user.type(edit, "  커피 칭찬 고맙습니다!  ");
     const before = chatItems();
-    await user.click(c.getByRole("button", { name: "이대로 올리기" }));
+    const posted = inboxWith("r18", { has_owner_reply: true, draft: { text: "커피 칭찬 고맙습니다!", status: "posted", issues: [] } }, { waiting: 2, unanswered: 2 });
+    api.replyToReview.mockResolvedValueOnce({ review: posted.reviews.find((r) => r.id === "r18")!, summary: posted.summary });
+    await user.click(c.getByRole("button", { name: "올리기" }));
     expect(api.replyToReview).toHaveBeenLastCalledWith("s1", "r18", { op: "post", text: "커피 칭찬 고맙습니다!" });
     await waitFor(() => expect(c.queryByRole("textbox", { name: "답글 고치기" })).not.toBeInTheDocument());
     expect(chatItems()).toBe(before);
