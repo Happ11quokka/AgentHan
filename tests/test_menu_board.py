@@ -226,6 +226,22 @@ def test_fill_all_fills_names_descriptions_and_white_photos(tmp_path):
     assert all(m["filling"] == [] for m in saved.values())
 
 
+def test_menus_with_a_photo_come_first_after_the_fill(tmp_path):
+    """사진이 붙은 메뉴는 맨 위, 대표 그림만 있는 메뉴는 그 뒤(묶음 안은 메뉴판 순서 그대로)."""
+    store, fake, result = run_board(tmp_path)
+    menus_now = store.read()["menus"]
+    gimbap = next(m["id"] for m in menus_now if m["name"] == "김밥")
+    store.reorder_menus([gimbap] + [m["id"] for m in menus_now if m["id"] != gimbap])
+    before = [m["name"] for m in store.read()["menus"]]
+    assert before[0] == "김밥"  # 사진 없는 메뉴가 맨 위에서 시작한다
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    after = store.read()["menus"]
+    with_photo = [m["name"] for m in after if m.get("photo")]
+    assert with_photo and [m["name"] for m in after][: len(with_photo)] == with_photo
+    rest = [m["name"] for m in after if not m.get("photo")]
+    assert [n for n in before if n in rest] == rest
+
+
 def test_owner_edits_win_over_late_background_values(tmp_path):
     store, fake, result = run_board(tmp_path)
     syrniki = next(j for j in result.jobs if j.item.name == "Ватрушка")
