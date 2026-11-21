@@ -617,6 +617,11 @@ p {
   animation: blink 1.2s infinite ease-in-out;
 }
 
+/* .bubble.agent > * + * 의 문단 간격이 2·3번째 점만 아래로 밀지 않게 한다. */
+.bubble.typing > span {
+  margin-top: 0;
+}
+
 .typing span:nth-child(2) {
   animation-delay: 0.15s;
 }
