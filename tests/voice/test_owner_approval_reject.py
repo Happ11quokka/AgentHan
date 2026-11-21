@@ -67,10 +67,12 @@ def test_an_in_call_rejection_texts_the_reason_and_tells_the_call(reason, text) 
     clock.set(LATER)
 
     card = hub.reject("call-1", reason)
+    assert card["sms"] == []  # 통화가 사과를 말하기 전에는 문자 없음 (리뷰 경합)
+    hub.approval_said("call-1", 1)
 
     assert (card["status"], card["reject_reason"], card["decided_at"]) == (
         "rejected", reason, LATER.isoformat())
-    assert [(t["kind"], t["text"]) for t in card["sms"]] == [("rejected", text)]
+    assert [(t["kind"], t["text"]) for t in hub.customer_texts("call-1")] == [("rejected", text)]
     assert decisions == [OwnerDecision(1, "reject", reason=reason)]
     assert [t["kind"] for t in hub.customer_texts("call-1")] == ["rejected"]  # 확정 문자 없음
 
@@ -120,6 +122,7 @@ def test_a_delayed_accept_and_a_rejection_exclude_each_other() -> None:
     asking = _hub()
     _requested(asking)
     asking.accept("call-1", delay_min=15)  # 통화 중: 손님이 "괜찮으세요?"를 듣는 중
+    asking.approval_said("call-1", 1)
     with pytest.raises(AlreadyDecided):
         asking.reject("call-1", "busy")
     asking.withdraw_approval("call-1", 1, "cancelled")  # 손님 "아니요" → 주문 취소
@@ -186,6 +189,7 @@ def test_a_written_reason_is_translated_into_the_quote_frame() -> None:
         hub = _hub(translator=translator)
         _requested(hub, decisions)
         first = hub.reject("call-1", "free", text=f"  {WRITTEN} ")
+        hub.approval_said("call-1", 1)
         for _ in range(20):  # 번역은 비동기다
             await asyncio.sleep(0)
         return first, (await _snapshot(hub))["orders"][0]
@@ -206,6 +210,7 @@ def test_a_written_reason_that_fails_to_translate_is_texted_as_written() -> None
         hub = _hub(translator=FakeTranslator(fail=True))
         _requested(hub)
         hub.reject("call-1", "free", text=WRITTEN)
+        hub.approval_said("call-1", 1)
         for _ in range(20):
             await asyncio.sleep(0)
         return (await _snapshot(hub))["orders"][0]

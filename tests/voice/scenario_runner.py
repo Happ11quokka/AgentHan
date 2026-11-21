@@ -301,6 +301,8 @@ class _Owner:
                 raise ValueError(f"모르는 사장님 결정: {kind!r}")
             assert len(self.inbox) == 1, f"허브가 통화에 넘긴 결정 {self.inbox}"
             decision = self.inbox.pop()
+            # 세션처럼 결정을 말하는 턴을 열었다고 알린다(허브가 문자·기록으로 굳힌다)
+            self.hub.approval_said(self.call_id, decision.request)
         if decision.kind in ("accept", "delay", "timeout"):
             self.approved = self.requested
         elif decision.reason == "out_of_stock":  # 떨어진 메뉴만 빼면 재승인 없이 수락

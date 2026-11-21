@@ -127,11 +127,13 @@ def test_a_confirmed_call_waits_for_the_owner_who_accepts_it_and_the_customer_he
                 assert client.post(url).status_code == 409  # 결정은 한 번만
                 update = _until(events, "order.update")["data"]
                 assert (update["id"], update["status"]) == (card["id"], "accepted")
-                assert [t["kind"] for t in update["sms"]] == ["order"]
+                assert update["sms"] == []  # 문자는 통화가 수락을 손님에게 말한 뒤 (리뷰 경합)
 
                 order = phone.until("order", 5)  # 봇이 먼저 말하는 턴: 마무리
                 phone.played(5)
                 assert phone.closed_by_server()
+                texted = _until(events, "order.update")["data"]
+                assert [t["kind"] for t in texted["sms"]] == ["order"]
 
             ordered = _until(events, "call.update")["data"]
             while ordered["status"] == "live":
@@ -419,7 +421,8 @@ def test_a_late_owner_answer_reaches_the_customer_text_stream(tmp_path) -> None:
             events = _sse(stream.iter_lines())
             snapshot = next(events)
             assert (snapshot["event"], snapshot["data"]) == (
-                "sms.snapshot", {"call_id": call_id, "sms": [order_text]})
+                "sms.snapshot", {"call_id": call_id, "sms": [order_text],
+                                 "window_s": 360.0})  # 통화 뒤 확인 마감 5분 + 1분
             url = f"/api/owner/questions/{call_id}-q1/answer?key={KEY}"
             assert client.post(url, json={"answer": "yes"}).status_code == 200
             assert client.post(url, json={"answer": "no"}).status_code == 409
@@ -479,6 +482,8 @@ def test_the_customer_text_stream_says_it_ended_after_its_window() -> None:
         with client.stream("GET", _texts_url("call-1")) as stream:
             events = list(_sse(stream.iter_lines()))  # 시간이 지나면 서버가 닫는다
     assert [e["event"] for e in events] == ["sms.snapshot", "sms.end"]
+    # 화면이 같은 시간에 닫도록 창 길이를 처음에 알린다 (주문 승인 리뷰 2번)
+    assert events[0]["data"]["window_s"] == 0.2
 
 
 # ---------------------------------------------------------------- 보충 지식 (티켓 13)
