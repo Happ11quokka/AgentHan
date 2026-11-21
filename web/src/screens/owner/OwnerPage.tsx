@@ -15,6 +15,9 @@
 // 티켓 07: 질문 카드에 접힌 자유 입력(손님에게는 번역 문자로만 감). 카드 안에 "손님에게 보낸 문자" 한 줄씩.
 // 티켓 13: 주문 카드 아래 접힌 "손님이 궁금해한 것"(AI가 답 못 한 메뉴 질문, 메뉴별 카드·횟수).
 // 사장님 글 → "번역 보기"(한국어 미리보기, 고칠 수 있음) → "저장"을 눌러야 다음 손님부터 AI가 쓴다.
+// 주문 승인 티켓 02: 주문 카드는 확인 요청 카드다. 확인 대기면 대기 단계·카운트다운·[수락], 수락하면
+// 초록 "수락 · 픽업 시각", 확인 요청 없이 확정된 주문은 "자동 확정(사장님 화면 꺼짐)". 손님이 기다리는
+// 중에 고치거나 취소하면 버튼을 숨긴다.
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
@@ -25,19 +28,22 @@ import {
   type CaptionLine,
   type KnowledgeCard,
   type KnowledgePreview,
+  type OrderCard,
   type OrderCardLine,
   type OwnerAnswer,
   type QuestionCard,
   type QuestionClock,
   SeenReports,
   WRITTEN_ANSWER_MAX,
-  canAccept,
+  approvalClock,
+  approvalsWaiting,
   captionLines,
   followUpCalls,
   initialOwnerState,
   knowledgeCards,
   liveCalls,
   openQuestions,
+  orderOutcome,
   ownerReducer,
   questionClock,
   questionsWaiting,
@@ -76,6 +82,52 @@ import './owner.css'
 
 /** 질문 카드 버튼. 순서가 화면 순서다. 문구는 `ownerText.ts` */
 const ANSWERS: OwnerAnswer[] = ['yes', 'no', 'unsure']
+
+/**
+ * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). 확인 대기: 대기 단계 + 남은 초 + [수락]. 수락: 초록
+ * "수락 · 18:30". 자동 확정: 그 표시. 손님이 고치는 중·취소: 버튼 없이 그 표시
+ */
+function OrderDecision({
+  card,
+  nowMs,
+  text,
+  onAccept,
+}: {
+  card: OrderCard
+  nowMs: number
+  text: OwnerText
+  onAccept: () => void
+}) {
+  const outcome = orderOutcome(card)
+  if (outcome === 'waiting') {
+    const clock = approvalClock(card, nowMs)
+    return (
+      <div className="owner-approval">
+        <p className="owner-approval-wait">
+          {card.stage && <span>{text.approvalStage[card.stage]}</span>}{' '}
+          <span className={clock === 'late' ? 'owner-question-late' : 'owner-approval-clock'}>
+            {clock === 'late' ? text.late : text.secondsLeft(clock)}
+          </span>
+        </p>
+        <button type="button" className="owner-btn owner-btn-accept" onClick={onAccept}>
+          {text.accept}
+        </button>
+      </div>
+    )
+  }
+  if (outcome === 'changing' || outcome === 'cancelled') {
+    return <p className="owner-withdrawn">{text.withdrawn[outcome === 'changing' ? 'changed' : 'cancelled']}</p>
+  }
+  if (outcome === 'accepted' || outcome === 'auto') {
+    return (
+      <>
+        <p className="owner-accepted owner-accepted-yes">{text.acceptedAt(card.pickup_label)}</p>
+        {outcome === 'auto' && <p className="owner-auto">{text.autoAccepted}</p>}
+      </>
+    )
+  }
+  return null
+}
 
 /** 질문 카드 카운트다운을 다시 그리는 간격 */
 const QUESTION_TICK_MS = 1_000
@@ -122,8 +174,8 @@ export default function OwnerPage() {
     return () => clearInterval(timer)
   }, [])
 
-  // 통화가 답을 기다리는 질문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
-  const waiting = questionsWaiting(state)
+  // 통화가 답을 기다리는 질문 카드나 확인 대기 주문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
+  const waiting = questionsWaiting(state) || approvalsWaiting(state)
   useEffect(() => {
     if (!waiting) return
     const tick = () => setNow(Date.now())
@@ -269,13 +321,7 @@ export default function OwnerPage() {
             <CardLines lines={card.lines} lang={lang} text={text} />
             {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
             <SentTexts texts={card.sms} lang={lang} />
-            {canAccept(card) ? (
-              <button type="button" className="owner-btn owner-btn-accept" onClick={() => accept(card.id)}>
-                {text.accept}
-              </button>
-            ) : (
-              <p className="owner-accepted">{text.accepted}</p>
-            )}
+            <OrderDecision card={card} nowMs={hubNow} text={text} onAccept={() => accept(card.id)} />
           </article>
         ))}
       </section>

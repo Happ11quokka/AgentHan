@@ -42,6 +42,11 @@ export interface OwnerText {
   orderedAt: string
   accept: string
   accepted: string
+  /** 확인 요청 카드 (주문 승인 티켓 02): 대기 단계, 수락 결과(픽업 시각), 자동 확정, 손님이 고침·취소 */
+  approvalStage: Record<'in_call' | 'after_call', string>
+  acceptedAt: (pickup: string) => string
+  autoAccepted: string
+  withdrawn: Record<'changed' | 'cancelled', string>
   sectionLive: string
   sectionFollowUp: string
   sectionOrders: string
@@ -115,6 +120,10 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     orderedAt: 'Заказ в',
     accept: 'Принять',
     accepted: 'Принят',
+    approvalStage: { in_call: 'Клиент ждёт на линии', after_call: 'Клиент ждёт SMS' },
+    acceptedAt: (pickup) => `Принят · ${pickup}`,
+    autoAccepted: 'Принят автоматически (экран был выключен)',
+    withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
     sectionLive: 'Идут звонки',
     sectionFollowUp: 'Звонки для проверки',
     sectionOrders: 'Заказы',
@@ -192,8 +201,12 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     noOrders: '아직 들어온 주문이 없어요.',
     pickup: '픽업',
     orderedAt: '주문',
-    accept: '접수',
-    accepted: '접수함',
+    accept: '수락',
+    accepted: '수락함',
+    approvalStage: { in_call: '손님 통화 중 확인', after_call: '통화 뒤 확인 (문자로 알림)' },
+    acceptedAt: (pickup) => `수락 · ${pickup}`,
+    autoAccepted: '자동 확정(사장님 화면 꺼짐)',
+    withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
     sectionLive: '통화 중',
     sectionFollowUp: '확인할 통화',
     sectionOrders: '주문',

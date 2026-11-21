@@ -3,8 +3,17 @@
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
 import type { CustomerText } from '../customerText.ts'
 
-/** 사장님 처리 상태 (Part A 어휘). 4단계 버튼은 접수 하나 */
-export type OrderStatus = 'new' | 'accepted'
+/**
+ * 사장님 처리 상태 (Part A 어휘 + expired, 주문 승인). new: 확인 대기(확인 요청 카드).
+ * accepted: 수락(자동 확정 포함). rejected·expired는 거절·자동 취소 티켓(03·05)이 보낸다
+ */
+export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired'
+
+/** 확인 요청 대기 단계 (주문 승인 티켓 02). 자동 확정 카드는 빈 글 */
+export type ApprovalStage = 'in_call' | 'after_call' | ''
+
+/** 기다리는 중에 손님이 주문을 고침(changed)·취소함(cancelled). 그 카드는 결정을 안 받는다 */
+export type WithdrawReason = '' | 'changed' | 'cancelled'
 
 /** 손님 요청 배지 (서버 `badges.py`, 한국어 원문 규칙). remove = 빼기, allergy = 알레르기 */
 export type RequestBadge = 'remove' | 'allergy'
@@ -50,6 +59,20 @@ export interface OrderCard {
   owner_check?: boolean
   /** 손님에게 보낸 문자(보낸 순서, 티켓 07). 07 전 서버는 안 보낸다 */
   sms?: CustomerText[]
+  // 확인 요청 (주문 승인 티켓 02). 승인 전 서버는 안 보낸다
+  /** 통화 안 확인 요청 번호(1부터). 자동 확정 카드는 0 */
+  request?: number
+  stage?: ApprovalStage
+  /** 확인 요청을 연 시각과 마감(ISO, 허브 시계). 카운트다운은 마감까지 센다 */
+  requested_at?: string
+  deadline_at?: string
+  /** 사장님이 결정한(자동 확정은 받은) 시각. 결정 전이면 빈 글 */
+  decided_at?: string
+  /** 늦춘 수락의 분 (티켓 04) */
+  delay_min?: number
+  /** 확인 요청 없이 확정됨: 승인 꺼짐·사장님 화면 없음 ("자동 확정(사장님 화면 꺼짐)") */
+  auto_accepted?: boolean
+  withdrawn?: WithdrawReason
 }
 
 /**
@@ -358,8 +381,37 @@ export function canDismiss(card: CallCard): boolean {
   return card.status === 'handoff' || card.status === 'missed'
 }
 
+/** 수락 버튼을 보일 카드: 확인 대기이고 손님이 고치는 중·취소한 요청이 아니다 */
 export function canAccept(card: OrderCard): boolean {
-  return card.status === 'new'
+  return card.status === 'new' && !card.withdrawn
+}
+
+/**
+ * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). waiting: 확인 대기(카운트다운·수락 버튼).
+ * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
+ * closed: 그 밖의 처리 상태(거절·자동 취소, 03·05가 채운다)
+ */
+export type OrderOutcome = 'waiting' | 'changing' | 'cancelled' | 'accepted' | 'auto' | 'closed'
+
+export function orderOutcome(card: OrderCard): OrderOutcome {
+  if (card.status === 'new') {
+    if (card.withdrawn === 'changed') return 'changing'
+    if (card.withdrawn === 'cancelled') return 'cancelled'
+    return 'waiting'
+  }
+  if (card.status === 'accepted') return card.auto_accepted ? 'auto' : 'accepted'
+  return 'closed'
+}
+
+/** 사장님 결정을 기다리는 주문 카드가 있다(카운트다운을 다시 그린다) */
+export function approvalsWaiting(state: OwnerState): boolean {
+  return state.orders.some(canAccept)
+}
+
+/** 확인 대기 카드의 남은 초(1 이상). 마감이 지났거나 없으면 'late' */
+export function approvalClock(card: OrderCard, nowMs: number): number | 'late' {
+  const left = card.deadline_at ? secondsLeft({ deadline_at: card.deadline_at }, nowMs) : 0
+  return left > 0 ? left : 'late'
 }
 
 /** 버튼으로 답할 질문 카드 (먼저 온 것이 앞). 시간 초과·통화 끝 카드도 남는다(늦은 답) */
@@ -426,7 +478,7 @@ export function writtenAnswer(draft: string): string | null {
 }
 
 /** 마감까지 남은 초(올림). 지났으면 0. 서버가 보낸 시각부터 센 마감과 같은 시계다 */
-export function secondsLeft(card: QuestionCard, nowMs: number): number {
+export function secondsLeft(card: Pick<QuestionCard, 'deadline_at'>, nowMs: number): number {
   const left = Date.parse(card.deadline_at) - nowMs
   return Number.isNaN(left) || left <= 0 ? 0 : Math.ceil(left / 1000)
 }

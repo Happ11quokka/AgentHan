@@ -82,6 +82,23 @@ describe('new order alerts and the one-minute reminder (ticket 08)', () => {
     expect(reminded).toEqual([])
   })
 
+  it('rings once for an auto-accepted order without a reminder (order approval ticket 02)', () => {
+    const { alerts, arrived, reminded } = setup()
+    alerts.sync([{ id: 'a', status: 'accepted', auto_accepted: true }])
+    alerts.sync([{ id: 'a', status: 'accepted', auto_accepted: true }])
+    vi.advanceTimersByTime(10 * MIN)
+    expect(arrived).toEqual([['a']])
+    expect(reminded).toEqual([])
+  })
+
+  it('cancels the reminder while the customer changes the order', () => {
+    const { alerts, reminded } = setup()
+    alerts.sync([order('a')])
+    alerts.sync([{ id: 'a', status: 'new', withdrawn: 'changed' }])
+    vi.advanceTimersByTime(10 * MIN)
+    expect(reminded).toEqual([])
+  })
+
   it('uses the configured reminder delay', () => {
     const { alerts, reminded } = setup(30_000)
     alerts.sync([order('a')])

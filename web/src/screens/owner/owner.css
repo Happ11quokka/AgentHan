@@ -191,6 +191,31 @@
   font-weight: 700;
 }
 
+/* 확인 요청 카드 (주문 승인 티켓 02): 대기 단계·남은 초, 수락 결과, 자동 확정, 손님이 고침·취소 */
+.owner-approval-wait {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--owner-muted);
+}
+
+.owner-approval-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--owner-accent);
+}
+
+.owner-accepted-yes {
+  color: var(--owner-accent);
+}
+
+.owner-auto,
+.owner-withdrawn {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
 /* 답을 못 받은 손님 질문이 있던 주문 (티켓 06) */
 .owner-check {
   margin: 0;

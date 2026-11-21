@@ -2,11 +2,16 @@
 // 처음 보는 새 주문(new)이면 바로 한 번 울리고, 접수하지 않은 채 `remindAfterMs`가 지나면 한 번 더 울린다.
 // 접수하거나 카드가 사라지면 리마인드를 취소한다. 리마인드는 한 번뿐이다(4초 반복은 발표장에서 시끄럽다, V2 D9).
 // 소리·깜빡임은 콜백이 맡는다. 이 모듈은 언제 울릴지만 정한다.
+// 주문 승인(티켓 02): 확인 대기 카드(new)가 울리고 리마인드를 받는다. 확인 요청 없이 확정된 자동 확정
+// 카드(accepted + auto_accepted)도 처음 볼 때 한 번 울린다(승인을 꺼도 새 주문 소리는 난다).
 import { ALERT_SETTINGS } from './alertSettings.ts'
 
 export interface AlertOrder {
   id: string
   status: string
+  auto_accepted?: boolean
+  /** 손님이 고치는 중·취소한 확인 요청: 결정을 받지 않으니 기다리는 주문이 아니다 */
+  withdrawn?: string
 }
 
 export interface OrderAlertsOptions {
@@ -30,14 +35,17 @@ export class OrderAlerts {
   sync(orders: readonly AlertOrder[]): void {
     const arrived: string[] = []
     const waiting = new Set<string>()
-    for (const { id, status } of orders) {
-      const isNew = status === 'new'
+    for (const { id, status, auto_accepted, withdrawn } of orders) {
+      const isNew = status === 'new' && !withdrawn
       if (isNew) waiting.add(id)
       if (this.seen.has(id)) continue
       this.seen.add(id)
-      if (!isNew) continue
-      arrived.push(id)
-      this.timers.set(id, setTimeout(() => this.remind(id), this.remindAfterMs))
+      if (isNew) {
+        arrived.push(id)
+        this.timers.set(id, setTimeout(() => this.remind(id), this.remindAfterMs))
+      } else if (auto_accepted) {
+        arrived.push(id) // 자동 확정: 리마인드할 결정이 없다
+      }
     }
     for (const id of [...this.timers.keys()]) {
       if (!waiting.has(id)) this.cancel(id)
