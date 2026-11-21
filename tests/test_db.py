@@ -389,6 +389,12 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
                    coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인", discount=1000)
     sink.submit(coupon)  # 쿠폰 주문 (쿠폰 티켓 09): 기록에서도 같은 낼 금액
     sink.record_decision(_decision("call-s3", "accepted", decided_at="2026-11-25T16:01:00+09:00"))
+    cancelled = Order(id="call-s4", lines=delayed.lines, pickup_time=delayed.pickup_time,
+                      status="confirmed", created_at="2026-11-25T16:00:00+09:00",
+                      coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인", discount=1000)
+    sink.submit(cancelled)  # 손님 취소한 쿠폰 주문 (티켓 07 × 09)
+    sink.record_decision(_decision("call-s4", "customer_cancelled",
+                                   decided_at="2026-11-25T16:02:00+09:00"))
     sink.flush()
     sink.close()
 
@@ -399,6 +405,8 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
         moved = client.get("/api/phone/orders/call-s1").json()
         expired = client.get("/api/phone/orders/call-s2").json()
         discounted = client.get("/api/phone/orders/call-s3").json()
+        customer_cancelled = client.get("/api/phone/orders/call-s4").json()
+        cancel_db_only = client.post("/api/phone/orders/call-s1/cancel")
         missing = client.get("/api/phone/orders/call-nope")
 
     assert (moved["stage"], moved["outcome"], moved["can_cancel"]) == ("confirmed", "delayed",
@@ -410,6 +418,11 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
     assert discounted["amount"] == {"subtotal": 15000, "discount": 1000,
                                     "coupon_name": "전화 주문 1,000원 할인", "total": 14000}
     assert (expired["stage"], expired["outcome"]) == ("cancelled", "expired")
+    # 손님 취소는 기록에서도 customer_cancelled, 취소 버튼 없음, 할인 칸은 그대로 (티켓 07 × 09)
+    assert (customer_cancelled["stage"], customer_cancelled["outcome"],
+            customer_cancelled["can_cancel"]) == ("cancelled", "customer_cancelled", False)
+    assert customer_cancelled["amount"] == discounted["amount"]
+    assert cancel_db_only.status_code == 404  # 취소 API는 허브 카드만 받는다 (티켓 07)
     assert missing.status_code == 404
 
 

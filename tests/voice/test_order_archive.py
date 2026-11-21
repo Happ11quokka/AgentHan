@@ -118,6 +118,9 @@ def test_a_coupon_record_reads_back_with_the_discount() -> None:
     pytest.param(lambda hub: hub.accept(CALL, delay_min=15), id="delayed"),
     pytest.param(lambda hub: hub.reject(CALL, "busy"), id="rejected"),
     pytest.param(lambda hub: hub.reject(CALL, "out_of_stock", menu_ids=["m02"]), id="out_of_stock"),
+    pytest.param(lambda hub: hub.cancel_by_customer(CALL), id="customer_cancelled"),  # 티켓 07
+    pytest.param(lambda hub: (hub.accept(CALL, delay_min=15), hub.cancel_by_customer(CALL)),
+                 id="delayed_then_customer_cancelled"),
 ])
 def test_the_record_gives_the_same_answer_as_the_hub_card(decide, order) -> None:
     """같은 주문: 허브 카드로 만든 응답과 기록으로 만든 응답이 같다(결과·사유·품절 메뉴·쿠폰

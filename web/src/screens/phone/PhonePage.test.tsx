@@ -219,3 +219,35 @@ describe('/phone 다시 열기', () => {
     expect(screen.getByRole('button', { name: '전화 받기' })).toBeInTheDocument()
   })
 })
+
+describe('손님 취소 (티켓 07 × 06)', () => {
+  it('주소로 연 주문 현황에서도 [취소하기]가 되고, 취소한 주문으로는 /phone이 다시 가지 않는다', async () => {
+    // 쿠폰 주문(티켓 09): 취소한 뒤에도 할인 줄이 같은 금액으로 남는다
+    const amount = { subtotal: 7500, discount: 1000, coupon_name: '전화 주문 1,000원 할인', total: 6500 }
+    let current = order({ amount, can_cancel: true })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST' && url === '/api/phone/orders/call-abc/cancel') {
+          current = order({ amount, stage: 'cancelled', outcome: 'customer_cancelled' })
+        }
+        return new Response(JSON.stringify(current), { status: 200 })
+      }),
+    )
+    const { unmount } = open('/phone/orders/call-abc')
+
+    await userEvent.click(await screen.findByRole('button', { name: '취소하기' }))
+    await userEvent.click(screen.getByRole('button', { name: '네, 취소할게요' }))
+
+    expect(await screen.findByText('주문을 취소했어요')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '취소하기' })).toBeNull()
+    expect(screen.getByText('전화 주문 1,000원 할인 쿠폰')).toBeInTheDocument()
+    expect(screen.getByText('6,500원')).toBeInTheDocument()
+    unmount()
+
+    open('/phone')
+    expect(await screen.findByRole('button', { name: '전화 받기' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/phone')
+    expect(localStorage.getItem(KEY)).toBeNull()
+  })
+})
