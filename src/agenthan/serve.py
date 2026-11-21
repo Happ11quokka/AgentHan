@@ -13,9 +13,10 @@
   비서 가게 파일도 쓸 때마다 DB에 한 벌 남는다(tools/dummy_store.py).
 - AGENTHAN_ASSISTANT=off면 비서를 붙이지 않는다(전화만). 대화마다 가게 파일을
   AGENTHAN_SESSIONS_DIR(기본 .agenthan/sessions)에 쓴다.
-- 전화용 가게(전화 메뉴 티켓 02): 비서가 켜져 있으면 전화는 비서 메뉴로 주문을 받는다. 대화가 가게를
-  저장할 때마다 그 가게가 게시되고 가장 최근에 저장한 대화가 이긴다(`PhoneStores`). 저장한 대화가
-  없으면 파일럿 가게. 전화 설정(영업시간·준비 시간·상한·가게 이름)과 리뷰는 위의 전화 가게 것이다.
+- 전화용 가게(전화 메뉴 티켓 02): 비서가 켜져 있으면 전화는 비서 메뉴로 주문을 받는다. 대화가
+  메뉴나 쿠폰을 바꿔 저장할 때마다 그 가게가 게시되고 가장 최근에 저장한 대화가 이긴다
+  (`PhoneStores`). 저장한 대화가 없으면 파일럿 가게. 전화 설정(영업시간·준비 시간·상한·가게
+  이름)과 리뷰는 위의 전화 가게 것이다.
   비서가 꺼져 있으면 전화 가게(DB·PHONE_STORE_FIXTURE)를 그대로 쓴다.
   DB가 있으면 게시 값을 DB에 남겨 서버가 다시 떠도 마지막 게시 메뉴로 시작하고, 메뉴 벡터는
   pgvector에 둔다(전화 메뉴 티켓 03).
@@ -68,7 +69,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
         order_archive=phone_order_archive(settings),  # 주문 현황 다시 열기 (티켓 06)
     )
     if phone_stores is not None:
-        include_assistant(app, env, on_save=phone_stores.publish)
+        include_assistant(app, env, on_save=phone_stores.saved)
     else:
         log.info("%s=off라 사장님 비서(/assistant)는 붙이지 않음", ASSISTANT_ENV)
     return app
@@ -103,9 +104,13 @@ class PhoneStores:
 
         stores = PhoneStores(base)        # base: 전화 가게 스냅숏(전화 설정·리뷰)
         stores.start(pilot.seed())        # DB에 남은 마지막 게시 값, 없으면 이 가게
+        stores.saved(chat, data)          # 대화의 저장: 메뉴·쿠폰이 바뀌었으면 게시
         stores.publish(data)              # 비서 가게 한 벌 → 게시
         stores()                          # 지금 스냅숏 (`StoreProvider`: 통화 시작·사장님 허브)
 
+    - 대화의 저장(`saved`)은 그 대화의 메뉴·쿠폰(게시 값)이 바뀌었을 때만 게시한다(리뷰). 리뷰
+      답글·설정 같은 다른 저장이 그 대화의 옛 메뉴(파일럿 가게 그대로인 다른 대화 등)로 전화를
+      되돌리지 않게. 대화는 파일럿 가게(`start`의 `default`)로 시작하므로 그 값이 첫 비교 대상이다
     - `publish`는 저장한 스레드에서 부른다. 게시 값(`phone_store_doc`)으로 검색 색인까지 만든 뒤
       스냅숏을 통째로 바꿔 끼운다. 같은 게시 값은 다시 만들지 않는다(내용 해시). 진행 중인 통화는
       시작할 때 받은 스냅숏을 끝까지 쓴다
@@ -138,6 +143,8 @@ class PhoneStores:
         self._built: OrderedDict[str, StoreSnapshot] = OrderedDict()
         self._built_docs: dict[str, dict] = {}  # 만들어 둔 스냅숏의 게시 값 (벡터 자리 정리)
         self._lock = threading.Lock()  # 게시는 한 번에 하나. 늦게 들어온 게시가 이긴다
+        self._fresh: str | None = None  # 새 대화가 시작하는 가게(파일럿)의 게시 값 해시
+        self._chats: dict[str, str] = {}  # 대화마다 마지막으로 저장한 게시 값 해시
 
     def __call__(self) -> StoreSnapshot:
         return self._current  # 이벤트 루프에서 부른다: 만들어 둔 것만 돌려준다
@@ -151,6 +158,7 @@ class PhoneStores:
         """서버를 띄울 때 한 번. DB에 남은 마지막 게시 값으로, 없으면(DB가 없거나 아직 게시가
         없으면) 비서 가게 한 벌 `default`(파일럿 가게)로 시작한다. 기본 가게는 DB에 쓰지 않는다:
         게시가 없을 때의 기본값일 뿐이라 다음 배포의 기본 가게가 그대로 들어온다."""
+        self._fresh = _content_key(phone_store_doc(default))
         saved = None
         if self._db_url:
             from agenthan.db.stores import load_published_phone_store
@@ -162,6 +170,18 @@ class PhoneStores:
                      len(saved["menus"]))
             return
         self.put(phone_store_doc(default), save=False)
+
+    def saved(self, chat: str, data: Mapping) -> bool:
+        """대화 `chat`이 가게 파일을 저장했다. 그 대화의 메뉴·쿠폰이 지난 저장(처음이면 대화가
+        시작한 파일럿 가게)과 같으면 게시하지 않고 False. 다르면 `put`."""
+        doc = phone_store_doc(data)
+        key = _content_key(doc)
+        with self._lock:
+            last = self._chats.get(chat, self._fresh)
+            self._chats[chat] = key
+        if key == last:
+            return False  # 리뷰 답글·설정 같은 메뉴·쿠폰 밖 저장
+        return self.put(doc)
 
     def publish(self, data: Mapping) -> bool:
         """비서 가게 한 벌을 전화용 가게로 게시한다. 메뉴가 비었으면 게시하지 않고 False."""
@@ -375,9 +395,10 @@ def assistant_on(env: Mapping[str, str]) -> bool:
 
 
 def include_assistant(
-    app: FastAPI, env: Mapping[str, str], *, on_save: Callable[[dict], None] | None = None
+    app: FastAPI, env: Mapping[str, str], *, on_save: Callable[[str, dict], None] | None = None
 ) -> None:
-    """on_save: 대화가 가게 파일을 저장할 때마다 그 가게 한 벌로 부른다(전화용 가게 게시)."""
+    """on_save: 대화가 가게 파일을 저장할 때마다 (대화 id, 그 가게 한 벌)로 부른다(전화용 가게
+    게시)."""
     from agenthan.app import pilot
     from agenthan.app.server import DEFAULT_ROOT
     from agenthan.app.server import create_app as create_assistant_app

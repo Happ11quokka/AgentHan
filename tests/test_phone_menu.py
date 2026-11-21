@@ -218,6 +218,24 @@ def test_the_chat_that_saved_last_wins(tmp_path) -> None:
         assert _call(client, 5)[0]["total"] == 8000
 
 
+def test_a_save_that_leaves_menus_and_coupons_alone_does_not_publish(tmp_path) -> None:
+    """리뷰 답글·설정 같은 저장은 게시하지 않는다 (리뷰): 파일럿 가게 그대로인 다른 대화가
+    저장해도 전화가 파일럿 메뉴로 돌아가지 않는다. 그 대화가 메뉴를 고치면 그때 게시한다."""
+    with _client(tmp_path, _order_script("메도빅 하나요", offer=True)) as client:
+        edited, other = _session(client), _session(client)
+        _edit(client, edited, "m01", price=8000)
+        store = DummyStore(tmp_path / "s" / other / "store.json")  # 대화 도구가 쓰는 것처럼
+        data = store.read()
+        data["shop"]["notice"] = "오늘은 7시에 닫아요"  # 메뉴·쿠폰 밖 저장
+        store.write(data)
+        assert _call(client, 5)[0]["total"] == 8000
+
+        _edit(client, other, "m01", price=8800)  # 그 대화가 메뉴를 고쳤다
+        assert _call(client, 5)[0]["total"] == 8800
+        _edit(client, edited, "m01", name="메도빅")  # 이름 그대로: 바뀐 것이 없다
+        assert _call(client, 5)[0]["total"] == 8800
+
+
 # ---------------------------------------------------------------- 기본 가게·빈 가게
 
 
