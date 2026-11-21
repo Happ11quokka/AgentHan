@@ -27,6 +27,13 @@ REQUIRED = [  # 티켓 06의 시나리오 10개
     "s10-menu-question",
 ]
 
+APPROVAL = [  # 주문 승인 티켓 11: 가게 승인 시나리오 4개 (엔진 + 사장님 허브)
+    "s27-approval-accept-in-call",
+    "s28-approval-out-of-stock-drop",
+    "s29-approval-delay-yes",
+    "s30-approval-timeout-auto-cancel",
+]
+
 
 def _param(scenario: Scenario) -> object:
     marks = [pytest.mark.xfail(reason=scenario.xfail, strict=True)] if scenario.xfail else []
@@ -47,6 +54,9 @@ def test_scenario_files_are_consistent() -> None:
     assert set(REQUIRED) <= set(ids)
     required = [s for s in SCENARIOS if s.id in REQUIRED]
     assert not any(s.xfail for s in required), "필수 시나리오 10개는 xfail이면 안 된다"
+    approval = [s for s in SCENARIOS if s.approval]
+    assert sorted(s.id for s in approval) == APPROVAL
+    assert not any(s.xfail for s in approval)
     assert SCENARIO_DIR.is_dir()
 
 
@@ -118,3 +128,22 @@ def test_forbidden_allows_confirmed_after_readback_and_yes() -> None:
     before = TurnResult(["…, 총 0원이에요. 맞으세요?"], State.CONFIRM, Cart(), None)
     view = _view(["감사합니다."], state=State.CLOSING, before=before, order_status="confirmed")
     assert forbidden(view) == []
+
+
+def test_forbidden_with_approval_wants_the_readback_yes_on_the_request_turn() -> None:
+    """가게 승인: 복창 뒤 "네"가 확인 요청을 연다. 사장님이 받아들인 주문만 확정할 수 있다."""
+    from agenthan.core.contracts import Order
+    from agenthan.voice.dialog.approval import ApprovalRequest
+
+    readback = TurnResult(["…, 총 0원이에요. 맞으세요?"], State.CONFIRM, Cart(), None)
+    hold = TurnResult(["사장님께 주문 확인 중이에요. 잠시만요."], State.CONFIRM, Cart(), None,
+                      approval_request=ApprovalRequest(1, Order("o", [])))
+    assert forbidden(TurnView("네", hold, readback, approval=True)) == []
+    problems = forbidden(TurnView("6시 반이요", hold, readback, approval=True))
+    assert any("확인 전 확인 요청" in p for p in problems), problems
+
+    closing = TurnResult(["감사합니다."], State.CLOSING, Cart(),
+                         Order("o", [], status="confirmed"))
+    problems = forbidden(TurnView("", closing, hold, approval=True))
+    assert any("승인 전 confirmed" in p for p in problems), problems
+    assert forbidden(TurnView("", closing, hold, approval=True, approved=[])) == []
