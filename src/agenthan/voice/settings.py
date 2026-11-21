@@ -47,7 +47,7 @@
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
 | `PHONE_APPROVAL_REPROMPT_S` | 확인 요청 "조금만 더 기다려 주세요"(초). `0`이면 끔 | `10.0` |
 | `PHONE_OWNER_APPROVAL` | `on`이면 확정 전 사장님 수락을 받는다(화면이 없으면 건너뜀) | `on` |
-| `PHONE_APPROVAL_WAIT_S` | 확인 요청 통화 중 대기(초, 카드 보낸 때부터). 넘으면 문자로 | `20.0` |
+| `PHONE_APPROVAL_WAIT_S` | 확인 요청 통화 중 대기(초). `0`이면 "네" 뒤 끊고 주문 현황으로 | `0` |
 | `PHONE_APPROVAL_EXPIRE_MIN` | 확인 요청 자동 취소(분, 요청 연 때부터). 대기보다 길게 | `5` |
 
 6단계 운영 보강 (문지기 `gate.py`). 숫자 상한은 `0`이면 끈다.
@@ -304,8 +304,9 @@ class VoiceSettings:
                 "PHONE_VAD_EP_SILENCE_MS는 PHONE_VAD_END_SILENCE_MS 이하여야 해요 "
                 f"(epFlag 먼저, 턴 판정은 그 뒤): {vad.ep_silence_ms} > {vad.end_silence_ms}"
             )
+        # 0이면 통화 중에 기다리지 않는다(기본, 전화 메뉴·주문 현황 티켓 04)
         approval_wait_s = _number("PHONE_APPROVAL_WAIT_S", get("PHONE_APPROVAL_WAIT_S", ""),
-                                  APPROVAL_WAIT_S)
+                                  APPROVAL_WAIT_S, allow_zero=True)
         approval_expire_s = 60 * _number("PHONE_APPROVAL_EXPIRE_MIN",
                                          get("PHONE_APPROVAL_EXPIRE_MIN", ""),
                                          APPROVAL_EXPIRE_S / 60)

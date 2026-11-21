@@ -32,7 +32,11 @@ APPROVAL = [  # 주문 승인 티켓 11: 가게 승인 시나리오 4개 (엔진
     "s28-approval-out-of-stock-drop",
     "s29-approval-delay-yes",
     "s30-approval-timeout-auto-cancel",
+    # 전화 메뉴·주문 현황 티켓 04: 통화 중 대기 0(기본). "네"에 끊고 통화 뒤 결정을 주문 현황으로
+    "s31-no-wait-accept-after-call",
 ]
+# 통화 중 대기를 켠 승인 시나리오 (통화 중 결정 경로가 깨지지 않았는지, 티켓 04)
+IN_CALL = APPROVAL[:4]
 
 
 def _param(scenario: Scenario) -> object:
@@ -57,6 +61,7 @@ def test_scenario_files_are_consistent() -> None:
     approval = [s for s in SCENARIOS if s.approval]
     assert sorted(s.id for s in approval) == APPROVAL
     assert not any(s.xfail for s in approval)
+    assert sorted(s.id for s in approval if s.approval_wait_s > 0) == IN_CALL
     assert SCENARIO_DIR.is_dir()
 
 

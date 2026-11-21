@@ -32,10 +32,13 @@ NUTS = "메도빅에 견과류 들어가요?"
 ASK_SCRIPT = ("메도빅 하나요", NUTS, "그게 다예요", "6시 반이요", "네")
 
 
-def _client(tmp_path, replies: tuple[str, ...] = ORDER_SCRIPT) -> TestClient:
+def _client(tmp_path, replies: tuple[str, ...] = ORDER_SCRIPT, *,
+            approval_wait_s: float = 20.0) -> TestClient:
+    """통화 중 대기를 켠 서버(기본 20초, 통화 중 결정 시험). 0이면 기본 설정(티켓 04)."""
     settings = VoiceSettings(
         log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
         fake_replies=replies, turn_model="off", owner_key=KEY, ask_owner=True,
+        approval_wait_s=approval_wait_s,
     )
     return TestClient(create_app(settings))
 
