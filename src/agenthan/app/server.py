@@ -8,6 +8,7 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
 import copy
 import functools
 import logging
+import re
 import threading
 import uuid
 from collections.abc import Callable
@@ -34,11 +35,13 @@ from agenthan.illustration import (
     once_per_name,
     pick_illustration,
 )
-from agenthan.tools.dummy_store import DummyStore, DummyStoreError, watch
+from agenthan.tools.dummy_store import DummyStore, DummyStoreError, has_saved_copy, watch
 
 log = logging.getLogger(__name__)
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
+# 대화 id 모양(uuid4 hex). 되살리기 전에 확인한다(경로에 쓰는 값이라 다른 모양은 받지 않는다)
+SESSION_ID = re.compile(r"[0-9a-f]{32}")
 # 저장소 최상위: 마지막으로 그림을 맞춘 카탈로그 지문(fill_illustrations)
 ILLUSTRATION_VERSION_KEY = "illustration_catalog"
 # 저장소 최상위: {메뉴 id: 이름} 그 이름으로 임베딩까지 해 본 메뉴(같은 이름을 다시
@@ -412,10 +415,34 @@ def create_app(
     sessions: dict[str, Session] = {}
     root = Path(root)
 
+    restoring = threading.Lock()
+
     def get(session_id: str) -> Session:
-        session = sessions.get(session_id)
+        session = sessions.get(session_id) or restore(session_id)
         if session is None:
             raise HTTPException(404, "없는 대화입니다.")
+        return session
+
+    def restore(session_id: str) -> Session | None:
+        """서버가 모르는 대화라도 가게 파일이나 DB 사본(assistant_store_docs)이 있으면 되살린다.
+        재배포로 대화 목록(메모리)과 대화 폴더가 사라져도 사장님이 쌓은 가게(메뉴판으로 올린
+        메뉴 등)로 이어서 연다(2026-11-22: 재배포 뒤 브라우저가 기본 메뉴의 새 대화를 열었다).
+        대화 턴 기억은 돌아오지 않는다. 대화 말풍선은 브라우저가 따로 갖고 있다."""
+        if not SESSION_ID.fullmatch(session_id):
+            return None
+        path = root / session_id / "store.json"
+        if not path.exists() and not has_saved_copy(path):
+            return None
+        with restoring:
+            if (session := sessions.get(session_id)) is not None:
+                return session  # 같은 대화의 다른 요청이 먼저 되살렸다
+            path.parent.mkdir(parents=True, exist_ok=True)
+            session = Session(session_id, make_assistant(path), clock,
+                              drafts=prepare_on_start, illustration_embed=illustration_embed)
+            if on_save is not None:
+                watch(session.assistant.store.path, functools.partial(on_save, session_id))
+            sessions[session_id] = session
+        log.info("대화 %s를 저장된 가게로 되살림", session_id)
         return session
 
     @app.post("/assistant/sessions")

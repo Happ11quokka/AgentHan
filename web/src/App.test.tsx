@@ -1643,3 +1643,20 @@ describe("새로 오픈 소식·매장 QR결제 확인 카드", () => {
     expect(card.queryByText(/정보를 바꿔요/)).not.toBeInTheDocument();
   });
 });
+
+describe("새 대화의 메뉴", () => {
+  test("새 대화는 메뉴가 빈 가게로 시작한다(메뉴판 사진으로 채운다)", async () => {
+    const { api } = await open();
+    expect(api.start).toHaveBeenCalledWith({ emptyMenu: true });
+  });
+
+  test("?menu=full이면 파일럿 가게의 기본 메뉴로 시작한다", async () => {
+    window.history.pushState({}, "", "/?menu=full");
+    try {
+      const { api } = await open();
+      expect(api.start).toHaveBeenCalledWith(undefined);
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
+});
