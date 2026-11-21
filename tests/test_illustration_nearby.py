@@ -8,11 +8,6 @@ import pytest
 
 from agenthan.illustration.matcher import pick_illustration
 
-
-def broken_embed(_text):
-    raise RuntimeError("임베딩 서버가 응답하지 않음")
-
-
 # (메뉴 이름, 분류 또는 None, 기대하는 그림 id)
 TABLE: list[tuple[str, str | None, str]] = [
     # 케이크: 넓은 키워드("치즈케이크", "타르트")보다 긴 키워드가 이긴다
@@ -91,7 +86,7 @@ TABLE: list[tuple[str, str | None, str]] = [
 
 
 @pytest.mark.parametrize(("name", "category", "expected"), TABLE)
-def test_nearby_illustrations(name, category, expected):
+def test_nearby_illustrations(name, category, expected, broken_embed):
     assert pick_illustration(name, category, broken_embed) == expected
 
 
@@ -106,12 +101,12 @@ def test_nearby_illustrations(name, category, expected):
         ("핫초코", "카페모카"),
         ("녹차 라떼", "녹차"),
         ("카모마일 티", "블랙티"),
-        ("딸기 스무디", "스트로베리레몬 에이드"),
+        ("딸기 스무디", "딸기레몬 에이드"),
         ("크루아상", "소금빵"),
         ("도넛", "베이글"),
     ],
 )
-def test_similar_menus_get_different_illustrations(one, other):
+def test_similar_menus_get_different_illustrations(one, other, broken_embed):
     assert pick_illustration(one, None, broken_embed) != pick_illustration(
         other, None, broken_embed
     )

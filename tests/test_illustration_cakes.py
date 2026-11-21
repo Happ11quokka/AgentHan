@@ -9,11 +9,6 @@ from agenthan.illustration import library
 from agenthan.illustration.art import build
 from agenthan.illustration.matcher import pick_illustration
 
-
-def broken_embed(_text):
-    raise RuntimeError("임베딩 서버가 응답하지 않음")
-
-
 # (메뉴 이름, 분류 또는 None, 기대하는 그림 id)
 TABLE: list[tuple[str, str | None, str]] = [
     # 시드 가게(fixtures/dummy_store/menus.json)
@@ -34,26 +29,23 @@ TABLE: list[tuple[str, str | None, str]] = [
     ("머랭 롤", "Roll", "cake_meringue_roll"),
     ("베리 타르트", "Tart", "cake_berry_tart"),
     ("파블로바", "Dessert", "cake_pavlova"),
-    # 실제 가게 정제 메뉴(data/clean, git 밖): 같은 메뉴를 다르게 부른 이름
-    ("메도빅 꿀 케이크", "Cake", "cake_medovik"),
-    ("메도빅 꿀케이크 초코", "Cake", "cake_medovik_choco"),
-    ("메도빅 꿀케이크 사워베리크림", "Cake", "cake_medovik_sourberry"),
+    # 실제 가게 메뉴 이름은 커밋하지 않는다(git 밖 별칭 파일, test_illustration_coverage가 본다).
+    # 아래는 같은 그림을 부르는 일반 이름이다.
+    ("월넛 케이크", "Cake", "cake_walnut"),
+    ("아몬드 베리 크림 케이크", "Cake", "cake_almond_berry_cream"),
+    ("카라멜 머랭 홀케이크", "Cake", "cake_caramel_meringue_whole"),
+    ("초콜릿 마스카포네 케이크", "Cake", "cake_choco_mascarpone"),
+    ("초콜릿 돔 케이크", "Cake", "cake_choco_dome"),
+    ("카라멜 초코 레이어 케이크", "Cake", "cake_caramel_choco_layer"),
+    ("크랜베리 파인애플 타르트", "Tart", "cake_tart"),
     ("메도빅 홀 케이크", "Cake", "cake_medovik_whole"),
-    ("호두 케이크", "Cake", "cake_walnut"),
-    ("심포니", "Cake", "cake_symphony"),
-    ("차이코프스키", "Cake", "cake_tchaikovsky"),
-    ("초코 마스카포네", "Cake", "cake_choco_mascarpone"),
-    ("초코렛 폭탄", "Cake", "cake_choco_bomb"),
-    ("푸쉬킨", "Cake", "cake_pushkin"),
-    ("타르트", "Tart", "cake_tart"),
-    ("파브로바", "Dessert", "cake_pavlova"),
     # 파일럿 가게(분류 없음)
     ("메도빅", None, "cake_medovik"),
     ("나폴레옹", None, "cake_napoleon"),
     ("메도빅 홀케이크", None, "cake_medovik_whole"),
     # 사장님이 달리 적을 법한 이름
     ("메도빅 초코", None, "cake_medovik_choco"),
-    ("초콜릿 폭탄", None, "cake_choco_bomb"),
+    ("초코 돔", None, "cake_choco_dome"),
     ("꿀케이크 (1조각)", None, "cake_medovik"),
     ("크랜베리 타르트", None, "cake_tart"),
     ("블루베리 타르트", None, "cake_berry_tart"),
@@ -65,11 +57,11 @@ TABLE: list[tuple[str, str | None, str]] = [
 
 
 @pytest.mark.parametrize(("name", "category", "expected"), TABLE)
-def test_cake_illustrations(name, category, expected):
+def test_cake_illustrations(name, category, expected, broken_embed):
     assert pick_illustration(name, category, broken_embed) == expected
 
 
-def test_the_four_medoviks_are_different_pictures():
+def test_the_four_medoviks_are_different_pictures(broken_embed):
     names = ("메도빅", "초코 메도빅", "사워베리 메도빅", "메도빅 홀케이크")
     assert len({pick_illustration(name, "Cake", broken_embed) for name in names}) == 4
 
@@ -77,7 +69,7 @@ def test_the_four_medoviks_are_different_pictures():
 CAKE_CATEGORIES = {"Cake", "Eclair", "Roll", "Tart"}
 
 
-def test_every_demo_cake_menu_gets_its_own_picture():
+def test_every_demo_cake_menu_gets_its_own_picture(broken_embed):
     """데모 가게 메뉴 파일을 직접 읽어, 메뉴가 늘어도 케이크가 기본 그림으로 빠지지 않게."""
     cakes = [
         (source, name)

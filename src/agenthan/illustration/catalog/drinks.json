@@ -56,9 +56,8 @@
   },
   {
     "id": "drink_decaf",
-    "name": "디카페인",
+    "name": "디카페인 커피",
     "aliases": [
-      "디카페인 커피",
       "decaf",
       "디카프"
     ],
@@ -174,9 +173,9 @@
   },
   {
     "id": "drink_caramel_macchiato",
-    "name": "카라멜 마끼아또",
+    "name": "캐러멜 마키아토",
     "aliases": [
-      "캐러멜 마키아토",
+      "카라멜 마키아토",
       "caramel macchiato"
     ],
     "keywords": [
@@ -373,14 +372,14 @@
   },
   {
     "id": "drink_berry_tea",
-    "name": "베리티",
+    "name": "베리차",
     "aliases": [
-      "베리 티",
       "berry tea",
-      "베리차"
+      "과일 베리차"
     ],
     "keywords": [
-      "블랙커런트티"
+      "블랙커런트티",
+      "베리홍차"
     ],
     "category": "tea",
     "recipe": {
@@ -457,14 +456,13 @@
   },
   {
     "id": "drink_raspberry_ade",
-    "name": "라즈베리 에이드",
+    "name": "산딸기 에이드",
     "aliases": [
-      "raspberry ade",
-      "산딸기 에이드"
+      "raspberry ade"
     ],
     "keywords": [
-      "라즈베리에이드",
-      "산딸기에이드"
+      "산딸기에이드",
+      "라즈베리"
     ],
     "category": "ade",
     "recipe": {
@@ -487,9 +485,8 @@
   },
   {
     "id": "drink_strawberry_lemon_ade",
-    "name": "스트로베리레몬 에이드",
+    "name": "딸기레몬 에이드",
     "aliases": [
-      "딸기레몬에이드",
       "strawberry lemonade"
     ],
     "keywords": [

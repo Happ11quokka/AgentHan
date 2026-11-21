@@ -833,9 +833,9 @@ ILLUSTRATIONS: list[Illustration] = [
         keywords=("아이스아메리카노",),
     ),
     _drink(
-        "drink_decaf", "디카페인", "coffee",
+        "drink_decaf", "디카페인 커피", "coffee",
         recipe("takeaway", ["coffee"], garnish=["beans"], cup="leaf"),
-        aliases=("디카페인 커피", "decaf", "디카프"),
+        aliases=("decaf", "디카프"),
         keywords=("디카페인", "디카페인아메리카노"),
     ),
     _drink(
@@ -857,9 +857,9 @@ ILLUSTRATIONS: list[Illustration] = [
         keywords=("카푸치노",),
     ),
     _drink(
-        "drink_caramel_macchiato", "카라멜 마끼아또", "coffee",
+        "drink_caramel_macchiato", "캐러멜 마키아토", "coffee",
         recipe("glass", [["milk", 2], ["coffee", 1.2]], foam="cream", garnish=["caramel"]),
-        aliases=("캐러멜 마키아토", "caramel macchiato"),
+        aliases=("카라멜 마키아토", "caramel macchiato"),
         keywords=("마끼아또", "마키아토", "마키아또"),
     ),
     _drink(
@@ -900,10 +900,10 @@ ILLUSTRATIONS: list[Illustration] = [
         keywords=("허니레몬", "꿀레몬", "레몬티"),
     ),
     _drink(
-        "drink_berry_tea", "베리티", "tea",
+        "drink_berry_tea", "베리차", "tea",
         recipe("teacup", ["berry_tea"], garnish=["berry_mix", "steam"], card="card_rose"),
-        aliases=("베리 티", "berry tea", "베리차"),
-        keywords=("블랙커런트티",),
+        aliases=("berry tea", "과일 베리차"),
+        keywords=("블랙커런트티", "베리홍차"),
     ),
     # ── 에이드·주스 ──
     _drink(
@@ -921,17 +921,17 @@ ILLUSTRATIONS: list[Illustration] = [
         keywords=("자몽에이드", "자몽주스"),
     ),
     _drink(
-        "drink_raspberry_ade", "라즈베리 에이드", "ade",
+        "drink_raspberry_ade", "산딸기 에이드", "ade",
         recipe("glass", ["raspberry_ade"], garnish=["straw", "ice", "raspberries", "mint"],
                straw="white", card="card_rose"),
-        aliases=("raspberry ade", "산딸기 에이드"),
-        keywords=("라즈베리에이드", "산딸기에이드"),
+        aliases=("raspberry ade",),
+        keywords=("산딸기에이드", "라즈베리"),
     ),
     _drink(
-        "drink_strawberry_lemon_ade", "스트로베리레몬 에이드", "ade",
+        "drink_strawberry_lemon_ade", "딸기레몬 에이드", "ade",
         recipe("glass", [["berry", 1], ["ade", 1.3]], garnish=["straw", "ice", "lemon_rim",
                "strawberry_rim"], straw="white"),
-        aliases=("딸기레몬에이드", "strawberry lemonade"),
+        aliases=("strawberry lemonade",),
         keywords=("스트로베리레몬", "딸기레몬"),
     ),
     _drink(

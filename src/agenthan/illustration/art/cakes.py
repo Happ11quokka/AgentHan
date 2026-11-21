@@ -333,7 +333,7 @@ def _eclair(r: dict) -> tuple[list[str], Top]:
 
 
 def _dome(r: dict) -> tuple[list[str], Top]:
-    """반구(초코 폭탄): 위가 둥근 돔. color(몸통)."""
+    """반구(초콜릿 돔 케이크): 위가 둥근 돔. color(몸통)."""
     cx, base, rad = 128, 170, 68
     ry, peak = rad * TILT, base - rad * 0.95
     color = r["color"]
@@ -667,7 +667,7 @@ ILLUSTRATIONS = [
             "toppings": [["crumbs", "honey"]],
             "card": "card_cream",
         },
-        aliases=("메도빅 꿀 케이크", "꿀 케이크", "허니 케이크", "Medovik", "Медовик"),
+        aliases=("꿀 케이크", "허니 케이크", "Medovik", "Медовик"),
         keywords=("메도빅", "꿀케이크", "꿀케익", "medovik", "медовик", "honeycake"),
     ),
     cake(
@@ -680,7 +680,7 @@ ILLUSTRATIONS = [
             "toppings": [["curls", "cocoa"], ["drizzle", "caramel"]],
             "card": "card_sand",
         },
-        aliases=("메도빅 꿀케이크 초코", "초콜릿 메도빅", "초코 꿀케이크"),
+        aliases=("초콜릿 메도빅", "초코 꿀케이크"),
         keywords=("초코메도빅", "메도빅초코", "초콜릿메도빅", "꿀케이크초코", "초코꿀케이크"),
     ),
     cake(
@@ -693,7 +693,7 @@ ILLUSTRATIONS = [
             "toppings": [["sparse_crumbs", "honey"], ["raspberries", "berry"]],
             "card": "card_rose",
         },
-        aliases=("메도빅 꿀케이크 사워베리크림", "사워베리 꿀케이크"),
+        aliases=("사워베리 꿀케이크",),
         keywords=("사워베리", "메도빅사워베리", "꿀케이크사워베리", "사워베리꿀케이크"),
     ),
     cake(
@@ -827,7 +827,7 @@ ILLUSTRATIONS = [
     ),
     cake(
         "cake_walnut",
-        "호두 케이크",
+        "월넛 케이크",
         {
             "shape": "slice",
             "layers": [
@@ -842,12 +842,12 @@ ILLUSTRATIONS = [
             "toppings": [["drizzle", "choco"], ["walnuts", "nut"]],
             "card": "card_sand",
         },
-        aliases=("호두케익", "월넛 케이크"),
-        keywords=("호두케이크", "월넛케이크", "walnutcake"),
+        aliases=("호두 크림 케이크", "Walnut cake"),
+        keywords=("호두", "월넛", "walnut"),
     ),
     cake(
-        "cake_symphony",
-        "심포니",
+        "cake_almond_berry_cream",
+        "아몬드 베리 크림 케이크",
         {
             "shape": "slice",
             "layers": [
@@ -862,12 +862,12 @@ ILLUSTRATIONS = [
             "toppings": [["almonds", "almond"], ["strawberries", "berry"]],
             "card": "card_sky",
         },
-        aliases=("심포니 케이크",),
-        keywords=("심포니", "symphony", "симфония"),
+        aliases=("아몬드 크림 케이크",),
+        keywords=("아몬드베리", "아몬드크림케이크"),
     ),
     cake(
-        "cake_tchaikovsky",
-        "차이코프스키",
+        "cake_caramel_meringue_whole",
+        "카라멜 머랭 홀케이크",
         {
             "shape": "whole",
             "rx": 66,
@@ -879,12 +879,12 @@ ILLUSTRATIONS = [
             "toppings": [["curls", "cocoa"], ["raspberries", "berry"]],
             "card": "card_lilac",
         },
-        aliases=("차이코프스키 케이크", "차이콥스키"),
-        keywords=("차이코프스키", "차이콥스키", "tchaikovsky", "чайковский"),
+        aliases=("머랭 카라멜 홀케이크",),
+        keywords=("카라멜머랭", "머랭카라멜"),
     ),
     cake(
         "cake_choco_mascarpone",
-        "초코 마스카포네",
+        "초콜릿 마스카포네 케이크",
         {
             "shape": "slice",
             "layers": _alternate("choco", "meringue", 3, cream_w=0.8),
@@ -892,31 +892,24 @@ ILLUSTRATIONS = [
             "toppings": [["dust", "cocoa"], ["raspberries", "berry"]],
             "card": "card_rose",
         },
-        aliases=("초콜릿 마스카포네", "초코마스카포네 케이크"),
-        keywords=("초코마스카포네", "초콜릿마스카포네", "마스카포네"),
+        aliases=("마스카포네 초콜릿 케이크",),
+        keywords=("초콜릿마스카포네", "마스카포네"),
     ),
     cake(
-        "cake_choco_bomb",
-        "초코렛 폭탄",
+        "cake_choco_dome",
+        "초콜릿 돔 케이크",
         {
             "shape": "dome",
             "color": "choco",
             "toppings": [["drizzle", "caramel"], ["raspberries", "berry"]],
             "card": "card_cream",
         },
-        aliases=("초콜릿 폭탄", "초콜렛 폭탄", "초코 폭탄", "초코 밤"),
-        keywords=(
-            "초코렛폭탄",
-            "초콜릿폭탄",
-            "초콜렛폭탄",
-            "초코폭탄",
-            "chocobomb",
-            "chocolatebomb",
-        ),
+        aliases=("초콜릿 돔", "초코 돔 케이크"),
+        keywords=("초콜릿돔", "초코돔", "chocolatedome"),
     ),
     cake(
-        "cake_pushkin",
-        "푸쉬킨",
+        "cake_caramel_choco_layer",
+        "카라멜 초코 레이어 케이크",
         {
             "shape": "slice",
             "layers": [
@@ -931,8 +924,8 @@ ILLUSTRATIONS = [
             "toppings": [["almonds", "almond"], ["drizzle", "caramel"]],
             "card": "card_cream",
         },
-        aliases=("푸시킨", "푸쉬킨 케이크"),
-        keywords=("푸쉬킨", "푸시킨", "pushkin", "пушкин"),
+        aliases=("초코 카라멜 레이어 케이크",),
+        keywords=("카라멜초코", "초코카라멜"),
     ),
     # ── 에클레어·롤·타르트·머랭 ──
     cake(
@@ -976,14 +969,14 @@ ILLUSTRATIONS = [
     ),
     cake(
         "cake_tart",
-        "타르트",
+        "크랜베리 파인애플 타르트",
         {
             "shape": "tart",
             "filling": "custard",
             "toppings": [["pineapple", "lemon"], ["cranberries", "berry_shade"]],
             "card": "card_cream",
         },
-        aliases=("크랜베리 타르트", "크랜베리 파인애플 타르트"),
+        aliases=("크랜베리 타르트",),
         keywords=("타르트", "tart", "тарт"),
     ),
     cake(

@@ -61,10 +61,10 @@ class CountingEmbed:
 
 
 def test_build_writes_a_vector_for_every_catalog_id(workspace):
-    workspace([row("cake_a", "메도빅", ["메도빅 꿀 케이크"]), row("cake_b", "나폴레옹")])
+    workspace([row("cake_a", "메도빅", ["메도빅 허니 케이크"]), row("cake_b", "나폴레옹")])
     embed = CountingEmbed()
     assert embedding_index.build_index(embed) == ["cake_a", "cake_b"]
-    assert embed.texts == ["메도빅\n메도빅 꿀 케이크", "나폴레옹"]  # 이름과 별칭을 한 글로
+    assert embed.texts == ["메도빅\n메도빅 허니 케이크", "나폴레옹"]  # 이름과 별칭을 한 글로
     assert set(embedding_index.load_index()) == {"cake_a", "cake_b"}
 
 
