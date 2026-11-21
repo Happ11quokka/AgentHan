@@ -34,6 +34,7 @@ from agenthan.agent import (
     planner,
     report_explainer,
     review_delegate,
+    suggest,
     turn_graph,
     value_source,
 )
@@ -653,6 +654,8 @@ class OwnerAssistant:
         self._turn_route: Route | None = None
         self._turn_plan_input: dict | None = None  # Shadow planner input, read before the turn.
         self.next_actions: list[dict] = []
+        # next_actions 중 맥락 칩(agent/suggest.py). 화면 제안일 뿐이라 "네"로 동의할 제안이 아니다.
+        self.context_chips: list[dict] = []
         # planner 모드에서 "최근 보여 준 것"(ref)으로 고른 대상. 값 출처는 lookup으로 남는다.
         self._ref_lookup: dict | None = None
         self.turns = turn_graph.build(self)
@@ -1016,7 +1019,34 @@ class OwnerAssistant:
         text = text.strip()
         if not text:
             return HELP
-        return turn_graph.run(self.turns, text)
+        reply = turn_graph.run(self.turns, text)
+        if self.agent_mode == "planner":
+            self.next_actions = self._suggest(self.next_actions)
+        return reply
+
+    def _suggest(self, existing: list[dict], action_id: str | None = None) -> list[dict]:
+        """이번 턴에 한 일과 가게 데이터로 맥락 칩을 붙인다(규칙은 agent/suggest.py 표).
+
+        승인 대기 미리보기가 있는 턴에는 붙이지 않는다(저장 버튼을 가리지 않게). 조언 턴은
+        신호→플레이북 칩(planner_loop.advice)이 이미 이번 맥락의 처방이라 더 붙이지 않는다."""
+        self.context_chips = []
+        if any(t.preview for t in self.ledger.open_tasks()):
+            return existing
+        if ((self.trace or {}).get("planner") or {}).get("scope") == "advice":
+            return existing
+        done = suggest.done_in(self.trace or {}, action_id)
+        if not done:
+            return existing
+        settings = None
+        box = getattr(self.review, "toolbox", None)
+        if box is not None and getattr(box, "settings_store", None) is not None:
+            settings = box.settings_store.get(box.ctx["store_id"])
+        facts = suggest.facts(self.store.read(), settings, self.today)
+        merged = suggest.merge(list(existing), done, facts)
+        self.context_chips = copy.deepcopy(merged[len(existing) :])
+        if self.trace is not None:
+            self.trace["next_actions"] = copy.deepcopy(merged)
+        return merged
 
     def run_action(self, action_id: str, args: dict, label: str) -> dict:
         """화면이 선택한 동작을 기능 선택 없이 실행한다."""
@@ -1025,6 +1055,24 @@ class OwnerAssistant:
             raise ValueError("없는 버튼입니다.")
         if not isinstance(args, dict) or set(args) - set(spec.inputs):
             raise ValueError("버튼 입력을 확인해 주세요.")
+        if action_id == "chat.say":
+            # 말로 보내는 칩: 그 말을 사장님 말 한 턴으로 처리한다(화면도 보통 대화로 보낸다).
+            text = args.get("text")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("버튼 입력을 확인해 주세요.")
+            reply = self.ask(text)
+            return {
+                "reply": reply,
+                "next_actions": self.next_actions if self.agent_mode == "planner" else [],
+            }
+        result = self._run_action(spec, action_id, args, label)
+        if self.agent_mode == "planner":
+            self.next_actions = result["next_actions"] = self._suggest(
+                result.get("next_actions") or [], action_id
+            )
+        return result
+
+    def _run_action(self, spec, action_id: str, args: dict, label: str) -> dict:
         if action_id == "task.continue" and self.agent_mode != "planner":
             raise ValueError("계획 모드의 남은 작업 버튼입니다.")
         values = {**spec.fixed, **args}

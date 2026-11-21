@@ -7,6 +7,7 @@ import * as storage from "./storage";
 import type { Action, LogEntry, Message, OnboardingInput, Pending, Place, ReviewRow, ShopInfo, Turn, View } from "./types";
 
 const COUPON_ACTION = "coupon.create";
+const SAY_ACTION = "chat.say";
 
 /** 오늘부터 14일 동안. 날짜는 사장님 기기의 날짜(YYYY-MM-DD). */
 const isoDay = (d: Date) =>
@@ -254,6 +255,13 @@ export function useConversation(api: AssistantApi): Conversation {
   const closeCoupon = useCallback(() => setCouponForm(null), []);
 
   const act = useCallback(async (action: Action) => {
+    // 말로 보내는 칩(chat.say, 버튼이 없는 기능의 맥락 칩): 그 말을 사장님 말 한 턴으로 보낸다.
+    // 쓰기는 이 말로 시작되는 미리보기·승인을 그대로 거친다.
+    if (action.action_id === SAY_ACTION) {
+      const text = typeof action.args.text === "string" ? action.args.text.trim() : "";
+      if (text) await send(text);
+      return;
+    }
     // 값 없이 온 쿠폰 만들기(왼쪽 버튼·다음 액션 칩)는 서버에 묻지 않고 입력 블록을 연다.
     if (action.action_id === COUPON_ACTION && Object.keys(action.args).length === 0) {
       if (!inFlight.current) setCouponForm((open) => open ?? blankCoupon());
@@ -266,7 +274,7 @@ export function useConversation(api: AssistantApi): Conversation {
     }
     setMessages((m) => [...m, { id: newId(), role: "owner", text: action.label }]);
     await performAction(action);
-  }, [performAction, sessionId]);
+  }, [performAction, send, sessionId]);
 
   /** 블록의 [미리 보기]: 블록을 닫고 값을 coupon.create 액션으로 보낸다. 서버가 미리보기와 승인 카드를 돌려준다. */
   const submitCoupon = useCallback(async (values: CouponInput) => {

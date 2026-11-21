@@ -1058,11 +1058,12 @@ class PlannerLoop:
                 action["kind"] = "ask"
                 view = next((v for v in self.open_view() if v["task_id"] == task.id), {})
                 action["asked"] = self.a.trace.get("missing") or view.get("missing", [])
-        elif self.proposals or self.a.next_actions:
+        elif self.proposals or any(a not in self.a.context_chips for a in self.a.next_actions):
             action["kind"] = "suggest"
             proposals, seen = [], set()
             for proposed in [*self.proposals, *self.a.next_actions]:
-                if proposed["action_id"] not in {
+                # 맥락 칩(agent/suggest.py)은 화면 제안일 뿐 "네"로 동의할 제안이 아니다.
+                if proposed in self.a.context_chips or proposed["action_id"] not in {
                     "review.draft_reply",
                     "coupon.create",
                     "hours.edit",

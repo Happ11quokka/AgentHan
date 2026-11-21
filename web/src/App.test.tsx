@@ -118,6 +118,40 @@ describe("액션", () => {
     expect(chatArea().getByText("오늘 통계", { selector: "p" })).toBeInTheDocument();
   });
 
+  test("말로 보내는 맥락 칩은 그 말을 대화 한 턴으로 보낸다", async () => {
+    const api = fakeApi([
+      {
+        reply: "리뷰 3건을 살펴봤어요.",
+        place: SEED,
+        pending: [],
+        next_actions: [
+          { action_id: "chat.say", label: "매일 리뷰 요약 받기", args: { text: "매일 리뷰 요약해서 보내 줘" } },
+          { action_id: "stats.week", label: "이번 주 통계 보기", args: {} },
+        ],
+      },
+      { reply: "리뷰 보고를 매일 받을까요?", place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await user.click(screen.getByRole("button", { name: "요즘 리뷰 어때?" }));
+    await user.click(await screen.findByRole("button", { name: "매일 리뷰 요약 받기" }));
+    expect(api.say).toHaveBeenCalledWith("s1", "매일 리뷰 요약해서 보내 줘");
+    expect(api.act).toHaveBeenCalledTimes(1);
+    expect(await chatArea().findByText("매일 리뷰 요약해서 보내 줘", { selector: "p" })).toBeInTheDocument();
+    expect(await chatArea().findByText("리뷰 보고를 매일 받을까요?")).toBeInTheDocument();
+  });
+
+  test("기능 버튼이 있는 맥락 칩은 그 액션을 보낸다", async () => {
+    const api = fakeApi([
+      { reply: "조회 1,260회예요.", place: SEED, pending: [], next_actions: [{ action_id: "review.summary", label: "리뷰 요약 보기", args: {} }] },
+      { reply: "리뷰 3건을 살펴봤어요.", place: SEED, pending: [] },
+    ]);
+    const { user } = await open(api);
+    await user.click(screen.getByRole("button", { name: "이번 주 손님" }));
+    await user.click(await screen.findByRole("button", { name: "리뷰 요약 보기" }));
+    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", label: "리뷰 요약 보기", args: {} });
+    expect(api.say).not.toHaveBeenCalled();
+  });
+
   test("승인 카드 취소는 해당 작업을 지정한다", async () => {
     const pending = { task_id: "t3", version: 2, feature: "review", kind: "review" as const, reply: "감사합니다" };
     const api = fakeApi([{ reply: "확인해 주세요", place: SEED, pending: [pending] }]);
