@@ -12,6 +12,7 @@ import type {
   OrderCardLine,
   OwnerAnswer,
   QuestionCard,
+  RejectReason,
   RequestBadge,
 } from './ownerState.ts'
 
@@ -49,6 +50,17 @@ export interface OwnerText {
   withdrawn: Record<'changed' | 'cancelled', string>
   /** 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 마감 안에 결정하지 않아 손님에게 취소 문자가 갔다 */
   expired: string
+  /**
+   * 거절 (주문 승인 티켓 05): [거절] 버튼, 사유 시트 제목·사유 버튼, 아직 안 여는 사유 표시(재료 소진은
+   * 티켓 06), 시트 보내기·돌아가기, 거절 카드 결과 줄 "거절 · 사유". 직접 쓰기 안내는 `writtenHint`
+   */
+  reject: string
+  rejectTitle: string
+  rejectReason: Record<RejectReason, string>
+  rejectSoon: string
+  rejectSend: string
+  rejectBack: string
+  rejectedAs: (reason: string) => string
   sectionLive: string
   sectionFollowUp: string
   sectionOrders: string
@@ -127,6 +139,19 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     autoAccepted: 'Принят автоматически (экран был выключен)',
     withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
     expired: 'Автоотмена: заказ не подтверждён вовремя',
+    // 거절 문구 (티켓 05): 러시아어 화자 확인 전 초안 (사람 확인 대상)
+    reject: 'Отказать',
+    rejectTitle: 'Причина отказа',
+    rejectReason: {
+      out_of_stock: 'Закончились продукты',
+      busy: 'Не успеваем',
+      closed: 'Магазин не принимает заказы',
+      free: 'Написать причину',
+    },
+    rejectSoon: 'скоро',
+    rejectSend: 'Отказать',
+    rejectBack: 'Назад',
+    rejectedAs: (reason) => `Отказано · ${reason}`,
     sectionLive: 'Идут звонки',
     sectionFollowUp: 'Звонки для проверки',
     sectionOrders: 'Заказы',
@@ -146,6 +171,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     smsKind: {
       order: 'Подтверждение заказа',
       expired: 'Автоотмена заказа',
+      rejected: 'Отказ в заказе',
       late_answer: 'Ваш ответ после звонка',
       free_answer: 'Ваш ответ текстом',
     },
@@ -212,6 +238,18 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     autoAccepted: '자동 확정(사장님 화면 꺼짐)',
     withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
     expired: '자동 취소 · 시간 안에 확인 못 함',
+    reject: '거절',
+    rejectTitle: '거절 사유',
+    rejectReason: {
+      out_of_stock: '재료 소진',
+      busy: '바빠서 못 맞춤',
+      closed: '영업·가게 사정',
+      free: '직접 쓰기',
+    },
+    rejectSoon: '준비 중',
+    rejectSend: '거절 보내기',
+    rejectBack: '돌아가기',
+    rejectedAs: (reason) => `거절 · ${reason}`,
     sectionLive: '통화 중',
     sectionFollowUp: '확인할 통화',
     sectionOrders: '주문',
@@ -231,6 +269,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     smsKind: {
       order: '주문 확정 안내',
       expired: '자동 취소 안내',
+      rejected: '거절 안내',
       late_answer: '늦은 답(통화에서 못 전함)',
       free_answer: '글로 남긴 답',
     },
@@ -363,6 +402,29 @@ export function captionView(line: CaptionLine, lang: OwnerLang): CaptionView {
   return translated
     ? { who: line.who, main: translated, mainKo: false, original: line.text }
     : { who: line.who, main: line.text, mainKo: true, original: '' }
+}
+
+export interface RejectedView {
+  /** 결과 줄 "거절 · 바빠서 못 맞춤" */
+  label: string
+  /** 직접 쓰기 거절 글(사장님 언어). 없으면 빈 글 */
+  written: string
+  /** 그 글의 한국어 번역(손님 문자에 간 글). 번역 전·실패면 빈 글 */
+  writtenKo: string
+}
+
+/** 거절한 카드의 결과 (주문 승인 티켓 05). 사유는 사전 문구, 모르는 사유는 서버 글 그대로 */
+export function rejectedView(
+  card: Pick<OrderCard, 'reject_reason' | 'reject_text' | 'reject_text_ko'>,
+  lang: OwnerLang,
+): RejectedView {
+  const text = OWNER_TEXT[lang]
+  const reason = card.reject_reason
+  return {
+    label: text.rejectedAs(reason ? (text.rejectReason[reason] ?? reason) : text.reject),
+    written: card.reject_text ?? '',
+    writtenKo: card.reject_text_ko ?? '',
+  }
 }
 
 export interface SentTextView {

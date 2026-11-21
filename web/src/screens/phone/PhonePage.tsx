@@ -2,7 +2,7 @@
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 // 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 2분 동안 스트림으로 받는다.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { approvalBadge, awaitingText } from './approvalBadge.ts'
+import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
@@ -119,7 +119,9 @@ export default function PhonePage() {
               ? state.order.order.status === 'confirmed'
                 ? awaitingText(state)
                   ? '가게 확인 중'
-                  : '주문 확정'
+                  : cancelledByStore(state) // 문자로 넘긴 뒤 거절·자동 취소 (티켓 05)
+                    ? '주문 취소'
+                    : '주문 확정'
                 : '사장님께 넘김'
               : '담은 메뉴'}
           </h2>

@@ -20,9 +20,11 @@
 // 초록 "수락 · 픽업 시각", 확인 요청 없이 확정된 주문은 "자동 확정(사장님 화면 꺼짐)". 손님이 기다리는
 // 중에 고치거나 취소하면 버튼을 숨긴다.
 // 주문 승인 티켓 03: 통화 뒤 대기는 분:초 카운트다운(요청 연 때부터 5분), 자동 취소 카드는 회색에 버튼 없음.
+// 주문 승인 티켓 05: 확인 대기 카드의 [거절] → 사유 시트(`OrderReject.tsx`), 거절 카드는 회색 "거절 · 사유".
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
+import { RejectButton, RejectedResult } from './OrderReject.tsx'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
 import {
@@ -60,6 +62,7 @@ import {
   dismissCall,
   ownerKey,
   previewKnowledge,
+  rejectOrder,
   saveKnowledge,
   seeQuestion,
   wakeDevice,
@@ -80,6 +83,7 @@ import {
   sentTextView,
 } from './ownerText.ts'
 import { pickupBand } from './pickupBand.ts'
+import type { RejectBody } from './rejectSheet.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
 import './owner.css'
 
@@ -96,12 +100,15 @@ function OrderDecision({
   lang,
   text,
   onAccept,
+  onReject,
 }: {
   card: OrderCard
   nowMs: number
   lang: OwnerLang
   text: OwnerText
   onAccept: () => void
+  /** 거절 사유 시트 보내기 (티켓 05) */
+  onReject: (body: RejectBody) => void
 }) {
   const outcome = orderOutcome(card)
   if (outcome === 'waiting') {
@@ -117,9 +124,11 @@ function OrderDecision({
         <button type="button" className="owner-btn owner-btn-accept" onClick={onAccept}>
           {text.accept}
         </button>
+        <RejectButton text={text} onReject={onReject} />
       </div>
     )
   }
+  if (outcome === 'rejected') return <RejectedResult card={card} lang={lang} />
   if (outcome === 'expired') return <p className="owner-expired">{text.expired}</p>
   if (outcome === 'changing' || outcome === 'cancelled') {
     return <p className="owner-withdrawn">{text.withdrawn[outcome === 'changing' ? 'changed' : 'cancelled']}</p>
@@ -208,6 +217,10 @@ export default function OwnerPage() {
   // 버튼 POST. 바뀐 카드는 SSE로 온다(응답 카드는 넣지 않는다, 리뷰 C8)
   function accept(id: string) {
     void acceptOrder(key.current, id)
+  }
+
+  function reject(id: string, body: RejectBody) {
+    void rejectOrder(key.current, id, body)
   }
 
   function dismiss(id: string) {
@@ -333,6 +346,7 @@ export default function OwnerPage() {
               lang={lang}
               text={text}
               onAccept={() => accept(card.id)}
+              onReject={(body) => reject(card.id, body)}
             />
           </article>
         ))}

@@ -583,3 +583,85 @@
 .owner-knowledge-saved-label {
   font-weight: 700;
 }
+
+/* 거절 (주문 승인 티켓 05): [거절] → 한 단계 아래 사유 시트, 거절한 카드는 회색 + "거절 · 사유" */
+.owner-btn-reject {
+  background: var(--owner-danger);
+}
+
+.owner-btn-reject:disabled,
+.owner-btn-reason:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.owner-reject {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--owner-line);
+}
+
+.owner-reject-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.owner-reject-reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.owner-btn-reason {
+  font-size: 16px;
+  padding: 10px 12px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--owner-line);
+}
+
+.owner-btn-reason.owner-btn-picked {
+  color: #fff;
+  background: var(--owner-danger);
+  border-color: var(--owner-danger);
+}
+
+.owner-reject-soon {
+  font-weight: 400;
+}
+
+.owner-reject-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.owner-card-rejected {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--owner-muted);
+}
+
+.owner-rejected p {
+  margin: 0;
+}
+
+.owner-rejected-label {
+  font-weight: 700;
+}
+
+.owner-rejected-ko {
+  font-size: 13px;
+}
+
+.owner-approval {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owner-approval > p,
+.owner-approval > .owner-reject {
+  flex-basis: 100%;
+}

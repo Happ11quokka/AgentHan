@@ -1,6 +1,7 @@
 // 사장님 화면 ↔ 서버 (서버 `voice/owner/http.py`). SSE 하나로 받고 POST로 보낸다.
 // 모든 경로에 쿼리 `key`(사장님 화면 비밀 토큰)를 붙인다. `EventSource`는 헤더를 못 붙인다.
 import type { KnowledgePreview, OwnerAction, OwnerAnswer } from './ownerState.ts'
+import type { RejectBody } from './rejectSheet.ts'
 
 const BASE = '/api/owner'
 
@@ -78,6 +79,14 @@ const id = (value: string) => encodeURIComponent(value)
 /** 접수 버튼. 실패(없는 카드 404)면 false */
 export function acceptOrder(key: string, orderId: string): Promise<boolean> {
   return act(key, `orders/${id(orderId)}/accept`)
+}
+
+/**
+ * 거절 사유 시트 보내기 (주문 승인 티켓 05). 통화 중이면 손님이 사유별 사과를 듣고, 손님에게 취소
+ * 문자가 간다. 실패(이미 결정함·손님이 고치는 중 409, 빈 글 422 등)면 false
+ */
+export function rejectOrder(key: string, orderId: string, body: RejectBody): Promise<boolean> {
+  return act(key, `orders/${id(orderId)}/reject`, body)
 }
 
 /** 닫기 버튼(넘김·미완료 통화 카드). 실패(통화 중·주문됨 409 등)면 false */

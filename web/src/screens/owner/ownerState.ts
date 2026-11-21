@@ -12,6 +12,12 @@ export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired'
 /** 확인 요청 대기 단계 (주문 승인 티켓 02). 자동 확정 카드는 빈 글 */
 export type ApprovalStage = 'in_call' | 'after_call' | ''
 
+/**
+ * 거절 사유 (주문 승인 티켓 05, 서버 `approval.py` `RejectReason`). 재료 소진 · 바빠서 못 맞춤 ·
+ * 영업·가게 사정 · 직접 쓰기. 재료 소진은 티켓 06이 연다
+ */
+export type RejectReason = 'out_of_stock' | 'busy' | 'closed' | 'free'
+
 /** 기다리는 중에 손님이 주문을 고침(changed)·취소함(cancelled). 그 카드는 결정을 안 받는다 */
 export type WithdrawReason = '' | 'changed' | 'cancelled'
 
@@ -73,6 +79,14 @@ export interface OrderCard {
   /** 확인 요청 없이 확정됨: 승인 꺼짐·사장님 화면 없음 ("자동 확정(사장님 화면 꺼짐)") */
   auto_accepted?: boolean
   withdrawn?: WithdrawReason
+  // 거절 (주문 승인 티켓 05). 거절 전 서버는 안 보낸다
+  /** 거절 사유. 거절 전이면 빈 글 */
+  reject_reason?: RejectReason | ''
+  /** 재료 소진 거절의 떨어진 메뉴 id들 (티켓 06) */
+  reject_menu_ids?: string[]
+  /** 직접 쓰기 거절 글(사장님 언어)과 한국어 번역(번역 전·실패면 빈 글). 손님에게는 문자로만 */
+  reject_text?: string
+  reject_text_ko?: string
 }
 
 /**
@@ -389,7 +403,8 @@ export function canAccept(card: OrderCard): boolean {
 /**
  * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). waiting: 확인 대기(카운트다운·수락 버튼).
  * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
- * expired: 자동 취소(회색, 버튼 없음, 티켓 03). closed: 그 밖의 처리 상태(거절, 05가 채운다)
+ * expired: 자동 취소(회색, 버튼 없음, 티켓 03). rejected: 거절(회색 + 사유, 티켓 05).
+ * closed: 그 밖의 처리 상태(뒤 티켓이 더할 값)
  */
 export type OrderOutcome =
   | 'waiting'
@@ -398,6 +413,7 @@ export type OrderOutcome =
   | 'accepted'
   | 'auto'
   | 'expired'
+  | 'rejected'
   | 'closed'
 
 export function orderOutcome(card: OrderCard): OrderOutcome {
@@ -408,6 +424,7 @@ export function orderOutcome(card: OrderCard): OrderOutcome {
   }
   if (card.status === 'accepted') return card.auto_accepted ? 'auto' : 'accepted'
   if (card.status === 'expired') return 'expired'
+  if (card.status === 'rejected') return 'rejected'
   return 'closed'
 }
 
