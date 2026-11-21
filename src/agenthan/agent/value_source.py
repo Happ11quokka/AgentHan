@@ -207,7 +207,12 @@ def candidates(records: list[dict], said: str, today: date) -> tuple[list[dict],
     dates = _dates(said, today)
     times = _times(said)
     meals = [m for m in MEALS if m in said]
-    people = {int(n) for n in re.findall(r"(?<!\d)(\d{1,3})\s*(?:명|분|인)", said)}
+    # "12시 30분"의 30분은 인원이 아니다(시각 뒤의 '분'은 건너뛴다).
+    people = {
+        int(m.group(1))
+        for m in re.finditer(r"(?<!\d)(\d{1,3})\s*(명|분|인)", said)
+        if not (m.group(2) == "분" and re.search(r"시\s*$", said[: m.start()]))
+    }
     said_norm = _norm(said)
 
     def words(record: dict) -> set[str]:
@@ -229,6 +234,10 @@ def candidates(records: list[dict], said: str, today: date) -> tuple[list[dict],
         if by_words and not words(record):
             continue
         fits.append(record)
+    if by_words and len(fits) > 1:
+        # "메도빅 홀케이크": 말한 단어가 더 많이 맞는 기록만 남긴다(메도빅만 맞는 주문은 뺀다).
+        best = max(len(words(r)) for r in fits)
+        fits = [r for r in fits if len(words(r)) == best]
     return fits, stated
 
 

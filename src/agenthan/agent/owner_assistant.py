@@ -473,6 +473,87 @@ def written_call(content: str, names: set[str]) -> dict | None:
     }
 
 
+# 사장님 화면 점검(2026-11-21)에서 엉뚱한 기능으로 간 문장을 그 기능으로 바로 보내는 단어 규칙.
+# 정확도를 올리려는 게 아니라 이 문장들이 최소한 맞는 기능으로 가게 한다.
+KEYWORD_ROUTES = (
+    # "어제 손님은 어땠어?": 리뷰로 가던 문장. 어제·오늘 바로 뒤에 손님·방문·조회가 올 때만.
+    (
+        "statistics",
+        re.compile(r"(?:어제|오늘)\s*(?:하루\s*)?(?:손님|방문|조회)(?!.*(?:리뷰|후기|불만|칭찬))"),
+    ),
+    # "쿠폰 만드는 법 알려 줘": 어느 기능에도 못 붙던 문장. 우리 기능 이름 + ~하는 법일 때만.
+    (
+        "learning_support",
+        re.compile(
+            r"(?:쿠폰|메뉴|영업\s*시간|대표\s*키워드|톡톡)\s*(?:을|를)?\s*"
+            r"(?:만드는|등록하는|바꾸는|고치는|올리는|쓰는|하는)\s*(?:법|방법)"
+        ),
+    ),
+    # 진단 뒤 "어떻게 하면 더 위로 올라가?": 진단을 처음부터 다시 돌리던 문장.
+    (
+        "search_diagnosis",
+        re.compile(r"(?:어떻게|뭘)\s*(?:하면|해야)\s*.{0,6}(?:위로|상위로?)\s*(?:올라|가|뜨)"),
+    ),
+)
+
+
+def keyword_feature(text: str) -> str | None:
+    """점검 문장 규칙에 맞는 기능 id. 맞는 규칙이 없으면 None(평소 기능 선택)."""
+    for feature, pattern in KEYWORD_ROUTES:
+        if pattern.search(text):
+            return feature
+    return None
+
+
+def demo_status(feature: str, shop: dict) -> str | None:
+    """시연 가게에 저장된 POS·네이버페이 연동 상태로 바로 답한다(모델이 지어내지 않게).
+    가게 자료에 상태가 없으면 None: 평소 도구 흐름을 탄다."""
+    if feature == "place_plus" and isinstance(shop.get("pos"), dict):
+        pos = shop["pos"]
+        if pos.get("connected"):
+            return (
+                f"우리 가게 POS({pos.get('name', 'POS')})는 네이버 플레이스와 연동되어 있어요. "
+                "네이버 주문·예약이 POS로 바로 들어가요."
+            )
+        return (
+            f"우리 가게 POS({pos.get('name', 'POS')})는 아직 네이버 플레이스와 연동되지 않았어요."
+        )
+    if feature == "naverpay_signup" and isinstance(shop.get("naverpay"), dict):
+        pay = shop["naverpay"]
+        if pay.get("joined"):
+            kind = {"individual": "개인사업자", "corporation": "법인사업자"}.get(
+                pay.get("business_type"), ""
+            )
+            since = f" {pay['joined_on']}부터" if pay.get("joined_on") else ""
+            who = f"{kind}로" if kind else ""
+            return (
+                f"우리 가게는{since} {who} 네이버페이에 가입되어 있어요. "
+                "손님은 네이버페이로 결제할 수 있고, 입금은 '정산·입금 내역'에서 볼 수 있어요."
+            ).replace("  ", " ")
+    return None
+
+
+def search_advice(report) -> str:
+    """직전 검색 노출 진단으로 '어떻게 하면 위로?'에 답한다(진단을 다시 돌리지 않는다)."""
+    missing = [r.query.text for r in report.local_results if r.rank is None]
+    ahead = next((r for r in report.local_results if r.rank and r.competitors), None)
+    lines = ["검색에서 더 위로 올라가려면 이렇게 해 보세요."]
+    if missing:
+        lines.append(
+            f"- 안 나오는 검색어({', '.join(missing[:3])})를 "
+            "대표키워드·메뉴 이름·소개글에 넣어 보세요."
+        )
+    if ahead:
+        names = ", ".join(c.name for c in ahead.competitors[:2])
+        lines.append(
+            f"- ‘{ahead.query.text}’에서 앞선 가게({names})처럼 "
+            "대표 사진과 메뉴 설명을 채워 보세요."
+        )
+    if len(lines) == 1:
+        lines.append("- 지금 확인한 검색어에서는 이미 상위에 나와요. 대표키워드를 늘려 보세요.")
+    return "\n".join(lines)
+
+
 def report_headline(report) -> str:
     """The view count itself (the card shows only changes): 최근 일주일 조회 수 N회."""
     views = report.facts.place_views
@@ -887,6 +968,9 @@ class OwnerAssistant:
     def route(self, text: str) -> Route:
         """Decide the feature for one utterance without changing any state."""
         text = text.strip()
+        keyword = keyword_feature(text)
+        if keyword and not self.ledger.open_tasks():
+            return Route(keyword, "keyword")
         glossary = report_explainer.glossary_lookup(text)
         if glossary:
             return Route("statistics", "glossary", glossary=glossary)
@@ -1407,6 +1491,11 @@ class OwnerAssistant:
             return self._finish(HELP, [], [])
         if feature["id"] in review_delegate.REVIEW_FEATURES:
             return self._delegate_review(feature["id"], text)
+        status = demo_status(feature["id"], self.store.read().get("shop", {}))
+        if status:
+            return self._finish(status, [], [])
+        if feature["id"] == "search_diagnosis" and route.via == "keyword" and self.last_search:
+            return self._finish(search_advice(self.last_search), [], [])
         if feature["id"] == "statistics":
             if route.follow_question and self.last_report is not None:
                 self._detail_subject = "report"

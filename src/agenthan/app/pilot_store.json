@@ -46,6 +46,15 @@
       "러시아 디저트"
     ],
     "onsite_payment": false,
+    "pos": {
+      "name": "연습POS 베이직",
+      "connected": true
+    },
+    "naverpay": {
+      "joined": true,
+      "business_type": "individual",
+      "joined_on": "2026-03-02"
+    },
     "new_opening": null,
     "category": "베이커리·카페"
   },
