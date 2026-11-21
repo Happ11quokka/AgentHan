@@ -21,7 +21,6 @@ import { parseAudioFrame } from './frames.ts'
 import { CAPTURE_PROCESSOR, FRAME_SAMPLES, WIRE_RATE } from './pcm.ts'
 import { Player } from './player.ts'
 import { micReopenDelayMs } from './schedule.ts'
-import { openTextStream } from './textStream.ts'
 import { ThinkingCue, cueKeeps } from './thinkingCue.ts'
 import { TurnPlayback } from './turnPlayback.ts'
 
@@ -81,7 +80,6 @@ export class PhoneCall {
   private timers = new Set<number>()
   private clocks = new Map<number, TurnClock>()
   private generation = 0 // 다시 걸기 뒤 이전 통화의 늦은 콜백을 버린다
-  private closeTexts: (() => void) | null = null // 통화 뒤 "받은 문자" 스트림 (티켓 07)
   private readonly options: PhoneOptions
 
   constructor(options: PhoneOptions = DEFAULT_OPTIONS) {
@@ -98,7 +96,6 @@ export class PhoneCall {
   /** "전화 받기"·"다시 걸기". 반드시 클릭 핸들러에서 동기로 부른다. */
   dial(): void {
     this.teardown()
-    this.stopTexts()
     const gen = ++this.generation
     this.dispatch({ type: 'dial' })
 
@@ -158,7 +155,6 @@ export class PhoneCall {
   detach(): void {
     document.removeEventListener('visibilitychange', this.onVisibility)
     this.hangup()
-    this.stopTexts()
   }
 
   // ------------------------------------------------------------------ 연결
@@ -482,23 +478,6 @@ export class PhoneCall {
     if (next === prev) return
     this.state = next
     for (const fn of this.listeners) fn()
-    if (over(next) && !over(prev)) this.startTexts()
-  }
-
-  /**
-   * 통화가 끝나면(서버가 끝냄·손님이 끊음·오류) 이 통화 id로 "받은 문자" 스트림을 연다(티켓 07, 최대 6분).
-   * 사장님이 늦게 답하면 여기로 온다. 연결되기 전에 끝난 통화(통화 id 없음)는 열지 않는다
-   */
-  private startTexts(): void {
-    const callId = this.state.callId
-    if (!callId || typeof EventSource === 'undefined') return
-    this.stopTexts()
-    this.closeTexts = openTextStream(callId, (texts) => this.dispatch({ type: 'texts', texts }))
-  }
-
-  private stopTexts(): void {
-    this.closeTexts?.()
-    this.closeTexts = null
   }
 
   /** 마이크·소켓·재생·잠금을 모두 정리한다. 화면 상태(자막·주문서·오류)는 남긴다. */
@@ -536,10 +515,6 @@ export class PhoneCall {
       this.wakeLock = null
     }
   }
-}
-
-function over(state: CallState): boolean {
-  return state.status === 'ended' || state.status === 'failed'
 }
 
 function makeContext(sampleRate?: number): AudioContext {

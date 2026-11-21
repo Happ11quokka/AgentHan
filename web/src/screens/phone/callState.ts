@@ -30,7 +30,7 @@ export interface OrderJson {
  * 확인 중. 결과: accepted(수락, `delay_min`은 늦춘 분) · delayed(늦춘 시각을 손님에게 묻는 중, 티켓 04) ·
  * rejected(사장님 거절, `reason`은 사유, 티켓 05) · timeout(통화 중에 답이 없어 결과는 문자로) ·
  * withdrawn(손님이 고침·취소, `reason`) · skipped(확인 없이 바로 확정). 통화 뒤 결과(수락·거절·자동 취소)는
- * 상태가 아니라 받은 문자로 온다. after_call: 통화 중 대기 0(기본)이라 통화 뒤 확인 요청을 열고 통화를 끝냈다.
+ * 상태가 아니라 주문 현황(예전 받은 문자)으로 온다. after_call: 통화 중 대기 0(기본)이라 통화 뒤 확인 요청을 열고 통화를 끝냈다.
  * 결과는 주문 현황(`orderStatus.ts`)으로 본다 (전화 메뉴·주문 현황 티켓 04)
  */
 export type ApprovalStatus =
@@ -147,9 +147,12 @@ export interface CallState {
   slowLink: boolean
   /** 서버가 통화를 끝낸 이유(`call.ended`): confirmed · handoff · cancelled · no_input. 손님이 끊었으면 null */
   endReason: string | null
-  /** 이 통화의 id(`call.ready`). 통화가 끝나면 이 id로 "받은 문자" 스트림을 연다 (티켓 07) */
+  /** 이 통화의 id(`call.ready`). 확정 주문으로 끝나면 주문 번호다 (주문 현황, 전화 주문 현황 티켓 04) */
   callId: string | null
-  /** 받은 문자(보낸 순서). `call.ended`와 통화 뒤 문자 스트림으로 온다 (티켓 07) */
+  /**
+   * 통화 끝(`call.ended`)에 온 손님 문자(보낸 순서, 티켓 07). 화면에 따로 보이지 않고 확인 배지가 결과를 읽는다.
+   * 통화 뒤 결정은 주문 현황이 보인다 (전화 주문 현황 티켓 05)
+   */
   texts: CustomerText[]
   /** 이 통화의 마지막 사장님 확인 요청 상태(`state.approval`, 주문 승인 티켓 09). 없으면 null */
   approval: ApprovalJson | null
@@ -173,8 +176,6 @@ export type CallAction =
   | { type: 'link.slow'; slow: boolean }
   | { type: 'socket.closed'; code?: number }
   | { type: 'hangup' }
-  /** 문자 스트림(`/api/phone/calls/{id}/sms`)으로 온 문자. 통화가 끝난 뒤에도 받는다 (티켓 07) */
-  | { type: 'texts'; texts: CustomerText[] }
 
 export const initialCallState: CallState = {
   status: 'idle',
@@ -263,12 +264,10 @@ export function callReducer(state: CallState, action: CallAction): CallState {
         return { ...state, status: 'ended', botTalking: false }
       }
       return state
-    case 'texts':
-      return withTexts(state, action.texts)
   }
 }
 
-/** 받은 문자에 더한다. 이미 받은 id는 버린다(스트림 snapshot은 `call.ended`와 겹친다) */
+/** 받은 문자에 더한다. 이미 받은 id는 버린다 */
 function withTexts(state: CallState, texts: CustomerText[]): CallState {
   const known = new Set(state.texts.map((t) => t.id))
   const fresh = texts.filter((t) => !known.has(t.id))

@@ -638,69 +638,31 @@ describe('device test options (?mic_first=1 · ?agc=0, 실기기 시험 T4·T5)'
   })
 })
 
-describe('received texts after the call (4단계 티켓 07)', () => {
-  class FakeEventSource {
-    static instances: FakeEventSource[] = []
-    readyState = 1
-    closed = false
-    onerror: (() => void) | null = null
-    readonly listeners = new Map<string, (e: { data: string }) => void>()
-    readonly url: string
-    constructor(url: string) {
-      this.url = url
-      FakeEventSource.instances.push(this)
-    }
-    addEventListener(name: string, fn: (e: { data: string }) => void) {
-      this.listeners.set(name, fn)
-    }
-    emit(name: string, data: unknown) {
-      this.listeners.get(name)?.({ data: JSON.stringify(data) })
-    }
-    close() {
-      this.closed = true
-    }
-  }
-  const text = (id: string) => ({
-    id,
-    call_id: 'c1',
-    kind: 'late_answer',
-    text: '메도빅 문의 답변이에요. 사장님께 여쭤보니 네, 된다고 하세요.',
-    sent_at: '2026-11-08T16:07:00+09:00',
-    sent_label: '16:07',
-    question_id: 'c1-q1',
-    translate_failed: false,
-  })
-
-  beforeEach(() => {
-    FakeEventSource.instances = []
-    vi.stubGlobal('EventSource', FakeEventSource)
-  })
-
-  it('opens the text stream for this call when the server ends the call', async () => {
+describe('no received-text stream after the call (주문 현황으로 대체, 전화 주문 현황 티켓 05)', () => {
+  it('keeps the texts that came with the end of the call and opens no stream', async () => {
+    const opened: string[] = []
+    vi.stubGlobal(
+      'EventSource',
+      class {
+        constructor(url: string) {
+          opened.push(url)
+        }
+      },
+    )
     const { call, ws } = await liveCall()
-    expect(FakeEventSource.instances).toHaveLength(0) // 통화 중에는 열지 않는다
-    ws.server({ type: 'call.ended', turn: 6, reason: 'confirmed', sms: [text('c1-s1')] })
+    const sms = {
+      id: 'c1-s1',
+      call_id: 'c1',
+      kind: 'order',
+      text: '주문이 확정됐어요. 메도빅 1개, 합계 7,500원. 18:30에 준비해 둘게요.',
+      sent_at: '2026-11-08T16:05:00+09:00',
+      sent_label: '16:05',
+      question_id: '',
+      translate_failed: false,
+    }
+    ws.server({ type: 'call.ended', turn: 6, reason: 'confirmed', sms: [sms] })
     ws.onclose?.()
-    const [source] = FakeEventSource.instances
-    expect(source.url).toBe('/api/phone/calls/c1/sms')
-    source.emit('sms.snapshot', { call_id: 'c1', sms: [text('c1-s1')] })
-    source.emit('sms', text('c1-s2'))
-    expect(call.getState().texts.map((t) => t.id)).toEqual(['c1-s1', 'c1-s2'])
-  })
-
-  it('opens it when the customer hangs up, and closes it on a redial', async () => {
-    const { call } = await liveCall()
-    call.hangup()
-    expect(FakeEventSource.instances).toHaveLength(1)
-    call.dial()
-    expect(FakeEventSource.instances[0].closed).toBe(true)
-    expect(call.getState().texts).toEqual([])
-  })
-
-  it('does not open a stream for a call that never connected', () => {
-    const call = new PhoneCall()
-    call.dial()
-    call.hangup()
-    expect(FakeEventSource.instances).toHaveLength(0)
+    expect(call.getState().texts).toEqual([sms])
+    expect(opened).toEqual([]) // 통화 뒤 결정은 주문 현황 화면이 주문 번호별 스트림으로 받는다
   })
 })
