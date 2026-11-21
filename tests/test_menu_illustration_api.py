@@ -8,7 +8,7 @@ import test_owner_assistant as base
 from agenthan.agent import owner_assistant as owner
 from agenthan.app import place
 from agenthan.app.server import create_app
-from agenthan.illustration import library
+from agenthan.illustration import embedding_index, library
 from agenthan.tools.dummy_store import SEED_PATH
 
 FakeChat = base.FakeChat
@@ -73,3 +73,38 @@ def test_seed_menus_without_a_clue_get_a_category_default(tmp_path, mock_index):
 def test_an_empty_menu_session_stays_empty(tmp_path, mock_index):
     body = client(tmp_path, mock_index).post("/assistant/sessions?menu=empty").json()
     assert body["place"]["menu"] == []
+
+
+def test_opening_a_session_embeds_an_unknown_menu_once(tmp_path, mock_index, monkeypatch):
+    """라이브러리에 없는 이름(키워드도 끝말도 없음)은 임베딩으로 가까운 그림을 받고,
+    같은 이름은 한 번만, 다시 열 때는 부르지 않는다."""
+    tea = next(row for row in library.load_catalog() if row["id"] == "default_tea")
+    near_tea = [1.0] + [0.0] * 1023
+    monkeypatch.setattr(
+        embedding_index,
+        "stored",
+        lambda: {"default_tea": {"text": embedding_index.embedding_text(tea), "vector": near_tea}},
+    )
+    calls = []
+
+    def embed(text):
+        calls.append(text)
+        return near_tea
+
+    def make(path):
+        assistant = owner.OwnerAssistant(path, chat=FakeChat(), embed=lambda _: mock_index["menu"])
+        data = assistant.store.read()
+        data["menus"] = [
+            {"id": "x1", "name": "쀍뷁 한 잔", "price": 5000},
+            {"id": "x2", "name": "쀍뷁 한 잔", "price": 6000},
+        ]
+        assistant.store.write(data)
+        return assistant
+
+    api = TestClient(create_app(make_assistant=make, root=tmp_path, illustration_embed=embed))
+    body = api.post("/assistant/sessions").json()
+    urls = [row["illustration_url"] for row in body["place"]["menu"]]
+    assert urls == ["/illustrations/default_tea.svg"] * 2
+    assert calls == ["쀍뷁 한 잔"]
+    api.get(f"/assistant/sessions/{body['session_id']}/place")
+    assert calls == ["쀍뷁 한 잔"]

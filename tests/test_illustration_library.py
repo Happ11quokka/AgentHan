@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from agenthan.illustration import library
+from agenthan.illustration import embedding_index, library
 from agenthan.illustration.art import build
 from agenthan.illustration.matcher import normalize
 
@@ -59,3 +59,16 @@ def test_generated_files_match_the_generator():
         assert path.read_text(encoding="utf-8") == text, f"{path.name}: 생성기를 다시 돌리세요"
     on_disk = set(build.SVG_DIR.glob("*.svg")) | set(library.CATALOG_DIR.glob("*.json"))
     assert on_disk == set(expected), "목록에 없는 생성물이 남아 있어요"
+
+
+def test_the_embedding_index_matches_the_catalog():
+    """그림을 더하거나 이름·별칭을 고쳤으면(병합 뒤에도) 임베딩 인덱스를 다시 만든다:
+    uv run --env-file .env python -m agenthan.illustration.build_index"""
+    stored = embedding_index.stored()
+    assert set(stored) == {row["id"] for row in CATALOG}, "인덱스를 다시 만드세요"
+    stale = [
+        row["id"]
+        for row in CATALOG
+        if stored[row["id"]]["text"] != embedding_index.embedding_text(row)
+    ]
+    assert stale == [], "이름·별칭이 바뀐 그림이 있어요. 인덱스를 다시 만드세요"

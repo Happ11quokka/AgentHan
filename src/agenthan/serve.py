@@ -114,9 +114,13 @@ def include_assistant(app: FastAPI, env: Mapping[str, str]) -> None:
     from agenthan.app import pilot
     from agenthan.app.server import DEFAULT_ROOT
     from agenthan.app.server import create_app as create_assistant_app
+    from agenthan.core.embedding import embed_text
 
     root = env.get(SESSIONS_ENV, "").strip() or DEFAULT_ROOT
-    app.include_router(create_assistant_app(make_assistant=pilot.assistant, root=root).router)
+    assistant = create_assistant_app(
+        make_assistant=pilot.assistant, root=root, illustration_embed=embed_text
+    )
+    app.include_router(assistant.router)
     log.info("사장님 비서(/assistant) 붙임, 대화 파일은 %s", root)
 
 

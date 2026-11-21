@@ -20,6 +20,7 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
+from agenthan.core.embedding import embed_text
 from agenthan.illustration import assign_missing
 from agenthan.tools.dummy_store import DummyStoreError
 
@@ -115,9 +116,12 @@ class Session:
         assistant: OwnerAssistant,
         clock: Callable[[], datetime] = datetime.now,
         drafts: bool = False,
+        illustration_embed: Callable[[str], list[float]] | None = None,
     ):
         self.id = session_id
         self.assistant = assistant
+        # 대표 그림 고르기의 임베딩 단계(None이면 키워드·분류 기본 그림만). create_app 참고.
+        self.illustration_embed = illustration_embed
         # 답글 초안 미리 쓰기(#33): 켜져 있으면 새 리뷰마다 초안을 백그라운드로 미리 쓴다
         self.drafts = drafts
         assistant.clock = clock  # 리뷰 보고 미리보기의 '다음 보고' 시각도 같은 시계로
@@ -247,7 +251,7 @@ def fill_illustrations(session: Session) -> None:
     store = session.assistant.store
     with store.lock:
         data = store.read()
-        if assign_missing(data["menus"]):
+        if assign_missing(data["menus"], session.illustration_embed):
             store.write(data)
 
 
@@ -260,9 +264,12 @@ def create_app(
     root: str | Path = DEFAULT_ROOT,
     prepare_on_start: bool = False,
     clock: Callable[[], datetime] = datetime.now,
+    illustration_embed: Callable[[str], list[float]] | None = None,
 ) -> FastAPI:
     """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
-    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다)."""
+    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다).
+    illustration_embed: 대표 그림 고르기에서 메뉴 이름을 임베딩하는 함수. 운영 앱은 CLOVA
+    임베딩 v2, 기본값 None은 임베딩 없이 고른다(테스트가 네트워크에 닿지 않게)."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -280,7 +287,11 @@ def create_app(
         folder = root / session_id
         folder.mkdir(parents=True)
         session = sessions[session_id] = Session(
-            session_id, make_assistant(folder / "store.json"), clock, drafts=prepare_on_start
+            session_id,
+            make_assistant(folder / "store.json"),
+            clock,
+            drafts=prepare_on_start,
+            illustration_embed=illustration_embed,
         )
         if menu == "empty":
             store = session.assistant.store
@@ -519,4 +530,6 @@ def create_app(
     return app
 
 
-app = create_app(make_assistant=pilot.assistant, prepare_on_start=True)
+app = create_app(
+    make_assistant=pilot.assistant, prepare_on_start=True, illustration_embed=embed_text
+)
