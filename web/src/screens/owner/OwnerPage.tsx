@@ -19,6 +19,7 @@
 // 주문 승인 티켓 02: 주문 카드는 확인 요청 카드다. 확인 대기면 대기 단계·카운트다운·[수락], 수락하면
 // 초록 "수락 · 픽업 시각", 확인 요청 없이 확정된 주문은 "자동 확정(사장님 화면 꺼짐)". 손님이 기다리는
 // 중에 고치거나 취소하면 버튼을 숨긴다.
+// 주문 승인 티켓 03: 통화 뒤 대기는 분:초 카운트다운(요청 연 때부터 5분), 자동 취소 카드는 회색에 버튼 없음.
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
@@ -69,6 +70,7 @@ import {
   type OwnerText,
   PAPAGO_URL,
   answerLabel,
+  approvalLeft,
   captionView,
   knowledgeView,
   lineView,
@@ -91,11 +93,13 @@ const ANSWERS: OwnerAnswer[] = ['yes', 'no', 'unsure']
 function OrderDecision({
   card,
   nowMs,
+  lang,
   text,
   onAccept,
 }: {
   card: OrderCard
   nowMs: number
+  lang: OwnerLang
   text: OwnerText
   onAccept: () => void
 }) {
@@ -107,7 +111,7 @@ function OrderDecision({
         <p className="owner-approval-wait">
           {card.stage && <span>{text.approvalStage[card.stage]}</span>}{' '}
           <span className={clock === 'late' ? 'owner-question-late' : 'owner-approval-clock'}>
-            {clock === 'late' ? text.late : text.secondsLeft(clock)}
+            {clock === 'late' ? text.late : approvalLeft(clock, lang)}
           </span>
         </p>
         <button type="button" className="owner-btn owner-btn-accept" onClick={onAccept}>
@@ -116,6 +120,7 @@ function OrderDecision({
       </div>
     )
   }
+  if (outcome === 'expired') return <p className="owner-expired">{text.expired}</p>
   if (outcome === 'changing' || outcome === 'cancelled') {
     return <p className="owner-withdrawn">{text.withdrawn[outcome === 'changing' ? 'changed' : 'cancelled']}</p>
   }
@@ -321,7 +326,13 @@ export default function OwnerPage() {
             <CardLines lines={card.lines} lang={lang} text={text} />
             {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
             <SentTexts texts={card.sms} lang={lang} />
-            <OrderDecision card={card} nowMs={hubNow} text={text} onAccept={() => accept(card.id)} />
+            <OrderDecision
+              card={card}
+              nowMs={hubNow}
+              lang={lang}
+              text={text}
+              onAccept={() => accept(card.id)}
+            />
           </article>
         ))}
       </section>

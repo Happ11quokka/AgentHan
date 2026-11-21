@@ -3,13 +3,14 @@
 // (리뷰 C10: 두 화면에 같은 타입이 따로 있던 것을 합쳤다).
 
 /**
- * 문자 하나. order: 주문 확정 안내. late_answer: 통화에서 못 전한 사장님 버튼 답(시간 초과·통화 끝
+ * 문자 하나. order: 주문 확정 안내. expired: 확인 요청 자동 취소(사장님이 마감 안에 결정하지 않음, 주문
+ * 승인 티켓 03). late_answer: 통화에서 못 전한 사장님 버튼 답(시간 초과·통화 끝
  * 뒤, 또는 손님이 말하는 중이라 말하지 못한 제시간 답). free_answer: 사장님이 글로 남긴 답(번역)
  */
 export interface CustomerText {
   id: string
   call_id: string
-  kind: 'order' | 'late_answer' | 'free_answer'
+  kind: 'order' | 'expired' | 'late_answer' | 'free_answer'
   /** 손님이 받는 한국어 문장 */
   text: string
   sent_at: string

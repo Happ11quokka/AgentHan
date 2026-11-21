@@ -47,6 +47,8 @@ export interface OwnerText {
   acceptedAt: (pickup: string) => string
   autoAccepted: string
   withdrawn: Record<'changed' | 'cancelled', string>
+  /** 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 마감 안에 결정하지 않아 손님에게 취소 문자가 갔다 */
+  expired: string
   sectionLive: string
   sectionFollowUp: string
   sectionOrders: string
@@ -124,6 +126,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     acceptedAt: (pickup) => `Принят · ${pickup}`,
     autoAccepted: 'Принят автоматически (экран был выключен)',
     withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
+    expired: 'Автоотмена: заказ не подтверждён вовремя',
     sectionLive: 'Идут звонки',
     sectionFollowUp: 'Звонки для проверки',
     sectionOrders: 'Заказы',
@@ -142,6 +145,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sms: 'SMS клиенту',
     smsKind: {
       order: 'Подтверждение заказа',
+      expired: 'Автоотмена заказа',
       late_answer: 'Ваш ответ после звонка',
       free_answer: 'Ваш ответ текстом',
     },
@@ -207,6 +211,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     acceptedAt: (pickup) => `수락 · ${pickup}`,
     autoAccepted: '자동 확정(사장님 화면 꺼짐)',
     withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
+    expired: '자동 취소 · 시간 안에 확인 못 함',
     sectionLive: '통화 중',
     sectionFollowUp: '확인할 통화',
     sectionOrders: '주문',
@@ -225,6 +230,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sms: '손님에게 보낸 문자',
     smsKind: {
       order: '주문 확정 안내',
+      expired: '자동 취소 안내',
       late_answer: '늦은 답(통화에서 못 전함)',
       free_answer: '글로 남긴 답',
     },
@@ -317,6 +323,15 @@ export function questionView(
 export function answerLabel(yesNo: boolean | undefined, answer: OwnerAnswer, lang: OwnerLang): string {
   const text = OWNER_TEXT[lang]
   return yesNo && answer !== 'unsure' ? text.answerContains[answer] : text.answer[answer]
+}
+
+/**
+ * 확인 대기 카드의 남은 시간 (주문 승인 티켓 03). 통화 중 20초는 `20초`처럼 초로, 통화 뒤 5분은
+ * `4:59`처럼 분:초로 보인다(300초는 읽기 어렵다)
+ */
+export function approvalLeft(seconds: number, lang: OwnerLang): string {
+  if (seconds < 60) return OWNER_TEXT[lang].secondsLeft(seconds)
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
 /**

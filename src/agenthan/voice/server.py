@@ -44,7 +44,7 @@ from agenthan.voice import adapters
 from agenthan.voice.gate import CallGate
 from agenthan.voice.housekeeping import INTERVAL_S, Housekeeper
 from agenthan.voice.owner.decisions import DecisionSink
-from agenthan.voice.owner.http import customer_texts_router, owner_router
+from agenthan.voice.owner.http import TEXTS_WINDOW_S, customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
 from agenthan.voice.runtime import HcxRuntime
@@ -104,7 +104,8 @@ def create_app(
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
     hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
                    question_wait_s=settings.owner_wait_s,
-                   approval_wait_s=settings.approval_wait_s, limits=settings.hub_limits(),
+                   approval_wait_s=settings.approval_wait_s,
+                   approval_expire_s=settings.approval_expire_s, limits=settings.hub_limits(),
                    decision_sink=decision_sink)
     # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
     gate = make_gate(settings)
@@ -166,7 +167,10 @@ def create_app(
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))
-    app.include_router(customer_texts_router(hub))  # 손님 "받은 문자" 스트림 (티켓 07)
+    # 손님 "받은 문자" 스트림 (티켓 07). 통화 뒤 확인 대기의 결정·자동 취소 문자까지 받게 그
+    # 마감보다 1분 길게 연다 (주문 승인 티켓 03)
+    app.include_router(customer_texts_router(
+        hub, window_s=max(TEXTS_WINDOW_S, settings.approval_expire_s + 60)))
     if not settings.owner_key:
         log.warning("PHONE_OWNER_KEY가 없어 사장님 화면(/api/owner/*)이 잠겨 있음 (모두 401)")
     if (settings.web_dist / "index.html").is_file():

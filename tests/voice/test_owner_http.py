@@ -177,6 +177,53 @@ def test_with_approval_switched_off_an_open_owner_screen_does_not_hold_the_call(
     assert (card["status"], card["auto_accepted"]) == ("accepted", True)
 
 
+def test_no_decision_in_the_call_promises_a_text_and_the_card_expires_after_the_call(
+    tmp_path,
+) -> None:
+    """끝에서 끝 (주문 승인 03): 통화 중 대기 초과 → 문자 약속 → 통화 뒤 대기 → 자동 취소(409).
+
+    시연 시계(`PHONE_NOW`)는 실제 초로 흐르니 대기·자동 취소를 짧게 둔다. 자동 취소는 허브가 건
+    루프 타이머가 낸다(누가 부르지 않아도).
+    """
+    settings = VoiceSettings(
+        log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
+        fake_replies=ORDER_SCRIPT, turn_model="off", owner_key=KEY,
+        approval_wait_s=0.3, approval_expire_s=1.0,
+    )
+    with TestClient(create_app(settings)) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            events = _sse(stream.iter_lines())
+            next(events)  # snapshot
+            with client.websocket_connect(WS_PATH) as ws:
+                phone = Phone(ws)
+                phone.send(type="call.start", turn=0)
+                phone.until("call.ready", 0)
+                phone.played(0)
+                for turn in (1, 2, 3, 4):
+                    phone.say(turn)
+                    phone.played(turn)
+                order = phone.until("order", 5)  # 봇이 먼저 말하는 턴: 문자 약속
+                phone.played(5)
+                assert phone.closed_by_server()
+            card = _until(events, "order.update")["data"]
+            while card["stage"] != "after_call":
+                card = _until(events, "order.update")["data"]
+            assert card["status"] == "new"  # 통화 뒤 대기: 아직 결정을 받는다
+            expired = _until(events, "order.update")["data"]
+        url = f"/api/owner/orders/{card['id']}/accept?key={KEY}"
+        refused = client.post(url)
+
+    later = " ".join(e["text"] for e in phone.of("bot.say", 5))
+    assert later.startswith("가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요.")
+    assert order["order"]["status"] == "confirmed"  # 주문서는 넘어간다
+    (ended,) = phone.of("call.ended")
+    assert (ended["reason"], ended["sms"]) == ("confirmed", [])  # 확정 문자는 아직
+    assert expired["status"] == "expired"
+    assert [t["text"] for t in expired["sms"]] == [
+        "가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요."]
+    assert refused.status_code == 409
+
+
 def test_owner_paths_need_the_secret_key(tmp_path) -> None:
     with _client(tmp_path) as client:
         assert client.get(STREAM).status_code == 401

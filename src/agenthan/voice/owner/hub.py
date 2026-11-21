@@ -19,6 +19,13 @@
 - 결정 기록(티켓 10, `decisions.py`): `order.update`를 보낼 때마다 카드의 결정(처리 상태·사유·
   결정 시각·바뀐 픽업 시각)이 지난번과 달라졌으면 `decision_sink`로 넘긴다. 결정을 바꾸는 코드는
   카드 칸만 채우고 `order.update`를 보내면 된다. sink가 없으면 메모리(카드)만
+- 통화 뒤 대기와 자동 취소 (주문 승인 티켓 03): 결정 없이 통화가 끝나면(어떤 이유든, 손님이 대기
+  중 취소한 요청은 빼고) 카드는 `stage` after_call, 마감은 요청을 연 시각 + `approval_expire_s`
+  (기본 5분)다. 그 안에 수락하면 확정 문자만 간다(통화는 끝났다). 마감이 지나면 처리 상태
+  expired(자동 취소, 결정을 안 받는다 → `AlreadyDecided`)가 되고 손님에게 자동 취소 문자를 남긴다.
+  마감은 허브 시계(`clock.now()`)로 잰다: 허브가 가장 이른 마감에 루프 타이머를 걸어
+  `expire_due`를 부르고, 결정(`accept`)·새 구독(`events`) 앞에서도 한 번 부른다(타이머가 늦어도
+  마감 지난 카드에 결정이 들어가지 않게). 시험은 가짜 시계를 옮기고 `expire_due`를 부른다
 - 통화 카드(`call.update`, 티켓 02): 통화 중(live) → 확정되면 ordered(같은 id의 주문 카드가 생기고
   통화 카드는 빠진다) · 넘김이면 handoff("손님 연락 필요", 장바구니 + 마지막 손님 말 3줄) · 확정
   없이 끝나면 missed(회색 미완료, 담긴 메뉴 + 끝난 이유). handoff·missed는 사장님이 닫는다(closed)
@@ -36,7 +43,8 @@
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
 - 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
   주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
-  (order), 늦은 버튼 답(late_answer, 시간 초과·통화 끝 카드에 온 답), 자유 입력 답(free_answer,
+  (order), 확인 요청 자동 취소(expired, 주문 승인 티켓 03), 늦은 버튼 답(late_answer, 시간
+  초과·통화 끝 카드에 온 답), 자유 입력 답(free_answer,
   제시간이든 늦든. 사장님 글을 한국어로 번역해 넣고, 안 되면 원문 + `translate_failed`).
   손님 통화 화면은 `call.ended`(세션이 `customer_texts`로 담음)와 `watch_texts` 스트림으로 받는다
 - "손님이 궁금해한 것" 카드(`knowledge.update`, 티켓 13): AI가 답하지 못한 메뉴 질문. 보충 요청
@@ -199,6 +207,8 @@ class OwnerHub:
         self._approval_wait = timedelta(seconds=approval_wait_s)
         self._approval_expire = timedelta(seconds=approval_expire_s)
         self._deciders: dict[str, Callable[[OwnerDecision], None]] = {}
+        # 가장 이른 자동 취소 마감에 건 루프 타이머 (주문 승인 티켓 03, `_arm_expiry`)
+        self._expiry: asyncio.TimerHandle | None = None
         self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
         self._replies: dict[str, Callable[[OwnerNote], None]] = {}  # 답을 아직 안 넘긴 질문
         self._said: set[str] = set()  # 통화가 손님에게 답을 말한 질문 id (리뷰 C1)
@@ -278,10 +288,12 @@ class OwnerHub:
         """수락 버튼(주문 승인 티켓 02): 확인 대기(new) → accepted. 바뀐 카드를 돌려준다.
 
         확정 문자를 보내고, 통화 중이면 결정을 통화 세션에 넘긴다(손님이 마무리 대사를 듣는다).
-        없으면 `UnknownCard`, 이미 결정했으면 `AlreadyDecided`(두 화면에서 같이 눌러도 한 번),
+        없으면 `UnknownCard`, 이미 결정했거나 자동 취소됐으면 `AlreadyDecided`(두 화면에서 같이
+        눌러도 한 번),
         손님이 고치는 중·취소한 요청이면 `CardBusy`. 늦춘 분은 지금 0만 받는다(`ValueError`,
         티켓 04가 15·30을 연다).
         """
+        self.expire_due()  # 마감이 지난 카드는 먼저 자동 취소한다(타이머가 늦었어도 409)
         card = self._orders.get(order_id)
         if card is None:
             raise UnknownCard(order_id)
@@ -298,6 +310,25 @@ class OwnerHub:
         if reply is not None:
             self._tell_call(reply, OwnerDecision(card["request"], "accept", delay_min), order_id)
         return self._orders[order_id]
+
+    def expire_due(self) -> list[str]:
+        """자동 취소 (주문 승인 티켓 03): 확인 요청을 연 때 + `approval_expire_s`가 허브 시계로
+        지난 확인 대기 카드를 expired로 바꾸고 손님에게 자동 취소 문자를 남긴다. 바꾼 카드 id들.
+
+        허브가 마감 타이머로 스스로 부른다. 결정·새 구독 앞에서도 부른다. 여러 번 불러도 된다.
+        손님이 고치는 중·취소한 요청(`withdrawn`)은 결정을 기다리는 카드가 아니라 건드리지 않는다.
+        """
+        now = self._clock.now()
+        due = [card["id"] for card in self._orders.values()
+               if _awaiting(card) and self._expires_at(card) <= now]
+        for call_id in due:
+            self._deciders.pop(call_id, None)  # 아직 통화 중이면 그 세션에는 결정이 가지 않는다
+            self._orders[call_id] = {**self._orders[call_id], "status": "expired",
+                                     "decided_at": now.isoformat()}
+            log.info("확인 요청 자동 취소: %s", call_id)
+            self._text_customer(call_id, "expired", sms.expired_text())  # 카드도 다시 보낸다
+        self._arm_expiry()
+        return due
 
     def dismiss(self, call_id: str) -> dict[str, Any]:
         """닫기 버튼(넘김·미완료 카드): → closed. 바뀐 카드를 돌려준다.
@@ -431,6 +462,7 @@ class OwnerHub:
     async def events(self) -> AsyncIterator[OwnerEvent]:
         """구독. 처음에 `snapshot` 하나, 그 뒤 바뀐 카드마다 이벤트 하나. 닫으면 구독을 푼다."""
         self._bind()
+        self.expire_due()  # 새 화면이 마감 지난 카드를 확인 대기로 보지 않게
         queue: asyncio.Queue[OwnerEvent] = asyncio.Queue()
         self._subscribers.add(queue)
         try:
@@ -494,6 +526,34 @@ class OwnerHub:
         self._publish("order.update", card)
         self._translate_later(card)
         self._prune()
+        self._arm_expiry()
+
+    def _expires_at(self, card: dict[str, Any]) -> datetime:
+        """자동 취소 마감: 확인 요청을 연 시각 + `approval_expire_s` (통화 중이든 뒤든 같다)."""
+        return datetime.fromisoformat(card["requested_at"]) + self._approval_expire
+
+    def _arm_expiry(self) -> None:
+        """가장 이른 자동 취소 마감에 루프 타이머를 다시 건다. 기다리는 카드가 없으면 끈다.
+
+        마감까지의 시간은 허브 시계로 잰다(`PHONE_NOW` 시연 시계도 실제 초로 흐른다). 루프 밖(동기
+        시험)이면 걸지 않는다. 그때는 `expire_due`를 직접 부른다.
+        """
+        if self._expiry is not None:
+            self._expiry.cancel()
+            self._expiry = None
+        due = [self._expires_at(card) for card in self._orders.values() if _awaiting(card)]
+        if not due:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        delay = max(0.0, (min(due) - self._clock.now()).total_seconds())
+        self._expiry = loop.call_later(delay, self._on_expiry)
+
+    def _on_expiry(self) -> None:
+        self._expiry = None
+        self.expire_due()  # 마감 전이면(시계가 덜 갔으면) 아무것도 안 바꾸고 다시 건다
 
     def _withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         """손님이 고치거나 취소해 요청을 거뒀다. 카드는 결정을 안 받는다(새 요청이 대신한다)."""
@@ -534,7 +594,7 @@ class OwnerHub:
         entry = {
             "id": f"{call_id}-s{len(texts) + 1}",
             "call_id": call_id,
-            "kind": kind,  # order · late_answer · free_answer
+            "kind": kind,  # order · expired · late_answer · free_answer
             "text": text,  # 손님이 받는 한국어 문장
             "sent_at": now.isoformat(),
             "sent_label": now.strftime("%H:%M"),
@@ -635,10 +695,10 @@ class OwnerHub:
         order = self._orders.get(call_id)
         waiting = order is not None and order["status"] == "new" and not order["withdrawn"]
         if waiting and order is not None and order["stage"] == "in_call":
-            # 결정을 못 받고 통화가 끝났다: 통화 뒤 대기. 마감은 요청을 연 때부터(자동 취소는 03)
-            opened = datetime.fromisoformat(order["requested_at"])
+            # 결정을 못 받고 통화가 끝났다(손님 끊음·오류·시간 초과 문자 약속 모두): 통화 뒤 대기.
+            # 마감은 요청을 연 때부터. 지나면 `expire_due`가 자동 취소한다 (티켓 03)
             self._orders[call_id] = {**order, "stage": "after_call",
-                                     "deadline_at": (opened + self._approval_expire).isoformat()}
+                                     "deadline_at": self._expires_at(order).isoformat()}
             self._publish("order.update", self._orders[call_id])
         call = self._calls.get(call_id)
         if call is not None and call["status"] == "live":
@@ -1070,6 +1130,11 @@ class _Captions:
     def add(self, who: str, text: str) -> None:
         self._count += 1
         self.lines.append((self._count, who, text))
+
+
+def _awaiting(card: dict[str, Any]) -> bool:
+    """사장님 결정을 기다리는 확인 요청 카드: 확인 대기(new), 요청 있음, 손님이 거두지 않음."""
+    return card["status"] == "new" and bool(card.get("request")) and not card.get("withdrawn")
 
 
 def _over(cards: list[dict[str, Any]], stamp: str, max_count: int, max_hours: float,

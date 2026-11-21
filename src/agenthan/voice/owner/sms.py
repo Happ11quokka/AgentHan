@@ -29,6 +29,12 @@ def order_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) 
     return " ".join(parts)
 
 
+def expired_text() -> str:
+    """확인 요청 자동 취소 (주문 승인 티켓 03): 사장님이 마감(요청을 연 때부터 5분) 안에 결정하지
+    않았다. 손님은 통화에서 "확정 문자를 받으시면 주문 완료예요"를 들었다."""
+    return "가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요."
+
+
 def late_answer_text(menu_name: str, answer: str, *, subject: str = "") -> str:
     """늦은 버튼 답(시간 초과 뒤·통화 끝 뒤). 통화에서 말했을 문장과 같은 고정 존댓말.
 

@@ -99,3 +99,19 @@ def test_later_decision_kinds_map_from_plain_card_fields() -> None:
         "call-3", "accepted", "", LATER.isoformat(), "2026-11-08T18:45:00+09:00")
     assert _fields(decision_of(expired)) == ("call-4", "expired", "", "", "")
     assert decision_of({"id": "call-5", "status": "new"}) is None
+
+
+def test_an_after_call_request_that_expires_is_recorded_once_as_expired() -> None:
+    """통화 뒤 대기가 5분 마감을 넘기면(티켓 03 `expire_due`) expired가 결정 시각과 기록된다."""
+    sink, clock = Recorded(), FakeClock(NOW)
+    hub = _hub(sink, clock)
+    hub.open_approval("call-1", ApprovalRequest(1, _order()), lambda d: None)
+    hub.call_ended("call-1", "hangup")
+    assert sink.decisions == []
+    expired_at = datetime.fromisoformat("2026-11-08T16:07:00+09:00")  # 요청 + 300초
+    clock.set(expired_at)
+    assert hub.expire_due() == ["call-1"]
+    hub.expire_due()  # 다시 불러도 같은 결정은 다시 넘기지 않는다
+    (record,) = sink.decisions
+    assert _fields(record) == ("call-1", "expired", "", expired_at.isoformat(), "")
+    assert record.order == _order()

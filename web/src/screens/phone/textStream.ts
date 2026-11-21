@@ -1,11 +1,14 @@
 // 통화 뒤 "받은 문자" 스트림 (4단계 티켓 07, 서버 `voice/owner/http.py` customer_texts_router).
 // 통화가 끝나면 통화 id로 짧은 SSE를 열어 사장님의 늦은 답 같은 문자를 받는다. 실제 문자는 보내지 않는다.
 // 토큰은 없다(통화 id는 추측할 수 없는 값). 서버는 먼저 `sms.snapshot`, 그 뒤 새 문자마다 `sms`,
-// 2분이 지나면 `sms.end`를 보내고 닫는다. EventSource는 서버가 닫으면 다시 붙으므로 `sms.end`에서 닫는다.
+// 6분이 지나면 `sms.end`를 보내고 닫는다. EventSource는 서버가 닫으면 다시 붙으므로 `sms.end`에서 닫는다.
 import type { CustomerText } from './callState.ts'
 
-/** 문자 스트림을 열어 두는 시간 (spec "최대 2분"). 서버도 같은 시간에 `sms.end`로 닫는다 */
-export const TEXTS_WINDOW_MS = 120_000
+/**
+ * 문자 스트림을 열어 두는 시간. 서버도 같은 시간에 `sms.end`로 닫는다. 4단계 spec "최대 2분"을 주문 승인
+ * 티켓 03이 늘렸다: 통화 뒤 확인 대기(기본 5분)의 수락·자동 취소 문자까지 받는다
+ */
+export const TEXTS_WINDOW_MS = 360_000
 
 /** `EventSource.CLOSED` (시험 환경에는 EventSource가 없다) */
 const SOURCE_CLOSED = 2
