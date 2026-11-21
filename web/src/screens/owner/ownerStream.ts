@@ -48,6 +48,9 @@ export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => vo
   source.addEventListener('knowledge.update', (e) => {
     dispatch({ type: 'knowledge.update', data: JSON.parse((e as MessageEvent<string>).data) })
   })
+  source.addEventListener('owner.sold_out', (e) => {
+    dispatch({ type: 'owner.sold_out', data: JSON.parse((e as MessageEvent<string>).data) })
+  })
   source.onerror = () => {
     // 200이 아니면(토큰 틀림 401) 브라우저가 다시 붙지 않고 CLOSED가 된다. 그 밖은 스스로 다시 붙는다
     dispatch({ type: source.readyState === EventSource.CLOSED ? 'failed' : 'lost' })
@@ -87,6 +90,14 @@ export function acceptOrder(key: string, orderId: string): Promise<boolean> {
  */
 export function rejectOrder(key: string, orderId: string, body: RejectBody): Promise<boolean> {
   return act(key, `orders/${id(orderId)}/reject`, body)
+}
+
+/**
+ * 품절 되돌리기 (주문 승인 티켓 06). 오늘 품절에서 그 메뉴를 빼 다음 통화부터 다시 받는다. 바뀐
+ * 목록은 SSE `owner.sold_out`으로 온다. 실패(없는 메뉴 404 등)면 false
+ */
+export function undoSoldOut(key: string, menuId: string): Promise<boolean> {
+  return act(key, `sold-out/${id(menuId)}/undo`)
 }
 
 /** 닫기 버튼(넘김·미완료 통화 카드). 실패(통화 중·주문됨 409 등)면 false */

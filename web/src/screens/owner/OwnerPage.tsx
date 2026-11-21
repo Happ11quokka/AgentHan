@@ -21,10 +21,11 @@
 // 중에 고치거나 취소하면 버튼을 숨긴다.
 // 주문 승인 티켓 03: 통화 뒤 대기는 분:초 카운트다운(요청 연 때부터 5분), 자동 취소 카드는 회색에 버튼 없음.
 // 주문 승인 티켓 05: 확인 대기 카드의 [거절] → 사유 시트(`OrderReject.tsx`), 거절 카드는 회색 "거절 · 사유".
+// 주문 승인 티켓 06: 재료 소진은 주문 메뉴 다중 선택. 품절을 건 카드에 "품절로 바꿨어요 [되돌리기]".
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
-import { RejectButton, RejectedResult } from './OrderReject.tsx'
+import { RejectButton, RejectedResult, SoldOutMark } from './OrderReject.tsx'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
 import {
@@ -65,6 +66,7 @@ import {
   rejectOrder,
   saveKnowledge,
   seeQuestion,
+  undoSoldOut,
   wakeDevice,
 } from './ownerStream.ts'
 import {
@@ -124,7 +126,7 @@ function OrderDecision({
         <button type="button" className="owner-btn owner-btn-accept" onClick={onAccept}>
           {text.accept}
         </button>
-        <RejectButton text={text} onReject={onReject} />
+        <RejectButton text={text} lang={lang} lines={card.lines} onReject={onReject} />
       </div>
     )
   }
@@ -347,6 +349,13 @@ export default function OwnerPage() {
               text={text}
               onAccept={() => accept(card.id)}
               onReject={(body) => reject(card.id, body)}
+            />
+            <SoldOutMark
+              card={card}
+              soldOut={state.soldOut}
+              lang={lang}
+              text={text}
+              onUndo={(menuId) => void undoSoldOut(key.current, menuId)}
             />
           </article>
         ))}

@@ -13,7 +13,7 @@ import {
 } from './ownerState.ts'
 import { rejectOrder } from './ownerStream.ts'
 import { OWNER_TEXT, rejectedView, sentTextView } from './ownerText.ts'
-import { REJECT_REASONS, reasonOpen, rejectBody } from './rejectSheet.ts'
+import { REJECT_REASONS, rejectBody } from './rejectSheet.ts'
 
 const REQUESTED = '2026-11-08T16:02:00+09:00'
 
@@ -50,14 +50,13 @@ function card(over: Partial<OrderCard> = {}): OrderCard {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('reject reason sheet (order approval ticket 05)', () => {
-  it('lists the four reasons in the spec order, out of stock held back until ticket 06', () => {
+  it('lists the four reasons in the spec order', () => {
     expect(REJECT_REASONS).toEqual(['out_of_stock', 'busy', 'closed', 'free'])
-    expect(REJECT_REASONS.filter(reasonOpen)).toEqual(['busy', 'closed', 'free'])
   })
 
   it('sends nothing until a reason is picked', () => {
     expect(rejectBody(null, '')).toBeNull()
-    expect(rejectBody('out_of_stock', '')).toBeNull()
+    expect(rejectBody('out_of_stock', '')).toBeNull() // 메뉴를 고르기 전 (티켓 06)
   })
 
   it('sends a fixed reason at once and ignores any draft text', () => {
@@ -133,7 +132,7 @@ describe('rejected card (order approval ticket 05)', () => {
     for (const lang of ['ru', 'ko'] as const) {
       const text = OWNER_TEXT[lang]
       expect(Object.keys(text.rejectReason)).toEqual([...REJECT_REASONS])
-      expect(text.reject && text.rejectTitle && text.rejectSend && text.rejectBack && text.rejectSoon).toBeTruthy()
+      expect(text.reject && text.rejectTitle && text.rejectSend && text.rejectBack).toBeTruthy()
       expect(text.smsKind.rejected).toBeTruthy()
     }
   })

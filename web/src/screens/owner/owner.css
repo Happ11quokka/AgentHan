@@ -628,8 +628,52 @@
   border-color: var(--owner-danger);
 }
 
-.owner-reject-soon {
-  font-weight: 400;
+/* 재료 소진: 떨어진 메뉴 다중 선택 (주문 승인 티켓 06) */
+.owner-stockout-menus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.owner-stockout-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--owner-line);
+  border-radius: 8px;
+}
+
+.owner-stockout-menu input {
+  width: 20px;
+  height: 20px;
+}
+
+/* 카드의 "품절로 바꿨어요 [되돌리기]" (티켓 06) */
+.owner-soldout {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--owner-line);
+}
+
+.owner-soldout-label {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: var(--owner-danger);
+}
+
+.owner-soldout-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.owner-soldout-undone {
+  color: var(--owner-muted);
 }
 
 .owner-reject-actions {

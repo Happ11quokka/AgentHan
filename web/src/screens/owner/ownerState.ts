@@ -87,6 +87,25 @@ export interface OrderCard {
   /** 직접 쓰기 거절 글(사장님 언어)과 한국어 번역(번역 전·실패면 빈 글). 손님에게는 문자로만 */
   reject_text?: string
   reject_text_ko?: string
+  /**
+   * 이 카드에서 오늘 품절로 바꾼 메뉴 (티켓 06, 재료 소진 거절). 수락으로 바뀌거나(손님이 떨어진
+   * 메뉴만 뺌) 다시 요청한 카드에도 남는다. 지금도 품절인지는 `OwnerState.soldOut`으로 본다
+   */
+  sold_out?: SoldOutItem[]
+}
+
+/** 오늘 품절 메뉴 하나 (주문 승인 티켓 06, 서버 `owner.sold_out`·카드 `sold_out`) */
+export interface SoldOutItem {
+  menu_id: string
+  name_ko: string
+  /** 사장님 원어 이름. 비면 한국어 */
+  name_owner: string
+}
+
+/** 오늘 품절 전체: 가게 시간대 날짜와 건 순서의 메뉴. 날짜가 바뀌면 서버가 비워 다시 보낸다 */
+export interface SoldOutList {
+  date: string
+  items: SoldOutItem[]
 }
 
 /**
@@ -251,6 +270,8 @@ export type OwnerServerEvent =
         knowledge?: KnowledgeCard[]
         /** 허브 시계 지금 시각(ISO 8601). 화면이 기기 시계와의 차이를 잰다 (리뷰 C2) */
         now?: string
+        /** 오늘 품절 (주문 승인 티켓 06부터 온다) */
+        sold_out?: SoldOutList
       }
       /** snapshot을 받은 때의 기기 시각(ms). `now`와의 차이가 허브 시계 보정값이다 */
       receivedAt?: number
@@ -261,6 +282,7 @@ export type OwnerServerEvent =
   | { type: 'owner.question'; data: QuestionCard }
   | { type: 'owner.question.update'; data: QuestionCard }
   | { type: 'knowledge.update'; data: KnowledgeCard }
+  | { type: 'owner.sold_out'; data: SoldOutList }
 
 export type OwnerAction =
   | OwnerServerEvent
@@ -286,6 +308,8 @@ export interface OwnerState {
   captions: Record<string, CaptionLine[]>
   /** "손님이 궁금해한 것" 카드 전부(채운 것 포함). 먼저 생긴 카드가 앞 (티켓 13) */
   knowledge: KnowledgeCard[]
+  /** 오늘 품절 메뉴(건 순서, 티켓 06). 카드의 "품절로 바꿨어요"에 [되돌리기]를 둘지 본다 */
+  soldOut: SoldOutItem[]
   /**
    * 허브 시계 − 기기 시계(ms). 질문 카드 마감·픽업 시각은 허브 시계라 이만큼 보정해 센다
    * (`PHONE_NOW` 시연·시계가 틀린 태블릿, 리뷰 C2). 모르면 0
@@ -300,6 +324,7 @@ export const initialOwnerState: OwnerState = {
   questions: [],
   captions: {},
   knowledge: [],
+  soldOut: [],
   clockOffsetMs: 0,
 }
 
@@ -319,6 +344,7 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
         questions: action.data.questions ?? [],
         captions: Object.fromEntries((action.data.captions ?? []).map((c) => [c.call_id, c.lines])),
         knowledge: action.data.knowledge ?? [],
+        soldOut: action.data.sold_out?.items ?? [],
         clockOffsetMs: clockOffset(action.data.now, action.receivedAt),
       }
     case 'order.update': {
@@ -352,7 +378,14 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
       const knowledge = at < 0 ? [...state.knowledge, card] : state.knowledge.with(at, card)
       return { ...state, knowledge }
     }
+    case 'owner.sold_out':
+      return { ...state, soldOut: action.data.items }
   }
+}
+
+/** 그 메뉴가 지금 오늘 품절이다(되돌리기를 보인다, 티켓 06) */
+export function stillSoldOut(state: Pick<OwnerState, 'soldOut'>, menuId: string): boolean {
+  return state.soldOut.some((item) => item.menu_id === menuId)
 }
 
 function clockOffset(now: string | undefined, receivedAt: number | undefined): number {
