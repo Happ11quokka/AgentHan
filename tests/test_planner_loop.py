@@ -881,6 +881,18 @@ def test_small_talk_reuses_the_legacy_help_without_rejection(tmp_path):
     assert app.trace["scope_check"] == "none"
 
 
+def test_a_plan_with_nothing_to_do_asks_instead_of_guessing_a_feature(tmp_path):
+    # #92: 리뷰 요약 뒤 회의 잡담("…리뷰 쪽은 잘 받는 것 같고")에 HCX-005가 advice·빈 단계를 냈고,
+    # 안전망 DASH가 '리뷰' 단어로 리뷰 요약을 다시 실행했다(실측 2026-11-21).
+    hcx = HCX([], plans=[{"scope": "advice", "steps": [], "clarify": ""}])
+    app = assistant(tmp_path, hcx)
+    select_routes(app, {"feature_id": "review"})
+    app.route = lambda *_: pytest.fail("할 일 없는 계획에 기능 선택 호출")
+    reply = app.ask("어차피 저희 대회가 다 성인이에요. 그래서 리뷰 쪽은 잘 받는 것 같고")
+    assert len(hcx.plans) == 1 and not hcx.requests and not app.trace["calls"]
+    assert "도와드" in reply and app.trace["feature"] is None
+
+
 def test_hybrid_single_read_uses_legacy_sentence(tmp_path):
     text = "이번 주 정산 예정액은 116,400원이고 입금 예정일은 2026-11-13이에요."
     hcx = HCX(
