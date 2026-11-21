@@ -3122,3 +3122,95 @@ def test_with_the_store_rag_a_talktalk_answer_sees_menu_facts_and_hours(tmp_path
     material = _store_material(hcx)
     assert material["menu_facts"][0]["name"] == "메도빅"
     assert material["shop"]["hours"]["mon"]
+
+
+# ── 맥락 칩(#97): 리뷰·통계·쿠폰 뒤에 규칙 표(agent/suggest.py)의 칩이 붙는다 ──
+
+
+def chip_labels(chips):
+    return [c["label"] for c in chips]
+
+
+def test_context_chips_after_review_summary_in_chat_and_button(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "agenthan.agent.review_delegate.ask_review_agent",
+        lambda request, session: {"text": "리뷰를 확인했어요.", "blocks": ""},
+    )
+    hcx = HCX([], plans=[new("review")])
+    app = assistant(tmp_path, hcx)
+    app._review_factory = FakeBackend().review_session
+    app.ask("요즘 리뷰 어때?")
+    labels = chip_labels(app.next_actions)
+    assert labels[:2] == ["매일 리뷰 요약 받기", "불만 리뷰 답글 초안"]
+    say = app.next_actions[0]
+    assert say["action_id"] == "chat.say"
+    assert say["args"] == {"text": "매일 리뷰 요약해서 보내 줘"}
+    assert app.next_actions[1]["args"] == {"review_id": "r02"}
+    assert app.trace["next_actions"] == app.next_actions
+
+    before = app.store.read()
+    button = app.run_action("review.summary", {}, "요즘 리뷰")
+    ids = [c["action_id"] for c in button["next_actions"]]
+    assert "chat.say" in ids and ids.count("review.draft_reply") == 1
+    assert app.next_actions == button["next_actions"]
+    assert app.store.read() == before
+
+    # 리뷰 정기 보고가 이미 켜져 있으면 "매일 리뷰 요약 받기"는 뺀다.
+    box = app.review.toolbox
+    box.settings_store.save(box.ctx["store_id"], {"enabled": True, "frequency": "daily"})
+    again = app.run_action("review.summary", {}, "요즘 리뷰")
+    assert "매일 리뷰 요약 받기" not in chip_labels(again["next_actions"])
+
+
+def test_context_chips_after_statistics_in_chat_and_button(tmp_path):
+    hcx = HCX(
+        ["statistics"],
+        call("get_statistics", period="7d"),
+        {"role": "assistant", "content": "조회"},
+        {"role": "assistant", "content": "조회 흐름을 확인했어요."},
+        {"role": "assistant", "content": "[]"},
+    )
+    app = assistant(tmp_path, hcx)
+    app.ask("이번 주 손님 얼마나 왔어?")
+    labels = chip_labels(app.next_actions)
+    assert "대표 키워드 추가" in labels and "매일 리뷰 요약 받기" not in labels
+    assert len(labels) == len(set(labels))
+    assert sum(c["action_id"] == "coupon.create" for c in app.next_actions) == 1
+
+    stats = app.run_action("stats.week", {}, "이번 주 손님")
+    assert chip_labels(stats["next_actions"]) == [
+        "대표 키워드 추가",
+        "쿠폰 만들기",
+        "리뷰 요약 보기",
+    ]
+    assert stats["next_actions"][0]["action_id"] == "keywords.edit"
+    # 맥락 칩은 화면 제안일 뿐이다. 맨 "네"가 칩(쿠폰·키워드)에 대한 동의가 되지 않는다.
+    before = app.store.read()
+    assert "선택해 주세요" not in app.ask("네")
+    assert app.store.read() == before and not app.planner_loop.last_action.get("proposals")
+
+
+def test_context_chips_wait_for_the_coupon_approval_then_follow_it(tmp_path):
+    hcx = HCX(
+        ["coupon"],
+        call(
+            "create_coupon",
+            title="개점 할인",
+            discount_type="percent",
+            discount_value=12,
+            start_date="2026-11-13",
+            end_date="2026-11-15",
+        ),
+    )
+    app = assistant(tmp_path, hcx)
+    app.today = date(2026, 11, 12)
+    app.ask("내일부터 11월 15일까지 개점 할인 12% 쿠폰 만들어줘")
+    ids = [c["action_id"] for c in app.next_actions]
+    assert "task.approve" in ids
+    assert not {"stats.week", "chat.say", "review.summary"} & set(ids)
+    task = next(t for t in app.ledger.open_tasks() if t.preview)
+    done = app.run_action("task.approve", {"task_id": task.id, "version": task.version}, "저장")
+    assert app.store.read()["coupons"]
+    assert chip_labels(done["next_actions"])[0] == "이번 주 통계 보기"
+    assert "task.approve" not in [c["action_id"] for c in done["next_actions"]]
+    assert 1 <= len(done["next_actions"]) <= 3
