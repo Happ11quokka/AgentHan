@@ -75,7 +75,19 @@ describe('after-call wait and auto-cancel (order approval ticket 03)', () => {
     expect(approvalLeft(279, 'ko')).toBe('4:39')
     expect(approvalLeft(300, 'ru')).toBe('5:00')
     expect(approvalLeft(20, 'ko')).toBe('20초') // 통화 중 대기는 초로
-    expect(OWNER_TEXT.ko.approvalStage.after_call).toBe('통화 뒤 확인 (문자로 알림)')
+    // 손님은 결과를 문자가 아니라 주문 현황으로 본다 (전화 메뉴·주문 현황 티켓 04)
+    expect(OWNER_TEXT.ko.approvalStage.after_call).toBe('통화 뒤 확인')
+  })
+
+  it('a request placed with no in-call wait opens after the call with one five-minute countdown (티켓 04)', () => {
+    // 전화 메뉴·주문 현황 티켓 04: 통화 중 대기 0이면 카드가 처음부터 통화 뒤 확인이다(통화 중 20초 없음)
+    const s = run({ type: 'snapshot', data: { orders: [], calls: [], now: REQUESTED }, receivedAt: 0 }, update(card()))
+    const [placed] = s.orders
+    expect(placed.stage).toBe('after_call')
+    expect(canAccept(placed)).toBe(true)
+    expect(approvalClock(placed, storeNow(s, 0))).toBe(300)
+    expect(approvalLeft(300, 'ko')).toBe('5:00')
+    expect(OWNER_TEXT.ru.approvalStage.after_call).not.toMatch(/SMS/)
   })
 
   it('greys out an expired card without buttons and stops waiting', () => {
