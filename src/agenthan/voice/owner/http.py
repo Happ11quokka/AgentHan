@@ -52,6 +52,13 @@
   `order.status`(조회와 같은 모양), 그 뒤 현황이 달라질 때마다 `order.status`(현황 전체). 창
   (`window_s`, 서버는 자동 취소 마감 + 60초)이 지나면 `order.end`를 보내고 닫는다. 허브에 주문
   카드가 없으면 404(화면은 조회 API로 읽는다)
+- `POST /api/phone/orders/{id}/cancel`: 손님 취소 (티켓 07). 본문 없음. 가게 확인 중인 통화 뒤
+  요청과 늦춘 수락만 받는다(조회의 `can_cancel`). 받으면 바뀐 현황(200, stage cancelled · outcome
+  customer_cancelled). 받지 않으면 409 `{"detail": {"code", "message", "order"}}`: `code`는 거부
+  사유(accepted · auto 제시간·자동 확정, rejected · out_of_stock 거절, expired 자동 취소,
+  customer_cancelled 이미 취소함, in_call 통화가 손님 말을 받는 중), `message`는 손님 화면 한 줄,
+  `order`는 지금 현황(진 쪽 화면이 이긴 결과를 보인다). 허브 카드만 받는다: 허브에 없는 주문(모르는
+  번호·지워진 카드·DB에서만 읽히는 주문)은 404 "주문을 찾을 수 없어요"
 
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
   못 붙여서 쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -77,10 +84,12 @@ from agenthan.voice.owner.hub import (
     AlreadyAnswered,
     AlreadyDecided,
     CardBusy,
+    NotCancellable,
     OwnerEvent,
     OwnerHub,
     UnknownCard,
 )
+from agenthan.voice.owner.order_status import CANCEL_REFUSED
 
 OWNER_PREFIX = "/api/owner"
 CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
@@ -251,6 +260,7 @@ def customer_orders_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) -
 
     `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 없으면 404.
     `GET /api/phone/orders/{id}/stream`: 그 현황의 SSE(`order.status` …, `window_s` 뒤 `order.end`).
+    `POST /api/phone/orders/{id}/cancel`: 손님 취소(티켓 07, 모듈 설명).
     """
     router = APIRouter(prefix=CUSTOMER_ORDERS_PREFIX)
 
@@ -263,6 +273,16 @@ def customer_orders_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) -
     async def order_status(order_id: str) -> dict[str, Any]:
         with _hub_errors({404: "주문을 찾을 수 없어요"}):
             return hub.order_status(order_id)
+
+    @router.post("/{order_id}/cancel")
+    async def cancel(order_id: str) -> dict[str, Any]:
+        try:
+            with _hub_errors({404: "주문을 찾을 수 없어요"}):
+                return hub.cancel_by_customer(order_id)
+        except NotCancellable as refused:
+            raise HTTPException(status_code=409, detail={
+                "code": refused.code, "message": CANCEL_REFUSED[refused.code],
+                "order": refused.status}) from refused
 
     @router.get("/{order_id}/stream", response_class=EventSourceResponse)
     async def order_stream(
