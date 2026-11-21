@@ -425,6 +425,35 @@ def test_without_a_published_menu_the_server_starts_on_the_pilot_menu(db) -> Non
 
 
 @needs_db
+def test_published_coupons_survive_a_restart(db) -> None:
+    """게시 값의 쿠폰도 DB에 남는다(쿠폰 티켓 09): 다시 띄운 서버의 첫 통화가 같은 쿠폰을 쓴다.
+    쿠폰만 바뀐 게시는 검색 색인을 다시 만들지 않는다. 쿠폰 전에 남긴 게시 값은 쿠폰 없음."""
+    from agenthan.db.stores import save_published_phone_store
+
+    stores = PhoneStores(_base(), db_url=db, embed=False)
+    stores.start(pilot.seed())
+    store = stores().store
+    data = pilot.seed()
+    data["coupons"] = [*data.get("coupons", []), {
+        "id": "coupon-9", "title": "주말 10% 할인", "discount_type": "percent",
+        "discount_value": 10, "start_date": "2026-11-01", "end_date": "2026-12-31"}]
+    assert stores.publish(data)
+    assert stores().store is store  # 쿠폰만 바뀐 게시: 색인 그대로
+    titles = [c.title for c in stores().coupons]
+    assert titles[-1] == "주말 10% 할인"
+
+    restarted = PhoneStores(_base(), db_url=db, embed=False)
+    restarted.start(pilot.seed())
+    assert restarted.doc == stores.doc
+    assert [c.title for c in restarted().coupons] == titles
+
+    assert save_published_phone_store({"menus": stores.doc["menus"]}, db)  # 쿠폰 전 게시 값
+    old = PhoneStores(_base(), db_url=db, embed=False)
+    old.start(pilot.seed())
+    assert old().coupons == ()
+
+
+@needs_db
 def test_semantic_search_follows_the_published_menu_and_embeds_only_changes(db) -> None:
     embed = FakeEmbed()
     stores = PhoneStores(_base(), db_url=db, embed=embed)
