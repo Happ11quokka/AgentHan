@@ -2,12 +2,22 @@
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 // 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 서버가 알린 창(기본 6분) 동안 스트림으로 받는다.
 // 통화가 확정 주문으로 끝나면 자막·배지·주문서 대신 주문 현황을 보인다(전화 메뉴·주문 현황 티켓 04, `orderStatus.ts`).
+// 주문 현황은 주소(`/phone/orders/<주문 번호>`)와 브라우저 저장소에 남아 새로 고치거나 다시 열어도 보인다. `/phone`을
+// 다시 열면 끝나지 않은 주문으로 가고, [새로 전화하기]는 새 통화 화면으로 돌아간다(티켓 06, `orderRoute.ts`).
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
-import { callOrderId } from './orderStatus.ts'
+import {
+  browserOrderMemory,
+  initialPhoneView,
+  orderPath,
+  PHONE_PATH,
+  type PhoneView,
+  resumedView,
+} from './orderRoute.ts'
+import { callOrderId, fetchOrderStatus } from './orderStatus.ts'
 import OrderStatusPanel from './OrderStatusPanel.tsx'
 import { PhoneCall, phoneOptions } from './phoneCall.ts'
 import './phone.css'
@@ -41,14 +51,58 @@ function statusLabel(s: CallState): string {
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
 
+const memory = browserOrderMemory()
+
+/** 주소만 바꾼다(기록을 쌓지 않는다). 개발용 쿼리(`?mic_first=1` 등)는 그대로 둔다 */
+function showPath(path: string) {
+  history.replaceState(history.state, '', path + location.search)
+}
+
 export default function PhonePage() {
-  const [call] = useState(() => new PhoneCall(phoneOptions(location.search)))
+  const [view, setView] = useState<PhoneView>(() => initialPhoneView(location.pathname, memory.recall()))
+  const [call, setCall] = useState(() => new PhoneCall(phoneOptions(location.search)))
   const state = useSyncExternalStore(call.subscribe, call.getState)
 
   useEffect(() => {
     call.attach()
     return () => call.detach()
   }, [call])
+
+  // [새로 전화하기]: 남긴 주문 번호를 지우고 새 통화 화면(전화 받기)으로. 지난 통화의 자막·주문서는 버린다
+  const newCall = () => {
+    memory.forget()
+    showPath(PHONE_PATH)
+    setCall(new PhoneCall(phoneOptions(location.search)))
+    setView({ kind: 'call' })
+  }
+
+  // 통화가 주문으로 끝났으면 같은 화면이 그 주문 현황이 된다(티켓 04)
+  const placed = callOrderId(state)
+  const shown: PhoneView = view.kind === 'call' && placed ? { kind: 'order', orderId: placed } : view
+  const shownOrder = shown.kind === 'order' ? shown.orderId : null
+
+  // 주문 현황이면 주소가 주문 현황 주소가 되고 주문 번호를 남긴다(새로 고침·새 탭·`/phone` 다시 열기, 티켓 06).
+  // 주문 현황 주소로 바로 연 주문도 남긴다
+  useEffect(() => {
+    if (!shownOrder) return
+    memory.remember(shownOrder)
+    showPath(orderPath(shownOrder))
+  }, [shownOrder])
+
+  // `/phone`을 다시 열었는데 남긴 주문이 있다: 끝나지 않았으면 주문 현황으로, 아니면 통화 화면으로
+  useEffect(() => {
+    if (view.kind !== 'resuming') return
+    let alive = true
+    void fetchOrderStatus(view.orderId).then((action) => {
+      if (!alive) return
+      const next = resumedView(view.orderId, action, new Date())
+      if (next.forget) memory.forget()
+      setView(next.view)
+    })
+    return () => {
+      alive = false
+    }
+  }, [view])
 
   // 자막 따라가기(5단계 티켓 09): 맨 아래를 보고 있으면 새 글이 올 때 같이 내려간다
   const captionsRef = useRef<HTMLElement>(null)
@@ -62,7 +116,43 @@ export default function PhonePage() {
   const cart = state.order?.cart ?? state.cart
   const total = state.order?.total ?? state.total
   const badge = approvalBadge(state)
-  const placed = callOrderId(state) // 주문으로 끝난 통화의 주문 번호. 있으면 주문 현황 화면
+  const notice = (
+    // AI 응대·개인정보 안내 한 줄 (6단계). 보관 기한은 서버 `PHONE_LOG_KEEP_DAYS` 기본값과 같다
+    <p className="phone-notice">
+      이 전화는 <strong>AI가 받아요</strong>. 말씀은 주문 처리를 위해 네이버클라우드(CLOVA)에서 글로 바뀌고,
+      기록은 14일 뒤 지워요. 체험용이라 실제 결제는 없어요. 이름·전화번호 같은 개인정보는 말하지 말아 주세요.
+    </p>
+  )
+
+  if (shown.kind !== 'call') {
+    // 주문 현황(주문 번호가 주소에 있다)과 `/phone`에서 남긴 주문을 확인하는 잠깐
+    const fromCall = shown.kind === 'order' && placed === shown.orderId
+    return (
+      <main className="phone">
+        <header className="phone-head">
+          <p className="phone-store">가게 전화 주문</p>
+          <p className={`phone-status phone-status-${fromCall ? state.status : 'idle'}`} role="status">
+            {fromCall ? statusLabel(state) : '주문 현황'}
+          </p>
+        </header>
+        {shown.kind === 'order' ? (
+          <OrderStatusPanel key={shown.orderId} orderId={shown.orderId} />
+        ) : (
+          <p className="phone-empty" role="status">
+            주문 현황을 확인하고 있어요.
+          </p>
+        )}
+        {shown.kind === 'order' && (
+          <div className="phone-actions">
+            <button type="button" className="phone-btn phone-btn-answer" onClick={newCall}>
+              새로 전화하기
+            </button>
+          </div>
+        )}
+        {notice}
+      </main>
+    )
+  }
 
   return (
     <main className="phone">
@@ -91,30 +181,26 @@ export default function PhonePage() {
         </div>
       )}
 
-      {placed && <OrderStatusPanel orderId={placed} />}
+      <section
+        ref={captionsRef}
+        className="phone-captions"
+        aria-label="자막"
+        aria-live="polite"
+        onScroll={(e) => {
+          const el = e.currentTarget
+          follow.current = nearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)
+        }}
+      >
+        {state.captions.length === 0 && <p className="phone-empty">통화가 연결되면 대화가 여기에 보여요.</p>}
+        {state.captions.map((c, i) => (
+          <p key={i} className={`phone-line phone-line-${c.who}`}>
+            <span className="phone-who">{c.who === 'bot' ? 'AI' : '손님'}</span>
+            {c.text}
+          </p>
+        ))}
+      </section>
 
-      {!placed && (
-        <section
-          ref={captionsRef}
-          className="phone-captions"
-          aria-label="자막"
-          aria-live="polite"
-          onScroll={(e) => {
-            const el = e.currentTarget
-            follow.current = nearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)
-          }}
-        >
-          {state.captions.length === 0 && <p className="phone-empty">통화가 연결되면 대화가 여기에 보여요.</p>}
-          {state.captions.map((c, i) => (
-            <p key={i} className={`phone-line phone-line-${c.who}`}>
-              <span className="phone-who">{c.who === 'bot' ? 'AI' : '손님'}</span>
-              {c.text}
-            </p>
-          ))}
-        </section>
-      )}
-
-      {badge && !placed && (
+      {badge && (
         // 사장님 확인 요청 상태와 결과 (주문 승인 티켓 09)
         <section className={`phone-approval phone-approval-${badge.tone}`} aria-label="사장님 확인" role="status">
           <strong>{badge.label}</strong>
@@ -122,7 +208,7 @@ export default function PhonePage() {
         </section>
       )}
 
-      {!placed && (state.order || cart.length > 0) && (
+      {(state.order || cart.length > 0) && (
         <section className={`phone-order ${state.order ? 'phone-order-final' : ''}`} aria-label="주문서">
           <h2>
             {state.order
@@ -203,11 +289,7 @@ export default function PhonePage() {
         )}
       </div>
 
-      {/* AI 응대·개인정보 안내 한 줄 (6단계). 보관 기한은 서버 `PHONE_LOG_KEEP_DAYS` 기본값과 같다 */}
-      <p className="phone-notice">
-        이 전화는 <strong>AI가 받아요</strong>. 말씀은 주문 처리를 위해 네이버클라우드(CLOVA)에서 글로 바뀌고,
-        기록은 14일 뒤 지워요. 체험용이라 실제 결제는 없어요. 이름·전화번호 같은 개인정보는 말하지 말아 주세요.
-      </p>
+      {notice}
 
       {state.mic && (
         <details className="phone-mic">
