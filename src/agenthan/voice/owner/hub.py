@@ -16,6 +16,9 @@
   세션의 받는 곳으로 결정을 넘긴다. 통화 끝 `submit`은 같은 id의 확인 카드를 그대로 둔다. 확인
   요청 없이 온 확정 주문(승인 꺼짐·사장님 화면 없음)은 `submit`에서 accepted + `auto_accepted`로
   만들고 확정 문자를 그때 보낸다. 사장님 화면 연결 수(`events` 구독자)가 `approval_ready`다
+- 결정 기록(티켓 10, `decisions.py`): `order.update`를 보낼 때마다 카드의 결정(처리 상태·사유·
+  결정 시각·바뀐 픽업 시각)이 지난번과 달라졌으면 `decision_sink`로 넘긴다. 결정을 바꾸는 코드는
+  카드 칸만 채우고 `order.update`를 보내면 된다. sink가 없으면 메모리(카드)만
 - 통화 카드(`call.update`, 티켓 02): 통화 중(live) → 확정되면 ordered(같은 id의 주문 카드가 생기고
   통화 카드는 빠진다) · 넘김이면 handoff("손님 연락 필요", 장바구니 + 마지막 손님 말 3줄) · 확정
   없이 끝나면 missed(회색 미완료, 담긴 메뉴 + 끝난 이유). handoff·missed는 사장님이 닫는다(closed)
@@ -85,7 +88,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -106,6 +109,7 @@ from agenthan.voice.dialog.owner_question import (
 from agenthan.voice.owner import sms
 from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
+from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
 from agenthan.voice.owner.translate import Translator
 
@@ -176,8 +180,13 @@ class OwnerHub:
         owner_lang: str = "ru",
         knowledge: KnowledgeStore | None = None,
         limits: HubLimits | None = None,
+        decision_sink: DecisionSink | None = None,
     ) -> None:
         self._store = store
+        # 사장님 결정 기록(티켓 10): 받는 곳, 주문별 마지막으로 넘긴 결정, 행을 채울 주문서
+        self._decision_sink = decision_sink
+        self._recorded: dict[str, DecisionRecord] = {}
+        self._order_of: dict[str, Order] = {}
         self._limits = limits or HubLimits()
         # 보충 지식 저장소(티켓 13). 허브가 쓰고, 통화 엔진이 읽는다(`phone_router(knowledge=...)`)
         self.knowledge = knowledge if knowledge is not None else KnowledgeStore()
@@ -439,6 +448,7 @@ class OwnerHub:
             return
         if order.status != "confirmed":
             return
+        self._order_of[order.id] = order
         waiting = self._orders.get(order.id)
         if waiting is None or waiting["withdrawn"]:
             # 확인 요청 없이 온 확정 주문(승인 꺼짐·사장님 화면 없음): 자동 확정 카드 + 확정 문자
@@ -478,6 +488,7 @@ class OwnerHub:
     ) -> None:
         """확인 요청 → 확인 대기(new) 주문 카드. 같은 통화에 새 번호로 오면 앞 카드를 대신한다."""
         card = self._approval_card(request.order, number=request.number, stage="in_call")
+        self._order_of[call_id] = request.order
         self._orders[call_id] = card
         self._deciders[call_id] = reply
         self._publish("order.update", card)
@@ -671,6 +682,8 @@ class OwnerHub:
         for card in _over(orders, "received_at", limits.max_order_cards,
                           limits.order_card_hours, now):
             del self._orders[card["id"]]
+            self._recorded.pop(card["id"], None)
+            self._order_of.pop(card["id"], None)
             dropped.add(card["id"])
             twin = self._calls.get(card["id"])
             if twin is not None and twin["status"] == "ordered":  # 화면에 없는 짝 통화 카드
@@ -1001,10 +1014,32 @@ class OwnerHub:
                 "knowledge": self.knowledge_cards(), "now": self._clock.now().isoformat()}
 
     def _publish(self, name: str, data: dict[str, Any]) -> None:
+        if name == "order.update":
+            self._record_decision(data)
         self._seq += 1
         event = OwnerEvent(name, data, self._seq)
         for queue in self._subscribers:
             queue.put_nowait(event)
+
+    def _record_decision(self, card: dict[str, Any]) -> None:
+        """주문 카드의 결정이 지난번 넘긴 것과 다르면 결정 기록으로 넘긴다 (티켓 10).
+
+        모든 결정(수락·늦춘 수락·거절·자동 취소·자동 확정)이 `order.update`를 거치므로 여기 한 곳이
+        이음매다. 받는 곳이 실패해도 화면·통화는 계속한다.
+        """
+        if self._decision_sink is None:
+            return
+        record = decision_of(card, self._order_of.get(card["id"]))
+        if record is None or self._recorded.get(record.order_id) == record:
+            return
+        self._recorded[record.order_id] = record
+        if not record.decided_at:  # 결정 시각이 카드에 없는 결정(자동 취소 등): 기록하는 시각
+            record = replace(record, decided_at=self._clock.now().isoformat())
+        try:
+            self._decision_sink.record(record)
+        except Exception:
+            log.exception("주문 %s 결정 기록 실패 (%s)", record.order_id,
+                          type(self._decision_sink).__name__)
 
     def _bind(self) -> None:
         if self._loop is None:
