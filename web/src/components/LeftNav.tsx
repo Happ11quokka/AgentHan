@@ -60,8 +60,7 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
   return (
     <nav className="nav" aria-label="대화 목록">
       <div className="brand">
-        <img className="brand-mark" src="/agent.png" alt="" />
-        <span className="brand-name">사장님 비서</span>
+        <span className="brand-logo">AgentHan</span>
       </div>
       <button type="button" className="new-chat" onClick={onNew} disabled={busy}>
         <Icon name="plus" />새 대화

@@ -100,17 +100,16 @@ p {
   padding: 0 8px 18px;
 }
 
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  object-fit: cover;
-  background: var(--green);
-}
-
-.brand-name {
-  font-size: 17px;
-  font-weight: 700;
+/* 워드마크: 굵은 글꼴 + 하늘→파랑 그라데이션 */
+.brand-logo {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  background: linear-gradient(90deg, #45b8ee 0%, #6a7cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .new-chat {
@@ -1040,12 +1039,95 @@ p {
   text-align: center;
 }
 
-.profile img {
-  width: 96px;
-  height: 96px;
-  border-radius: 28px;
-  object-fit: cover;
-  box-shadow: var(--shadow);
+/* 프로필 원: 로봇이 노트북 너머로 보인다. data-working이면 노트북을 열고 타이핑한다. */
+.agent-desk {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, #ffffff 0%, var(--green-soft) 75%);
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
+}
+
+.agent-desk-bot {
+  position: absolute;
+  left: 15%;
+  top: 6%;
+  width: 70%;
+  transform-origin: 50% 90%;
+  transition: transform 0.4s ease;
+}
+
+.agent-desk-laptop {
+  position: absolute;
+  left: 12%;
+  bottom: 7%;
+  width: 76%;
+  overflow: visible;
+}
+
+.agent-desk-laptop .lid {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scaleY(0.1);
+  transition: transform 0.45s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.agent-desk-laptop .hand {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.agent-desk-glow {
+  position: absolute;
+  left: 20%;
+  top: 30%;
+  width: 60%;
+  height: 40%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(3 199 90 / 35%), transparent);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.agent-desk[data-working="true"] .lid { transform: scaleY(1); }
+.agent-desk[data-working="true"] .hand { opacity: 1; }
+.agent-desk[data-working="true"] .hand-l { animation: tap 0.36s ease-in-out infinite; }
+.agent-desk[data-working="true"] .hand-r { animation: tap 0.36s ease-in-out 0.18s infinite; }
+.agent-desk[data-working="true"] .agent-desk-bot { animation: focus-nod 1.6s ease-in-out infinite; }
+.agent-desk[data-working="true"] .agent-desk-glow { animation: screen-glow 1.2s ease-in-out infinite; }
+.agent-desk[data-working="true"] .lid-logo { animation: logo-pulse 1.2s ease-in-out infinite; }
+
+/* 덮은 노트북에는 로고가 찌그러져 보이지 않게 숨긴다. */
+.agent-desk:not([data-working="true"]) .lid > :not(:first-child) { opacity: 0; }
+
+/* 쉬는 동안은 천천히 숨 쉰다. */
+.agent-desk:not([data-working="true"]) .agent-desk-bot { animation: breathe 3.2s ease-in-out infinite; }
+
+@keyframes tap {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-28%); }
+}
+@keyframes focus-nod {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(2%) rotate(-2deg); }
+  50% { transform: translateY(0) rotate(0deg); }
+  75% { transform: translateY(2%) rotate(2deg); }
+}
+@keyframes screen-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes logo-pulse {
+  0%, 100% { fill: #03c75a; }
+  50% { fill: #5ee39a; }
+}
+@keyframes breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2%) scale(1.015); }
 }
 
 .profile div {
