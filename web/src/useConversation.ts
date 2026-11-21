@@ -69,6 +69,8 @@ export type Conversation = {
   open: (id: string) => Promise<void>;
   addLog: (lines: string[]) => void;
   notify: (text: string, reviewId: string) => void;
+  /** 전화 주문 알림 한 줄을 대화창에 올린다(서버 대화 기록에는 없음). */
+  notifyOrders: (text: string) => void;
   /** 온보딩 값을 저장한다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   onboard: (values: OnboardingInput) => Promise<string | null>;
   /** 리뷰 정기 보고 설정 한 줄(#98). 예전 서버라 모르면 null. */
@@ -309,6 +311,9 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const notify = useCallback((text: string, reviewId: string) => {
     setMessages((m) => [...m, { id: newId(), role: "notice", text, reviewId }]);
   }, []);
+  const notifyOrders = useCallback((text: string) => {
+    setMessages((m) => [...m, { id: newId(), role: "orders", text }]);
+  }, []);
 
   /** 온보딩 [시작하기]: 대화 턴이 아니라 가게 저장소에 바로 저장한다(사장님이 넣은 값만). */
   const onboard = useCallback(
@@ -538,7 +543,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
     businessForm, closeBusiness, submitBusiness, draftIntroduction,
     hoursForm, closeHours, submitHours,
-    send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
+    send, act, retry, newChat, open, addLog, notify, notifyOrders, onboard, reviewReport, runReport,
     routines, changeRoutines, editMenu, deleteMenu, reorderMenus, polishMenu, readingSince, refresh,
   };
 }

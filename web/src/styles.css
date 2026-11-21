@@ -3705,3 +3705,611 @@ img.working {
 .shop-section h3 .section-edit:hover {
   color: var(--ink);
 }
+
+/* ── 전화 주문 서랍 ───────────────────────
+ * 도구함과 같은 자리에 열린다. 회색 받침 위에 주방 전표(흰 종이)를 쌓는다.
+ * 전표는 그림자·큰 둥근 모서리 없이 왼쪽 띠 하나로만 상태를 보인다:
+ * 초록 대기, 주황 마감 1분 안(또는 손님이 전화로 기다림), 빨강 마감 지남, 회색 멈춤·끝. */
+.orders-panel {
+  overflow: hidden;
+  background: var(--surface-2);
+  animation: orders-in 0.12s ease-out;
+}
+
+@keyframes orders-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+.orders-panel:focus {
+  outline: none;
+}
+
+.orders-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 16px 14px 22px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.orders-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.orders-count {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.orders-count b {
+  margin: 0 2px 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.orders-count [data-urgent="true"] b {
+  color: var(--red);
+}
+
+.orders-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 22px 20px;
+}
+
+.orders-empty {
+  padding: 28px 4px;
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.orders-foot {
+  padding: 12px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.orders-foot a {
+  color: var(--ink-2);
+}
+
+.orders-fold {
+  margin-top: 18px;
+}
+
+.orders-fold summary {
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.orders-fold .tickets {
+  margin-top: 8px;
+}
+
+.tickets {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket {
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line-2);
+  border-left: 6px solid var(--green);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.ticket[data-tone="soon"] {
+  border-left-color: var(--amber);
+}
+
+.ticket[data-tone="late"] {
+  border-left-color: var(--red);
+}
+
+.ticket[data-tone="paused"] {
+  border-left-color: var(--ink-3);
+}
+
+.ticket[data-tone="done"] {
+  border-left-color: var(--line-2);
+  color: var(--ink-2);
+}
+
+.ticket p {
+  margin: 0;
+}
+
+.ticket-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ticket-pickup {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.ticket-pickup b {
+  margin-right: 2px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.ticket[data-tone="done"] .ticket-pickup b {
+  font-size: 18px;
+  color: var(--ink-2);
+}
+
+.ticket-total {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-meta {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-discount {
+  display: block;
+}
+
+.ticket-lines {
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px dashed var(--line-2);
+  list-style: none;
+}
+
+.ticket-lines li {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.ticket-lines li + li {
+  margin-top: 6px;
+}
+
+.ticket-qty {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-item small {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.ticket-request {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.ticket-request em {
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.ticket-request em[data-badge="allergy"] {
+  background: var(--red);
+  color: #fff;
+}
+
+.ticket .ticket-check {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.ticket-foot {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-2);
+}
+
+.ticket-clock {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-clock[data-late="true"] {
+  font-weight: 600;
+  color: var(--red);
+}
+
+.ticket .ticket-error {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--red);
+}
+
+.ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ticket-actions button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.ticket-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ticket-actions .ticket-accept {
+  padding: 9px 24px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--green);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ticket-actions .ticket-accept:hover:not(:disabled) {
+  background: var(--green-press);
+}
+
+.ticket-actions .ticket-later {
+  padding: 8px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ticket-actions .ticket-later:hover:not(:disabled) {
+  border-color: var(--green);
+}
+
+/* 거절은 실수로 누르지 않게 글자 버튼으로 오른쪽 끝에 둔다. */
+.ticket-actions > button.owner-btn-reject {
+  margin-left: auto;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ticket-actions > button.owner-btn-reject:hover {
+  color: var(--red);
+}
+
+/* 거절 사유 시트(사장님 화면과 같은 컴포넌트): 서랍 크기에 맞춘다. */
+.ticket .owner-reject {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-2);
+}
+
+.ticket .owner-reject-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ticket .owner-reject-reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ticket .owner-btn {
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ticket .owner-btn-reason.owner-btn-picked,
+.ticket .owner-reject-actions .owner-btn-reject {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+  font-weight: 700;
+}
+
+.ticket .owner-reject-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ticket .owner-btn:disabled {
+  opacity: 0.5;
+}
+
+.ticket .owner-written-hint {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.ticket .owner-written-input {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.ticket .owner-stockout-menus {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ticket .owner-stockout-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.ticket .ticket-result,
+.ticket .owner-rejected {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-2);
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.ticket .ticket-result + .ticket-result {
+  margin-top: 2px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ticket-result[data-tone="ok"] {
+  font-weight: 600;
+  color: var(--green-ink);
+}
+
+.ticket .owner-rejected-label {
+  font-weight: 600;
+}
+
+.ticket .owner-soldout {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.ticket .owner-soldout-label {
+  font-weight: 600;
+  color: var(--red);
+}
+
+.ticket .owner-soldout-items {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 왼쪽 [전화 주문] 배지: 확인 안 한 주문 수(리뷰 배지보다 급하다). */
+.quick-badge[data-tone="urgent"] {
+  background: var(--red);
+}
+
+/* 대화창의 전화 주문 알림 줄: 리뷰 알림과 같은 모양, 주황(시간 안내). */
+.notice-orders {
+  border-color: #f1d7a8;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+/* ── 비서 말풍선 ──────────────────────────
+ * 오른쪽 칸 비서 얼굴 아래에서 꼬리를 위로 단 흰 말풍선이 나온다.
+ * 오른쪽 칸이 접혀 있으면 화면 오른쪽 아래에 작은 얼굴과 함께 뜬다. */
+.profile {
+  position: relative;
+}
+
+.nudge {
+  position: absolute;
+  top: 150px;
+  left: 16px;
+  right: 16px;
+  z-index: 5;
+  text-align: left;
+}
+
+.nudge-bubble {
+  position: relative;
+  padding: 12px 12px 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(20 20 30 / 10%);
+  transform-origin: 50% 0;
+  animation: nudge-in 0.16s ease-out;
+}
+
+.nudge-bubble::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: calc(50% - 7px);
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--line-2);
+  border-left: 1px solid var(--line-2);
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+
+.nudge[data-kind="due"] .nudge-bubble,
+.nudge[data-kind="late"] .nudge-bubble {
+  border-color: var(--amber);
+}
+
+.nudge[data-kind="due"] .nudge-bubble::before,
+.nudge[data-kind="late"] .nudge-bubble::before {
+  border-color: var(--amber);
+}
+
+@keyframes nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+}
+
+.nudge-bubble p {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* `.profile div`(가운데 세로 정렬)를 말풍선 안에서는 되돌린다. */
+.profile .nudge,
+.profile .nudge-bubble {
+  display: block;
+}
+
+.nudge-actions,
+.profile .nudge-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.nudge-open {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--green);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nudge-open:hover {
+  background: var(--green-press);
+}
+
+.nudge-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.nudge-close:hover {
+  background: var(--surface-3);
+}
+
+.nudge[data-floating="true"] {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: 16px;
+  bottom: 104px;
+  z-index: 23;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+}
+
+.nudge[data-floating="true"] .nudge-bubble {
+  order: -1;
+  flex: 1;
+  transform-origin: 100% 100%;
+}
+
+.nudge[data-floating="true"] .nudge-bubble::before {
+  top: auto;
+  bottom: 12px;
+  left: auto;
+  right: -7px;
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-right: 1px solid var(--line-2);
+}
+
+.nudge[data-floating="true"][data-kind="due"] .nudge-bubble::before,
+.nudge[data-floating="true"][data-kind="late"] .nudge-bubble::before {
+  border-color: var(--amber);
+}
+
+.nudge-face {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--green-soft);
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orders-panel,
+  .nudge-bubble {
+    animation: none;
+  }
+}
