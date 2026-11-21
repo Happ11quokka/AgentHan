@@ -22,18 +22,20 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 from agenthan.core.contracts import Order
 
 # 사장님 결정 종류. 사장님 화면 수락(accept)·늦춘 수락(delay)·거절(reject)과 세션이 넣는
 # 시간 초과(timeout)
 DecisionKind = Literal["accept", "delay", "timeout", "reject"]
-# 사장님이 고를 수 있는 늦춘 분 (사장님 화면 [+15분] [+30분], 티켓 04). 0은 그냥 수락
-ACCEPT_DELAYS: tuple[int, ...] = (0, 15, 30)
+# 사장님이 고를 수 있는 늦춘 분 (사장님 화면 [+15분] [+30분], 티켓 04). 0은 그냥 수락. HTTP 본문
+# 검사(`AcceptBody`)도 이 타입을 쓴다. 웹은 `ownerStream.ts` `ACCEPT_DELAYS`가 같은 값을 든다
+AcceptDelay = Literal[0, 15, 30]
+ACCEPT_DELAYS: tuple[AcceptDelay, ...] = get_args(AcceptDelay)
 # 거절 사유 (사장님 화면 사유 시트, 티켓 05·06). 허브 카드·DB의 `reject_reason`과 같은 글
 RejectReason = Literal["out_of_stock", "busy", "closed", "free"]
-REJECT_REASONS: tuple[RejectReason, ...] = ("out_of_stock", "busy", "closed", "free")
+REJECT_REASONS: tuple[RejectReason, ...] = get_args(RejectReason)
 # 엔진이 확인 요청을 거둔 이유: 손님이 주문을 고침(changed) · 손님이 주문을 취소함(cancelled)
 WithdrawReason = Literal["changed", "cancelled"]
 

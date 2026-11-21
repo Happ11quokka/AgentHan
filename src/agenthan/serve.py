@@ -21,6 +21,7 @@ from collections.abc import Mapping, Sequence
 from fastapi import FastAPI
 
 from agenthan.voice import server as voice_server
+from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink
 from agenthan.voice.settings import VoiceSettings
 
 log = logging.getLogger(__name__)
@@ -31,28 +32,28 @@ SESSIONS_ENV = "AGENTHAN_SESSIONS_DIR"
 
 def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     settings = settings or VoiceSettings.from_env()
-    store_raw, sinks = phone_db(settings)
+    store_raw, sinks, decisions = phone_db(settings)
     knowledge = phone_knowledge(store_raw, settings)
     app = voice_server.create_app(
         settings,
         store_raw=store_raw,
         order_sinks=sinks,
         knowledge=knowledge,
-        # PgOrderSink는 사장님 결정도 같은 큐로 남긴다(주문 승인 티켓 10)
-        decision_sink=sinks[0] if sinks else None,
+        decision_sink=decisions,  # 사장님 결정도 DB에 (주문 승인 티켓 10)
     )
     include_assistant(app, settings.env)  # from_env면 os.environ·.env를 합친 값
     return app
 
 
-def phone_db(settings: VoiceSettings) -> tuple[dict | None, list]:
-    """AGENTHAN_DB_URL이 있으면 전화 가게를 DB(stores.raw)에서 읽고, 주문을 phone_orders에 남긴다.
+def phone_db(settings: VoiceSettings) -> tuple[dict | None, list, DecisionSink | None]:
+    """AGENTHAN_DB_URL이 있으면 전화 가게를 DB(stores.raw)에서 읽고, 주문과 사장님 결정을
+    phone_orders에 남긴다. (가게 raw, 주문 받는 곳들, 결정 받는 곳). DB가 없으면 (None, [], None).
     DB가 없거나 그 가게가 DB에 없으면 지금처럼 PHONE_STORE_FIXTURE 파일을 읽는다."""
     from agenthan import db
 
     url = settings.env.get(db.DB_URL_ENV, "").strip()
     if not url:
-        return None, []
+        return None, [], None
     from agenthan.core.fakes import SAMPLE_STORE
     from agenthan.db.orders import PgOrderSink
     from agenthan.db.stores import phone_store_raw
@@ -62,7 +63,27 @@ def phone_db(settings: VoiceSettings) -> tuple[dict | None, list]:
     store_id = str(((raw or {}).get("store") or {}).get("id") or "")
     log.info("DB 켬: 전화 가게 %s, 주문은 phone_orders에도 남김",
              f"DB({store_id})" if raw else f"파일({fixture.name}, DB에 없음)")
-    return raw, [PgOrderSink(store_id=store_id, url=url)]
+    sink = PgOrderSink(store_id=store_id, url=url)
+    return raw, [sink], DecisionsToDb(sink)
+
+
+class DecisionsToDb:
+    """전화 허브의 결정 기록(voice `DecisionRecord`) → DB 행(db `OwnerDecisionRow`).
+
+    두 파트는 서로를 import하지 않는다(PRD §7). 둘을 잇는 일은 이 파일이 한다. 받는 곳은
+    `record_decision`을 가진 것(운영은 `PgOrderSink`, 주문과 같은 큐로 넣은 순서대로 쓴다).
+    """
+
+    def __init__(self, sink) -> None:
+        self._sink = sink
+
+    def record(self, decision: DecisionRecord) -> None:
+        from agenthan.db.orders import OwnerDecisionRow
+
+        self._sink.record_decision(OwnerDecisionRow(
+            order_id=decision.order_id, owner_status=decision.owner_status,
+            reject_reason=decision.reject_reason, decided_at=decision.decided_at,
+            owner_pickup_time=decision.owner_pickup_time, order=decision.order))
 
 
 def phone_knowledge(store_raw: dict | None, settings: VoiceSettings):

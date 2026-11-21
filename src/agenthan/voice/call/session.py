@@ -150,7 +150,10 @@ from agenthan.voice.dialog.answerer import Answerer
 from agenthan.voice.dialog.approval import (
     ApprovalRequest,
     ApprovalWithdrawn,
+    DecisionKind,
     OwnerDecision,
+    RejectReason,
+    WithdrawReason,
     only_the_rest,
 )
 from agenthan.voice.dialog.cart import Cart
@@ -2527,7 +2530,7 @@ class CallSession:
         record = self._log.get(turn)
         if isinstance(note, OwnerDecision):
             self._approval_view = ApprovalView(
-                _DECISION_STATUS.get(note.kind, note.kind), note.request, delay_min=note.delay_min,
+                _DECISION_STATUS[note.kind], note.request, delay_min=note.delay_min,
                 reason=note.reason)  # 거절 사유 (티켓 05)
             if note.kind == "reject":
                 self._stock_out_ids = note.menu_ids
@@ -2560,28 +2563,29 @@ class CallSession:
             log.exception("사장님 쪽 알림 실패 (%s)", self.call_id)
 
 
-# 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). waiting: 사장님 확인 중.
-# 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) ·
-# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · delayed(사장님이
-# `delay_min`분 늦춰 수락해 손님에게 바뀐 시각을 묻는 중, 티켓 04. "네"면 accepted + `delay_min`,
-# "아니요"면 withdrawn cancelled) · rejected(사장님 거절, `reason`은 사유, 티켓 05). 자동
-# 취소(티켓 06~07)는 새 값으로 더한다. 모르는 값은 손님 화면이 배지 없이 둔다
+# 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). 닫힌 목록이고 웹
+# `callState.ts` `ApprovalStatus`가 같은 값을 든다. waiting: 사장님 확인 중. 결과: accepted(수락,
+# `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) · withdrawn(손님이
+# 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · delayed(사장님이 `delay_min`분 늦춰
+# 수락해 손님에게 바뀐 시각을 묻는 중, 티켓 04. "네"면 accepted + `delay_min`, "아니요"면 withdrawn
+# cancelled) · rejected(사장님 거절, `reason`은 사유, 티켓 05). 통화 뒤 결과(수락·거절·자동
+# 취소)는 이 상태가 아니라 손님 문자로 간다
 ApprovalStatus = Literal["waiting", "accepted", "delayed", "timeout", "withdrawn", "skipped",
                          "rejected"]
-# 사장님 결정 종류 → 손님 화면 상태. 표에 없는 새 결정 종류는 이름을 그대로 싣는다
-_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "delay": "delayed",
-                                    "timeout": "timeout", "reject": "rejected"}
+# 사장님 결정 종류 → 손님 화면 상태 (모든 결정 종류가 있다)
+_DECISION_STATUS: dict[DecisionKind, ApprovalStatus] = {
+    "accept": "accepted", "delay": "delayed", "timeout": "timeout", "reject": "rejected"}
 
 
 @dataclass(frozen=True)
 class ApprovalView:
     """`state` 이벤트의 `approval` 칸. 통화 안 마지막 확인 요청의 상태 하나."""
 
-    status: ApprovalStatus | str
+    status: ApprovalStatus
     number: int = 0  # 확인 요청 번호(1부터). 승인을 건너뛰었으면 0
     delay_min: int = 0  # 늦춘 수락의 분 (티켓 04)
-    # withdrawn: changed·cancelled. rejected: 거절 사유(busy·closed·free …, 티켓 05)
-    reason: str = ""
+    # withdrawn: changed·cancelled. rejected: 거절 사유(out_of_stock·busy·closed·free, 티켓 05)
+    reason: WithdrawReason | RejectReason | Literal[""] = ""
 
 
 @dataclass(frozen=True)
@@ -2624,10 +2628,6 @@ def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
         return "confirmed"  # 사장님 결정을 말한 봇 턴도 확정이다 (주문 승인)
     if isinstance(u, _BotTurn) and u.reason != "owner_decision":
         return u.reason  # 사장님 거절을 말한 봇 턴은 아래 취소다 (주문 승인 티켓 05)
-    if result.state is State.CLOSING:
-        return "confirmed"
-    if result.state is State.FALLBACK:
-        return "handoff"
     return "cancelled"
 
 

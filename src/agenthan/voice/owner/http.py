@@ -55,13 +55,13 @@ import asyncio
 import secrets
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import aclosing, contextmanager
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
-from agenthan.voice.dialog.approval import RejectReason
+from agenthan.voice.dialog.approval import AcceptDelay, RejectReason
 from agenthan.voice.dialog.owner_question import OwnerPost
 from agenthan.voice.owner.hub import (
     AlreadyAnswered,
@@ -121,7 +121,7 @@ class KnowledgeSave(BaseModel):
 class AcceptBody(BaseModel):
     """수락 버튼(주문 승인 티켓 02). 늦춘 분 15·30은 [+15분] [+30분] (티켓 04)."""
 
-    delay_min: Literal[0, 15, 30] = 0
+    delay_min: AcceptDelay = 0
 
 
 class RejectBody(BaseModel):

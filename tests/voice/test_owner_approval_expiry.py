@@ -83,7 +83,7 @@ def test_an_after_call_card_expires_five_minutes_after_the_request_with_a_text()
         customer = hub.watch_texts("call-1")  # 손님 통화 화면 "받은 문자"
         assert (await anext(customer)).name == "sms.snapshot"
         clock.set(_at(299))
-        early = hub.expire_due()  # 1초 전: 그대로 (화면에도 아무것도 안 간다, 다음 이벤트가 만료다)
+        early = hub.expire_due()  # 1초 전: 그대로 (화면에 아무것도 안 감. 다음 이벤트가 자동 취소)
         clock.set(_at(300))
         expired_ids = hub.expire_due()
         (update,) = await screen.take()

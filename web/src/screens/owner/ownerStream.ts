@@ -83,7 +83,6 @@ const id = (value: string) => encodeURIComponent(value)
 export const ACCEPT_DELAYS = [0, 15, 30] as const
 export type AcceptDelay = (typeof ACCEPT_DELAYS)[number]
 
-
 /** 수락 버튼([+15분]·[+30분]이면 늦춘 수락). 실패(없는 카드 404, 이미 결정 409)면 false */
 export function acceptOrder(key: string, orderId: string, delayMin: AcceptDelay = 0): Promise<boolean> {
   return act(key, `orders/${id(orderId)}/accept`, delayMin ? { delay_min: delayMin } : undefined)

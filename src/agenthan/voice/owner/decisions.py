@@ -3,14 +3,16 @@
     hub = OwnerHub(..., decision_sink=sink)  # 없으면 메모리(카드)만
 
 - 허브는 `order.update`를 보낼 때마다 카드를 `decision_of`로 읽어, 결정이 지난번과 달라졌을 때만
-  `DecisionSink.record`를 부른다. 그래서 새 결정 종류(거절·늦춘 수락·자동 취소 …)는 카드 칸만
+  `DecisionSink.record`를 부른다(통화가 아직 손님에게 말하지 않은 통화 중 결정은 굳기 전이라 뺀다,
+  `hub.py` 모듈 설명). 그래서 새 결정 종류(거절·늦춘 수락·자동 취소 …)는 카드 칸만
   채우면 따로 잇지 않아도 같은 길로 간다. 카드 칸 약속:
   - `status`: new(아직, 기록 안 함) 말고는 그대로 `owner_status`. 자동 확정 카드(`auto_accepted`)는
     `auto_accepted`
   - `reject_reason`: 거절 사유(out_of_stock·busy·closed·free …). 없으면 ""
   - `decided_at`: 결정 시각 ISO. 비어 있으면 허브가 기록하는 시각을 넣는다(자동 취소 등)
   - `owner_pickup_time`: 늦춘 수락의 바뀐 픽업 시각 ISO. 없으면 ""
-- 상태·사유는 일반 글이다. DB 쪽도 enum 없이 그대로 남긴다(`agenthan.db.orders`)
+- 상태·사유는 일반 글이다. DB 쪽도 enum 없이 그대로 남긴다(`agenthan.serve`가 DB 행
+  `agenthan.db.orders.OwnerDecisionRow`로 옮긴다. voice와 db는 서로를 import하지 않는다)
 - `record`는 허브의 이벤트 루프에서 불린다. 바로 돌아와야 한다(DB 쓰기는 구현이 큐·스레드로)
 """
 
