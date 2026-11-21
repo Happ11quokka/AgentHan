@@ -845,6 +845,42 @@ describe("답글 대기함", () => {
   });
 });
 
+describe("리뷰 정기 보고 (#98)", () => {
+  const ON = { enabled: true, schedule: "매일 09:00", next_run: "2026-11-08T09:00", text: "매일 09:00 리뷰 요약 받는 중" };
+  const REPORT = {
+    id: "report-1",
+    role: "agent" as const,
+    text: "리뷰 정기 보고 (2026-11-07 ~ 2026-11-08)\n리뷰 3건\n답글 안 단 불만 리뷰 1건이 있어요.",
+    next_actions: [{ action_id: "review.draft_reply", label: "불만 리뷰 답글 초안", args: { review_id: "r09" } }],
+  };
+
+  test("리뷰 탭에 설정 한 줄이 보이고 [지금 받아 보기]는 보고를 대화에 한 번 넣는다", async () => {
+    const api = fakeApi([], { place: SEED, pending: [], review_report: ON });
+    api.runReviewReport.mockResolvedValueOnce({ place: SEED, pending: [], review_report: { ...ON, enabled: false, schedule: null, next_run: null, text: "정기 보고 꺼짐" }, messages: [REPORT] });
+    const user = userEvent.setup();
+    render(<App api={api} reportPollMs={0} />);
+    await user.click(await screen.findByRole("tab", { name: "리뷰" }));
+    const panel = within(await screen.findByRole("tabpanel", { name: "리뷰" }));
+    expect(await panel.findByText("정기 보고 꺼짐")).toBeInTheDocument();
+    await user.click(panel.getByRole("button", { name: "지금 받아 보기" }));
+    expect(api.runReviewReport).toHaveBeenCalledWith("s1");
+    expect(await chatArea().findByText(/답글 안 단 불만 리뷰 1건/)).toBeInTheDocument();
+    expect(chatArea().getByRole("button", { name: "불만 리뷰 답글 초안" })).toBeInTheDocument();
+    expect(api.act).not.toHaveBeenCalled();
+  });
+
+  test("켜진 대화는 세션 조회를 다시 읽다가 정해진 때의 보고를 말풍선 하나로 받는다", async () => {
+    const api = fakeApi([], { place: SEED, pending: [], review_report: ON });
+    api.view.mockResolvedValueOnce({ place: SEED, pending: [], review_report: ON, messages: [REPORT] });
+    render(<App api={api} reportPollMs={20} />);
+    expect(await chatArea().findByText(/리뷰 정기 보고/, {}, { timeout: 2000 })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 100)); // 다시 읽어도 같은 보고는 오지 않는다(서버가 한 번만 준다)
+    expect(chatArea().getAllByText(/리뷰 정기 보고/)).toHaveLength(1);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "리뷰" }));
+    expect(await screen.findByText("매일 09:00 리뷰 요약 받는 중")).toBeInTheDocument();
+  });
+});
+
 describe("대표키워드 변경", () => {
   const BEFORE = { ...SEED, keywords: ["러시안 베이커리", "이태원 케이크"] };
   const AFTER = { ...BEFORE, keywords: [...BEFORE.keywords, "메도빅"] };

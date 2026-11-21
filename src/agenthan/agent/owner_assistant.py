@@ -23,7 +23,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from agenthan.agent import (
@@ -641,6 +641,8 @@ class OwnerAssistant:
         self._act: str | None = None  # Route.act of this owner turn, checked by code.
         self._targets: dict | None = None  # Candidate records for this turn's id parameter.
         self.today = today or date.today()
+        # 지금 시각(리뷰 정기 보고의 다음 보고 시각, #98). 서버가 시계를 바꿔 끼운다
+        self.clock: Callable[[], datetime] = datetime.now
         self._clarify_options: tuple[str, ...] = ()
         self.trace: dict = new_trace(None, "none")
         self.owner_lang = owner_lang

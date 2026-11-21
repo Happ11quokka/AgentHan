@@ -14,10 +14,11 @@ const REVIEW_POLL_MS = 2500;
 /** 카드 버튼이 실패했을 때 채팅에도 알릴 까닭: 검사에 걸려 막힘, 저장·초안 쓰기 실패(서버 쪽 오류). */
 const NOTICE_REASONS = new Set(["checks", "save_failed", "draft_failed"]);
 
-type AppProps = { api?: AssistantApi; reviewPollMs?: number; demo?: boolean };
+/** reportPollMs: 정해진 때의 리뷰 보고를 받으려고 세션 조회를 다시 읽는 간격(0이면 안 읽음). */
+type AppProps = { api?: AssistantApi; reviewPollMs?: number; reportPollMs?: number; demo?: boolean };
 
-export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo = import.meta.env.DEV }: AppProps) {
-  const chat = useConversation(api);
+export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, reportPollMs, demo = import.meta.env.DEV }: AppProps) {
+  const chat = useConversation(api, reportPollMs);
   const [tab, setTab] = useState<Tab>("shop");
   const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
@@ -140,6 +141,8 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
         onSimulateReview={demo ? () => void simulateReview() : undefined}
         onReply={replyToReview}
         focusReview={focusReview}
+        reviewReport={chat.reviewReport}
+        onRunReport={chat.runReport}
         onClose={() => setSideOpen(false)}
       />
       <button

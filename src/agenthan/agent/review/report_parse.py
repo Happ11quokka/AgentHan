@@ -31,6 +31,8 @@ OFF = R(
     r"stop|turn off|disable|cancel|отключ|не присылай|"
     r"хватит|стоп"
 )
+# 주기 없이 보고를 켜 달라는 말: 주기를 제안한다 ('리뷰 정기 보고 켜 줘', #98)
+ON = R(r"켜\s?(줘|주세요|줄래|달라)|정기\s?(보고|리포트)|turn on|enable|включи")
 SUGGEST = R(
     r"얼마나\s?자주|알아서|적당|추천|주기\s?(는\s?)?어떻게\s?(하는\s?게|해야|할까|하면)|어느\s?주기|"
     r"how often|recommend|suggest|как часто|посоветуй"
@@ -133,6 +135,8 @@ def parse_report_request(u: str, pending_suggestion: dict | None = None):
     if has_report and OFF.search(u) and not (freq or wd or alert):
         return "off", {}
     if SUGGEST.search(u) and (has_report or "주기" in u) and not freq:
+        return "suggest", {}
+    if has_report and ON.search(u) and not (freq or wd or alert or focus or t):
         return "suggest", {}
     if alert or ((freq or wd) and has_report) or (focus and has_report):
         args = {

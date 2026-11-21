@@ -8,6 +8,7 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
 import threading
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
+from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
 from agenthan.tools.dummy_store import DummyStoreError
 
@@ -79,9 +81,17 @@ class ReplyOp(BaseModel):
 
 
 class Session:
-    def __init__(self, session_id: str, assistant: OwnerAssistant):
+    def __init__(
+        self,
+        session_id: str,
+        assistant: OwnerAssistant,
+        clock: Callable[[], datetime] = datetime.now,
+    ):
         self.id = session_id
         self.assistant = assistant
+        assistant.clock = clock  # 리뷰 보고 미리보기의 '다음 보고' 시각도 같은 시계로
+        # 리뷰 정기 보고(#98): 조회할 때마다 기한 지난 보고를 대화 메시지로 쌓는다
+        self.routine = ReviewRoutine(assistant, clock)
         self.lock = threading.Lock()  # OwnerAssistant keeps turn state; one turn at a time.
 
     def _photo_path(self, name: str) -> str:
@@ -150,11 +160,16 @@ class Session:
                 }
             )
         shop = data.get("shop", {})
+        self.routine.tick()
         return {
             "place": place.snapshot(data, self._menu_photo_url),
             "pending": pending,
             # 화면이 온보딩을 띄울지 정한다(#94): 이름이나 업종이 비면 처음 쓰는 가게.
             "shop": {k: shop.get(k) or "" for k in ("name", "category")},
+            # 리뷰 정기 보고(#98): 지금 설정 한 줄과, 사장님 말 없이 비서가 보낸 새 메시지
+            # (정해진 때의 보고·[지금 받아 보기]). messages는 한 번만 건넨다.
+            "review_report": self.routine.status(),
+            "messages": self.routine.take(),
         }
 
     def photo(self, name: str) -> tuple[bytes, str] | None:
@@ -193,8 +208,10 @@ def create_app(
     make_assistant: Callable[[Path], OwnerAssistant] = OwnerAssistant,
     root: str | Path = DEFAULT_ROOT,
     prepare_on_start: bool = False,
+    clock: Callable[[], datetime] = datetime.now,
 ) -> FastAPI:
-    """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다."""
+    """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
+    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다)."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -210,7 +227,9 @@ def create_app(
         session_id = uuid.uuid4().hex
         folder = root / session_id
         folder.mkdir(parents=True)
-        session = sessions[session_id] = Session(session_id, make_assistant(folder / "store.json"))
+        session = sessions[session_id] = Session(
+            session_id, make_assistant(folder / "store.json"), clock
+        )
         if prepare_on_start:
             with session.lock:
                 job = claim_drafts(session)
@@ -300,6 +319,15 @@ def create_app(
             view = inbox.annotate(session.assistant, screens.reviews(store.read()))
         in_background(job)
         return {"review_id": review_id, **view}
+
+    @app.post("/assistant/sessions/{session_id}/reviews/report")
+    def run_review_report(session_id: str) -> dict:
+        """리뷰 탭 [지금 받아 보기](시연): 설정과 상관없이 정기 보고 한 회분을 대화 메시지로
+        넣는다(messages). 보고 설정·다음 보고 시각은 바꾸지 않는다."""
+        session = get(session_id)
+        with session.lock:
+            session.routine.run_now()
+            return session.view()
 
     @app.post("/assistant/sessions/{session_id}/reviews/{review_id}/reply")
     def reply_to_review(session_id: str, review_id: str, body: ReplyOp) -> dict:
