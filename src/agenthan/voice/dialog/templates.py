@@ -275,6 +275,18 @@ def coupon_phrase(title: str) -> str:
     return title if title.endswith("쿠폰") else f"{title} 쿠폰"
 
 
+def coupon_offer(title: str, short: int, suggest_name: str | None) -> str:
+    """금액이 모자란 쿠폰의 권유 (쿠폰 티켓 10). 복창 직전에, 쿠폰 문의 답(티켓 11)에도 쓴다.
+
+    `short`는 부족액, `suggest_name`은 한 개로 부족액을 채우는 권할 메뉴(쿠폰 계산 결과).
+    권할 메뉴가 없으면 메뉴·쿠폰 이름 없이 부족액만 말한다.
+    """
+    if suggest_name is None:
+        return f"{won(short)} 더 담으시면 쿠폰을 쓸 수 있어요. 더 담으실까요?"
+    return (f"{coupon_phrase(title)}이 있는데 {won(short)}이 부족해요. "
+            f"{suggest_name} 하나 더 하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더 담으실까요?")
+
+
 def ask_what_to_fix() -> str:
     return "어떤 걸 고쳐 드릴까요?"
 
