@@ -1169,3 +1169,84 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
     expect(within(card).getByRole("button", { name: "취소" })).toBeInTheDocument();
   });
 });
+
+describe("통계 탭 › AI 리뷰 통계", () => {
+  test("좋아요·아쉬워요 TOP3와 테마를 보여 주고 기간을 바꾼다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "통계" }));
+    const panel = within(await screen.findByRole("tabpanel", { name: "통계" }));
+    await user.click(panel.getByRole("tab", { name: "AI 리뷰 통계" }));
+    const liked = within(await panel.findByRole("list", { name: "좋아요 키워드 TOP 3" }));
+    expect(liked.getAllByRole("listitem")).toHaveLength(3);
+    expect(liked.getByText("맛")).toBeInTheDocument();
+    expect(liked.getByText("음식")).toBeInTheDocument();
+    expect(liked.getByText("지난 기간보다 3 늘었어요")).toBeInTheDocument();
+    const disliked = within(panel.getByRole("list", { name: "아쉬워요 키워드 TOP 3" }));
+    expect(disliked.getByText("분위기", { selector: "strong" })).toBeInTheDocument();
+    expect(api.reviewStats).toHaveBeenLastCalledWith("s1", "week");
+    await user.click(panel.getByRole("radio", { name: "월간" }));
+    await waitFor(() => expect(api.reviewStats).toHaveBeenLastCalledWith("s1", "month"));
+    // 방문·유입으로 돌아가면 기존 통계가 그대로 보인다
+    await user.click(panel.getByRole("tab", { name: "방문·유입" }));
+    expect(await panel.findByText("손님이 들어온 곳")).toBeInTheDocument();
+  });
+
+  test("아쉬운 리뷰 정리는 비서에게 말로 맡긴다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "통계" }));
+    const panel = within(await screen.findByRole("tabpanel", { name: "통계" }));
+    await user.click(panel.getByRole("tab", { name: "AI 리뷰 통계" }));
+    await user.click(await panel.findByRole("button", { name: "아쉬운 리뷰 비서에게 정리 맡기기" }));
+    expect(api.say).toHaveBeenLastCalledWith("s1", "요즘 아쉬운 리뷰 정리해 줘");
+  });
+});
+
+describe("왼쪽 사이드바 접기", () => {
+  test("버튼과 ⌘B로 접고 펴며, 접혀도 아이콘 버튼으로 쓸 수 있고 다음에도 기억한다", async () => {
+    const { user, api } = await open();
+    const nav = () => screen.getByRole("navigation", { name: "대화 목록" });
+    expect(nav()).toHaveAttribute("data-collapsed", "false");
+    await user.click(screen.getByRole("button", { name: "사이드바 접기" }));
+    expect(nav()).toHaveAttribute("data-collapsed", "true");
+    expect(within(nav()).queryByText("최근 대화")).not.toBeInTheDocument();
+    await user.click(within(nav()).getByRole("button", { name: "요즘 리뷰" }));
+    await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", args: {}, label: "요즘 리뷰" }));
+    expect(localStorage.getItem("agenthan.nav.collapsed")).toBe("1");
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(nav()).toHaveAttribute("data-collapsed", "false");
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(nav()).toHaveAttribute("data-collapsed", "true");
+    cleanup();
+    render(<App api={fakeApi()} />); // 다시 열어도(지난 대화가 열려도) 접힌 채로
+    expect(await screen.findByRole("navigation", { name: "대화 목록" })).toHaveAttribute("data-collapsed", "true");
+  });
+});
+
+describe("비서 제안", () => {
+  test("통계로 고른 카드를 보여 주고, [맡기기]는 비서에게 말로 보낸다", async () => {
+    const { user, api } = await open();
+    const entry = await screen.findByRole("button", { name: /비서 제안/ });
+    await waitFor(() => expect(entry).toHaveAccessibleName("비서 제안 (새 제안 2개)"));
+    await user.click(entry);
+    const page = within(screen.getByRole("region", { name: "비서 제안" }));
+    expect(page.getByText("대표키워드 설정")).toBeInTheDocument();
+    expect(page.getByText("‘꿀 케이크’로 52번 들어왔어요.")).toBeInTheDocument();
+    expect(screen.queryByRole("main", { name: "비서와 대화" })).not.toBeInTheDocument();
+    await user.click(page.getByRole("button", { name: "대표키워드에 추가하기" }));
+    expect(api.say).toHaveBeenLastCalledWith("s1", "‘꿀 케이크’를 대표키워드에 추가해 줘");
+    expect(await screen.findByRole("main", { name: "비서와 대화" })).toBeInTheDocument();
+  });
+
+  test("탭을 여는 카드는 그 사이드카 탭을 보이고, [나중에]는 카드를 치운다", async () => {
+    const { user, api } = await open();
+    await user.click(await screen.findByRole("button", { name: /비서 제안/ }));
+    const page = within(screen.getByRole("region", { name: "비서 제안" }));
+    await user.click(page.getByRole("button", { name: "답글 초안 받기" }));
+    expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
+    expect(api.say).not.toHaveBeenCalled();
+    const card = page.getByText("대표키워드 설정").closest("article") as HTMLElement;
+    await user.click(within(card).getByRole("button", { name: "나중에" }));
+    expect(page.queryByText("대표키워드 설정")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /비서 제안/ })).toHaveAccessibleName("비서 제안 (새 제안 1개)");
+  });
+});
