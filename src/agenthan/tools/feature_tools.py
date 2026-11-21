@@ -207,6 +207,12 @@ def _ambiguous_menu(records: list[dict]) -> dict:
 
 
 def _menu(store, args):
+    # 메뉴판 채우기·메뉴 탭 저장과 같은 파일을 읽고-고치고-쓰므로 저장소 잠금 하나로 줄 세운다
+    with store.lock:
+        return _menu_locked(store, args)
+
+
+def _menu_locked(store, args):
     data = store.read()
     action = args.get("action") or "save"
     record = _resolve_menu(data, args["name"], action)
@@ -242,6 +248,7 @@ def _menu(store, args):
         }
         if args.get("description"):
             record["description"] = " ".join(args["description"].split())
+        store.illustrate(record)
         data["menus"].append(record)
         store.write(data)
         return _saved(store, "menus", record["id"], "created")
@@ -258,7 +265,7 @@ def _menu(store, args):
                 "message": "같은 이름의 메뉴가 이미 있습니다.",
                 "candidates": [{"id": clash["id"], "name": clash["name"]}],
             }
-        record["name"] = " ".join(args["new_name"].split())
+        store.rename_menu(record, args["new_name"])
     if args.get("price") is not None:
         record["price"] = args["price"]
     if args.get("description"):

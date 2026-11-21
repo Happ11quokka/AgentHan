@@ -94,6 +94,38 @@ describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  test("사진이 없는 메뉴는 대표 그림과 '대표 그림' 표시를 보이고, 그림에는 [사진 다듬기]가 없다", () => {
+    const { row } = setup({
+      ...SEED,
+      menu: [{ id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null, illustration_url: "/illustrations/default_cake.svg", ai: [], filling: [] }],
+    });
+    const napoleon = row("나폴레옹");
+    expect(napoleon.getByRole("img", { name: "대표 그림" })).toHaveAttribute("src", "/illustrations/default_cake.svg");
+    expect(napoleon.getByText("대표 그림")).toBeInTheDocument();
+    expect(napoleon.queryByRole("button", { name: "사진 다듬기" })).toBeNull();
+    expect(napoleon.queryByText("나", { selector: ".menu-photo" })).toBeNull();
+  });
+
+  test("사진이 있으면 그림 대신 사진을 보이고 '대표 그림' 표시는 없다", () => {
+    const { row } = setup({ ...SEED, menu: [{ ...filling.menu[0], illustration_url: "/illustrations/default_cake.svg" }] });
+    const medovik = row("메도빅");
+    expect(medovik.queryByRole("img", { name: "대표 그림" })).toBeNull();
+    expect(medovik.queryByText("대표 그림")).toBeNull();
+    expect(medovik.getByRole("button", { name: "사진 다듬기" })).toBeInTheDocument();
+  });
+
+  test("사진을 채우는 중이면 그림이 있어도 흐린 자리를 보인다", () => {
+    const { row } = setup({ ...SEED, menu: [{ ...filling.menu[1], illustration_url: "/illustrations/default_other.svg" }] });
+    expect(row("Сырники").getByLabelText("흰 배경 사진 만드는 중")).toBeInTheDocument();
+    expect(row("Сырники").queryByText("대표 그림")).toBeNull();
+  });
+
+  test("그림 주소도 없으면 이름 첫 글자를 보인다", () => {
+    const { row } = setup({ ...SEED, menu: [{ id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null }] });
+    expect(row("나폴레옹").getByText("나", { selector: ".menu-photo" })).toBeInTheDocument();
+    expect(row("나폴레옹").queryByText("대표 그림")).toBeNull();
+  });
+
   test("메뉴판 사진을 읽는 동안 메뉴 탭에는 빈 메뉴 자리만 보인다(진행 막대는 대화창)", () => {
     render(<MenuTab place={{ ...SEED, menu: [] }} pending={[]} readingSince={Date.now() - 3000} />);
     expect(screen.queryByRole("status")).toBeNull();

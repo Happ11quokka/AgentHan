@@ -290,6 +290,7 @@ AgentHan/
 │   ├── core/       [공통]    contracts.py · fakes.py · llm.py · embedding.py
 │   ├── agent/      [Part A]  오케스트레이터 · planner · 리뷰 서브에이전트
 │   ├── tools/      [Part A]  기능 도구 · 더미 플레이스 API · 통계
+│   ├── illustration/ [Part A] 메뉴 대표 그림: SVG 생성기 · 카탈로그 · 그림 고르기 · 임베딩 인덱스
 │   ├── eval/       [Part A]  S1·S2 시나리오 평가 · 회귀 게이트
 │   ├── rag/        [Part B]  정제 · 검색 · RagStoreKnowledge
 │   ├── db/         [Part B]  PostgreSQL 연결 · 마이그레이션 · 시드 · 임베딩

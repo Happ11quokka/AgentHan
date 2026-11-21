@@ -277,6 +277,14 @@ function MenuItemRow({
           {ai.has("photo") && <span className="photo-note">메뉴판 사진</span>}
           {filling.has("polish") && <span className="photo-note busy">다듬는 중</span>}
         </span>
+      ) : m.illustration_url ? (
+        // 사진이 없을 때만: 메뉴 이름으로 고른 대표 그림. 실제 사진이 아니라는 걸 표시로 알린다.
+        <span className="menu-photo-wrap">
+          <img className="menu-photo illustration" src={m.illustration_url} alt="대표 그림" />
+          <span className="photo-note" aria-hidden>
+            대표 그림
+          </span>
+        </span>
       ) : (
         <span className="menu-photo empty" aria-hidden>
           {m.name.slice(0, 1)}

@@ -15,6 +15,8 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from agenthan.illustration import assign_illustration
+
 SEED_PATH = Path(__file__).with_name("dummy_store_seed.json")
 DEFAULT_STORE = Path(".agenthan/store.json")
 
@@ -148,6 +150,24 @@ class DummyStore:
             raise DummyStoreError("시드 파일은 실행 저장소로 사용할 수 없습니다.")
         self.lock = _lock_for(self.path)
 
+    @staticmethod
+    def illustrate(record: dict) -> None:
+        """새 메뉴의 대표 그림을 지금 이름으로 고른다. 저장소 잠금 안에서 불리므로 임베딩
+        (네트워크)은 부르지 않는다: 정확한 이름·키워드·분류·이름 끝말만. 임베딩으로 더 맞는
+        그림을 찾는 일은 잠금 밖에서 따로 한다(app.server.fill_illustrations)."""
+        assign_illustration(record)
+
+    @staticmethod
+    def rename_menu(record: dict, name: str) -> bool:
+        """메뉴 이름을 바꾼다(공백 정리). 이름이 실제로 바뀌었으면 대표 그림도 새 이름으로 다시
+        고르고 True. 같은 이름 검사와 잠금은 부르는 쪽이 한다."""
+        tidy = " ".join(name.split())
+        if tidy == record["name"]:
+            return False
+        record["name"] = tidy
+        DummyStore.illustrate(record)
+        return True
+
     def read(self) -> dict:
         """Before the first valid write, read the seed without creating a file."""
         try:
@@ -278,6 +298,8 @@ class DummyStore:
                     record["filling"] = [
                         f for f in item.get("filling", []) if f in MENU_FLAG_FIELDS
                     ]
+                    # 이름을 현지화하는 메뉴는 채우기가 이름을 고칠 때 최종 이름으로 다시 고른다
+                    self.illustrate(record)
                     data["menus"].append(record)
                     action = "created"
                 else:
@@ -339,7 +361,7 @@ class DummyStore:
                         raise DummyStoreError("같은 이름의 메뉴가 이미 있어요.")
                     values.pop("name")
                 else:
-                    record["name"] = " ".join(name.split())
+                    self.rename_menu(record, name)
             if "price" in values:
                 if not valid_price(values["price"]):
                     raise DummyStoreError("가격은 0보다 큰 정수(원)로 넣어 주세요.")
@@ -454,6 +476,7 @@ class DummyStore:
                 "price": price,
                 "aliases": [],
             }
+            self.illustrate(record)
             data["menus"].append(record)
         else:
             action = "updated"

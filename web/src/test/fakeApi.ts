@@ -4,8 +4,8 @@ import type { Action, DraftRow, MenuEdit, OnboardingInput, Pending, Period, Plac
 
 export const SEED: Place = {
   menu: [
-    { id: "m01", name: "메도빅", price: 7500, description: "꿀 케이크", photo_url: null },
-    { id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null },
+    { id: "m01", name: "메도빅", price: 7500, description: "꿀 케이크", photo_url: null, illustration_url: "/illustrations/default_cake.svg" },
+    { id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null, illustration_url: "/illustrations/default_cake.svg" },
   ],
   business_hours: {
     mon: { closed: false, open_time: "09:00", close_time: "21:00" },

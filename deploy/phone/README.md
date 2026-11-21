@@ -106,6 +106,19 @@ docker compose -f deploy/phone/compose.yaml cp app:/app/logs ./phone-logs   # �
 | `PHONE_APPROVAL_WAIT_S` | 0 | 0 | 통화 중 사장님 결정 대기(초). 0이면 "네"에 끊고 주문 현황으로 알린다(ADR-0010). 0보다 크면 예전 통화 중 대기(대기음·재안내 `PHONE_APPROVAL_REPROMPT_S`) |
 | `PHONE_APPROVAL_EXPIRE_MIN` | 5 | 리허설에서 | 확인 요청 자동 취소(분, 요청 연 때부터). 대기(초)보다 길어야 서버가 뜬다 |
 
+### 메뉴 대표 그림의 실제 가게 별칭 (git 밖 파일)
+
+메뉴 탭의 대표 그림은 실제 가게 메뉴 이름(예: 실제 가게에만 있는 케이크 이름)을 git 밖 파일 `data/illustration_aliases.json`(`{"메뉴 이름": "그림 id"}`)로 그림에 잇는다(`src/agenthan/illustration/README.md`). 이미지에는 들어가지 않고, `compose.yaml`이 서버 저장소의 이 파일을 컨테이너 `/app/data/illustration_aliases.json`에 읽기 전용으로 붙인다.
+
+```bash
+# 로컬(메인 저장소)에서 한 번, 파일을 고쳤을 때마다
+scp data/illustration_aliases.json <서버>:~/AgentHan/data/illustration_aliases.json
+# 서버: 처음 붙일 때만 컨테이너를 다시 만든다(내용만 바뀌면 다음 그림 고르기부터 읽는다)
+docker compose -f deploy/phone/compose.yaml up -d app
+```
+
+파일 없이 띄우면 Docker가 그 자리에 빈 폴더 `data/illustration_aliases.json/`를 만들고 앱은 별칭 없이 고른다(실제 가게 이름 일부가 분류 기본 그림으로 보임). 그때는 빈 폴더를 지우고(`rmdir`) 파일을 복사한 뒤 위처럼 컨테이너를 다시 만든다.
+
 ## 4-2. 비상 대응 (6단계)
 
 | 상황 | 볼 것 | 할 일 |
