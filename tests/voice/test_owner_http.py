@@ -91,6 +91,7 @@ def test_a_confirmed_call_waits_for_the_owner_who_accepts_it_and_the_customer_he
             snapshot = next(events)
             assert snapshot["event"] == "snapshot"
             assert snapshot["data"].pop("now")  # 허브 시계 (리뷰 C2)
+            assert snapshot["data"].pop("sold_out")["items"] == []  # 오늘 품절 (티켓 06)
             assert snapshot["data"] == {
                 "orders": [], "calls": [], "questions": [], "captions": [], "knowledge": []}
 

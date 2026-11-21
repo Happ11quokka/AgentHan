@@ -278,6 +278,14 @@ class OwnerChannel(Protocol):
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         """기다리는 중에 손님이 주문을 고치거나(changed) 취소해(cancelled) 확인 요청을 거뒀다."""
 
+    def sold_out_today(self) -> frozenset[str]:
+        """사장님이 오늘 품절로 건 메뉴 id들(주문 승인 티켓 06, 재료 소진 거절). 바로 돌아온다.
+
+        가게 시간대 날짜가 바뀌면 비어 있다. 세션이 통화를 시작할 때와 사장님 결정을 말하기 직전에
+        읽어 엔진 메뉴에 덮어 쓴다. 비서 "내 가게" 메뉴·DB 메뉴 표와는 따로다.
+        """
+        ...
+
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         """AI가 답하지 못하고 손님에게 "사장님께 전해 둘게요"라고 한 메뉴 질문(티켓 13, 보충 요청).
 
@@ -333,6 +341,9 @@ class NullOwnerChannel:
 
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         pass
+
+    def sold_out_today(self) -> frozenset[str]:
+        return frozenset()
 
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         pass

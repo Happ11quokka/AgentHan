@@ -37,7 +37,7 @@ def test_the_owner_rejects_as_busy_and_the_customer_hears_the_apology(tmp_path) 
                                    json={"reason": "free", "text": " "}).status_code == 422
                 assert client.post(f"{base}/reject?key={KEY}",
                                    json={"reason": "out_of_stock",
-                                         "menu_ids": ["m01"]}).status_code == 422  # 티켓 06
+                                         "menu_ids": []}).status_code == 422  # 메뉴를 골라야
                 assert client.post(f"{base}/reject?key={KEY}",
                                    json={"reason": "rain"}).status_code == 422
                 rejected = client.post(f"{base}/reject?key={KEY}", json={"reason": "busy"})

@@ -63,7 +63,8 @@ def test_a_confirmed_order_becomes_an_order_card_for_the_owner() -> None:
     assert first.name == "snapshot"
     # `now`: 허브 시계 지금 시각. 화면이 이것으로 카운트다운·픽업 색 시계를 맞춘다 (리뷰 C2)
     assert first.data == {"orders": [], "calls": [], "questions": [], "captions": [],
-                          "knowledge": [], "now": NOW.isoformat()}
+                          "knowledge": [], "now": NOW.isoformat(),
+                          "sold_out": {"date": "2026-11-08", "items": []}}  # 오늘 품절 (티켓 06)
     assert second.name == "order.update"
     card = second.data
     assert card["id"] == "call-1"

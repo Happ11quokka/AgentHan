@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -218,6 +218,9 @@ class _Turn:
     # 이번 턴에 손님이 확인해 준 큰 수량 (메뉴 id, 수량). 같은 턴에 다시 묻지 않는다
     qty_confirmed: tuple[str, int] | None = None
     acks: list[str] = field(default_factory=list)  # 받아들인 대답 문장들 (`TurnResult.ack`)
+    # 주문 승인 티켓 06. 재료 소진 질문("빼고 주문할까요, 다른 메뉴로 바꾸실까요?")에 손님이 빼자고
+    # 했다("네"·"빼 주세요"·"그게 다예요"). 장바구니가 그대로면 턴 끝에 재승인 없이 수락한다
+    keep_rest: bool = False
 
     @property
     def question(self) -> str:
@@ -227,6 +230,20 @@ class _Turn:
     def responded(self) -> bool:
         """이번 턴에 이미 손님에게 답할 거리가 생겼다 (질문·담기·고치기·안내)."""
         return self.asked or bool(self.accepted or self.touched) or self.changed
+
+
+@dataclass(frozen=True)
+class _StockOut:
+    """사장님이 통화 중에 재료 소진으로 거절했다 (주문 승인 티켓 06). `DialogEngine._stock_out`.
+
+    떨어진 줄은 장바구니에서 이미 뺐다. 손님이 그대로(`cart`·`pickup`이 같게) 빼고 주문하자고 하면
+    재승인 없이 수락한다. 다른 메뉴를 더하거나 바꾸면 이 표시를 지우고 다시 복창한다(새 요청 번호).
+    """
+
+    menu_ids: frozenset[str]  # 떨어진 메뉴 id들
+    cart: Cart  # 떨어진 줄을 뺀 장바구니
+    pickup: datetime | None
+    question: str  # 품절 안내 + 빼기/바꾸기 질문. 되물을 때 다시 한다
 
 
 @dataclass(frozen=True)
@@ -248,6 +265,8 @@ SnapshotKind = Literal["fixed", "value", "copy", "cache"]
 SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
     "_nlu": "fixed", "_answerer": "fixed", "_store": "fixed", "_config": "fixed",
     "_order_id": "fixed", "_menu": "fixed", "_matcher": "fixed", "_catalog": "fixed",
+    # 오늘 품절(주문 승인 티켓 06)은 메뉴와 같이 되감지 않는다(사장님이 바꾼 가게 사정이다)
+    "_store_menu": "fixed", "_sold_out_ids": "fixed",
     "_ask_owner": "fixed", "_knowledge": "fixed",
     "_facts_reviews": "cache",
     # `_answer_early`는 (손님 말, 이미 낸 답변기 Future)다. 되감은 뒤에는 합친 말이라 글이 달라
@@ -260,6 +279,7 @@ SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
     "_owner_open": "value", "_owner_asked": "value", "_read_back": "value",
     "_owner_timed_out": "value", "_owner_seen_said": "value",
     "_approval_open": "value", "_approvals": "value", "_cancel_withdrawn": "value",
+    "_stock_out": "value",
     "_transcript": "copy", "_pending": "copy",
 }
 
@@ -301,7 +321,7 @@ class DialogEngine:
     def __init__(
         self, store: StoreKnowledge, nlu: Nlu, config: StoreConfig, *, order_id: str,
         ask_owner: bool = False, knowledge: KnowledgeReader | None = None,
-        answerer: Answerer | None = None,
+        answerer: Answerer | None = None, sold_out: Iterable[str] = (),
     ) -> None:
         """`ask_owner`면 근거 없는 메뉴 질문을 사장님께 묻는다(4단계 티켓 05). 아니면 1단계처럼
         "그건 제가 정확히 모르겠어요". 사장님 쪽이 붙은 통화 세션만 켠다.
@@ -312,6 +332,9 @@ class DialogEngine:
 
         `answerer`(5단계 티켓 11)를 주면 손님 질문에 가게 자료(메뉴·영업시간·후기·사장님 메모)로
         답한다. 없으면 예전처럼 메뉴 필드 규칙(`menu_info`)으로만 답한다.
+
+        `sold_out`(주문 승인 티켓 06)은 사장님이 오늘 품절로 건 메뉴 id들이다. 가게 메뉴에 품절로
+        덮어 쓴다(`apply_sold_out`). 그 메뉴는 기존 품절 안내("오늘 다 떨어졌어요")를 탄다.
         """
         self._nlu = nlu
         self._answerer = answerer
@@ -325,10 +348,14 @@ class DialogEngine:
         self._topic: MenuItem | None = None
         self._config = config
         self._order_id = order_id
-        self._menu: list[MenuItem] = store.list_menu()  # 통화 시작 때 한 번 (spec §4)
+        self._store_menu: list[MenuItem] = store.list_menu()  # 통화 시작 때 한 번 (spec §4)
+        # 가게 메뉴 + 오늘 품절(주문 승인 티켓 06) = 이 통화의 메뉴. 매처와 NLU에 줄 가게 메뉴
+        # 정보(5단계 티켓 05)도 같이 만든다(`_set_menu`). 오늘 품절이 바뀔 때만 다시 만든다
+        self._sold_out_ids: frozenset[str] = frozenset()
+        self._menu: list[MenuItem] = []
         self._matcher = MenuMatcher(self._menu)
-        # NLU에 줄 가게 메뉴 정보. 통화 동안 메뉴가 안 바뀌므로 한 번 (5단계 티켓 05)
         self._catalog = menu_catalog(self._menu, config.required_options)
+        self._set_menu(frozenset(sold_out))
         self._state = State.GREETING
         self._cart = Cart()
         self._pickup: datetime | None = None
@@ -370,6 +397,8 @@ class DialogEngine:
         # 티켓 07. 기다리는 중에 "취소할게요"가 와서 "주문 취소할까요?"를 물으며 거둔 요청 번호.
         # 손님이 취소를 확정하면 그 번호를 취소(cancelled)로 한 번 더 알린다(사장님 카드가 취소로)
         self._cancel_withdrawn: int | None = None
+        # 티켓 06. 재료 소진 거절 뒤 손님 답("빼고"·"바꾸고")을 기다리는 중 (`_StockOut`)
+        self._stock_out: _StockOut | None = None
 
     # ------------------------------------------------------------ 진입점
 
@@ -582,6 +611,24 @@ class DialogEngine:
         self._say(turn, templates.owner_seen())
         return self._result(turn)
 
+    def apply_sold_out(self, menu_ids: Iterable[str]) -> None:
+        """오늘 품절 목록(사장님 허브, 주문 승인 티켓 06)을 이 통화 메뉴에 덮어 쓴다.
+
+        세션이 결정을 넣기 직전에 부른다(통화 시작 때는 생성자 `sold_out`). 가게 메뉴에서 원래
+        품절인 메뉴는 그대로 품절이고, 목록에서 빠진 메뉴(사장님 되돌리기)는 다시 받는다. 장바구니에
+        이미 담긴 줄은 건드리지 않는다(사장님 결정이 정한다).
+        """
+        ids = frozenset(menu_ids)
+        if ids != self._sold_out_ids:
+            self._set_menu(ids)
+
+    def _set_menu(self, sold_out: frozenset[str]) -> None:
+        self._sold_out_ids = sold_out
+        self._menu = [replace(m, sold_out=True) if m.id in sold_out and not m.sold_out else m
+                      for m in self._store_menu]
+        self._matcher = MenuMatcher(self._menu)
+        self._catalog = menu_catalog(self._menu, self._config.required_options)
+
     def snapshot(self) -> EngineSnapshot:
         """지금 대화 상태를 떠 둔다 (6단계 티켓 02 "앞 턴 되감기").
 
@@ -776,11 +823,14 @@ class DialogEngine:
             return
         if self._awaiting_approval() and act.type not in _WHILE_APPROVAL:
             return  # 확인 대기 중 그 밖의 말: 턴 끝에 "확인 중이에요, 잠시만요." (`_finish`)
+        if self._stock_out is not None and self._on_stock_out_answer(turn, act):
+            return
         handler = _HANDLERS.get((self._state, act.type), DialogEngine._on_unhandled)
         handler(self, turn, act)
 
     def _finish(self, turn: _Turn) -> None:
         """처리기가 질문을 안 했으면 상태에 맞는 질문 하나를 붙인다."""
+        self._settle_stock_out(turn)
         self._collect_readback(turn)
         if self._fixing and self._state is State.ORDERING and (turn.accepted or turn.changed):
             turn.done_ordering = turn.correcting = True  # "어떤 걸 고쳐 드릴까요?"의 답
@@ -1040,6 +1090,8 @@ class DialogEngine:
         말해 달라고 했을 때("뭐라고요?")는 앞 문장까지 그대로 한다.
         """
         if self._cancel_resume is None:
+            if self._state is State.ORDERING and self._stock_out is not None:
+                return self._stock_out.question  # 재료 소진 질문을 다시 (티켓 06)
             if self._state is State.ORDERING:
                 if self._fixing:  # 복창에 "아니요" 뒤. 고칠 것을 다시 묻는다 (티켓 06)
                     return templates.ask_what_to_fix()
@@ -2140,10 +2192,96 @@ class DialogEngine:
         주문서는 넘기지 않는다(취소와 같다). 직접 쓰기 사유의 사장님 글은 손님에게 읽지 않는다.
         허브가 번역해 문자로 보낸다. 재료 소진(티켓 06)은 주문 받기로 돌아가는 다른 길이다.
         """
+        if decision.reason == "out_of_stock" and self._out_of_stock(turn, decision):
+            return
         label = _REJECT_LABEL.get(decision.reason, decision.reason)
         self._transcript.append(f"사장님: 거절({label})")
         self._state = State.DONE
         self._say(turn, templates.approval_rejected(decision.reason))
+
+    # ------------------------------------------------------------ 재료 소진 (주문 승인 티켓 06)
+
+    def _out_of_stock(self, turn: _Turn, decision: OwnerDecision) -> bool:
+        """재료 소진 거절: 떨어진 메뉴를 이 통화 메뉴에서 품절로 바꾸고, 장바구니에서 빼고, 품절
+        안내 + "빼고 주문할까요, 다른 메뉴로 바꾸실까요?"를 묻는다. 주문 받기(ORDERING)로 돌아간다.
+
+        떨어진 메뉴가 장바구니에 없으면(가짜 결정) 품절만 걸고 False(가게 사정 사과로 끝낸다).
+        """
+        ids = frozenset(decision.menu_ids)
+        self._set_menu(self._sold_out_ids | ids)
+        gone = [line for line in self._cart.lines if line.item.id in ids]
+        if not gone:
+            return False
+        names = list(dict.fromkeys(line.item.name_ko for line in gone))
+        rest = Cart(tuple(line for line in self._cart.lines if line.item.id not in ids))
+        self._transcript.append(f"사장님: 거절(재료 소진: {', '.join(names)})")
+        self._cart = rest
+        self._state = State.ORDERING
+        self._pending = self._focus = None
+        self._fixing = True  # 다른 메뉴를 더하거나 바꾸면 바로 다시 복창한다 (`_finish`)
+        question = templates.approval_out_of_stock(names, rest=not rest.is_empty())
+        self._stock_out = _StockOut(ids, rest, self._pickup, question)
+        self._ask(turn, question)
+        return True
+
+    def _on_stock_out_answer(self, turn: _Turn, act: Act) -> bool:
+        """재료 소진 질문의 답. 처리했으면 True, 평소 처리기로 넘길 act면 False.
+
+        "네"·"그게 다예요"·떨어진 메뉴 빼기(메뉴 없이 "빼 주세요"도) → 빼고 주문(`keep_rest`, 턴
+        끝에 장바구니가 그대로면 수락). "아니요"만 → 무엇으로 바꿀지 묻는다(남은 메뉴가 없으면
+        취소를 묻는다). 그 밖(메뉴 담기·고치기·질문 등)은 평소대로 처리한다.
+        """
+        stock = self._stock_out
+        if stock is None or self._state is not State.ORDERING:
+            return False
+        if act.type in ("yes", "done_ordering") or (
+                act.type == "remove_item" and self._names_stock_out(act, stock)):
+            turn.keep_rest = True
+            return True
+        if act.type == "no":
+            if stock.cart.is_empty():
+                self._on_cancel_order(turn, act)
+            else:
+                self._ask(turn, templates.ask_replacement())
+            return True
+        return False
+
+    def _names_stock_out(self, act: Act, stock: _StockOut) -> bool:
+        """빼 달라는 것이 떨어진 메뉴다. 메뉴를 안 말했으면("빼 주세요") 그렇게 본다."""
+        if not _names_menu(act):
+            return True
+        result = self._matcher.match(act.menu_text, act.menu_guess)
+        candidates = ([result.item] if result.item else []) + list(result.candidates)
+        return any(item.id in stock.menu_ids for item in candidates)
+
+    def _settle_stock_out(self, turn: _Turn) -> None:
+        """재료 소진 질문 뒤 턴 끝. 장바구니·시각이 그대로고 손님이 빼자고 했으면 재승인 없이
+        수락한다(지금 마무리 대사 + `confirmed`). 남은 메뉴가 없으면 주문을 다시 받는다.
+
+        손님이 메뉴를 더하거나 바꿨으면(시각 포함) 표시를 지운다. `_fixing`이라 바로 다시 복창하고,
+        "네"에 새 번호로 확인을 요청한다. 고르기(CLARIFY)·취소 확인 중이면 다음 턴에 다시 본다.
+        """
+        stock = self._stock_out
+        if stock is None:
+            return
+        if self._state in TERMINAL or self._state is State.DONE:
+            self._stock_out = None  # 취소·넘김으로 끝났다
+            return
+        if self._cart != stock.cart or self._pickup != stock.pickup:
+            self._stock_out = None
+            return
+        if not turn.keep_rest or self._state is not State.ORDERING \
+                or self._cancel_resume is not None:
+            return
+        self._stock_out = None
+        self._fixing = False
+        if self._cart.is_empty() or self._pickup is None:
+            self._ask(turn, templates.ask_order(), force=True)
+            return
+        self._state = State.CLOSING
+        self._say(turn, self._ok(turn, templates.closing(self._pickup)))
+        turn.asked = True
+        turn.order_status = "confirmed"
 
     @on("no", State.CONFIRM)
     def _on_confirm_no(self, turn: _Turn, act: Act) -> None:

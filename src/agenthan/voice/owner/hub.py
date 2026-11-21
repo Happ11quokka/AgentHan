@@ -28,11 +28,23 @@
   `expire_due`를 부르고, 결정(`accept`)·새 구독(`events`) 앞에서도 한 번 부른다(타이머가 늦어도
   마감 지난 카드에 결정이 들어가지 않게). 시험은 가짜 시계를 옮기고 `expire_due`를 부른다
 - 거절 (주문 승인 티켓 05, `reject`): 확인 대기 카드 → rejected + `reject_reason`(busy 바빠서 못
-  맞춤 · closed 영업·가게 사정 · free 직접 쓰기 · out_of_stock 재료 소진은 티켓 06). 손님에게
+  맞춤 · closed 영업·가게 사정 · free 직접 쓰기 · out_of_stock 재료 소진, 아래). 손님에게
   사유별 취소 문자(kind rejected)를 남기고, 통화 중이면 결정(사유)을 세션에 넘긴다(손님은 사과를
   듣고 통화가 취소로 끝난다. 통화 카드는 거절 카드가 대신한다). 직접 쓰기 글은 `reject_text`, 번역
   포트로 옮긴 한국어는 `reject_text_ko`. 문자는 번역 인용 틀(번역이 안 되면 원문 +
   `translate_failed`). 결정 한 번 규칙은 수락과 같다
+- 재료 소진과 오늘 품절 (주문 승인 티켓 06): 재료 소진 거절은 주문에 든 메뉴 중 떨어진 것
+  (`reject_menu_ids`, 하나 이상)을 받는다. 그 메뉴들은 그 자리에서 오늘 품절이 된다: 허브가 메뉴
+  id 집합과 날짜(허브 시계 = 가게 시간대)를 들고, 날짜가 바뀌면 비운다(자정 루프 타이머와
+  `roll_day`). 바뀔 때마다 `owner.sold_out`(`{"date", "items": [{"menu_id", "name_ko",
+  "name_owner"}]}`)을 보내고 `snapshot`의 `sold_out`에도 같은 모양으로 넣는다. 카드의 `sold_out`
+  (같은 줄 모양)은 그 카드에서 품절로 바꾼 메뉴다("품절로 바꿨어요 [되돌리기]", 되돌리기는
+  `undo_sold_out`). 통화 세션은 `sold_out_today`를 통화 시작·결정 직전에 엔진 메뉴에 덮어 쓴다.
+  비서 "내 가게" 메뉴·DB 메뉴 표는 건드리지 않는다. 통화 중 재료 소진이면 손님은 빼거나 바꿀 수
+  있어 취소 문자를 바로 보내지 않는다: 손님이 떨어진 메뉴만 빼 확정하면(세션이 남은 메뉴의
+  확정 주문을 `submit`) 그 카드가 남은 메뉴로 accepted가 되고 확정 문자가 간다. 바꿔서 새 번호로
+  다시 요청하면 새 확인 카드가 대신한다(품절 표시는 이어 받는다). 둘 다 아니고 통화가 끝나면
+  그때 메뉴 이름이 든 취소 문자를 보낸다. 통화 뒤 재료 소진 거절은 그 자리에서 취소 문자
 - 통화 카드(`call.update`, 티켓 02): 통화 중(live) → 확정되면 ordered(같은 id의 주문 카드가 생기고
   통화 카드는 빠진다) · 넘김이면 handoff("손님 연락 필요", 장바구니 + 마지막 손님 말 3줄) · 확정
   없이 끝나면 missed(회색 미완료, 담긴 메뉴 + 끝난 이유). handoff·missed는 사장님이 닫는다(closed)
@@ -67,9 +79,9 @@
   `answer_said`를 안 보냄) 통화 끝에 늦은 답과 같은 문자로 보낸다(리뷰 C1). 통화가 끝나면 세션의
   받는 곳을 놓는다(끝난 세션이 GC 되게, 리뷰 C5)
 - 구독자(`events`)는 먼저 `snapshot`(`{"orders": [...], "calls": [...], "questions": [...],
-  "captions": [...], "knowledge": [...], "now": 허브 시계 ISO}`, 통화 카드는
+  "captions": [...], "knowledge": [...], "sold_out": {...}, "now": 허브 시계 ISO}`, 통화 카드는
   ordered·closed 빼고, 자막은 통화 중 카드 것만)을 받고, 그 뒤 `order.update`·`call.update`·
-  `call.caption`·`owner.question*`·`knowledge.update`를 받는다.
+  `call.caption`·`owner.question*`·`knowledge.update`·`owner.sold_out`을 받는다.
   이벤트마다 늘어나는 번호(`id`)를 단다. 재연결 때 이어 받기 버퍼는 없다(늘 snapshot부터)
 - `submit`·통화 알림은 이벤트 루프에서 불리면 바로 처리한다(구독자 큐에 `put_nowait`만, 막히지
   않음). 다른 스레드에서 불리면 `call_soon_threadsafe`로 루프에 넘긴다
@@ -104,7 +116,7 @@ import logging
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from agenthan.core.contracts import Order, OrderLine, StoreKnowledge
@@ -242,6 +254,14 @@ class OwnerHub:
         self._text_watchers: dict[str, set[asyncio.Queue[OwnerEvent]]] = {}
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
+        # 오늘 품절 (주문 승인 티켓 06): 메뉴 id → 화면 줄(`menu_id`·`name_ko`·`name_owner`, 건
+        # 순서), 그 목록의 날짜(허브 시계), 자정에 비울 루프 타이머
+        self._sold_out: dict[str, dict[str, str]] = {}
+        self._sold_out_day: date = clock.now().date()
+        self._midnight: asyncio.TimerHandle | None = None
+        # 통화 중 재료 소진 거절을 받고 손님 답을 기다리는 통화 id. 통화가 끝날 때까지 남은
+        # 메뉴 확정·새 요청이 없으면 그때 취소 문자를 보낸다
+        self._stock_out_open: set[str] = set()
 
     # --- OrderSink ---------------------------------------------------------------------
 
@@ -294,6 +314,16 @@ class OwnerHub:
 
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         self._on_loop(self._withdraw_approval, call_id, number, reason)
+
+    def sold_out_today(self) -> frozenset[str]:
+        """오늘 품절 메뉴 id들(주문 승인 티켓 06). 날짜(허브 시계)가 바뀌었으면 빈 집합.
+
+        읽기만 한다(어느 스레드에서 불러도 된다). 목록을 실제로 비우고 화면에 알리는 것은 루프의
+        `roll_day`다.
+        """
+        if self._sold_out_day != self._clock.now().date():
+            return frozenset()
+        return frozenset(self._sold_out)
 
     # --- 사장님 화면 ---------------------------------------------------------------------
 
@@ -352,7 +382,11 @@ class OwnerHub:
         글은 번역 포트로 한국어로 옮겨 문자 인용 틀에 넣는다(번역은 비동기, 문자는 번역 뒤에 온다.
         안 되면 원문). 409 규칙은 수락과 같다: 이미 결정했거나 자동 취소됐으면 `AlreadyDecided`,
         손님이 고치는 중·취소한 요청이면 `CardBusy`. 없으면 `UnknownCard`. 모르는 사유·글 없는 직접
-        쓰기는 `ValueError`. 재료 소진은 아직 받지 않는다(`ValueError`, 티켓 06이 연다).
+        쓰기는 `ValueError`.
+
+        재료 소진(out_of_stock, 티켓 06)은 주문에 든 메뉴 중 떨어진 것(`menu_ids`, 하나 이상, 아니면
+        `ValueError`)을 받아 오늘 품절에 더한다. 통화 중이면 취소 문자는 미룬다(손님이 빼거나 바꿀
+        수 있다, 모듈 설명). 통화 뒤면 메뉴 이름이 든 취소 문자를 바로 남긴다.
         """
         self.expire_due()  # 마감이 지난 카드는 먼저 자동 취소한다(타이머가 늦었어도 409)
         card = self._orders.get(order_id)
@@ -360,8 +394,7 @@ class OwnerHub:
             raise UnknownCard(order_id)
         if reason not in REJECT_REASONS:
             raise ValueError(f"모르는 거절 사유: {reason!r}")
-        if reason == "out_of_stock":
-            raise ValueError("재료 소진 거절은 아직 받지 않아요")  # 티켓 06
+        menu_ids = self._stock_out_ids(card, menu_ids) if reason == "out_of_stock" else []
         text = text.strip() if reason == "free" else ""
         if reason == "free" and not text:
             raise ValueError("직접 쓴 거절 사정이 비었어요")
@@ -373,17 +406,55 @@ class OwnerHub:
                                   "reject_menu_ids": list(menu_ids), "reject_text": text,
                                   "decided_at": self._clock.now().isoformat()}
         log.info("확인 요청 거절: %s (%s)", order_id, reason)
+        if menu_ids:  # 통화에 넘기기 전에 품절을 건다(세션이 결정 직전에 목록을 읽는다)
+            self._mark_sold_out(order_id, menu_ids)
         reply = self._deciders.pop(order_id, None)
         if reply is not None:
             self._tell_call(reply, OwnerDecision(card["request"], "reject", reason=reason,
                                                  menu_ids=tuple(menu_ids)), order_id)
-        if reason == "free":
+        if reason == "out_of_stock" and reply is not None:
+            self._stock_out_open.add(order_id)  # 손님 답을 기다린다. 취소 문자는 통화 끝에
+            self._publish("order.update", self._orders[order_id])
+        elif reason == "out_of_stock":
+            self._text_customer(order_id, "rejected", self._stock_out_text(order_id))
+        elif reason == "free":
             self._publish("order.update", self._orders[order_id])  # 문자는 번역 뒤에
             self._text_rejected_soon(order_id)
         else:
             self._text_customer(order_id, "rejected", sms.rejected_text(reason))  # 카드도 보낸다
         self._arm_expiry()
         return self._orders[order_id]
+
+    def undo_sold_out(self, menu_id: str) -> dict[str, Any]:
+        """품절 되돌리기 (주문 승인 티켓 06): 그 메뉴를 오늘 품절에서 뺀다. 오늘 품절 전체를 준다.
+
+        다음 통화부터(진행 중인 통화는 다음 사장님 결정 때부터) 다시 받는다. 가게 메뉴에 없는 id면
+        `UnknownCard`. 이미 빠진 메뉴면 그대로 돌려준다(두 화면에서 같이 눌러도 된다).
+        """
+        self.roll_day()
+        if menu_id not in self._sold_out and self._store.get_menu(menu_id) is None:
+            raise UnknownCard(menu_id)
+        if self._sold_out.pop(menu_id, None) is not None:
+            log.info("품절 되돌림: %s", menu_id)
+            self._publish_sold_out()
+        return self._sold_out_view()
+
+    def roll_day(self) -> bool:
+        """날짜(허브 시계 = 가게 시간대)가 바뀌었으면 오늘 품절을 비우고 화면에 알린다(티켓 06).
+        비웠으면 True. 허브가 자정 루프 타이머로 스스로 부르고, 품절을 바꾸거나 새 구독 앞에서도
+        부른다. 시험은 가짜 시계를 옮기고 부른다.
+        """
+        today = self._clock.now().date()
+        if today == self._sold_out_day:
+            return False
+        self._sold_out_day = today
+        had = bool(self._sold_out)
+        self._sold_out.clear()
+        if had:
+            log.info("날짜가 바뀌어 오늘 품절을 비움 (%s)", today)
+            self._publish_sold_out()
+        self._arm_midnight()
+        return had
 
     def dismiss(self, call_id: str) -> dict[str, Any]:
         """닫기 버튼(넘김·미완료 카드): → closed. 바뀐 카드를 돌려준다.
@@ -518,6 +589,7 @@ class OwnerHub:
         """구독. 처음에 `snapshot` 하나, 그 뒤 바뀐 카드마다 이벤트 하나. 닫으면 구독을 푼다."""
         self._bind()
         self.expire_due()  # 새 화면이 마감 지난 카드를 확인 대기로 보지 않게
+        self.roll_day()  # 어제 품절을 오늘 것으로 보이지 않게
         queue: asyncio.Queue[OwnerEvent] = asyncio.Queue()
         self._subscribers.add(queue)
         try:
@@ -537,12 +609,21 @@ class OwnerHub:
             return
         self._order_of[order.id] = order
         waiting = self._orders.get(order.id)
+        marked: list[dict[str, str]] = []  # 재료 소진 카드의 품절 표시 (티켓 06)
+        if waiting is not None and order.id in self._stock_out_open:
+            self._stock_out_open.discard(order.id)
+            marked = waiting.get("sold_out", [])
+            if _rest_of(waiting, order):
+                self._accept_rest(waiting, order)  # 재료 소진 뒤 떨어진 메뉴만 뺐다 (티켓 06)
+                waiting = self._orders[order.id]
+            else:  # 바꾼 주문이 확인 요청 없이 확정됐다(그새 사장님 화면이 꺼짐): 자동 확정
+                waiting = None
         if waiting is None or waiting["withdrawn"]:
             # 확인 요청 없이 온 확정 주문(승인 꺼짐·사장님 화면 없음): 자동 확정 카드 + 확정 문자
             now = self._clock.now().isoformat()
             self._orders[order.id] = {
                 **self._approval_card(order, number=0, stage=""), "status": "accepted",
-                "auto_accepted": True, "decided_at": now}
+                "auto_accepted": True, "decided_at": now, "sold_out": marked}
             self._text_order(order.id)
             self._translate_later(self._orders[order.id])
         # 확인 카드가 있으면(수락·대기 중) 그대로 둔다. 결정과 문자는 확인 카드 몫이다
@@ -550,6 +631,81 @@ class OwnerHub:
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered"})  # 화면은 통화 카드를 빼고 주문 카드만
         self._prune()
+
+    def _accept_rest(self, card: dict[str, Any], order: Order) -> None:
+        """통화 중 재료 소진 거절 뒤 손님이 떨어진 메뉴만 빼고 확정했다(주문 승인 티켓 06). 그
+        카드를 남은 메뉴로 accepted로 바꾸고 확정 문자를 보낸다(재승인 없음). 거절 칸은 비우고
+        품절 표시(`sold_out`)는 남긴다."""
+        rest = self._approval_card(order, number=card["request"], stage=card["stage"])
+        self._orders[order.id] = {
+            **rest, "status": "accepted", "requested_at": card["requested_at"],
+            "deadline_at": card["deadline_at"], "decided_at": self._clock.now().isoformat(),
+            "sold_out": card.get("sold_out", [])}
+        log.info("재료 소진 뒤 남은 메뉴로 수락: %s", order.id)
+        self._text_order(order.id)
+        self._translate_later(self._orders[order.id])
+
+    def _stock_out_ids(self, card: dict[str, Any], menu_ids: Sequence[str]) -> list[str]:
+        """재료 소진 거절의 떨어진 메뉴 id들(중복 빼고 온 순서). 비었거나 주문에 없는 메뉴면
+        `ValueError`(422)."""
+        ids = list(dict.fromkeys(str(menu_id) for menu_id in menu_ids))
+        if not ids:
+            raise ValueError("재료가 떨어진 메뉴를 하나 이상 골라 주세요")
+        ordered = {line["menu_id"] for line in card["lines"]}
+        if unknown := [menu_id for menu_id in ids if menu_id not in ordered]:
+            raise ValueError(f"주문에 없는 메뉴: {unknown!r}")
+        return ids
+
+    def _mark_sold_out(self, call_id: str, menu_ids: Sequence[str]) -> None:
+        """재료 소진: 그 메뉴들을 오늘 품절에 더하고 카드에 품절 표시(`sold_out`)를 단다."""
+        self.roll_day()
+        card = self._orders[call_id]
+        by_id = {line["menu_id"]: line for line in card["lines"]}
+        items = [{"menu_id": menu_id, "name_ko": by_id[menu_id]["name_ko"],
+                  "name_owner": by_id[menu_id]["name_owner"]} for menu_id in menu_ids]
+        marked = [item for item in card.get("sold_out", []) if item["menu_id"] not in by_id]
+        self._orders[call_id] = {**card, "sold_out": marked + items}
+        for item in items:
+            self._sold_out[item["menu_id"]] = item
+        log.info("오늘 품절: %s (%s)", ", ".join(menu_ids), call_id)
+        self._publish_sold_out()
+        self._arm_midnight()
+
+    def _stock_out_text(self, call_id: str) -> str:
+        """재료 소진 취소 문자(떨어진 메뉴 이름)."""
+        card = self._orders[call_id]
+        names = {line["menu_id"]: line["name_ko"] for line in card["lines"]}
+        return sms.rejected_text("out_of_stock",
+                                 [names[menu_id] for menu_id in card["reject_menu_ids"]])
+
+    def _sold_out_view(self) -> dict[str, Any]:
+        """`owner.sold_out` 이벤트·snapshot `sold_out`: 날짜와 품절 메뉴(건 순서)."""
+        return {"date": self._sold_out_day.isoformat(), "items": list(self._sold_out.values())}
+
+    def _publish_sold_out(self) -> None:
+        self._publish("owner.sold_out", self._sold_out_view())
+
+    def _arm_midnight(self) -> None:
+        """오늘 품절이 있으면 다음 자정(허브 시계)에 `roll_day` 루프 타이머를 건다. 루프 밖이면
+        걸지 않는다(시험은 `roll_day`를 직접 부른다)."""
+        if self._midnight is not None:
+            self._midnight.cancel()
+            self._midnight = None
+        if not self._sold_out:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        now = self._clock.now()
+        midnight = datetime.combine(now.date() + timedelta(days=1), time(), tzinfo=now.tzinfo)
+        self._midnight = loop.call_later(max(0.0, (midnight - now).total_seconds()),
+                                         self._on_midnight)
+
+    def _on_midnight(self) -> None:
+        self._midnight = None
+        if not self.roll_day():
+            self._arm_midnight()  # 시계가 아직 자정 전이면 다시 건다
 
     def _approval_card(self, order: Order, *, number: int, stage: str) -> dict[str, Any]:
         """주문 카드: 주문 내용 + 처리 상태·확인 요청 칸 (주문 승인 티켓 02). 상태는 new."""
@@ -572,6 +728,9 @@ class OwnerHub:
             "reject_menu_ids": [],
             "reject_text": "",
             "reject_text_ko": "",
+            # 이 카드에서 오늘 품절로 바꾼 메뉴(티켓 06): [{"menu_id", "name_ko", "name_owner"}].
+            # 지금도 품절인지는 오늘 품절 목록(`owner.sold_out`)으로 본다(되돌리기 버튼)
+            "sold_out": [],
             "owner_check": self._owner_check(order.id),
             "sms": self.customer_texts(order.id),
         }
@@ -581,6 +740,9 @@ class OwnerHub:
     ) -> None:
         """확인 요청 → 확인 대기(new) 주문 카드. 같은 통화에 새 번호로 오면 앞 카드를 대신한다."""
         card = self._approval_card(request.order, number=request.number, stage="in_call")
+        if (before := self._orders.get(call_id)) is not None:
+            card["sold_out"] = before.get("sold_out", [])  # 재료 소진 뒤 다시 요청 (티켓 06)
+        self._stock_out_open.discard(call_id)  # 바꿔서 다시 요청했다. 취소 문자는 없다
         self._order_of[call_id] = request.order
         self._orders[call_id] = card
         self._deciders[call_id] = reply
@@ -753,6 +915,10 @@ class OwnerHub:
         self._heard.pop(call_id, None)
         self._captions.pop(call_id, None)  # 자막은 통화 중에만 (화면도 통화 중 카드 아래에만 둔다)
         self._deciders.pop(call_id, None)  # 끝난 세션을 놓는다. 통화 뒤 결정은 문자로만 간다
+        if call_id in self._stock_out_open:
+            # 재료 소진 안내 뒤 손님이 남은 메뉴로 확정하지도 바꿔 다시 요청하지도 않고 끝났다
+            self._stock_out_open.discard(call_id)
+            self._text_customer(call_id, "rejected", self._stock_out_text(call_id))
         order = self._orders.get(call_id)
         waiting = order is not None and order["status"] == "new" and not order["withdrawn"]
         if waiting and order is not None and order["stage"] == "in_call":
@@ -1172,7 +1338,8 @@ class OwnerHub:
         # (`PHONE_NOW` 시연·기기 시계가 틀린 태블릿, 리뷰 C2)
         return {"orders": list(self._orders.values()), "calls": calls,
                 "questions": list(self._questions.values()), "captions": captions,
-                "knowledge": self.knowledge_cards(), "now": self._clock.now().isoformat()}
+                "knowledge": self.knowledge_cards(), "sold_out": self._sold_out_view(),
+                "now": self._clock.now().isoformat()}
 
     def _publish(self, name: str, data: dict[str, Any]) -> None:
         if name == "order.update":
@@ -1231,6 +1398,14 @@ class _Captions:
     def add(self, who: str, text: str) -> None:
         self._count += 1
         self.lines.append((self._count, who, text))
+
+
+def _rest_of(card: dict[str, Any], order: Order) -> bool:
+    """재료 소진 거절 카드에 온 확정 주문이 떨어진 메뉴만 뺀 나머지다(새 메뉴 없음, 티켓 06)."""
+    if card["status"] != "rejected" or card["reject_reason"] != "out_of_stock":
+        return False
+    before = {line["menu_id"] for line in card["lines"]} - set(card["reject_menu_ids"])
+    return bool(order.lines) and all(line.menu_id in before for line in order.lines)
 
 
 def _awaiting(card: dict[str, Any]) -> bool:

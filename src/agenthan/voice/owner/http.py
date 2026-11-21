@@ -3,9 +3,9 @@
     app.include_router(owner_router(hub, key=settings.owner_key))
 
 - `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [...], "calls": [...],
-  "questions": [...], "captions": [...], "knowledge": [...], "now": 허브 시각}`), 그 뒤
-  `order.update`·`call.update`·`call.caption`·`owner.question`·`owner.question.update`·
-  `knowledge.update`(카드 전체)
+  "questions": [...], "captions": [...], "knowledge": [...], "sold_out": {...}, "now": 허브
+  시각}`), 그 뒤 `order.update`·`call.update`·`call.caption`·`owner.question`·
+  `owner.question.update`·`knowledge.update`(카드 전체)·`owner.sold_out`(오늘 품절 전체, 티켓 06)
 - `POST /api/owner/orders/{id}/accept?key=…` 본문(선택) `{"delay_min": 0}`: 확인 대기 주문 수락
   (new → accepted, 주문 승인 티켓 02). 확정 문자를 보내고 통화 중이면 손님이 마무리를 듣는다.
   바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나 손님이 고치는 중·취소한 요청은 409,
@@ -15,7 +15,11 @@
   사유별 취소 문자를 보내고 통화 중이면 손님이 사유별 사과를 듣고 통화가 끝난다. 직접 쓰기(free)
   글은 번역해 문자로만 간다. 바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나(수락·거절·
   자동 취소) 손님이 고치는 중·취소한 요청은 409, 모르는 사유·글 없는 직접 쓰기·500자 넘는 글은
-  422. 재료 소진은 티켓 06 전까지 422
+  422. 재료 소진(out_of_stock, 티켓 06)은 `menu_ids`에 주문에 든 떨어진 메뉴를 하나 이상 넣는다
+  (없거나 주문에 없는 메뉴면 422). 그 메뉴들은 오늘 품절이 된다. 통화 중이면 손님은 품절 안내와
+  "빼고 주문할까요, 다른 메뉴로 바꾸실까요?"를 듣고, 취소 문자는 손님이 고르지 않고 끝났을 때만 간다
+- `POST /api/owner/sold-out/{menu_id}/undo?key=…`: 오늘 품절 되돌리기(티켓 06). 오늘 품절 전체
+  `{"date", "items": [...]}`를 돌려준다. 가게 메뉴에 없는 id는 404, 이미 빠진 메뉴는 그대로 200
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 - `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}` 또는
@@ -162,6 +166,11 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
                           409: "이미 결정했거나 손님이 주문을 고치는 중이에요",
                           422: "거절 사정을 적어 주세요"}):
             return hub.reject(order_id, body.reason, menu_ids=body.menu_ids, text=body.text)
+
+    @router.post("/sold-out/{menu_id}/undo")
+    async def undo_sold_out(menu_id: str) -> dict[str, Any]:
+        with _hub_errors({404: "그런 메뉴가 없어요"}):
+            return hub.undo_sold_out(menu_id)
 
     @router.post("/calls/{call_id}/dismiss")
     async def dismiss(call_id: str) -> dict[str, Any]:
