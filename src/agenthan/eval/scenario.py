@@ -48,6 +48,7 @@ from agenthan.eval.fake_backend import FakeBackend
 from agenthan.eval.flow import Probe
 from agenthan.eval.judge import FakeJudge, Judge
 from agenthan.eval.metrics import _percentile, score_plan, summarize_s2
+from agenthan.eval.naive_baseline import NaiveBaselineSubject
 from agenthan.eval.replay import EMBED_MODEL, Live, Replay, canonical
 from agenthan.eval.run import BASELINES, REPLAY_PATH, ROOT, _git, display_path, sha256
 from agenthan.tools.dummy_store import DummyStore
@@ -556,7 +557,8 @@ def _review_factory(backend, today: date | None):
 
 
 SUBJECTS: dict[str, Callable[[Path, Probe, date | None], Subject]] = {
-    "current": OwnerAssistantSubject
+    "current": OwnerAssistantSubject,
+    "naive": NaiveBaselineSubject,  # OwnerBench comparison baseline (ADR-0009)
 }
 API_ERRORS = (ClovaChatError, ClovaEmbeddingError, ClovaV3Error)
 
@@ -1009,6 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--subject", choices=sorted(SUBJECTS), default="current")
     parser.add_argument("--only", help="comma-separated scenario IDs")
     parser.add_argument("--family", help="comma-separated families")
+    parser.add_argument("--exclude-family", help="comma-separated families to leave out")
     parser.add_argument("--split", choices=["dev", "sealed"])
     parser.add_argument("--repeat", type=int, help="override each scenario's repeat")
     parser.add_argument("--pause", type=float, default=2.0, help="live backend only")
@@ -1050,6 +1053,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("baseline name must contain only letters, numbers, underscores, or hyphens")
     if args.from_rows:
         return _resummarize(args.from_rows, args.save_baseline)
+    if args.subject == "naive" and args.agent_mode:
+        parser.error("--agent-mode applies to the current assistant, not the naive baseline")
     args.cases = args.cases or SUITES[args.suite]
     scenarios = load_scenarios(args.cases, S2Scenario if args.suite == "s2" else Scenario)
     if args.only:
@@ -1061,6 +1066,8 @@ def main(argv: list[str] | None = None) -> int:
         scenarios = [s for s in scenarios if s.id in wanted]
     if args.family:
         scenarios = [s for s in scenarios if s.family in set(args.family.split(","))]
+    if args.exclude_family:
+        scenarios = [s for s in scenarios if s.family not in set(args.exclude_family.split(","))]
     if args.split:
         scenarios = [s for s in scenarios if s.split == args.split]
     if not scenarios:
