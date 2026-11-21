@@ -1000,3 +1000,47 @@ def test_a_failed_strip_read_keeps_the_whole_read():
 def test_a_food_photo_ignores_the_strips():
     fake = FakeV3({"kind": "food"}, strip=[{"name": "메도빅", "price": 7500}])
     assert menu_board.read_board(wide_board(), call=fake) == ("food", [])
+
+
+# ---------------------------------------------------------------- 사진 + 이름표 카드 (2026-11-22)
+# 크림색 카드 틀 안에 사진과 이름표가 붙은 세로 열. photo_runs는 카드 둘을 한 칸으로 합치고, 사진
+# 아래 8%를 이름표로 읽어 다음 사진을 읽었다. 카드 둘(메도빅·펠메니)만 확실하고 셋째(머랭롤)는
+# 이름표와 사진 사이 빈 줄 없이 붙어 있어 간격으로 자리를 짐작한다.
+GREEN = (0, 160, 0)
+CARD_LABELS = {"메도빅": RED, "펠메니": BLUE, "머랭롤": GREEN}
+
+
+def card_board() -> bytes:
+    rng = np.random.default_rng(7)
+    image = np.full((1000, 1400, 3), (205, 230, 245), np.uint8)  # 종이
+    for k, color in enumerate((RED, BLUE, GREEN)):
+        top = 150 + k * 200
+        image[top - 10 : top + 175, 1000:1300] = (235, 245, 250)  # 크림색 카드 틀
+        image[top : top + 130, 1020:1280] = rng.integers(0, 255, (130, 260, 3), np.uint8)  # 사진
+        label_top = top + 135 if k < 2 else top + 130  # 셋째는 빈 줄 없이 붙는다
+        for x in range(1030, 1270, 6):  # 이름표: 색 글자 획
+            image[label_top + 4 : label_top + 22, x : x + 3] = color
+    return cv2.imencode(".png", image)[1].tobytes()
+
+
+def test_photo_cards_split_photos_from_labels_and_guess_the_missed_card():
+    cards = menu_board.photo_cards(card_board(), (0.65, 1.0))
+    photos = [(round(p[1] * 1000), round(p[3] * 1000)) for p, _ in cards]
+    assert (150, 280) in photos and (350, 480) in photos  # 확실한 두 카드
+    assert any(abs(top - 550) <= 3 for top, _ in photos)  # 셋째는 간격으로
+    for photo, label in cards:
+        assert label[1] >= photo[3]  # 이름표는 사진 아래
+
+
+def test_cards_are_matched_by_reading_only_the_label_band():
+    board = card_board()
+    items = [menu_board.BoardItem(name, 7000, None) for name in CARD_LABELS]
+    targets = [menu_board.Registered(f"m{i}", item, ["photo"]) for i, item in enumerate(items)]
+    cards = menu_board.photo_cards(board, (0.65, 1.0))
+    exact = menu_board.match_cards(targets, cards, board, FakeV3({}, labels=CARD_LABELS))
+    tops = {targets[i].item.name: round(box[1] * 1000) for i, box in exact.items()}
+    assert tops["메도빅"] == 150 and tops["펠메니"] == 350 and abs(tops["머랭롤"] - 550) <= 3
+
+
+def test_a_column_without_label_cards_gives_no_cards():
+    assert menu_board.photo_cards(BOARD, (0.5, 1.0)) == []

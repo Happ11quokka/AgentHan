@@ -791,6 +791,163 @@ def photo_runs(board: bytes, column: tuple[float, float]) -> list[Box]:
     return [((x0 + a) / w, top / h, (x0 + b) / w, bottom / h) for top, bottom, a, b in cells]
 
 
+# ---------------------------------------------------------------- 사진 카드 (사진 + 이름표 한 틀)
+# 사진 아래에 이름표가 붙은 카드가 세로로 늘어선 메뉴판(2026-11-22 사장님 메뉴판: 메도빅·
+# 펠메니·보르시·머랭롤·블리니). 크림색 카드 틀이 종이색과 달라 `photo_runs`는 카드 둘을 한 칸으로
+# 합치고, 사진 아래 8% 높이를 이름표로 읽어 다음 사진을 읽었다("한국식 만두국"). 여기서는
+# 사진(결이 고른 띠)과 이름표(글자 경계가 센 낮은 띠) 사이의 빈 줄로 카드를 나누고, 확실한
+# 카드들의 간격으로 놓친 카드 자리를 짐작한다. 이름표는 그 띠만 잘라 읽는다.
+CARD_EDGE = 3.0  # 줄의 가로 밝기 차 평균이 이보다 작으면 빈 줄(카드 사이·사진과 이름표 사이)
+CARD_PHOTO_MIN = 0.05  # 사진 띠 최소 높이(사진 높이 대비)
+CARD_LABEL_MAX = 0.045  # 이름표 띠 최대 높이
+CARD_LABEL_GAP = 0.03  # 사진 아래 끝 ~ 이름표 위 끝 최대 거리
+
+
+def _bands(on: list[bool]) -> list[tuple[int, int]]:
+    out, y = [], 0
+    while y < len(on):
+        if not on[y]:
+            y += 1
+            continue
+        end = y
+        while end < len(on) and on[end]:
+            end += 1
+        out.append((y, end))
+        y = end
+    return out
+
+
+def photo_cards(board: bytes, column: tuple[float, float]) -> list[tuple[Box, Box]]:
+    """사진 열의 (사진 칸, 이름표 칸) 카드들(위에서부터). 사진 바로 아래 이름표가 확실한 카드가
+    둘 이상일 때만 내고, 그 간격으로 놓친 카드 자리를 더한다. 못 찾으면 빈 목록."""
+    import cv2
+    import numpy as np
+
+    image = cv2.imdecode(np.frombuffer(board, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return []
+    # 줄이지 않고 잰다: 사진과 이름표 사이 빈 줄은 한두 줄뿐이라 줄이면 번진다(2026-11-22 머랭롤)
+    h, w = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    x0, x1 = int(column[0] * w), int(column[1] * w)
+    span = x1 - x0
+    if span < 10:
+        return []
+    inner = gray[:, x0 + int(span * 0.2) : x0 + int(span * 0.8)]
+    edge = np.abs(np.diff(inner, axis=1)).mean(axis=1)
+    bands = _bands(list(edge >= CARD_EDGE))
+    sure: list[tuple[int, int, int, int]] = []  # 사진 위·아래, 이름표 위·아래 (px)
+    for i, (top, bottom) in enumerate(bands):
+        if (bottom - top) / h < CARD_PHOTO_MIN:
+            continue
+        for t2, b2 in bands[i + 1 : i + 3]:
+            if (t2 - bottom) / h > CARD_LABEL_GAP:
+                break
+            if (b2 - t2) / h < CARD_LABEL_MAX:
+                sure.append((top, bottom, t2, b2))
+                break
+    if len(sure) < 2:
+        return []
+    tops = [c[0] for c in sure]
+    steps = sorted(b - a for a, b in zip(tops, tops[1:], strict=False))
+    pitch = float(np.median([d for d in steps if d < 1.5 * steps[0]]))
+    photo_h = float(np.median([c[1] - c[0] for c in sure]))
+    label_at = float(np.median([c[2] - c[1] for c in sure]))
+    label_h = float(np.median([c[3] - c[2] for c in sure]))
+    if pitch / h < 0.05:
+        return []
+    # 사진 가로 범위: 확실한 카드들에서 결이 이어지는 가장 긴 가로 구간
+    lefts, rights = [], []
+    for top, bottom, _, _ in sure:
+        rows = gray[top:bottom, x0:x1]
+        busy = np.convolve(np.abs(np.diff(rows, axis=0)).mean(axis=0), np.ones(5) / 5, "same")
+        best, start = (0, 0), None
+        for x, on in enumerate([*(busy >= CARD_EDGE), False]):
+            if on and start is None:
+                start = x
+            elif not on and start is not None:
+                if x - start > best[1] - best[0]:
+                    best = (start, x)
+                start = None
+        lefts.append(best[0])
+        rights.append(best[1])
+    left, right = x0 + int(np.median(lefts)), x0 + int(np.median(rights))
+    a, b = left / w, right / w
+    # 빈 줄은 카드 폭 안에서만 다시 잰다(옆 칸 가격 글자가 섞이지 않게,
+    # 2026-11-22 머랭롤 옆 에클레어)
+    pad = max(1, (right - left) // 10)
+    own = np.abs(np.diff(gray[:, left + pad : right - pad], axis=1)).mean(axis=1)
+    # 키 큰 칸은 위를 깎는다
+    cards = [(max(c[0], c[1] - photo_h), c[1], c[2], c[3]) for c in sure]
+    k = -3
+    while (top := tops[0] + k * pitch) < h:
+        k += 1
+        bottom = top + photo_h
+        if top < 0 or bottom + label_at + label_h > h:
+            continue
+        if any(abs(top - c[0]) < pitch / 2 for c in cards):
+            continue
+        # 짐작한 사진 아래쪽에 빈 줄(사진과 이름표 사이)이 있으면 거기서 자른다(이름표 글자가
+        # 사진에 묻지 않게, 2026-11-22 머랭롤)
+        lo, hi = int(top + 0.8 * photo_h), int(min(h - 1, bottom + 0.02 * h))
+        blank = [y for y in range(lo, hi) if own[y] < CARD_EDGE]
+        if blank:
+            bottom = float(blank[0])
+        cards.append((top, bottom, bottom + label_at, bottom + label_at + label_h))
+    cards.sort()
+    return [((a, t / h, b, btm / h), (a, lt / h, b, lb / h)) for t, btm, lt, lb in cards]
+
+
+def read_label_box(board: bytes, box: Box, *, call: Call = chat_v3) -> str:
+    """이름표 칸(box)만 잘라 글자를 읽는다. 못 읽으면 빈 문자열."""
+    import cv2
+    import numpy as np
+
+    image = cv2.imdecode(np.frombuffer(board, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return ""
+    height, width = image.shape[:2]
+    x0, y0, x1, y1 = box
+    pad = 0.004
+    piece = image[int(max(0.0, y0 - pad) * height) : int(min(1.0, y1 + pad) * height),
+                  int(x0 * width) : int(x1 * width)]
+    if piece.size == 0:
+        return ""
+    fill = max(0, piece.shape[1] // 3 - piece.shape[0])  # 너무 납작하면 400: 위아래 여백
+    piece = cv2.copyMakeBorder(piece, fill // 2, fill - fill // 2, 0, 0, cv2.BORDER_REPLICATE)
+    ok, encoded = cv2.imencode(".jpg", piece, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ok:
+        return ""
+    try:
+        raw = _vision_json(encoded.tobytes(), LABEL_PROMPT, "{", call, 60)
+    except (ClovaV3Error, menu_photo.MenuPhotoError, ValueError):
+        return ""
+    label = raw.get("label") if isinstance(raw, dict) else None
+    return label.strip() if isinstance(label, str) else ""
+
+
+def match_cards(
+    targets: list[Registered], cards: list[tuple[Box, Box]], board: bytes, call: Call
+) -> dict[int, Box]:
+    """카드의 이름표를 읽어(동시에) 메뉴에 맞춘다 → {targets 번호: 사진 칸}."""
+    out: dict[int, Box] = {}
+    if not cards or not targets:
+        return out
+    with ThreadPoolExecutor(max_workers=len(cards)) as pool:
+        labels = list(pool.map(lambda card: read_label_box(board, card[1], call=call), cards))
+    rest = list(range(len(targets)))
+    for (photo, _), label in zip(cards, labels, strict=True):
+        if not label or not rest:
+            continue
+        key = menu_photo._norm(split_subtitle(label)[0])
+        score, best = max((_label_score(key, targets[i].item.name), i) for i in rest)
+        if score >= LABEL_MIN:
+            out[best] = photo
+            targets[best].item.photo_label = label
+            rest.remove(best)
+    return out
+
+
 LABEL_PROMPT = (
     '음식 사진 바로 아래 이름표를 잘라 낸 그림이다. 적힌 글자 그대로. JSON 하나만: {"label": "..."}'
 )
@@ -898,7 +1055,12 @@ def place_photos(
     exact: dict[int, Box] = {}
     if refine and targets:
         column = photo_column([t.item.box for t in with_photo if t.item.box])
-        runs = photo_runs(board, column) if column else []
+        cards = photo_cards(board, column) if column else []
+        if cards:  # 사진 + 이름표 카드: 이름표 띠만 읽어 맞춘다
+            exact = match_cards(targets, cards, board, call)
+            for i in exact:
+                log.info("menu photo card matched for %s", targets[i].item.name)
+        runs = photo_runs(board, column) if column and not exact else []
         if runs:
             exact = match_runs(targets, runs, board, call)
         missing = [i for i in range(len(targets)) if i not in exact]
