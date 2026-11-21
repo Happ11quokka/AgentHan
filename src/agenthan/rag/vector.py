@@ -123,6 +123,10 @@ class VectorIndex:
         self.cache.put(text, v)
         return v
 
+    def reset(self) -> None:
+        """다음 검색 때 메뉴 벡터를 다시 준비한다(바뀐 것만 임베딩)."""
+        self._vectors = None
+
     def warm(self) -> int:
         """메뉴 임베딩을 모두 준비(캐시에 없으면 호출)하고 캐시 파일에 저장. → 이번에 부른 횟수."""
         if not self.enabled:
@@ -202,6 +206,8 @@ class PgVectorIndex(VectorIndex):
 
     - warm(): 메뉴 글이 바뀐 것만 임베딩해서(캐시 표 우선) embeddings에 넣고, 없어진 메뉴는 지운다.
     - search(): 질문 하나만 임베딩(캐시 표 우선) → `ORDER BY embedding <=> 질문` 상위 k개.
+      이 색인의 메뉴(docs)만 돌려준다. 같은 가게 id를 다른 메뉴 한 벌이 다시 채웠어도(전화용 가게의
+      새 게시) 없는 메뉴를 내지 않는다.
     - search_kind(): 같은 방식으로 리뷰(review)·가게 정보 조각(doc)도 찾는다.
     실패하면 VectorIndex와 똑같이 FAIL_COOLDOWN초 쉬고 [](나머지 검색 단계로)."""
 
@@ -261,7 +267,8 @@ class PgVectorIndex(VectorIndex):
             except Exception as error:
                 self._pause(error)
                 return []
-        return self.search_kind("menu", query, k, rules.VECTOR_MIN_COSINE)
+        hits = self.search_kind("menu", query, k, rules.VECTOR_MIN_COSINE)
+        return [(i, score) for i, score in hits if i in self.docs]
 
     def search_kind(
         self, kind: str, query: str, k: int = 10, min_cosine: float = 0.0
