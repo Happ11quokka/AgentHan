@@ -45,18 +45,20 @@ def _readback(says: list[str]) -> str:
 
 
 def test_a_coupon_saved_in_the_assistant_is_read_back_on_the_next_call(tmp_path) -> None:
-    """저장 전 통화는 쿠폰 없이(파일럿 쿠폰은 금액이 모자라 말하지 않는다), 저장 뒤 새 통화는
-    복창에 쿠폰 이름·할인액·낼 금액이 들어가고 주문서에 쿠폰이 남는다."""
-    script = _order_script("메도빅 하나요")
-    with _client(tmp_path, script + script) as client:
+    """저장 전 통화는 파일럿 쿠폰뿐이다(메도빅 하나는 금액이 모자라 권유가 나오고, "네"로 권한
+    아메리카노를 담아 채운다). 저장 뒤 새 통화는 메도빅 하나로도 새 쿠폰이 복창에 쿠폰 이름·
+    할인액·낼 금액으로 들어가고 주문서에 남는다. 가짜 STT는 통화마다 대본을 처음부터 읽는다:
+    두 번째 통화는 권유가 없어 네 번째 말 "네"로 끝난다."""
+    script = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네", "네")
+    with _client(tmp_path, script) as client:
         session = _session(client)
-        before, before_phone = _call(client, 4)
+        before, before_phone = _call(client, 5)
         _save_coupon(client, session, FIRST)
         after, after_phone = _call(client, 4)
 
-    assert "쿠폰" not in _readback(before_phone.says())
-    assert before["total"] == 7500
-    assert (before["order"]["coupon_id"], before["order"]["discount"]) == ("", 0)
+    assert "첫 주문" not in _readback(before_phone.says())
+    assert (before["subtotal"], before["discount"], before["total"]) == (12000, 1000, 11000)
+    assert before["order"]["coupon_name"] == PILOT_COUPON
     assert _readback(after_phone.says()) == (
         "주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 첫 주문 15% 할인 쿠폰이 있어서 "
         "1,120원 빼고 모두 6,380원이에요. 맞으세요?")
@@ -68,13 +70,13 @@ def test_a_coupon_saved_in_the_assistant_is_read_back_on_the_next_call(tmp_path)
 
 def test_a_coupon_waiting_for_approval_does_not_reach_the_phone(tmp_path) -> None:
     """승인 전 미리보기(`_dry_run`)로 쓴 쿠폰은 게시되지 않는다."""
-    script = _order_script("메도빅 하나요")
+    script = _order_script("메도빅 하나요", offer=True)  # 파일럿 쿠폰 권유는 거절
     with _client(tmp_path, script) as client:
         session = _session(client)
         sent = client.post(f"{SESSIONS}/{session}/actions", json={
             "action_id": "coupon.create", "args": FIRST, "label": "coupon.create"})
         assert sent.json()["pending"]
-        order, phone = _call(client, 4)
+        order, phone = _call(client, 5)
 
     assert "쿠폰" not in _readback(phone.says())
     assert order["total"] == 7500
@@ -107,8 +109,8 @@ def test_every_place_shows_the_same_payable_total(tmp_path) -> None:
 
 def test_a_call_without_a_usable_coupon_looks_as_before(tmp_path) -> None:
     """쿠폰을 못 쓰면 이벤트·카드·주문 현황에 할인 칸이 없다."""
-    with _client(tmp_path, _order_script("메도빅 하나요")) as client:
-        order, phone = _call(client, 4)
+    with _client(tmp_path, _order_script("메도빅 하나요", offer=True)) as client:
+        order, phone = _call(client, 5)
         with client.stream("GET", f"/api/owner/stream?key={KEY}") as stream:
             board = _first_sse(stream.iter_lines())
         status = client.get(f"/api/phone/orders/{order['order']['id']}").json()
