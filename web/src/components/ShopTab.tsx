@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { approval, clockText, DAYS, discountText, hoursText, MARK_TEXT, periodText, sameDay, won, type RowMark } from "../labels";
-import type { LogEntry, Pending, Place, SectionChanges } from "../types";
+import { approval, DAYS, discountText, hoursText, MARK_TEXT, periodText, won, type RowMark } from "../labels";
+import type { Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
+import { RoutineSettings } from "./RoutineSettings";
 
 type Mark = RowMark | undefined;
 
@@ -51,39 +52,76 @@ function Section({ title, count, children }: { title: string; count?: number; ch
   );
 }
 
-export function ShopTab({ place, pending, log }: { place: Place; pending: Pending[]; log: LogEntry[] }) {
-  const { view, marks, removed } = overlay(place, pending);
+/** 승인 전 변경이 있으면 위에 한 줄: 저장해야 반영된다. */
+function PendingBanner({ pending }: { pending: Pending[] }) {
+  if (pending.length === 0) return null;
   const waitingPhoto = pending.some((p) => p.kind === "photo" && approval(p).blocked);
-  const today = log.filter((entry) => sameDay(entry.at, Date.now()));
+  return (
+    <p className="shop-banner">
+      {waitingPhoto ? "사진에서 읽은 메뉴를 확인하고 있어요." : "저장 전 변경을 미리 보여 드려요."} 대화에서 저장을 눌러야 반영돼요.
+    </p>
+  );
+}
 
+/** 메뉴 탭: 네이버 플레이스처럼 테두리 없는 줄(이름·설명·가격, 오른쪽 사진). 승인 전 변경은 알약 배지. */
+export function MenuTab({ place, pending }: { place: Place; pending: Pending[] }) {
+  const { view, marks, removed } = overlay(place, pending);
+  const before = new Map(place.menu.map((m) => [m.id, m]));
   return (
     <div className="shop">
-      {pending.length > 0 && (
-        <p className="shop-banner">
-          {waitingPhoto ? "사진에서 읽은 메뉴를 확인하고 있어요." : "저장 전 변경을 미리 보여 드려요."} 대화에서 저장을 눌러야 반영돼요.
-        </p>
-      )}
-
+      <PendingBanner pending={pending} />
       <Section title="메뉴" count={view.menu.length}>
-        <ul className="menu-list">
-          {[...view.menu, ...removed.menu].map((m) => (
-            <Row key={m.id} mark={marks.menu.get(m.id)}>
-              {m.photo_url ? (
-                <img className="menu-photo" src={m.photo_url} alt="" />
-              ) : (
-                <span className="menu-photo empty" aria-hidden>
-                  {m.name.slice(0, 1)}
-                </span>
-              )}
-              <div className="menu-body">
-                <strong>{m.name}</strong>
-                {m.description && <small>{m.description}</small>}
-              </div>
-              <span className="menu-price">{m.price !== null ? won(m.price) : "가격 없음"}</span>
-            </Row>
-          ))}
-        </ul>
+        {view.menu.length + removed.menu.length === 0 ? (
+          <p className="empty">아직 메뉴가 없어요.</p>
+        ) : (
+          <ul className="menu-list">
+            {[...view.menu, ...removed.menu].map((m) => {
+              const mark = marks.menu.get(m.id);
+              const old = mark === "updated" ? before.get(m.id) : undefined;
+              const oldPrice = old && old.price !== m.price && old.price !== null ? won(old.price) : null;
+              return (
+                <li key={m.id} className="menu-item" data-mark={mark}>
+                  <div className="menu-body">
+                    {mark && <span className="mark">{MARK_TEXT[mark]}</span>}
+                    <strong>{m.name}</strong>
+                    {m.description && <p className="menu-desc">{m.description}</p>}
+                    <p className="menu-price">
+                      {oldPrice && <s>{oldPrice}</s>}
+                      <span>{m.price !== null ? won(m.price) : "가격 없음"}</span>
+                    </p>
+                  </div>
+                  {m.photo_url ? (
+                    <img className="menu-photo" src={m.photo_url} alt="" />
+                  ) : (
+                    <span className="menu-photo empty" aria-hidden>
+                      {m.name.slice(0, 1)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Section>
+    </div>
+  );
+}
+
+type HomeProps = {
+  place: Place;
+  pending: Pending[];
+  report: ReviewReport | null;
+  routines: Routines | null;
+  onRoutines?: (change: RoutinesChange) => Promise<string | null>;
+  onRunReport?: () => Promise<string | null>;
+};
+
+/** 홈 탭: 영업시간 · 쿠폰 · 대표키워드 · 루틴 설정. */
+export function HomeTab({ place, pending, report, routines, onRoutines, onRunReport }: HomeProps) {
+  const { view, marks, removed } = overlay(place, pending);
+  return (
+    <div className="shop home">
+      <PendingBanner pending={pending} />
 
       <Section title="영업시간">
         <ul className="hours">
@@ -132,22 +170,7 @@ export function ShopTab({ place, pending, log }: { place: Place; pending: Pendin
         </Section>
       )}
 
-      <Section title="오늘 한 일">
-        {today.length === 0 ? (
-          <p className="empty">저장한 변경이 여기에 쌓여요.</p>
-        ) : (
-          <ul className="today" aria-label="오늘 한 일">
-            {[...today].reverse().flatMap((entry) =>
-              entry.lines.map((line, i) => (
-                <li key={`${entry.at}-${i}`}>
-                  <span>{line}</span>
-                  <time>{clockText(entry.at)}</time>
-                </li>
-              )),
-            )}
-          </ul>
-        )}
-      </Section>
+      {onRoutines && onRunReport && <RoutineSettings report={report} routines={routines} onChange={onRoutines} onRunReport={onRunReport} />}
     </div>
   );
 }

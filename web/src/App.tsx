@@ -5,7 +5,7 @@ import { LeftNav, type Quick } from "./components/LeftNav";
 import { Onboarding } from "./components/Onboarding";
 import { Sidecar, type Tab } from "./components/Sidecar";
 import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./labels";
-import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow } from "./types";
+import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow, RoutinesChange } from "./types";
 import { useConversation } from "./useConversation";
 import { useLoad } from "./useLoad";
 
@@ -19,10 +19,11 @@ type AppProps = { api?: AssistantApi; reviewPollMs?: number; reportPollMs?: numb
 
 export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, reportPollMs, demo = import.meta.env.DEV }: AppProps) {
   const chat = useConversation(api, reportPollMs);
-  const [tab, setTab] = useState<Tab>("shop");
+  const [tab, setTab] = useState<Tab>("home");
   const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
+  const [hasInput, setHasInput] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
 
   // 리뷰·통계는 그 탭이 열려 있을 때만 읽고, 대화가 바뀌거나 비서 답이 오면 다시 읽는다.
@@ -75,6 +76,16 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
     setSideOpen(true);
     setFocusReview({ id: reviewId, at: Date.now() });
   };
+  // 루틴 설정(#33): 초안 미리 쓰기를 켜면 서버가 바로 쓰기 시작하니 리뷰(쓰는 중 수)를 다시 읽는다.
+  const { changeRoutines: saveRoutines } = chat;
+  const changeRoutines = useCallback(
+    async (change: RoutinesChange) => {
+      const error = await saveRoutines(change);
+      if (!error && change.drafts) reloadReviews();
+      return error;
+    },
+    [saveRoutines, reloadReviews],
+  );
   const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
 
   // 처음 쓰는 사장님(#94): 가게 이름이나 업종이 빈 대화는 온보딩부터. 데모는 ?onboarding=1로 늘 띄운다.
@@ -124,16 +135,17 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onToggleNav={() => setNavOpen((o) => !o)}
         onToggleSide={() => setSideOpen((o) => !o)}
         onShowReview={showReview}
+        onInputChange={setHasInput}
       />
       <Sidecar
         tab={tab}
         onTab={setTab}
         place={chat.place}
         pending={chat.pending}
-        log={chat.log}
         online={chat.online}
         busy={chat.busy}
         reviews={reviews}
+        hasInput={hasInput}
         report={report}
         period={period}
         onPeriod={setPeriod}
@@ -143,6 +155,8 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         focusReview={focusReview}
         reviewReport={chat.reviewReport}
         onRunReport={chat.runReport}
+        routines={chat.routines}
+        onRoutines={changeRoutines}
         onClose={() => setSideOpen(false)}
       />
       <button

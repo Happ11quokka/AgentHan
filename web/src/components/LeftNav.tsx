@@ -11,7 +11,7 @@ import type { Tab } from "./Sidecar";
  * - inChat: 대화 영역에 입력 블록이 뜨는 일. 좁은 화면에서 사이드카를 펼쳐 가리지 않는다.
  */
 export const QUICK: Array<{ key: string; label: string; hint: string; icon: IconName; ask: string | null; action_id?: string; tab: Tab; inChat?: boolean }> = [
-  { key: "photo", label: "메뉴 사진 올리기", hint: "메뉴판·음식 사진", icon: "camera", ask: null, tab: "shop" },
+  { key: "photo", label: "메뉴 사진 올리기", hint: "메뉴판·음식 사진", icon: "camera", ask: null, tab: "menu" },
   { key: "reviews", label: "요즘 리뷰", hint: "손님 반응 정리", icon: "star", ask: "요즘 리뷰 어때?", action_id: "review.summary", tab: "reviews" },
   { key: "stats", label: "이번 주 손님", hint: "방문·유입 요약", icon: "chart", ask: "이번 주 손님 얼마나 왔어?", action_id: "stats.week", tab: "stats" },
   {
@@ -21,7 +21,7 @@ export const QUICK: Array<{ key: string; label: string; hint: string; icon: Icon
     icon: "ticket",
     ask: null,
     action_id: "coupon.create", // 값 없이 보내면 대화 영역에 쿠폰 입력 블록이 뜬다
-    tab: "shop",
+    tab: "home",
     inChat: true,
   },
 ];
@@ -61,8 +61,7 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
   return (
     <nav className="nav" aria-label="대화 목록">
       <div className="brand">
-        <img className="brand-mark" src="/agent.png" alt="" />
-        <span className="brand-name">사장님 비서</span>
+        <span className="brand-logo">AgentHan</span>
       </div>
       <button type="button" className="new-chat" onClick={onNew} disabled={busy}>
         <Icon name="plus" />새 대화

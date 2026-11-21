@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 import App from "./App";
-import type { ReviewsView } from "./types";
+import type { ReviewsView, Turn } from "./types";
 import {
   INBOX,
   inboxWith,
@@ -36,6 +36,47 @@ async function say(user: ReturnType<typeof userEvent.setup>, text: string) {
 }
 
 describe("대화", () => {
+  test("프로필은 포커스·빈 입력·공백에는 idle, 실제 입력에는 listening이며 지우면 돌아온다", async () => {
+    const { user } = await open();
+    const profile = screen.getByRole("img", { name: "비서 프로필" });
+    const input = screen.getByRole("textbox", { name: "비서에게 말하기" });
+    await user.click(input);
+    expect(profile).toHaveAttribute("data-state", "idle");
+    await user.type(input, "   ");
+    expect(profile).toHaveAttribute("data-state", "idle");
+    await user.type(input, "메뉴 알려 줘");
+    expect(profile).toHaveAttribute("data-state", "listening");
+    await user.clear(input);
+    expect(profile).toHaveAttribute("data-state", "idle");
+  });
+
+  test("프로필은 busy에서 speaking, 보이는 승인 카드에서 attention이며 입력보다 승인을 우선한다", async () => {
+    const api = fakeApi();
+    let finish!: (turn: Turn) => void;
+    api.say.mockImplementation(() => new Promise<Turn>((resolve) => { finish = resolve; }));
+    const { user } = await open(api);
+    const profile = screen.getByRole("img", { name: "비서 프로필" });
+    await say(user, "메뉴 바꿔 줘");
+    expect(profile).toHaveAttribute("data-state", "speaking");
+    expect(screen.getByRole("textbox", { name: "비서에게 말하기" })).toHaveValue("");
+    await act(async () => finish({
+      reply: "확인해 주세요", place: SEED,
+      pending: [photoPending([draft({ price: 8500 })], withCake)],
+    }));
+    expect(screen.getByRole("region", { name: "저장 전 확인" })).toBeInTheDocument();
+    expect(profile).toHaveAttribute("data-state", "attention");
+    await user.type(screen.getByRole("textbox", { name: "비서에게 말하기" }), "고칠게요");
+    expect(profile).toHaveAttribute("data-state", "attention");
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+    expect(screen.queryByRole("region", { name: "저장 전 확인" })).not.toBeInTheDocument();
+    expect(profile).toHaveAttribute("data-state", "speaking");
+    await act(async () => finish({ reply: "취소했어요", place: SEED, pending: [] }));
+    expect(profile).toHaveAttribute("data-state", "idle");
+    for (const avatar of screen.getByRole("main").querySelectorAll(".avatar")) {
+      expect(avatar).toHaveAttribute("src", "/agent.png");
+    }
+  });
+
   test("첫 화면에 비서 프로필과 인사가 보이고 새 대화가 시작된다", async () => {
     const { api } = await open();
     expect(api.start).toHaveBeenCalledTimes(1);
@@ -234,7 +275,7 @@ describe("사진과 승인 카드", () => {
     expect(screen.queryByText("cake.jpg")).not.toBeInTheDocument();
   });
 
-  test("저장을 누르면 '네'를 보내고 끝난 카드와 오늘 한 일이 남는다", async () => {
+  test("저장을 누르면 '네'를 보내고 끝난 카드와 저장 완료 줄이 남는다", async () => {
     const ready = photoPending([draft({ price: 8500, notes: [] })], withCake);
     const api = fakeApi([
       { reply: "이대로 저장할까요?", place: SEED, pending: [ready] },
@@ -250,8 +291,7 @@ describe("사진과 승인 카드", () => {
     expect(await screen.findByText("저장했어요.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "저장 전 확인" })).not.toBeInTheDocument();
     expect(screen.getByText("저장 완료")).toBeInTheDocument();
-    const today = screen.getByRole("list", { name: "오늘 한 일" });
-    expect(within(today).getByText("새 메뉴 밀푀유 케이크 8,500원")).toBeInTheDocument();
+    expect(chatArea().getByText("새 메뉴 밀푀유 케이크 8,500원")).toBeInTheDocument();
   });
 
   test("취소를 누르면 '취소'를 보낸다", async () => {
@@ -290,8 +330,8 @@ describe("사진과 승인 카드", () => {
   });
 });
 
-describe("사이드카 [내 가게]", () => {
-  test("메뉴·영업시간·쿠폰이 보이고 저장 전 변경은 강조된다", async () => {
+describe("사이드카 [홈]·[메뉴]", () => {
+  test("홈에 영업시간·쿠폰, 메뉴 탭에 메뉴가 보이고 저장 전 변경은 강조된다", async () => {
     const coupon = {
       id: "coupon-1",
       title: "오픈 기념",
@@ -309,16 +349,33 @@ describe("사이드카 [내 가게]", () => {
     };
     const api = fakeApi([{ reply: "이 쿠폰을 만들까요?", place: SEED, pending: [pending] }]);
     const { user } = await open(api);
-    const shop = screen.getByRole("tabpanel", { name: "내 가게" });
-    expect(within(shop).getByText("메도빅")).toBeInTheDocument();
-    expect(within(shop).getByText("7,500원")).toBeInTheDocument();
-    expect(within(shop).getByText("일요일")).toBeInTheDocument();
-    expect(within(shop).getByText("쉬는 날")).toBeInTheDocument();
+    const home = screen.getByRole("tabpanel", { name: "홈" });
+    expect(within(home).getByText("일요일")).toBeInTheDocument();
+    expect(within(home).getByText("쉬는 날")).toBeInTheDocument();
     await say(user, "쿠폰 만들어 줘");
-    const added = await within(shop).findByText("오픈 기념");
+    const added = await within(home).findByText("오픈 기념");
     expect(added.closest("[data-mark]")).toHaveAttribute("data-mark", "added");
     const card = screen.getByRole("region", { name: "저장 전 확인" });
     expect(within(card).getByText("새 쿠폰 오픈 기념 10% 할인")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "메뉴" }));
+    const menu = screen.getByRole("tabpanel", { name: "메뉴" });
+    expect(within(menu).getByText("메도빅")).toBeInTheDocument();
+    expect(within(menu).getByText("7,500원")).toBeInTheDocument();
+  });
+
+  test("메뉴 가격이 바뀔 예정이면 배지와 함께 바뀌기 전 가격을 지워 보인다", async () => {
+    const after = { ...SEED, menu: SEED.menu.map((m) => (m.name === "메도빅" ? { ...m, price: 8000 } : m)) };
+    const id = SEED.menu.find((m) => m.name === "메도빅")!.id;
+    const pending = { task_id: "t3", feature: "menu", after, changes: { menu: { added: [], updated: [id], removed: [] } } };
+    const api = fakeApi([{ reply: "가격을 바꿀까요?", place: SEED, pending: [pending] }]);
+    const { user } = await open(api);
+    await say(user, "메도빅 8000원으로");
+    await user.click(screen.getByRole("tab", { name: "메뉴" }));
+    const row = within(screen.getByRole("tabpanel", { name: "메뉴" })).getByText("메도빅").closest("[data-mark]") as HTMLElement;
+    expect(row).toHaveAttribute("data-mark", "updated");
+    expect(within(row).getByText("바뀔 예정")).toBeInTheDocument();
+    expect(within(row).getByText("7,500원").tagName).toBe("S");
+    expect(within(row).getByText("8,000원")).toBeInTheDocument();
   });
 });
 
@@ -334,10 +391,10 @@ describe("왼쪽 자주 쓰는 일", () => {
     expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("button", { name: "이번 주 손님" }));
     await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "stats.week", args: {}, label: "이번 주 손님" }));
-    expect(screen.getByRole("tab", { name: "손님 통계" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "통계" })).toHaveAttribute("aria-selected", "true");
   });
 
-  test("메뉴 사진 올리기는 사진 고르기를 열고 [내 가게]를 보여 준다", async () => {
+  test("메뉴 사진 올리기는 사진 고르기를 열고 [메뉴]를 보여 준다", async () => {
     const { user } = await open();
     await user.click(screen.getByRole("tab", { name: "리뷰" }));
     const input = screen.getByLabelText<HTMLInputElement>("사진 올리기");
@@ -345,7 +402,7 @@ describe("왼쪽 자주 쓰는 일", () => {
     input.addEventListener("click", () => (opened = true));
     await user.click(screen.getByRole("button", { name: "메뉴 사진 올리기" }));
     expect(opened).toBe(true);
-    expect(screen.getByRole("tab", { name: "내 가게" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "메뉴" })).toHaveAttribute("aria-selected", "true");
   });
 });
 
@@ -392,8 +449,8 @@ describe("새 대화와 최근 대화", () => {
 describe("고친 흐름", () => {
   test("탭을 누르면 그 탭이 열리고 화살표 키로 옮겨 간다", async () => {
     const { user } = await open();
-    await user.click(screen.getByRole("tab", { name: "손님 통계" }));
-    expect(await screen.findByRole("tabpanel", { name: "손님 통계" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "통계" }));
+    expect(await screen.findByRole("tabpanel", { name: "통계" })).toBeInTheDocument();
     await user.keyboard("{ArrowLeft}");
     expect(screen.getByRole("tab", { name: "리뷰" })).toHaveAttribute("aria-selected", "true");
   });
@@ -404,25 +461,6 @@ describe("고친 흐름", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(screen.getByRole("button", { name: "메뉴 사진 올리기" }));
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-  });
-
-  test("오늘 한 일에는 오늘 승인한 것만 보인다", async () => {
-    const yesterday = Date.now() - 24 * 60 * 60 * 1000;
-    localStorage.setItem("agenthan.recent.v1", JSON.stringify([{ id: "old", title: "어제 대화", at: yesterday }]));
-    localStorage.setItem(
-      "agenthan.chat.v1.old",
-      JSON.stringify({ messages: [], log: [{ at: yesterday, lines: ["새 메뉴 어제 메뉴 1,000원"] }] }),
-    );
-    await open();
-    expect(screen.queryByText("새 메뉴 어제 메뉴 1,000원")).not.toBeInTheDocument();
-  });
-
-  test("승인 카드 없이 가게가 바뀌어도 오늘 한 일에 쌓지 않는다", async () => {
-    const api = fakeApi([{ reply: "바꿨어요.", place: withCake, pending: [] }]);
-    const { user } = await open(api);
-    await say(user, "그냥 바꿔");
-    await screen.findByText("바꿨어요.");
-    expect(screen.queryByRole("list", { name: "오늘 한 일" })).not.toBeInTheDocument();
   });
 
   test("서버가 꺼지면 연결 끊김이 보이고, 대화 열기 실패 뒤 다시 시도는 그 대화를 다시 연다", async () => {
@@ -589,7 +627,7 @@ describe("리뷰 답글 확인 카드", () => {
     expect(screen.getByRole("main", { name: "비서와 대화" }).querySelector(".bubble blockquote")).toBeNull();
   });
 
-  test("[답글 올리기]는 task.approve를 보내고, 더미 안내 없이 '리뷰 답글 올림'을 결과와 오늘 한 일에 남긴다", async () => {
+  test("[답글 올리기]는 task.approve를 보내고, 더미 안내 없이 '리뷰 답글 올림'을 결과에 남긴다", async () => {
     const api = fakeApi([
       { reply: REVIEW_DRAFT_REPLY, place: SEED, pending: [reviewPending()] },
       { reply: REVIEW_POSTED_REPLY, place: SEED, pending: [] },
@@ -603,18 +641,16 @@ describe("리뷰 답글 확인 카드", () => {
     expect(screen.getByRole("main", { name: "비서와 대화" }).textContent).not.toContain("실제 발송");
     const result = chatArea().getByText("저장 완료").closest(".result") as HTMLElement;
     expect(within(result).getByText("리뷰 답글 올림")).toBeInTheDocument();
-    const today = screen.getByRole("list", { name: "오늘 한 일" });
-    expect(within(today).getByText("리뷰 답글 올림")).toBeInTheDocument();
     // 카드가 사라지면 처음 말풍선은 다시 초안 인용까지 보인다.
     expect(chatArea().getByText("불편을 드려 죄송합니다. 간을 다시 맞추겠습니다.").closest("blockquote")).not.toBeNull();
   });
 });
 
-describe("사이드카 [손님 통계]", () => {
+describe("사이드카 [통계]", () => {
   test("요약 카드·유입 채널·키워드·해 볼 일을 보여 주고 일간으로 바꿀 수 있다", async () => {
     const { user, api } = await open();
-    await user.click(screen.getByRole("tab", { name: "손님 통계" }));
-    const panel = await screen.findByRole("tabpanel", { name: "손님 통계" });
+    await user.click(screen.getByRole("tab", { name: "통계" }));
+    const panel = await screen.findByRole("tabpanel", { name: "통계" });
     expect(await within(panel).findByText("플레이스 조회")).toBeInTheDocument();
     expect(within(panel).getByText("1,260")).toBeInTheDocument();
     expect(within(panel).getByText("지난주보다 60 늘었어요")).toBeInTheDocument();
@@ -634,8 +670,8 @@ describe("사이드카 [손님 통계]", () => {
     const api = fakeApi();
     api.report.mockRejectedValueOnce(offline());
     const { user } = await open(api);
-    await user.click(screen.getByRole("tab", { name: "손님 통계" }));
-    const panel = await screen.findByRole("tabpanel", { name: "손님 통계" });
+    await user.click(screen.getByRole("tab", { name: "통계" }));
+    const panel = await screen.findByRole("tabpanel", { name: "통계" });
     expect(await within(panel).findByText("통계를 불러오지 못했어요.")).toBeInTheDocument();
     await user.click(within(panel).getByRole("button", { name: "다시 불러오기" }));
     expect(await within(panel).findByText("플레이스 조회")).toBeInTheDocument();
@@ -678,7 +714,7 @@ describe("답글 대기함", () => {
     expect(screen.getByLabelText("답글 기다리는 리뷰 3개", { selector: ".quick-badge" })).toHaveTextContent("3");
   });
 
-  test("[올리기]는 대화 턴 없이 그 카드만 바꾼다: 채팅 말풍선 수 그대로, 카드는 '답글 달림', 배지·오늘 한 일 갱신", async () => {
+  test("[올리기]는 대화 턴 없이 그 카드만 바꾼다: 채팅 말풍선 수 그대로, 카드는 '답글 달림', 배지 갱신", async () => {
     const { user, api, panel } = await openInbox();
     const before = chatItems();
     const posted = inboxWith(
@@ -700,9 +736,6 @@ describe("답글 대기함", () => {
     expect(api.act).not.toHaveBeenCalled();
     expect(api.reviews.mock.calls.length).toBe(reads);
     expect(screen.getByLabelText("답글 기다리는 리뷰 2개", { selector: ".quick-badge" })).toHaveTextContent("2");
-    await user.click(screen.getByRole("tab", { name: "내 가게" }));
-    const today = await screen.findByRole("list", { name: "오늘 한 일" });
-    expect(await within(today).findByText("리뷰 답글 올림")).toBeInTheDocument();
   });
 
   test("카드 버튼을 누르는 동안 그 카드만 '하는 중'이고 대화 입력은 잠기지 않는다", async () => {
@@ -744,7 +777,7 @@ describe("답글 대기함", () => {
     expect(api.act).not.toHaveBeenCalled();
     expect(api.say).not.toHaveBeenCalled();
     // [리뷰 탭에서 보기]: 다른 탭에 있다가도 리뷰 탭을 열고 그 카드를 가리킨다
-    await user.click(screen.getByRole("tab", { name: "내 가게" }));
+    await user.click(screen.getByRole("tab", { name: "홈" }));
     await user.click(chatArea().getByRole("button", { name: "리뷰 탭에서 보기" }));
     const reopened = within(await screen.findByRole("tabpanel", { name: "리뷰" }));
     await waitFor(() => expect(reopened.getByText("커피가 맛있어요.").closest("li")).toHaveAttribute("data-focused", "true"));
@@ -845,6 +878,42 @@ describe("답글 대기함", () => {
   });
 });
 
+describe("홈 루틴 설정 (#33)", () => {
+  const ROUTINES = { drafts: false, report: { enabled: false, frequency: null, weekday: "mon", time: "09:00" } };
+  const DAILY = { enabled: true, schedule: "매일 09:00", next_run: "2026-11-22T09:00", text: "매일 09:00 리뷰 요약 받는 중" };
+
+  test("스위치는 대화 턴 없이 서버에 저장하고, 돌아온 설정을 그대로 보인다", async () => {
+    const api = fakeApi();
+    api.start.mockResolvedValueOnce({ session_id: "s1", place: SEED, pending: [], routines: ROUTINES } as never);
+    api.setRoutines.mockResolvedValueOnce({
+      place: SEED,
+      pending: [],
+      review_report: DAILY,
+      routines: { ...ROUTINES, report: { ...ROUTINES.report, enabled: true, frequency: "daily" } },
+    });
+    const { user } = await open(api);
+    const region = within(screen.getByRole("region", { name: "루틴 설정" }));
+    await user.click(region.getByRole("switch", { name: "리뷰 정기 보고" }));
+    expect(api.setRoutines).toHaveBeenCalledWith("s1", { report: { enabled: true } });
+    expect(await region.findByText("매일 09:00에 리뷰 요약을 보내요")).toBeInTheDocument();
+    expect(region.getByRole("radio", { name: "매일" })).toHaveAttribute("aria-checked", "true");
+    expect(api.act).not.toHaveBeenCalled();
+    expect(api.say).not.toHaveBeenCalled();
+  });
+
+  test("초안 미리 쓰기를 켜면 리뷰를 다시 읽어 쓰는 중을 보인다", async () => {
+    const api = fakeApi();
+    api.start.mockResolvedValueOnce({ session_id: "s1", place: SEED, pending: [], routines: ROUTINES } as never);
+    api.setRoutines.mockResolvedValueOnce({ place: SEED, pending: [], routines: { ...ROUTINES, drafts: true } });
+    const { user } = await open(api);
+    const reads = api.reviews.mock.calls.length;
+    await user.click(within(screen.getByRole("region", { name: "루틴 설정" })).getByRole("switch", { name: "답글 초안 미리 쓰기" }));
+    expect(api.setRoutines).toHaveBeenCalledWith("s1", { drafts: true });
+    await waitFor(() => expect(api.reviews.mock.calls.length).toBeGreaterThan(reads));
+    expect(screen.getByRole("switch", { name: "답글 초안 미리 쓰기" })).toHaveAttribute("aria-checked", "true");
+  });
+});
+
 describe("리뷰 정기 보고 (#98)", () => {
   const ON = { enabled: true, schedule: "매일 09:00", next_run: "2026-11-08T09:00", text: "매일 09:00 리뷰 요약 받는 중" };
   const REPORT = {
@@ -854,15 +923,14 @@ describe("리뷰 정기 보고 (#98)", () => {
     next_actions: [{ action_id: "review.draft_reply", label: "불만 리뷰 답글 초안", args: { review_id: "r09" } }],
   };
 
-  test("리뷰 탭에 설정 한 줄이 보이고 [지금 받아 보기]는 보고를 대화에 한 번 넣는다", async () => {
+  test("홈 루틴 설정에 보고 한 줄이 보이고 [지금 한 번 받아 보기]는 보고를 대화에 한 번 넣는다", async () => {
     const api = fakeApi([], { place: SEED, pending: [], review_report: ON });
     api.runReviewReport.mockResolvedValueOnce({ place: SEED, pending: [], review_report: { ...ON, enabled: false, schedule: null, next_run: null, text: "정기 보고 꺼짐" }, messages: [REPORT] });
     const user = userEvent.setup();
     render(<App api={api} reportPollMs={0} />);
-    await user.click(await screen.findByRole("tab", { name: "리뷰" }));
-    const panel = within(await screen.findByRole("tabpanel", { name: "리뷰" }));
+    const panel = within(await screen.findByRole("region", { name: "루틴 설정" }));
     expect(await panel.findByText("정기 보고 꺼짐")).toBeInTheDocument();
-    await user.click(panel.getByRole("button", { name: "지금 받아 보기" }));
+    await user.click(panel.getByRole("button", { name: "지금 한 번 받아 보기" }));
     expect(api.runReviewReport).toHaveBeenCalledWith("s1");
     expect(await chatArea().findByText(/답글 안 단 불만 리뷰 1건/)).toBeInTheDocument();
     expect(chatArea().getByRole("button", { name: "불만 리뷰 답글 초안" })).toBeInTheDocument();
@@ -876,7 +944,6 @@ describe("리뷰 정기 보고 (#98)", () => {
     expect(await chatArea().findByText(/리뷰 정기 보고/, {}, { timeout: 2000 })).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 100)); // 다시 읽어도 같은 보고는 오지 않는다(서버가 한 번만 준다)
     expect(chatArea().getAllByText(/리뷰 정기 보고/)).toHaveLength(1);
-    await userEvent.setup().click(screen.getByRole("tab", { name: "리뷰" }));
     expect(await screen.findByText("매일 09:00 리뷰 요약 받는 중")).toBeInTheDocument();
   });
 
@@ -892,7 +959,7 @@ describe("리뷰 정기 보고 (#98)", () => {
     ["켜기", OFF, DAILY, "리뷰 정기 보고: 매일 14:47"],
     ["바꾸기", ON, DAILY, "리뷰 정기 보고: 매일 14:47"],
     ["끄기", ON, OFF, "리뷰 정기 보고 끔"],
-  ])("보고 설정 %s를 [모두 저장]하면 결과 줄이 저장 완료이고 오늘 한 일에도 남는다", async (_name, before, after, line) => {
+  ])("보고 설정 %s를 [모두 저장]하면 결과 줄이 저장 완료다", async (_name, before, after, line) => {
     const api = fakeApi(
       [
         { reply: "리뷰 정기 보고를 바꿀까요?", next_actions: CHIPS, place: SEED, pending: [SETTING], review_report: before },
@@ -906,7 +973,6 @@ describe("리뷰 정기 보고 (#98)", () => {
     const result = (await chatArea().findByText("저장 완료")).closest(".result") as HTMLElement;
     expect(within(result).getByText(line)).toBeInTheDocument();
     expect(chatArea().queryByText(/저장 안 함/)).not.toBeInTheDocument();
-    expect(screen.getAllByText(line).length).toBeGreaterThan(1); // 오늘 한 일
   });
 
   test("[모두 취소]면 보고 설정이 그대로라 지금처럼 저장 안 함이다", async () => {
@@ -952,15 +1018,13 @@ describe("대표키워드 변경", () => {
     expect(await chatArea().findByText("저장했어요.")).toBeInTheDocument();
     expect(chatArea().getByText("저장 완료")).toBeInTheDocument();
     expect(chatArea().queryByText("저장 안 함")).not.toBeInTheDocument();
-    const today = screen.getByRole("list", { name: "오늘 한 일" });
-    expect(within(today).getByText("대표키워드 추가 메도빅")).toBeInTheDocument();
   });
 
-  test("[내 가게]에 대표키워드가 보이고 추가 예정 키워드는 강조된다", async () => {
+  test("[홈]에 대표키워드가 보이고 추가 예정 키워드는 강조된다", async () => {
     const api = fakeApi([{ reply: "추가할까요?", place: BEFORE, pending: [KEYWORD_PENDING] }]);
     const { user } = await open(api);
     await say(user, "메도빅 대표키워드에 추가해 줘");
-    const shop = screen.getByRole("tabpanel", { name: "내 가게" });
+    const shop = screen.getByRole("tabpanel", { name: "홈" });
     const list = await within(shop).findByRole("list", { name: "대표키워드" });
     expect(within(list).getByText("러시안 베이커리")).toBeInTheDocument();
     expect(within(list).getByText("메도빅").closest("[data-mark]")).toHaveAttribute("data-mark", "added");
@@ -1044,8 +1108,8 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
     // 말풍선의 승인 질문 밑에도 같은 줄이 보인다.
     const bubble = chatArea().getByText("톡톡 문의 답장: 아래처럼 바꿀까요?").closest(".bubble")!;
     expect(within(bubble as HTMLElement).getByText("답장: 근처 공영주차장을 이용해 주세요")).toBeInTheDocument();
-    // 기록은 [내 가게] 탭을 깨뜨리지 않는다.
-    expect(screen.getByRole("tabpanel", { name: "내 가게" })).toBeInTheDocument();
+    // 기록은 [홈] 탭을 깨뜨리지 않는다.
+    expect(screen.getByRole("tabpanel", { name: "홈" })).toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "저장" }));
     const result = (await chatArea().findByText("저장 완료")).closest(".result")!;
     expect(within(result as HTMLElement).getByText("톡톡 문의 · 주차 가능한가요?")).toBeInTheDocument();

@@ -80,15 +80,34 @@ class ReplyOp(BaseModel):
     hint: str | None = None
 
 
+class ReportRoutine(BaseModel):
+    """리뷰 정기 보고 설정 중 바꿀 값만. 빠진 값은 그대로 둔다."""
+
+    enabled: bool | None = None
+    frequency: Literal["daily", "weekly", "biweekly", "monthly"] | None = None
+    weekday: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] | None = None
+    time: str | None = None
+
+
+class Routines(BaseModel):
+    """사이드카 루틴 설정(#33). report: 리뷰 정기 보고, drafts: 답글 초안 미리 쓰기."""
+
+    report: ReportRoutine | None = None
+    drafts: bool | None = None
+
+
 class Session:
     def __init__(
         self,
         session_id: str,
         assistant: OwnerAssistant,
         clock: Callable[[], datetime] = datetime.now,
+        drafts: bool = False,
     ):
         self.id = session_id
         self.assistant = assistant
+        # 답글 초안 미리 쓰기(#33): 켜져 있으면 새 리뷰마다 초안을 백그라운드로 미리 쓴다
+        self.drafts = drafts
         assistant.clock = clock  # 리뷰 보고 미리보기의 '다음 보고' 시각도 같은 시계로
         # 리뷰 정기 보고(#98): 조회할 때마다 기한 지난 보고를 대화 메시지로 쌓는다
         self.routine = ReviewRoutine(assistant, clock)
@@ -161,6 +180,7 @@ class Session:
             )
         shop = data.get("shop", {})
         self.routine.tick()
+        settings = self.routine.settings()
         return {
             "place": place.snapshot(data, self._menu_photo_url),
             "pending": pending,
@@ -170,6 +190,11 @@ class Session:
             # (정해진 때의 보고·[지금 받아 보기]). messages는 한 번만 건넨다.
             "review_report": self.routine.status(),
             "messages": self.routine.take(),
+            # 사이드카 루틴 설정(#33): 화면 스위치·주기·시각 선택이 보여 줄 지금 값
+            "routines": {
+                "drafts": self.drafts,
+                "report": {k: settings.get(k) for k in ("enabled", "frequency", "weekday", "time")},
+            },
         }
 
     def photo(self, name: str) -> tuple[bytes, str] | None:
@@ -228,7 +253,7 @@ def create_app(
         folder = root / session_id
         folder.mkdir(parents=True)
         session = sessions[session_id] = Session(
-            session_id, make_assistant(folder / "store.json"), clock
+            session_id, make_assistant(folder / "store.json"), clock, drafts=prepare_on_start
         )
         if prepare_on_start:
             with session.lock:
@@ -315,10 +340,33 @@ def create_app(
         with session.lock:
             store = session.assistant.store
             review_id = inbox.inbox_of(session.assistant).simulate_review(store)
-            job = claim_drafts(session, [review_id])
+            # 초안 미리 쓰기가 꺼져 있으면 사장님이 카드에서 [답글 초안 받기]를 누를 때까지 둔다
+            job = claim_drafts(session, [review_id]) if session.drafts else None
             view = inbox.annotate(session.assistant, screens.reviews(store.read()))
-        in_background(job)
+        if job is not None:
+            in_background(job)
         return {"review_id": review_id, **view}
+
+    @app.put("/assistant/sessions/{session_id}/routines")
+    def set_routines(session_id: str, body: Routines) -> dict:
+        """사이드카 루틴 설정(#33): 사장님이 화면 스위치로 직접 바꾼 값이라 승인 카드 없이 저장한다.
+        초안 미리 쓰기를 켜는 순간 답글 없는 리뷰의 초안을 백그라운드로 쓰기 시작한다."""
+        session = get(session_id)
+        job = None
+        with session.lock:
+            if body.report is not None:
+                try:
+                    session.routine.update(body.report.model_dump())
+                except ValueError as error:
+                    raise HTTPException(400, "보고 시각을 확인해 주세요.") from error
+            if body.drafts is not None:
+                if body.drafts and not session.drafts:
+                    job = claim_drafts(session)
+                session.drafts = body.drafts
+            view = session.view()
+        if job is not None:
+            in_background(job)
+        return view
 
     @app.post("/assistant/sessions/{session_id}/reviews/report")
     def run_review_report(session_id: str) -> dict:

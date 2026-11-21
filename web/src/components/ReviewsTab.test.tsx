@@ -126,35 +126,11 @@ describe("[답글 초안 받기]는 카드 안에서 초안을 받는다", () =>
   });
 });
 
-describe("리뷰 정기 보고 줄 (#98)", () => {
-  const loaded = { data: INBOX, failed: false, reload: () => {}, update: () => {} };
-  const ON = { enabled: true, schedule: "매주 월요일 09:00", next_run: "2026-11-09T09:00", text: "매주 월요일 09:00 리뷰 요약 받는 중" };
-  const none = async () => null;
-
-  test("켜져 있으면 설정 한 줄만, 꺼져 있으면 켜는 말을 함께 보인다", () => {
-    const { rerender } = render(<ReviewsTab loaded={loaded} busy={false} onReply={none} report={ON} onRunReport={none} />);
-    const line = () => within(screen.getByRole("region", { name: "리뷰 정기 보고" }));
-    expect(line().getByText("매주 월요일 09:00 리뷰 요약 받는 중")).toBeInTheDocument();
-    expect(line().queryByText(/라고 하면 켤 수 있어요/)).not.toBeInTheDocument();
-    rerender(<ReviewsTab loaded={loaded} busy={false} onReply={none} report={null} onRunReport={none} />);
-    expect(line().getByText("정기 보고 꺼짐")).toBeInTheDocument();
-    expect(line().getByText(/라고 하면 켤 수 있어요/)).toBeInTheDocument();
-  });
-
-  test("[지금 받아 보기]는 한 번만 보내고 실패하면 이유를 보인다", async () => {
-    let finish: (v: string | null) => void = () => {};
-    const run = vi.fn(() => new Promise<string | null>((r) => (finish = r)));
-    const user = userEvent.setup();
-    render(<ReviewsTab loaded={loaded} busy={false} onReply={none} report={ON} onRunReport={run} />);
-    await user.click(screen.getByRole("button", { name: "지금 받아 보기" }));
-    expect(screen.getByRole("button", { name: "보고 만드는 중…" })).toBeDisabled();
-    finish("리뷰 보고를 받지 못했어요. 다시 시도해 주세요.");
-    expect(await screen.findByRole("alert")).toHaveTextContent("리뷰 보고를 받지 못했어요");
-    expect(run).toHaveBeenCalledTimes(1);
-  });
-
-  test("[지금 받아 보기]가 없으면 정기 보고 줄도 없다", () => {
-    render(<ReviewsTab loaded={loaded} busy={false} onReply={none} />);
+describe("리뷰 정기 보고 줄 (#33에서 홈 루틴 설정으로 옮김)", () => {
+  test("리뷰 탭에는 정기 보고 줄이 없다", () => {
+    const loaded = { data: INBOX, failed: false, reload: () => {}, update: () => {} };
+    render(<ReviewsTab loaded={loaded} busy={false} onReply={async () => null} />);
     expect(screen.queryByRole("region", { name: "리뷰 정기 보고" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /받아 보기/ })).not.toBeInTheDocument();
   });
 });

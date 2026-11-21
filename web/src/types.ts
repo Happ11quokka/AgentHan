@@ -82,8 +82,29 @@ export type ReviewReport = { enabled: boolean; schedule: string | null; next_run
 /** 사장님 말 없이 비서가 먼저 보낸 메시지(정해진 때의 리뷰 보고 등). 서버는 한 번만 건넨다. */
 export type ServerMessage = { id: string; role: "agent"; text: string; next_actions?: Action[] };
 
-/** review_report·messages: 예전 서버 응답에는 없다. */
-export type View = { place: Place; pending: Pending[]; shop?: ShopInfo; review_report?: ReviewReport; messages?: ServerMessage[] };
+export type ReportFrequency = "daily" | "weekly" | "biweekly" | "monthly";
+
+/** 사이드카 루틴 설정(#33): 리뷰 정기 보고 일정과 답글 초안 미리 쓰기 켜짐 여부. */
+export type Routines = {
+  drafts: boolean;
+  report: { enabled: boolean; frequency: ReportFrequency | null; weekday: string; time: string };
+};
+
+/** 루틴 설정 화면에서 바꾸는 값만(PUT /routines). 빠진 값은 그대로. */
+export type RoutinesChange = {
+  report?: Partial<{ enabled: boolean; frequency: ReportFrequency; weekday: string; time: string }>;
+  drafts?: boolean;
+};
+
+/** review_report·messages·routines: 예전 서버 응답에는 없다. */
+export type View = {
+  place: Place;
+  pending: Pending[];
+  shop?: ShopInfo;
+  review_report?: ReviewReport;
+  messages?: ServerMessage[];
+  routines?: Routines;
+};
 
 /** 온보딩에서 사장님이 직접 넣은 값만 (POST /onboarding). 메뉴는 0~3개. */
 export type OnboardingInput = ShopInfo & { menus: Array<{ name: string; price: number }> };

@@ -8,12 +8,19 @@ type Props = {
   dropped: File | null;
   onDroppedTaken: () => void;
   onSend: (text: string, image?: File) => void;
+  onInputChange: (hasInput: boolean) => void;
 };
 
-export function Composer({ disabled, inputRef, dropped, onDroppedTaken, onSend }: Props) {
+export function Composer({ disabled, inputRef, dropped, onDroppedTaken, onSend, onInputChange }: Props) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [thumb, setThumb] = useState<string | undefined>();
+
+  const hasInput = text.trim().length > 0;
+  useEffect(() => {
+    onInputChange(hasInput);
+    return () => onInputChange(false);
+  }, [hasInput, onInputChange]);
 
   useEffect(() => () => forgetPhotoUrl(thumb), [thumb]); // 바꾸거나 빼면 이전 미리보기를 푼다
 

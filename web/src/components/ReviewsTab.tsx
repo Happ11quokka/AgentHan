@@ -7,13 +7,12 @@ import {
   preparingText,
   ratingText,
   REDRAFT_HINTS,
-  REPORT_TEXT,
   replyErrorText,
   reviewDate,
   unansweredText,
   waitingText,
 } from "../labels";
-import type { ReplyError, ReplyOp, ReplyOpName, ReviewReport, ReviewRow, ReviewsView } from "../types";
+import type { ReplyError, ReplyOp, ReplyOpName, ReviewRow, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
 
@@ -169,36 +168,6 @@ function Review({ review, preparing, focused, onReply }: ReviewProps) {
   );
 }
 
-/** 정기 보고 줄: 지금 설정 한 줄과 [지금 받아 보기](설정과 상관없이 보고 한 회분을 대화로). */
-function ReportRoutine({ report, busy, onRun }: { report: ReviewReport | null; busy: boolean; onRun: () => Promise<string | null> }) {
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const run = async () => {
-    if (running) return;
-    setRunning(true);
-    setError(null);
-    setError(await onRun());
-    setRunning(false);
-  };
-  const enabled = Boolean(report?.enabled);
-  return (
-    <section className="report-routine" aria-label={REPORT_TEXT.section}>
-      <div>
-        <p data-on={enabled}>{report?.text ?? REPORT_TEXT.off}</p>
-        {!enabled && <p className="report-howto">{REPORT_TEXT.howTo}</p>}
-      </div>
-      <button type="button" className="ghost small" disabled={busy || running} onClick={() => void run()}>
-        {running ? REPORT_TEXT.running : REPORT_TEXT.runNow}
-      </button>
-      {error && (
-        <p className="inbox-error" role="alert">
-          {error}
-        </p>
-      )}
-    </section>
-  );
-}
-
 type Props = {
   loaded: Loaded<ReviewsView>;
   busy: boolean;
@@ -207,13 +176,9 @@ type Props = {
   focus?: { id: string; at: number } | null;
   /** 개발 모드에서만: [새 리뷰 도착 (데모)]. */
   onSimulate?: () => void;
-  /** 리뷰 정기 보고 설정 한 줄(#98). */
-  report?: ReviewReport | null;
-  /** [지금 받아 보기]. 없으면 정기 보고 줄도 없다. 실패하면 보일 문장을 돌려준다. */
-  onRunReport?: () => Promise<string | null>;
 };
 
-export function ReviewsTab({ loaded, busy, onReply, focus, onSimulate, report = null, onRunReport }: Props) {
+export function ReviewsTab({ loaded, busy, onReply, focus, onSimulate }: Props) {
   const { data, failed, reload } = loaded;
   const [chosen, setChosen] = useState<Filter | null>(null);
   const focusId = focus?.id;
@@ -248,7 +213,6 @@ export function ReviewsTab({ loaded, busy, onReply, focus, onSimulate, report = 
         </div>
         <p data-todo={summary.unanswered > 0}>{unansweredText(summary.unanswered)}</p>
       </section>
-      {onRunReport && <ReportRoutine report={report} busy={busy} onRun={onRunReport} />}
       <section className="inbox-bar" aria-label={waitingText(summary.waiting)}>
         <div>
           <h3>{waitingText(summary.waiting)}</h3>
