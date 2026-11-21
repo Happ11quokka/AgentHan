@@ -1,6 +1,6 @@
 // Part C 전화 주문 통화 화면. 이 폴더(src/screens/phone/)는 Part C 몫이다.
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
-// 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 2분 동안 스트림으로 받는다.
+// 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 서버가 알린 창(기본 6분) 동안 스트림으로 받는다.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'

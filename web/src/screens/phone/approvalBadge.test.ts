@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { approvalBadge, awaitingText } from './approvalBadge.ts'
 import type { ApprovalJson, CustomerText } from './callState.ts'
 
-const view = (status: string, extra: Partial<ApprovalJson> = {}): ApprovalJson => ({
+const view = (status: ApprovalJson['status'], extra: Partial<ApprovalJson> = {}): ApprovalJson => ({
   status,
   number: 1,
   delay_min: 0,
@@ -49,6 +49,22 @@ describe('approval badge on the customer screen (주문 승인 티켓 09)', () =
     expect(approvalBadge(confirmed)).toMatchObject({ tone: 'ok', label: '가게가 주문을 확정했어요' })
   })
 
+  it('treats a call that ended while waiting like a timeout: the result comes by text (review spec 5)', () => {
+    const hungUp = { approval: view('waiting'), texts: [], status: 'ended' }
+    expect(awaitingText(hungUp)).toBe(true)
+    expect(approvalBadge(hungUp)).toMatchObject({ tone: 'wait', label: '가게 확인 중' })
+    expect(approvalBadge({ ...hungUp, texts: [orderText] })).toMatchObject({
+      tone: 'ok',
+      label: '가게가 주문을 확정했어요',
+    })
+    expect(approvalBadge({ ...hungUp, texts: [{ ...orderText, kind: 'expired' }] })).toMatchObject({
+      tone: 'stop',
+      label: '가게가 주문을 받지 못했어요',
+    })
+    // 통화 중에는 그대로 "사장님 확인 중"
+    expect(awaitingText({ ...hungUp, status: 'live' })).toBe(false)
+  })
+
   it('tells a change from a cancel when the request is withdrawn', () => {
     expect(approvalBadge({ approval: view('withdrawn', { reason: 'changed' }), texts: [] })?.label).toBe(
       '주문을 고치는 중',
@@ -62,7 +78,8 @@ describe('approval badge on the customer screen (주문 승인 티켓 09)', () =
   it('shows no badge without a request, for a skipped approval or for a status it does not know', () => {
     expect(approvalBadge({ approval: null, texts: [] })).toBeNull()
     expect(approvalBadge({ approval: view('skipped', { number: 0 }), texts: [] })).toBeNull()
-    expect(approvalBadge({ approval: view('something_new'), texts: [] })).toBeNull()
+    // 낡은 서버·새 서버가 모르는 값을 보내도 배지 없이 둔다
+    expect(approvalBadge({ approval: view('something_new' as ApprovalJson['status']), texts: [] })).toBeNull()
     expect(awaitingText({ approval: view('accepted'), texts: [] })).toBe(false)
   })
 })

@@ -14,6 +14,8 @@ export interface AlertOrder {
   auto_accepted?: boolean
   /** 손님이 고치는 중·취소한 확인 요청: 결정을 받지 않으니 기다리는 주문이 아니다 */
   withdrawn?: string
+  /** 확인 요청 번호. 손님이 고쳐 같은 카드에 새 요청이 오면 번호가 바뀐다(새로 온 것으로 울린다) */
+  request?: number
 }
 
 export interface OrderAlertsOptions {
@@ -28,7 +30,10 @@ export interface OrderAlertsOptions {
 
 export class OrderAlerts {
   private readonly options: OrderAlertsOptions
-  /** 한 번이라도 본 주문 id. 다시 붙어 snapshot이 와도 또 울리지 않게 */
+  /**
+   * 한 번이라도 본 (주문 id, 요청 번호). 다시 붙어 snapshot이 와도 또 울리지 않게. 같은 카드라도 새 요청
+   * 번호면 새로 온 것이다(손님이 고쳐 다시 요청함, 주문 승인 리뷰 6번)
+   */
   private readonly seen = new Set<string>()
   /** 지금 확인 대기인 주문 id (sync 순서) */
   private waiting: string[] = []
@@ -41,11 +46,12 @@ export class OrderAlerts {
   sync(orders: readonly AlertOrder[]): void {
     let arrived = false
     const waiting: string[] = []
-    for (const { id, status, auto_accepted, withdrawn } of orders) {
+    for (const { id, status, auto_accepted, withdrawn, request } of orders) {
       const isNew = status === 'new' && !withdrawn
       if (isNew) waiting.push(id)
-      if (this.seen.has(id)) continue
-      this.seen.add(id)
+      const key = `${id}#${request ?? 0}`
+      if (this.seen.has(key)) continue
+      this.seen.add(key)
       if (isNew || auto_accepted) arrived = true
     }
     this.waiting = waiting
