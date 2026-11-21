@@ -30,7 +30,7 @@ type Filter = "waiting" | "all";
 
 /** 별점 1~2점에 아직 답글이 없으면 맨 위로 올리고 '꼭 읽어 보세요'를 붙인다. */
 const mustRead = (r: ReviewRow) => r.rating !== null && r.rating <= 2 && !r.has_owner_reply;
-/** 사장님이 고를 초안이 있는 카드(올리기·고치기·건너뛰기). */
+/** 사장님이 고를 초안이 있는 카드(바로 고쳐 올리기·건너뛰기). */
 const decidable = (r: ReviewRow) => !r.has_owner_reply && Boolean(r.draft?.text) && r.draft?.status !== "failed";
 /** [기다림]에 보일 카드: 답글 없는 리뷰(건너뛴 것 빼고)와 이번에 올린 답글. */
 const inWaiting = (r: ReviewRow) =>
@@ -50,7 +50,8 @@ type ReviewProps = {
 
 function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewProps) {
   const [showOriginal, setShowOriginal] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
+  // 사장님이 입력칸에서 고친 글. null이면 초안 그대로 보인다(새 초안이 오면 따라 바뀐다).
+  const [edited, setEdited] = useState<string | null>(null);
   // 카드 단위 로딩·오류: 대화 입력(busy)은 잠그지 않는다.
   const [working, setWorking] = useState<ReplyOpName | null>(null);
   const [error, setError] = useState<ReplyError | null>(null);
@@ -64,8 +65,12 @@ function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewP
     const failed = await onReply(review, op);
     setWorking(null);
     setError(failed);
-    if (!failed && op.op === "post") setEditing(null);
+    // 다시 쓰기는 사장님이 새 초안을 달라고 한 것이라 고치던 글보다 새 초안을 보인다.
+    if (!failed && op.op !== "skip") setEdited(null);
   };
+  const text = edited ?? draft?.text ?? "";
+  const trimmed = text.trim();
+  const changed = trimmed !== (draft?.text ?? "").trim();
   const open = decidable(review);
   const postedText = review.has_owner_reply && draft?.status === "posted" ? draft.text : null;
   const errorLine = error && (
@@ -117,10 +122,10 @@ function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewP
         </section>
       )}
 
-      {open && draft && editing === null && (
+      {open && draft && (
         <section className="inbox-draft" data-status={draft.status} aria-label={INBOX_TEXT.draft}>
           <h4>{INBOX_TEXT.draft}</h4>
-          <p>{draft.text}</p>
+          <textarea aria-label={INBOX_TEXT.editBox} value={text} rows={4} onChange={(e) => setEdited(e.target.value)} />
           {draft.status === "needs_check" && draft.issues.length > 0 && <p className="inbox-issues">{issuesText(draft.issues)}</p>}
           <div className="inbox-redraft" role="group" aria-label={INBOX_TEXT.redraft}>
             {REDRAFT_HINTS.map(([hint, label]) => (
@@ -130,38 +135,19 @@ function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewP
             ))}
           </div>
           <div className="inbox-buttons">
-            <button type="button" className="primary" disabled={Boolean(working) || draft.status === "needs_check"} onClick={() => void reply({ op: "post" })}>
+            <button
+              type="button"
+              className="primary"
+              disabled={Boolean(working) || !trimmed || (!changed && draft.status === "needs_check")}
+              onClick={() => void reply(changed ? { op: "post", text: trimmed } : { op: "post" })}
+            >
               {INBOX_TEXT.post}
-            </button>
-            <button type="button" className="ghost" disabled={Boolean(working)} onClick={() => setEditing(draft.text)}>
-              {INBOX_TEXT.edit}
             </button>
             {draft.status !== "skipped" && (
               <button type="button" className="ghost" disabled={Boolean(working)} onClick={() => void reply({ op: "skip" })}>
                 {INBOX_TEXT.skip}
               </button>
             )}
-          </div>
-          {workingLine}
-          {errorLine}
-        </section>
-      )}
-
-      {open && editing !== null && (
-        <section className="inbox-draft" data-status="editing" aria-label={INBOX_TEXT.editBox}>
-          <textarea aria-label={INBOX_TEXT.editBox} value={editing} rows={4} onChange={(e) => setEditing(e.target.value)} />
-          <div className="inbox-buttons">
-            <button
-              type="button"
-              className="primary"
-              disabled={Boolean(working) || !editing.trim()}
-              onClick={() => void reply({ op: "post", text: editing.trim() })}
-            >
-              {INBOX_TEXT.postEdited}
-            </button>
-            <button type="button" className="ghost" disabled={Boolean(working)} onClick={() => setEditing(null)}>
-              {INBOX_TEXT.cancel}
-            </button>
           </div>
           {workingLine}
           {errorLine}
