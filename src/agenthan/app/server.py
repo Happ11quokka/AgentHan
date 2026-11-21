@@ -70,9 +70,10 @@ class Onboarding(BaseModel):
 
 
 class ReplyOp(BaseModel):
-    """답글 대기함 카드 버튼. text: 사장님이 고친 문장(post), hint: inbox.HINTS 값(redraft)."""
+    """답글 대기함 카드 버튼. draft: 그 리뷰 초안 받기(없거나 실패했을 때만 새로 쓴다).
+    text: 사장님이 고친 문장(post), hint: inbox.HINTS 값(redraft)."""
 
-    op: Literal["post", "skip", "redraft"]
+    op: Literal["draft", "post", "skip", "redraft"]
     text: str | None = None
     hint: str | None = None
 
@@ -302,8 +303,8 @@ def create_app(
 
     @app.post("/assistant/sessions/{session_id}/reviews/{review_id}/reply")
     def reply_to_review(session_id: str, review_id: str, body: ReplyOp) -> dict:
-        """답글 대기함 카드: 올리기·건너뛰기·다시 쓰기. 대화 턴이 아니다: 비서의 대화 기록·작업
-        원장·trace·planner를 거치지 않고 review/inbox.py와 답글 저장 경로만 쓴다.
+        """답글 대기함 카드: 초안 받기·올리기·건너뛰기·다시 쓰기. 대화 턴이 아니다: 비서의 대화
+        기록·작업 원장·trace·planner를 거치지 않고 review/inbox.py와 답글 저장 경로만 쓴다.
         → {review: 그 리뷰(+draft), summary, error?: {reason, message, issues}}"""
         session = get(session_id)
         if body.op == "redraft" and body.hint not in inbox.HINTS:
@@ -314,13 +315,16 @@ def create_app(
             box = inbox.inbox_of(session.assistant)
             if not box.has_review(review_id):
                 raise HTTPException(404, "없는 리뷰입니다.")
+            job = None
             if body.op == "post":
                 outcome = box.post(review_id, body.text)
             elif body.op == "skip":
                 outcome = box.skip(review_id)
+            elif body.op == "draft":
+                outcome, job = box.begin_draft(review_id)
             else:
                 outcome, job = box.begin_redraft(review_id, body.hint)
-        if body.op == "redraft" and outcome is None:
+        if job is not None:
             outcome = job()  # HCX 호출은 세션 잠금 밖에서 (그 리뷰는 inbox가 잡아 둠)
         with session.lock:
             view = inbox.annotate(

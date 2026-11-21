@@ -14,6 +14,7 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `GET /assistant/sessions/{id}/place` | 지금 `place`·`pending`·`shop`(가게 이름·업종. 둘 중 하나가 비면 화면이 온보딩을 띄움) |
 | `POST /assistant/sessions/{id}/onboarding` | 처음 쓰는 사장님(#94): `name`·`category`(빈칸 422)와 대표 메뉴 `menus` 0~3개(`name`·`price` 양의 정수)를 넣은 값 그대로 `shop`·`menus`에 저장 → 같은 모양. 대화 턴·승인 카드 아님, 실제 발송 없음 |
 | `GET /assistant/sessions/{id}/reviews` | 리뷰 탭: 요약(평균 별점·건수·답글 안 단 수)과 리뷰(최신순, 거친 표현을 거른 `text`, 걸렀을 때만 `original`) |
+| `POST /assistant/sessions/{id}/reviews/{review_id}/reply` | 리뷰 카드 버튼(대화 턴 아님: 대화 기록·작업 원장·승인 카드에 남기지 않음). `op`: `draft`(초안 받기, 쓸 만한 초안이 있으면 그대로) · `post`(선택 `text`: 고친 문장) · `skip` · `redraft`(`hint`: `shorter`·`more_apologetic`·`warmer`). 초안 쓰기(HCX)는 세션 잠금 밖에서 → `review`(+`draft`)·`summary`, 실패면 `error`(`reason`·`message`·`issues`) |
 | `GET /assistant/sessions/{id}/report?period=week\|day` | 손님 통계 탭: 요약 카드 3개 증감, 유입 채널, 시간대·요일 조회, 키워드(새로 뜬 것 표시), 해 볼 일 한 줄(`tip`). LLM 없음 |
 
 - 파일럿 매장(`pilot.py`, `pilot_store.json`): 서버의 새 대화는 이 가게로 시작하고 비서의 '오늘'은 2026-11-09로 고정된다(일반 기능·리뷰 둘 다). 메뉴 13·리뷰 20(미답글 8)·톡톡·주문·예약·전화·쿠폰·정산이 손님 통계와 같은 이야기다. 평가 시드(`tools/dummy_store_seed.json`)는 그대로.

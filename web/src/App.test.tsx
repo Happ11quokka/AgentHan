@@ -429,14 +429,34 @@ describe("사이드카 [리뷰]", () => {
     expect(within(panel).getByText("답글 달림")).toBeInTheDocument();
   });
 
-  test("답글 초안 받기는 그 리뷰의 답글을 비서에게 부탁한다", async () => {
+  test("답글 초안 받기는 대화 턴 없이 그 카드에 초안을 띄운다", async () => {
     const { user, api } = await open();
     await user.click(screen.getByRole("tab", { name: "리뷰" }));
     const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
+    const log = screen.getByRole("main", { name: "비서와 대화" });
+    const before = log.innerHTML;
+    const drafted = { ...REVIEWS.reviews[0], draft: { text: "불편 드려 죄송합니다.", status: "ready" as const, issues: [] } };
+    api.replyToReview.mockResolvedValueOnce({ review: drafted, summary: { ...REVIEWS.summary, waiting: 1 } });
     const [first] = await within(panel).findAllByRole("button", { name: "답글 초안 받기" });
     await user.click(first);
-    expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.draft_reply", args: { review_id: "r04" }, label: "답글 초안 받기" });
+    expect(api.replyToReview).toHaveBeenLastCalledWith("s1", "r04", { op: "draft" });
+    expect(await within(panel).findByRole("textbox", { name: "답글 고치기" })).toHaveValue("불편 드려 죄송합니다.");
+    expect(api.act).not.toHaveBeenCalled();
     expect(api.say).not.toHaveBeenCalled();
+    expect(log.innerHTML).toBe(before); // 대화 화면에는 아무것도 더하지 않는다
+  });
+
+  test("답글 초안을 못 받아도 채팅에는 알리지 않고 카드에만 보인다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "리뷰" }));
+    const panel = await screen.findByRole("tabpanel", { name: "리뷰" });
+    const log = screen.getByRole("main", { name: "비서와 대화" });
+    const before = log.innerHTML;
+    api.replyToReview.mockRejectedValueOnce(new Error("500"));
+    const [first] = await within(panel).findAllByRole("button", { name: "답글 초안 받기" });
+    await user.click(first);
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("서버 오류로 처리하지 못했어요");
+    expect(log.innerHTML).toBe(before);
   });
 });
 
