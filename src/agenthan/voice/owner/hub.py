@@ -12,16 +12,24 @@
   만든다: `request`(요청 번호), `stage`(in_call 통화 중 · after_call 통화 뒤), `requested_at`,
   `deadline_at`(통화 중 = 연 시각 + `approval_wait_s`, 통화 뒤 = 연 시각 + `approval_expire_s`),
   `decided_at`, `delay_min`, `withdrawn`(기다리는 중에 손님이 고침 changed · 취소 cancelled, 결정을
-  안 받는다). 결정은 한 번만 받는다(두 번째는 `AlreadyDecided`). 수락하면 확정 문자를 보내고 통화
-  세션의 받는 곳으로 결정을 넘긴다. 통화 끝 `submit`은 같은 id의 확인 카드를 그대로 둔다. 확인
+  안 받는다). 결정은 한 번만 받는다(두 번째는 `AlreadyDecided`). 수락하면 확정 문자를 보내고(통화
+  중이면 아래처럼 통화가 말한 뒤) 통화 세션의 받는 곳으로 결정을 넘긴다. 통화 끝 `submit`은 같은
+  id의 확인 카드를 그대로 둔다. 확인
   요청 없이 온 확정 주문(승인 꺼짐·사장님 화면 없음)은 `submit`에서 accepted + `auto_accepted`로
   만들고 확정 문자를 그때 보낸다. 사장님 화면 연결 수(`events` 구독자)가 `approval_ready`다
+- 통화 중 결정은 통화가 말해야 굳는다 (주문 승인 리뷰 경합): 통화 중에 받은 수락·늦춤·거절은
+  카드를 바로 결정으로 바꾸고(화면에 보이고 두 번째 결정은 409) 세션에 넘기지만, 손님 문자·결정
+  기록은 세션이 그 결정을 손님에게 말하는 턴을 열 때(`approval_said`, 질문 카드 `answer_said`와
+  같은 모양)까지 미룬다. 그 전에 손님이 고치거나 취소해 요청을 거두면 거둔 쪽이 이긴다: 결정 칸을
+  비우고 "고치는 중"·손님 취소로 둔다(확정 문자·수락 기록 없음). 말하지 못하고 통화가 끝나면(시간
+  초과 대사가 먼저 나감·손님이 끊음) 통화 뒤 결정처럼 굳힌다. 결정 → 할 일 표는 `_settle` 한 곳이다
 - 늦춘 수락 (주문 승인 티켓 04, `accept(..., delay_min=15|30)`): 카드는 accepted + `delay_min`,
   `owner_pickup_time`(바뀐 픽업 시각 ISO)·`owner_pickup_label`(`18:45`). 통화 뒤면 늦춘 수락
-  문자를 바로 보낸다. 통화 중이면 결정을 세션에 넘기고 `delay_reply` asking(손님이 바뀐 시각을
-  듣는 중)으로 둔다. 손님이 "네"면 통화 끝 `submit`으로 확정 주문이 오고 늦춘 수락 문자를 보낸다
-  (yes). "아니요"·취소면 세션이 그 요청을 취소로 거두고 카드는 처리 상태 cancelled(no, 문자
-  없음)가 된다. 답 없이 통화가 끝나면(끊음·무응답) 통화 뒤 늦춘 수락과 같게 문자를 보낸다("").
+  문자를 바로 보낸다. 통화 중이면 결정을 세션에 넘기고, 통화가 말하면
+  `delay_reply` asking(손님이 바뀐 시각을 듣는 중)으로 둔다. 손님이 "네"면 통화 끝
+  `submit`으로 확정 주문이 오고 늦춘 수락 문자를 보낸다(yes). "아니요"·취소면 세션이
+  그 요청을 취소로 거두고 카드는 처리 상태 cancelled(no, 문자 없음)가 된다. 답 없이
+  통화가 끝나면(끊음·무응답) 통화 뒤 늦춘 수락과 같게 문자를 보낸다("").
   `submit`과 통화 끝 중 먼저 온 쪽이 한 번만 보낸다
 - 결정 기록(티켓 10, `decisions.py`): `order.update`를 보낼 때마다 카드의 결정(처리 상태·사유·
   결정 시각·바뀐 픽업 시각)이 지난번과 달라졌으면 `decision_sink`로 넘긴다. 결정을 바꾸는 코드는
@@ -121,7 +129,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -137,6 +145,7 @@ from agenthan.voice.dialog.approval import (
     OwnerDecision,
     RejectReason,
     WithdrawReason,
+    only_the_rest,
 )
 from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeRequest, KnowledgeStore
 from agenthan.voice.dialog.owner_question import (
@@ -194,6 +203,11 @@ _OFF_SCREEN = frozenset({"ordered", "closed"})
 _UNANSWERED = frozenset({"open", "timeout"})
 # 이 상태에서 받은 답은 늦은 답이다. 통화가 말하지 않으니 손님 문자로 간다 (티켓 07)
 _LATE = frozenset({"timeout", "call_ended"})
+# 결정 칸의 빈 값(`_approval_card`와 같다). 통화가 말하기 전에 손님이 거둔 결정을 지울 때 쓴다
+_UNDECIDED: dict[str, Any] = {
+    "status": "new", "decided_at": "", "delay_min": 0, "owner_pickup_time": "",
+    "owner_pickup_label": "", "delay_reply": "", "reject_reason": "", "reject_menu_ids": [],
+    "reject_text": "", "reject_text_ko": ""}
 
 
 @dataclass(frozen=True)
@@ -240,6 +254,9 @@ class OwnerHub:
         self._approval_wait = timedelta(seconds=approval_wait_s)
         self._approval_expire = timedelta(seconds=approval_expire_s)
         self._deciders: dict[str, Callable[[OwnerDecision], None]] = {}
+        # 통화 중에 받은 결정 중 통화가 아직 손님에게 말하지 않은 것(통화 id → 요청 번호, 리뷰
+        # 경합). 말하면(`approval_said`) 굳히고, 그 전에 손님이 거두면 거둔 쪽이 이긴다
+        self._unspoken: dict[str, int] = {}
         # 가장 이른 자동 취소 마감에 건 루프 타이머 (주문 승인 티켓 03, `_arm_expiry`)
         self._expiry: asyncio.TimerHandle | None = None
         self._questions: dict[str, dict[str, Any]] = {}  # 질문 id → 질문 카드 (온 순서)
@@ -323,6 +340,9 @@ class OwnerHub:
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         self._on_loop(self._withdraw_approval, call_id, number, reason)
 
+    def approval_said(self, call_id: str, number: int) -> None:
+        self._on_loop(self._approval_said, call_id, number)
+
     def sold_out_today(self) -> frozenset[str]:
         """오늘 품절 메뉴 id들(주문 승인 티켓 06). 날짜(허브 시계)가 바뀌었으면 빈 집합.
 
@@ -338,41 +358,21 @@ class OwnerHub:
     def accept(self, order_id: str, delay_min: int = 0) -> dict[str, Any]:
         """수락 버튼(주문 승인 티켓 02): 확인 대기(new) → accepted. 바뀐 카드를 돌려준다.
 
-        확정 문자를 보내고, 통화 중이면 결정을 통화 세션에 넘긴다(손님이 마무리 대사를 듣는다).
-        없으면 `UnknownCard`, 이미 결정했거나 자동 취소됐으면 `AlreadyDecided`(두 화면에서 같이
-        눌러도 한 번),
-        손님이 고치는 중·취소한 요청이면 `CardBusy`. 늦춘 분은 0·15·30만 받는다(`ValueError`).
-        늦춘 수락(티켓 04)은 통화 중이면 문자를 손님 답 뒤로 미룬다(모듈 설명).
+        통화 뒤면 확정 문자를 바로 보낸다. 통화 중이면 결정을 통화 세션에 넘기고, 문자는 통화가
+        그 결정을 손님에게 말한 뒤에 보낸다(`_decide`). 409 규칙은 `_pending_card`. 늦춘 분은
+        0·15·30만 받는다(`ValueError`). 늦춘 수락(티켓 04)은 통화 중이면 문자를 손님 답 뒤로 미룬다
+        (모듈 설명).
         """
-        self.expire_due()  # 마감이 지난 카드는 먼저 자동 취소한다(타이머가 늦었어도 409)
-        card = self._orders.get(order_id)
-        if card is None:
-            raise UnknownCard(order_id)
+        card = self._pending_card(order_id)
         if delay_min not in ACCEPT_DELAYS:
             raise ValueError(f"늦춘 분은 {ACCEPT_DELAYS} 중 하나예요: {delay_min!r}")
-        if card["status"] != "new":
-            raise AlreadyDecided(order_id)
-        if card["withdrawn"]:
-            raise CardBusy(order_id)
-        reply = self._deciders.pop(order_id, None)
         decided = {**card, "status": "accepted", "delay_min": delay_min,
                    "decided_at": self._clock.now().isoformat()}
         if delay_min:
             moved = _later(card["pickup_time"], delay_min)
-            decided |= {"owner_pickup_time": moved, "owner_pickup_label": clock_label(moved),
-                        "delay_reply": "asking" if reply is not None else ""}
-        self._orders[order_id] = decided
-        if not delay_min:
-            self._text_order(order_id)  # 확정 문자 + 카드 한 번 보내기
-        elif reply is None:
-            self._text_delayed(order_id)  # 통화 뒤: 늦춘 수락 문자 + 카드 한 번 보내기
-        else:
-            self._publish("order.update", decided)  # 문자는 손님이 바뀐 시각에 답한 뒤
-        if reply is not None:
-            kind = "delay" if delay_min else "accept"
-            self._tell_call(reply, OwnerDecision(card["request"], kind, delay_min), order_id)
-        return self._orders[order_id]
-
+            decided |= {"owner_pickup_time": moved, "owner_pickup_label": clock_label(moved)}
+        kind = "delay" if delay_min else "accept"
+        return self._decide(order_id, decided, OwnerDecision(card["request"], kind, delay_min))
 
     def expire_due(self) -> list[str]:
         """자동 취소 (주문 승인 티켓 03): 확인 요청을 연 때 + `approval_expire_s`가 허브 시계로
@@ -398,52 +398,100 @@ class OwnerHub:
         """거절 버튼 → 사유 시트 (주문 승인 티켓 05): 확인 대기(new) → rejected. 바뀐 카드.
 
         손님에게 사유별 취소 문자를 남기고(통화 중에 결정해 손님이 사과를 들어도 같다), 통화 중이면
-        결정을 통화 세션에 넘긴다(손님이 사유별 사과를 듣고 통화가 취소로 끝난다). 직접 쓰기(free)
-        글은 번역 포트로 한국어로 옮겨 문자 인용 틀에 넣는다(번역은 비동기, 문자는 번역 뒤에 온다.
-        안 되면 원문). 409 규칙은 수락과 같다: 이미 결정했거나 자동 취소됐으면 `AlreadyDecided`,
-        손님이 고치는 중·취소한 요청이면 `CardBusy`. 없으면 `UnknownCard`. 모르는 사유·글 없는 직접
-        쓰기는 `ValueError`.
+        결정을 통화 세션에 넘긴다(손님이 사유별 사과를 듣고 통화가 취소로 끝난다. 문자는 통화가
+        말한 뒤, `_decide`). 직접 쓰기(free) 글은 번역 포트로 한국어로 옮겨 문자 인용 틀에
+        넣는다(번역은 비동기, 문자는 번역 뒤에 온다. 안 되면 원문). 409 규칙은 수락과 같다
+        (`_pending_card`, 글 검사보다 먼저). 모르는 사유·글 없는 직접 쓰기는 `ValueError`.
 
         재료 소진(out_of_stock, 티켓 06)은 주문에 든 메뉴 중 떨어진 것(`menu_ids`, 하나 이상, 아니면
         `ValueError`)을 받아 오늘 품절에 더한다. 통화 중이면 취소 문자는 미룬다(손님이 빼거나 바꿀
         수 있다, 모듈 설명). 통화 뒤면 메뉴 이름이 든 취소 문자를 바로 남긴다.
         """
-        self.expire_due()  # 마감이 지난 카드는 먼저 자동 취소한다(타이머가 늦었어도 409)
-        card = self._orders.get(order_id)
-        if card is None:
-            raise UnknownCard(order_id)
+        card = self._pending_card(order_id)  # 결정·거둠 검사(409)가 글 검사(422)보다 먼저다
         if reason not in REJECT_REASONS:
             raise ValueError(f"모르는 거절 사유: {reason!r}")
         menu_ids = self._stock_out_ids(card, menu_ids) if reason == "out_of_stock" else []
         text = text.strip() if reason == "free" else ""
         if reason == "free" and not text:
             raise ValueError("직접 쓴 거절 사정이 비었어요")
-        if card["status"] != "new":
-            raise AlreadyDecided(order_id)
-        if card["withdrawn"]:
-            raise CardBusy(order_id)
         self._orders[order_id] = {**card, "status": "rejected", "reject_reason": reason,
                                   "reject_menu_ids": list(menu_ids), "reject_text": text,
                                   "decided_at": self._clock.now().isoformat()}
         log.info("확인 요청 거절: %s (%s)", order_id, reason)
         if menu_ids:  # 통화에 넘기기 전에 품절을 건다(세션이 결정 직전에 목록을 읽는다)
             self._mark_sold_out(order_id, menu_ids)
+        return self._decide(order_id, self._orders[order_id], OwnerDecision(
+            card["request"], "reject", reason=reason, menu_ids=tuple(menu_ids)))
+
+    def _pending_card(self, order_id: str) -> dict[str, Any]:
+        """결정을 받을 확인 대기 카드. 마감이 지난 카드는 먼저 자동 취소한다(타이머가 늦었어도
+        409). 없으면 `UnknownCard`, 이미 결정했거나 자동 취소됐으면 `AlreadyDecided`(두 화면에서
+        같이 눌러도 한 번), 손님이 고치는 중·취소한 요청이면 `CardBusy`."""
+        self.expire_due()
+        card = self._orders.get(order_id)
+        if card is None:
+            raise UnknownCard(order_id)
+        if card["status"] != "new":
+            raise AlreadyDecided(order_id)
+        if card["withdrawn"]:
+            raise CardBusy(order_id)
+        return card
+
+    def _decide(self, order_id: str, decided: dict[str, Any],
+                decision: OwnerDecision) -> dict[str, Any]:
+        """사장님 결정을 카드에 적는다. 바뀐 카드를 돌려준다.
+
+        통화 뒤면 바로 굳힌다(`_settle`). 통화 중이면 결정을 세션에 넘기고, 통화가 그
+        결정을 손님에게 말할 때(`approval_said`)까지 손님 문자·결정 기록을 미룬다(리뷰
+        경합). 그 전에 손님이 요청을 거두면 결정은 없던 일이 되고(`_withdraw_approval`),
+        말하지 못하고 통화가 끝나면 통화 뒤
+        결정처럼 굳힌다(`_end_call`). 화면 카드는 바로 결정으로 보인다(두 번째 결정은 409).
+        """
+        self._orders[order_id] = decided
         reply = self._deciders.pop(order_id, None)
-        if reply is not None:
-            self._tell_call(reply, OwnerDecision(card["request"], "reject", reason=reason,
-                                                 menu_ids=tuple(menu_ids)), order_id)
-        if reason == "out_of_stock" and reply is not None:
-            self._stock_out_open.add(order_id)  # 손님 답을 기다린다. 취소 문자는 통화 끝에
-            self._publish("order.update", self._orders[order_id])
-        elif reason == "out_of_stock":
-            self._text_customer(order_id, "rejected", self._stock_out_text(order_id))
-        elif reason == "free":
-            self._publish("order.update", self._orders[order_id])  # 문자는 번역 뒤에
-            self._text_rejected_soon(order_id)
+        if reply is None:
+            self._settle(order_id, said=False)
         else:
-            self._text_customer(order_id, "rejected", sms.rejected_text(reason))  # 카드도 보낸다
+            self._unspoken[order_id] = decision.request
+            self._publish("order.update", decided)
+            self._tell_call(reply, decision, order_id)
         self._arm_expiry()
         return self._orders[order_id]
+
+    def _settle(self, call_id: str, *, said: bool) -> None:
+        """결정을 굳힌다: 결정 종류마다 손님 문자(또는 손님 답 기다림)와 카드 한 번 보내기(결정
+        기록이 같이 간다). 결정 → 할 일 표는 여기 한 곳이다.
+
+        `said`: 통화가 손님에게 결정을 말했다. 아니면 통화 뒤 결정이거나 통화가 말하지 못하고
+        끝났다. 둘이 다른 것은 늦춘 수락(말했으면 손님 답을 기다림, 티켓 04)과 재료 소진(말했으면
+        손님이 빼거나 바꿀 수 있어 취소 문자를 미룸, 티켓 06)뿐이다.
+        """
+        self._unspoken.pop(call_id, None)
+        card = self._orders[call_id]
+        reason = card["reject_reason"]
+        if card["status"] == "accepted" and not card["delay_min"]:
+            self._text_order(call_id)  # 확정 문자 + 카드 한 번 보내기
+        elif card["status"] == "accepted" and said:
+            # 손님이 바뀐 시각을 듣는 중. 문자는 손님 답 뒤(`_take_order`·`_withdraw_approval`)
+            self._orders[call_id] = {**card, "delay_reply": "asking"}
+            self._publish("order.update", self._orders[call_id])
+        elif card["status"] == "accepted":
+            self._text_delayed(call_id)  # 늦춘 수락 문자 + 카드 한 번 보내기
+        elif reason == "out_of_stock" and said:
+            self._stock_out_open.add(call_id)  # 손님 답을 기다린다. 취소 문자는 통화 끝에
+            self._publish("order.update", card)
+        elif reason == "out_of_stock":
+            self._text_customer(call_id, "rejected", self._stock_out_text(call_id))
+        elif reason == "free":
+            self._publish("order.update", card)  # 문자는 번역 뒤에
+            self._text_rejected_soon(call_id)
+        else:
+            self._text_customer(call_id, "rejected", sms.rejected_text(reason))  # 카드도 보낸다
+
+    def _approval_said(self, call_id: str, number: int) -> None:
+        """통화가 그 요청의 사장님 결정을 손님에게 말하기 시작했다. 결정을 굳힌다."""
+        if self._unspoken.get(call_id) == number and call_id in self._orders:
+            self._settle(call_id, said=True)
 
     def undo_sold_out(self, menu_id: str) -> dict[str, Any]:
         """품절 되돌리기 (주문 승인 티켓 06): 그 메뉴를 오늘 품절에서 뺀다. 오늘 품절 전체를 준다.
@@ -810,15 +858,25 @@ class OwnerHub:
         self.expire_due()  # 마감 전이면(시계가 덜 갔으면) 아무것도 안 바꾸고 다시 건다
 
     def _withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
-        """손님이 고치거나 취소해 요청을 거뒀다. 카드는 결정을 안 받는다(새 요청이 대신한다)."""
+        """손님이 고치거나 취소해 요청을 거뒀다. 카드는 결정을 안 받는다(새 요청이 대신한다).
+
+        사장님이 이미 결정했어도 통화가 아직 말하지 않았으면 거둔 쪽이 이긴다(리뷰 경합): 결정
+        칸을 비우고 "고치는 중"·손님 취소로 둔다. 문자·결정 기록은 아직 안 나갔다. 재료 소진으로 건
+        오늘 품절과 카드 품절 표시는 남긴다(재료가 떨어진 것은 그대로다).
+        """
         card = self._orders.get(call_id)
-        if (card is not None and card["request"] == number
-                and card.get("delay_reply") == "asking" and reason == "cancelled"):
+        if card is None or card["request"] != number:
+            return
+        if self._unspoken.get(call_id) == number:
+            del self._unspoken[call_id]
+            log.info("말하기 전에 손님이 거둔 결정을 버림: %s (%s)", call_id, reason)
+            card = {**card, **_UNDECIDED}
+        elif card.get("delay_reply") == "asking" and reason == "cancelled":
             # 늦춘 시각에 손님이 "아니요"·취소 (티켓 04). 사장님 결정은 남기고 주문은 취소로
             self._orders[call_id] = {**card, "status": "cancelled", "delay_reply": "no"}
             self._publish("order.update", self._orders[call_id])
             return
-        if card is None or card["status"] != "new" or card["request"] != number:
+        elif card["status"] != "new":
             return
         self._deciders.pop(call_id, None)
         self._orders[call_id] = {**card, "withdrawn": reason}
@@ -960,6 +1018,10 @@ class OwnerHub:
         self._heard.pop(call_id, None)
         self._captions.pop(call_id, None)  # 자막은 통화 중에만 (화면도 통화 중 카드 아래에만 둔다)
         self._deciders.pop(call_id, None)  # 끝난 세션을 놓는다. 통화 뒤 결정은 문자로만 간다
+        if call_id in self._unspoken:
+            # 통화 중 결정을 통화가 말하지 못하고 끝났다(시간 초과 대사가 먼저 나감·손님이 끊음).
+            # 통화 뒤 결정과 같게 굳힌다(재료 소진이면 메뉴 이름이 든 취소 문자, 리뷰 경합)
+            self._settle(call_id, said=False)
         if call_id in self._stock_out_open:
             # 재료 소진 안내 뒤 손님이 남은 메뉴로 확정하지도 바꿔 다시 요청하지도 않고 끝났다
             self._stock_out_open.discard(call_id)
@@ -982,9 +1044,10 @@ class OwnerHub:
             # 않는다: "고치는 중"으로 남기지 않고 손님 취소와 같게 닫는다(통화 뒤 대기·문자 없음)
             self._orders[call_id] = {**order, "withdrawn": "cancelled"}
             self._publish("order.update", self._orders[call_id])
-        # 확인을 기다리는 주문, 늦춘 시각을 묻던 주문(티켓 04), 거절한 주문(티켓 05)이 있으면 그
-        # 주문 카드가 통화를 대신한다
-        stands_in = waiting or asking or (order is not None and order["status"] == "rejected")
+        # 확인을 기다리는 주문, 늦춘 시각을 묻던 주문(티켓 04), 수락·거절한 주문(티켓 05)이 있으면
+        # 그 주문 카드가 통화를 대신한다
+        stands_in = waiting or asking or (
+            order is not None and order["status"] in ("accepted", "rejected"))
         call = self._calls.get(call_id)
         if call is not None and call["status"] == "live":
             self._put_call({**call, "status": "ordered" if stands_in else "missed",
@@ -1029,6 +1092,7 @@ class OwnerHub:
             del self._orders[card["id"]]
             self._recorded.pop(card["id"], None)
             self._order_of.pop(card["id"], None)
+            self._unspoken.pop(card["id"], None)
             dropped.add(card["id"])
             twin = self._calls.get(card["id"])
             if twin is not None and twin["status"] == "ordered":  # 화면에 없는 짝 통화 카드
@@ -1243,15 +1307,22 @@ class OwnerHub:
     # --- 자유 입력 답 → 손님 문자 (티켓 07): 사장님 글(ru) → ko. 메뉴명 보호 없음, 다듬지 않음 ---
 
     def _text_written_answer_soon(self, question_id: str) -> None:
+        self._translate_then(lambda: self._translate_written_answer(question_id),
+                             lambda: self._text_written_answer(question_id, ""))
+
+    def _translate_then(self, translate: Callable[[], Coroutine[Any, Any, None]],
+                        untranslated: Callable[[], None]) -> None:
+        """사장님 글 번역 작업(`translate()`가 만드는 코루틴)을 루프에 건다. 번역기가 없거나
+        (키 없음) 루프 밖(동기 코드)이면 번역 없이 `untranslated()`(원문 문자)를 바로 부른다."""
         if self._translator is None:
-            self._text_written_answer(question_id, "")  # 키 없음: 원문 문자
+            untranslated()
             return
         try:
             loop = asyncio.get_running_loop()
-        except RuntimeError:  # 루프 밖(동기 코드): 번역 없이 원문 문자
-            self._text_written_answer(question_id, "")
+        except RuntimeError:
+            untranslated()
             return
-        task = loop.create_task(self._translate_written_answer(question_id))
+        task = loop.create_task(translate())
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -1282,17 +1353,8 @@ class OwnerHub:
     # --- 직접 쓴 거절 사정 → 손님 문자 (주문 승인 티켓 05): 자유 입력 답과 같은 번역 길 ---------
 
     def _text_rejected_soon(self, order_id: str) -> None:
-        if self._translator is None:
-            self._text_rejected(order_id, "")  # 키 없음: 원문 문자
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:  # 루프 밖(동기 코드): 번역 없이 원문 문자
-            self._text_rejected(order_id, "")
-            return
-        task = loop.create_task(self._translate_rejected(order_id))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        self._translate_then(lambda: self._translate_rejected(order_id),
+                             lambda: self._text_rejected(order_id, ""))
 
     async def _translate_rejected(self, order_id: str) -> None:
         original = self._orders[order_id]["reject_text"]
@@ -1406,8 +1468,8 @@ class OwnerHub:
         모든 결정(수락·늦춘 수락·거절·자동 취소·자동 확정)이 `order.update`를 거치므로 여기 한 곳이
         이음매다. 받는 곳이 실패해도 화면·통화는 계속한다.
         """
-        if self._decision_sink is None:
-            return
+        if self._decision_sink is None or card["id"] in self._unspoken:
+            return  # 통화가 아직 말하지 않은 결정은 굳기 전이다(손님이 거둘 수 있다)
         record = decision_of(card, self._order_of.get(card["id"]))
         if record is None or self._recorded.get(record.order_id) == record:
             return
@@ -1455,8 +1517,8 @@ def _rest_of(card: dict[str, Any], order: Order) -> bool:
     """재료 소진 거절 카드에 온 확정 주문이 떨어진 메뉴만 뺀 나머지다(새 메뉴 없음, 티켓 06)."""
     if card["status"] != "rejected" or card["reject_reason"] != "out_of_stock":
         return False
-    before = {line["menu_id"] for line in card["lines"]} - set(card["reject_menu_ids"])
-    return bool(order.lines) and all(line.menu_id in before for line in order.lines)
+    return only_the_rest((line["menu_id"] for line in card["lines"]), card["reject_menu_ids"],
+                         (line.menu_id for line in order.lines))
 
 
 def _awaiting(card: dict[str, Any]) -> bool:
@@ -1498,7 +1560,6 @@ def _later(iso: str, minutes: int) -> str:
 
 
 def clock_label(iso: str) -> str:
-
     """ISO 8601 시각 → `18:30` (가게 시각 그대로, 24시간제). 비면 빈 글."""
     if not iso:
         return ""

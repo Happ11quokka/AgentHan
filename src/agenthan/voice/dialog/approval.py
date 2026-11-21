@@ -20,19 +20,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 from agenthan.core.contracts import Order
 
 # 사장님 결정 종류. 사장님 화면 수락(accept)·늦춘 수락(delay)·거절(reject)과 세션이 넣는
 # 시간 초과(timeout)
 DecisionKind = Literal["accept", "delay", "timeout", "reject"]
-# 사장님이 고를 수 있는 늦춘 분 (사장님 화면 [+15분] [+30분], 티켓 04). 0은 그냥 수락
-ACCEPT_DELAYS: tuple[int, ...] = (0, 15, 30)
+# 사장님이 고를 수 있는 늦춘 분 (사장님 화면 [+15분] [+30분], 티켓 04). 0은 그냥 수락. HTTP 본문
+# 검사(`AcceptBody`)도 이 타입을 쓴다. 웹은 `ownerStream.ts` `ACCEPT_DELAYS`가 같은 값을 든다
+AcceptDelay = Literal[0, 15, 30]
+ACCEPT_DELAYS: tuple[AcceptDelay, ...] = get_args(AcceptDelay)
 # 거절 사유 (사장님 화면 사유 시트, 티켓 05·06). 허브 카드·DB의 `reject_reason`과 같은 글
 RejectReason = Literal["out_of_stock", "busy", "closed", "free"]
-REJECT_REASONS: tuple[RejectReason, ...] = ("out_of_stock", "busy", "closed", "free")
+REJECT_REASONS: tuple[RejectReason, ...] = get_args(RejectReason)
 # 엔진이 확인 요청을 거둔 이유: 손님이 주문을 고침(changed) · 손님이 주문을 취소함(cancelled)
 WithdrawReason = Literal["changed", "cancelled"]
 
@@ -55,6 +58,18 @@ class OwnerDecision:
     delay_min: int = 0  # 늦춘 수락(delay)의 분 15·30 (티켓 04). 그 밖의 결정은 0
     reason: RejectReason | Literal[""] = ""  # 거절 사유 (kind reject만, 티켓 05)
     menu_ids: tuple[str, ...] = ()  # 재료 소진 거절의 떨어진 메뉴 id들 (티켓 06)
+
+
+def only_the_rest(asked: Iterable[str], sold_out: Iterable[str],
+                  confirmed: Iterable[str]) -> bool:
+    """재료 소진 거절 뒤 확정된 주문이 떨어진 메뉴만 뺀 나머지다(새 메뉴 없음, 티켓 06). 그러면
+    재승인 없이 그 요청의 수락이다. 메뉴 id로 본다: 요청한 메뉴 − 떨어진 메뉴 안에서만 골랐다.
+
+    허브(사장님 카드 accepted)와 세션(손님 화면 accepted)이 같은 규칙을 쓴다(리뷰 3번).
+    """
+    rest = set(asked) - set(sold_out)
+    kept = list(confirmed)
+    return bool(kept) and all(menu_id in rest for menu_id in kept)
 
 
 @dataclass(frozen=True)

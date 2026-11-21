@@ -85,3 +85,27 @@ def test_the_sold_out_list_is_applied_again_when_the_decision_arrives(tmp_path) 
     c = run(call())
     assert said(c, 5) == NOTICE
     assert said(c, 6).startswith("죄송해요, 블린은 오늘 다 떨어졌어요.")
+
+
+def test_a_swapped_order_confirmed_without_a_screen_is_not_shown_as_accepted(tmp_path) -> None:
+    """재료 소진 뒤 다른 메뉴로 바꿨는데 그새 사장님 화면이 꺼져 확인 없이 확정됐다(리뷰 3번).
+    사장님이 본 적 없는 주문이라 손님 화면은 "수락"이 아니라 건너뜀이다(허브 자동 확정과 같다)."""
+    owner = RecordingOwnerChannel(approval="hold")
+    script = [*TWO, "블린으로 바꿔 주세요", "네"]
+
+    async def call() -> Call:
+        async with Call(tmp_path, stt=FakeSttStream(replies=script), owner=owner,
+                        settings=waiting(approval_wait_s=5.0)) as c:
+            await to_yes(c)
+            owner.reject(1, "out_of_stock", menu_ids=("m01",))
+            await bot_turn(c, 5)
+            await c.turn(6)  # 바꾼 주문 다시 복창
+            owner.approval = "off"  # 사장님 화면이 꺼졌다
+            await c.turn(7)  # "네" → 확인 없이 확정
+            await asyncio.wait_for(c.session.wait_done(), WAIT)
+            return c
+
+    c = run(call())
+    (order,) = c.sink.orders
+    assert [line.menu_id for line in order.lines] == ["m02", "m04"]
+    assert [step for _, step in approval_steps(c)][-1] == view("skipped", 0)

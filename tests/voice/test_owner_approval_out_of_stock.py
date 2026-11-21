@@ -118,6 +118,7 @@ def test_dropping_the_sold_out_menu_turns_the_card_into_an_accept_with_the_rest(
     hub = _hub(clock, sink=sink)
     _requested(hub)
     hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    hub.approval_said("call-1", 1)  # 통화가 품절 안내를 말했다
     clock.set(LATER)
 
     hub.submit(_order(NAPOLEON))  # 손님이 메도빅만 뺐다 → 세션이 남은 주문서를 넘긴다
@@ -138,6 +139,7 @@ def test_swapping_opens_a_new_card_that_keeps_the_sold_out_mark() -> None:
     hub = _hub()
     _requested(hub)
     hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    hub.approval_said("call-1", 1)  # 통화가 품절 안내를 말했다
 
     _requested(hub, number=2, order=_order(NAPOLEON, BLIN))  # 바꿔서 다시 복창 → "네"
     hub.call_ended("call-1", "hangup")
@@ -153,6 +155,7 @@ def test_hanging_up_after_the_notice_sends_the_cancel_text_with_the_menu_names()
     hub = _hub()
     _requested(hub)
     hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    hub.approval_said("call-1", 1)  # 통화가 품절 안내를 말했다
 
     hub.call_ended("call-1", "hangup")
 
@@ -221,6 +224,7 @@ def test_a_swapped_order_confirmed_without_a_screen_becomes_an_automatic_accept(
     hub = _hub()
     _requested(hub)
     hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    hub.approval_said("call-1", 1)  # 통화가 품절 안내를 말했다
 
     hub.submit(_order(NAPOLEON, BLIN))  # 바꾼 주문이 확인 요청 없이 확정됐다(그새 화면이 꺼짐)
     hub.call_ended("call-1", "confirmed")
@@ -240,6 +244,7 @@ def test_out_of_stock_is_refused_once_the_card_is_a_delayed_accept() -> None:
     asking = _hub()
     _requested(asking)
     asking.accept("call-1", delay_min=15)  # 통화 중: delay_reply asking
+    asking.approval_said("call-1", 1)
     with pytest.raises(AlreadyDecided):
         asking.reject("call-1", "out_of_stock", menu_ids=["m01"])
 
@@ -262,6 +267,7 @@ def test_the_rest_accept_is_recorded_with_the_reduced_order() -> None:
     hub = _hub(sink=sink)
     _requested(hub)
     hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    hub.approval_said("call-1", 1)  # 통화가 품절 안내를 말했다
 
     hub.submit(_order(NAPOLEON))
     hub.call_ended("call-1", "confirmed")

@@ -147,7 +147,15 @@ from agenthan.voice.call.turn_end import (
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.answerer import Answerer
-from agenthan.voice.dialog.approval import ApprovalRequest, ApprovalWithdrawn, OwnerDecision
+from agenthan.voice.dialog.approval import (
+    ApprovalRequest,
+    ApprovalWithdrawn,
+    DecisionKind,
+    OwnerDecision,
+    RejectReason,
+    WithdrawReason,
+    only_the_rest,
+)
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
@@ -548,6 +556,8 @@ class CallSession:
         # 마지막으로 연 확인 요청 (주문 승인 티켓 03). 결정을 기다리는 채 통화가 끝나면 그 주문서를
         # 넘긴다(`_hand_over_waiting_order`)
         self._approval_sent: ApprovalRequest | None = None
+        # 통화가 말한 재료 소진 거절의 떨어진 메뉴 id들 (손님 화면 "남은 메뉴로 수락", 리뷰 3번)
+        self._stock_out_ids: tuple[str, ...] = ()
         # 확인 요청 재안내 "조금만 더 기다려 주세요" (주문 승인 티켓 07). 요청마다 한 번
         self._approval_nudge = OneShot(self._on_approval_nudge)
 
@@ -1434,7 +1444,8 @@ class CallSession:
                 self._approval_view = replace(view, status="accepted")
             elif result.order.status == "confirmed" and not self._approval_decided():
                 # 확인 없이 바로 확정(승인 건너뜀). 재료 소진 뒤 떨어진 메뉴만 뺀 확정은 수락이다
-                self._approval_view = _rest_accepted(view) or ApprovalView("skipped")
+                self._approval_view = (self._rest_accepted(result.order)
+                                       or ApprovalView("skipped"))
             if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
                 self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
@@ -2263,6 +2274,19 @@ class CallSession:
             log.exception("오늘 품절 읽기 실패, 가게 메뉴 그대로 (%s)", self.call_id)
             return frozenset()
 
+    def _rest_accepted(self, order: Order) -> ApprovalView | None:
+        """재료 소진 거절 뒤 손님이 떨어진 메뉴만 빼 바로 확정했다(주문 승인 티켓 06): 그 요청의
+        수락이다. 다른 메뉴로 바꿨는데 확인 없이 확정됐으면(그새 사장님 화면이 꺼짐) 아니다(None,
+        허브의 자동 확정과 같은 규칙 `only_the_rest`, 리뷰 3번)."""
+        view, request = self._approval_view, self._approval_sent
+        if (view is None or view.status != "rejected" or view.reason != "out_of_stock"
+                or request is None or request.number != view.number):
+            return None
+        asked = (line.menu_id for line in request.order.lines)
+        if not only_the_rest(asked, self._stock_out_ids, (line.menu_id for line in order.lines)):
+            return None
+        return ApprovalView("accepted", view.number)
+
     def _approval_decided(self) -> bool:
         """손님 화면에 확인 요청 결정(수락·시간 초과)이 실렸나. 아니면 이번 확정은 건너뛴 것."""
         view = self._approval_view
@@ -2450,6 +2474,9 @@ class CallSession:
             log.info("낡은 사장님 답을 버림 (%s)", self.call_id)
         answers = [(n, at) for n, at in kept if closes_wait(n)]
         if answers:
+            # 세션이 넣은 확인 요청 시간 초과보다 사장님 결정이 먼저다(둘 다 말하기 전에 와 있으면).
+            # 재료 소진 메뉴가 든 주문을 시간 초과로 확정하지 않는다 (리뷰 경합)
+            answers.sort(key=lambda item: _session_timeout(item[0]))
             kept = answers[:1]
         elif wait is not None and wait.seen_said:
             kept = []
@@ -2503,8 +2530,13 @@ class CallSession:
         record = self._log.get(turn)
         if isinstance(note, OwnerDecision):
             self._approval_view = ApprovalView(
-                _DECISION_STATUS.get(note.kind, note.kind), note.request, delay_min=note.delay_min,
+                _DECISION_STATUS[note.kind], note.request, delay_min=note.delay_min,
                 reason=note.reason)  # 거절 사유 (티켓 05)
+            if note.kind == "reject":
+                self._stock_out_ids = note.menu_ids
+            if note.kind != "timeout":  # 허브는 말한 결정만 굳힌다(문자·기록, 리뷰 경합)
+                number = note.request
+                self._tell_owner(lambda owner: owner.approval_said(self.call_id, number))
             if record is not None:  # 결정 종류(시간 초과 포함)와 기다린·미룬 시간
                 record.fields["approval_decision"] = {"request": note.request, "kind": note.kind,
                                                       "delay_min": note.delay_min, **timing}
@@ -2531,28 +2563,29 @@ class CallSession:
             log.exception("사장님 쪽 알림 실패 (%s)", self.call_id)
 
 
-# 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). waiting: 사장님 확인 중.
-# 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) ·
-# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · delayed(사장님이
-# `delay_min`분 늦춰 수락해 손님에게 바뀐 시각을 묻는 중, 티켓 04. "네"면 accepted + `delay_min`,
-# "아니요"면 withdrawn cancelled) · rejected(사장님 거절, `reason`은 사유, 티켓 05). 자동
-# 취소(티켓 06~07)는 새 값으로 더한다. 모르는 값은 손님 화면이 배지 없이 둔다
+# 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). 닫힌 목록이고 웹
+# `callState.ts` `ApprovalStatus`가 같은 값을 든다. waiting: 사장님 확인 중. 결과: accepted(수락,
+# `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) · withdrawn(손님이
+# 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · delayed(사장님이 `delay_min`분 늦춰
+# 수락해 손님에게 바뀐 시각을 묻는 중, 티켓 04. "네"면 accepted + `delay_min`, "아니요"면 withdrawn
+# cancelled) · rejected(사장님 거절, `reason`은 사유, 티켓 05). 통화 뒤 결과(수락·거절·자동
+# 취소)는 이 상태가 아니라 손님 문자로 간다
 ApprovalStatus = Literal["waiting", "accepted", "delayed", "timeout", "withdrawn", "skipped",
                          "rejected"]
-# 사장님 결정 종류 → 손님 화면 상태. 표에 없는 새 결정 종류는 이름을 그대로 싣는다
-_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "delay": "delayed",
-                                    "timeout": "timeout", "reject": "rejected"}
+# 사장님 결정 종류 → 손님 화면 상태 (모든 결정 종류가 있다)
+_DECISION_STATUS: dict[DecisionKind, ApprovalStatus] = {
+    "accept": "accepted", "delay": "delayed", "timeout": "timeout", "reject": "rejected"}
 
 
 @dataclass(frozen=True)
 class ApprovalView:
     """`state` 이벤트의 `approval` 칸. 통화 안 마지막 확인 요청의 상태 하나."""
 
-    status: ApprovalStatus | str
+    status: ApprovalStatus
     number: int = 0  # 확인 요청 번호(1부터). 승인을 건너뛰었으면 0
     delay_min: int = 0  # 늦춘 수락의 분 (티켓 04)
-    # withdrawn: changed·cancelled. rejected: 거절 사유(busy·closed·free …, 티켓 05)
-    reason: str = ""
+    # withdrawn: changed·cancelled. rejected: 거절 사유(out_of_stock·busy·closed·free, 티켓 05)
+    reason: WithdrawReason | RejectReason | Literal[""] = ""
 
 
 @dataclass(frozen=True)
@@ -2579,12 +2612,9 @@ def _rewindable(result: TurnResult) -> bool:
             and not result.readback)
 
 
-def _rest_accepted(view: ApprovalView | None) -> ApprovalView | None:
-    """재료 소진 거절 뒤 손님이 떨어진 메뉴만 빼 바로 확정했다(주문 승인 티켓 06): 그 요청의
-    수락이다. 아니면 None."""
-    if view is not None and view.status == "rejected" and view.reason == "out_of_stock":
-        return ApprovalView("accepted", view.number)
-    return None
+def _session_timeout(note: WaitNote) -> bool:
+    """세션이 넣은 확인 요청 시간 초과다(사장님 결정이 아니다)."""
+    return isinstance(note, OwnerDecision) and note.kind == "timeout"
 
 
 def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
@@ -2598,10 +2628,6 @@ def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
         return "confirmed"  # 사장님 결정을 말한 봇 턴도 확정이다 (주문 승인)
     if isinstance(u, _BotTurn) and u.reason != "owner_decision":
         return u.reason  # 사장님 거절을 말한 봇 턴은 아래 취소다 (주문 승인 티켓 05)
-    if result.state is State.CLOSING:
-        return "confirmed"
-    if result.state is State.FALLBACK:
-        return "handoff"
     return "cancelled"
 
 

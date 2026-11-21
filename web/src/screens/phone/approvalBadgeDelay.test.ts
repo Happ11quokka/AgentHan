@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { approvalBadge, awaitingText } from './approvalBadge.ts'
 import type { ApprovalJson, CustomerText } from './callState.ts'
 
-const view = (status: string, extra: Partial<ApprovalJson> = {}): ApprovalJson => ({
+const view = (status: ApprovalJson['status'], extra: Partial<ApprovalJson> = {}): ApprovalJson => ({
   status,
   number: 1,
   delay_min: 15,

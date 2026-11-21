@@ -49,6 +49,17 @@ describe('new order alert and repeat while approvals wait (order approval ticket
     expect(rings()).toBe(3)
   })
 
+  it('rings at once when the customer changed the order and a new request lands on the same card (review 6)', () => {
+    const { alerts, rings } = setup()
+    alerts.sync([{ id: 'a', status: 'new', request: 1 }])
+    alerts.sync([{ id: 'a', status: 'new', request: 1, withdrawn: 'changed' }]) // 손님이 고치는 중: 반복 멈춤
+    expect(rings()).toBe(1)
+    alerts.sync([{ id: 'a', status: 'new', request: 2 }]) // 같은 카드에 새 요청
+    expect(rings()).toBe(2)
+    alerts.sync([{ id: 'a', status: 'new', request: 2 }]) // 다시 받은 snapshot은 또 울리지 않는다
+    expect(rings()).toBe(2)
+  })
+
   it('stops when the card goes away or expires', () => {
     const { alerts, rings } = setup()
     alerts.sync([order('a')])

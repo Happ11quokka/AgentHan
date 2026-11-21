@@ -889,7 +889,10 @@ class DialogEngine:
             self._finish_pickup_items(turn)
         if turn.unhandled and not turn.asked and self._state not in TERMINAL:
             self._say(turn, templates.not_understood())
-            self._ask(turn, self._question_again(short=True))
+            # 확인을 기다리는 중이면 복창을 다시 하지 않는다(손님이 "네"로 또 답한다, 리뷰 4번).
+            # 아래의 "확인 중"으로 받는다
+            if not self._awaiting_approval():
+                self._ask(turn, self._question_again(short=True))
         if (turn.answered and not turn.asked and turn.owner_question is None
                 and self._state not in TERMINAL):
             self._ask(turn, self._question_again())
@@ -900,8 +903,10 @@ class DialogEngine:
                 self._ask_readback(turn)
         if turn.owner_question is not None:
             self._hold_for_owner(turn)
-        if self._awaiting_approval() and not turn.correcting and not turn.utterances:
-            # 확인을 기다리는 중에 고치지도 취소하지도 않은 말 (티켓 07). 말 없는 턴도 막는다
+        if self._awaiting_approval() and not turn.correcting and (
+                not turn.utterances or turn.unhandled):
+            # 확인을 기다리는 중에 고치지도 취소하지도 않은 말 (티켓 07). 말 없는 턴도 막는다.
+            # 고치려다 못 알아들은 말도 사과 뒤 이것으로 받는다
             self._say(turn, templates.approval_still_checking())
 
     def _awaiting_approval(self) -> bool:
@@ -2223,7 +2228,7 @@ class DialogEngine:
         label = _REJECT_LABEL.get(decision.reason, decision.reason)
         self._transcript.append(f"사장님: 거절({label})")
         self._state = State.DONE
-        self._say(turn, templates.approval_rejected(decision.reason))
+        self._say(turn, templates.approval_rejected(decision.reason or "closed"))
 
     def _on_delay_answer(self, turn: _Turn, act: Act) -> bool:
         """늦춘 시각 "괜찮으세요?"의 답 (티켓 04). 처리했으면 True, 평소 처리기로 넘길 act면 False.

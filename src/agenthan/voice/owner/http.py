@@ -55,13 +55,13 @@ import asyncio
 import secrets
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import aclosing, contextmanager
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
-from agenthan.voice.dialog.approval import RejectReason
+from agenthan.voice.dialog.approval import AcceptDelay, RejectReason
 from agenthan.voice.dialog.owner_question import OwnerPost
 from agenthan.voice.owner.hub import (
     AlreadyAnswered,
@@ -74,9 +74,10 @@ from agenthan.voice.owner.hub import (
 
 OWNER_PREFIX = "/api/owner"
 CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
-# 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 시간. 4단계 spec "최대 2분"에서 주문 승인
-# 티켓 03이 늘렸다: 통화 뒤 확인 대기(기본 5분, 요청 연 때부터)의 수락·자동 취소 문자까지 받는다
-TEXTS_WINDOW_S = 360.0
+# 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 최소 시간 (4단계 spec "최대 2분"). 서버는
+# 통화 뒤 확인 대기의 수락·자동 취소 문자까지 받게 `max(이 값, 자동 취소 마감 + 60초)`로 연다
+# (`server.py`, 주문 승인 티켓 03). 창 길이는 `sms.snapshot`의 `window_s`로 화면에 알린다
+TEXTS_WINDOW_S = 120.0
 # 사장님 자유 입력 글 최대 길이 (문자 한 통 분량)
 FREE_TEXT_MAX = 500
 
@@ -120,7 +121,7 @@ class KnowledgeSave(BaseModel):
 class AcceptBody(BaseModel):
     """수락 버튼(주문 승인 티켓 02). 늦춘 분 15·30은 [+15분] [+30분] (티켓 04)."""
 
-    delay_min: Literal[0, 15, 30] = 0
+    delay_min: AcceptDelay = 0
 
 
 class RejectBody(BaseModel):
@@ -164,9 +165,12 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
 
     @router.post("/orders/{order_id}/reject")
     async def reject(order_id: str, body: RejectBody) -> dict[str, Any]:
+        # 422: 재료 소진은 떨어진 메뉴를 안 골랐거나 주문에 없는 메뉴, 직접 쓰기는 빈 글
+        unfit = ("떨어진 메뉴를 주문에서 골라 주세요" if body.reason == "out_of_stock"
+                 else "거절 사정을 적어 주세요")
         with _hub_errors({404: "그런 주문이 없어요",
                           409: "이미 결정했거나 손님이 주문을 고치는 중이에요",
-                          422: "거절 사정을 적어 주세요"}):
+                          422: unfit}):
             return hub.reject(order_id, body.reason, menu_ids=body.menu_ids, text=body.text)
 
     @router.post("/sold-out/{menu_id}/undo")
@@ -208,7 +212,8 @@ def customer_texts_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) ->
     """손님 통화 화면의 "받은 문자" 스트림 (티켓 07). 사장님 토큰이 없다(통화 id는 추측할 수 없다).
 
     `GET /api/phone/calls/{id}/sms`: SSE. 먼저 `sms.snapshot`(`{"call_id", "sms": [...]}`), 그 뒤
-    새 문자마다 `sms`(문자 하나). `window_s`가 지나면 `sms.end`를 보내고 닫는다(브라우저
+    새 문자마다 `sms`(문자 하나). snapshot에는 창 길이 `window_s`(초)도 싣는다(화면이 같은
+    시간에 닫는다). `window_s`가 지나면 `sms.end`를 보내고 닫는다(브라우저
     `EventSource`가 다시 붙지 않게 화면이 `sms.end`에서 닫는다). 허브가 모르는 통화는 404
     """
 
@@ -240,5 +245,9 @@ async def _until_window(
                 event = await asyncio.wait_for(anext(stream), left)
             except TimeoutError:
                 break
-            yield ServerSentEvent(event=event.name, data=event.data, id=str(event.id))
+            data = event.data
+            if event.name == "sms.snapshot":
+                # 손님 화면이 같은 시간에 닫도록 창 길이를 알린다(설정에 따라 바뀐다, 리뷰 2번)
+                data = {**data, "window_s": window_s}
+            yield ServerSentEvent(event=event.name, data=data, id=str(event.id))
     yield ServerSentEvent(event="sms.end", data={})

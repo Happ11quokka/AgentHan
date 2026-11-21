@@ -26,6 +26,8 @@ DB를 켜면 바뀌는 것:
 
 - 전화(`agenthan.serve`): 가게 메뉴를 `stores.raw`(PHONE_STORE_FIXTURE와 같은 파일에서 넣은 것)에서 읽는다.
   확정·넘김 주문은 사장님 화면과 함께 `phone_orders`에도 남는다(별도 스레드, 실패해도 통화는 계속).
+  사장님 결정(수락·늦춘 수락·거절·자동 취소)도 같은 행의 결정 열에 남는다(`agenthan.serve`의
+  `DecisionsToDb` → `PgOrderSink.record_decision`, ADR-0009).
 - 비서(`tools/dummy_store.py`): 대화마다 쓰는 가게 파일을 쓸 때마다 `assistant_store_docs`에 한 벌 남긴다.
   파일이 없어지면(재배포) DB 사본을 읽는다.
 - Part B(`RagStoreKnowledge.from_db()`): 메뉴·묶음·리뷰를 DB에서 읽고 벡터는 pgvector에서 찾는다.
@@ -55,7 +57,7 @@ DB를 켜면 바뀌는 것:
 | `embedding_cache` | 내용 해시 → 벡터(메뉴·리뷰·질문 공통). 같은 글은 CLOVA를 다시 안 부른다 |
 | `embeddings` | 검색 대상 벡터 `(store_id, kind=menu·review·doc, ref_id)` + HNSW 인덱스 |
 | `eval_cases` | 골드셋·holdout 채점 문항 |
-| `phone_orders` | 전화 주문(확정·넘김) |
+| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled, 결정 전 ''), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다 |
 | `assistant_store_docs` | 비서 대화 가게 파일 사본 |
 
 ## 명령

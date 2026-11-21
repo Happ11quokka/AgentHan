@@ -391,7 +391,12 @@ describe('received texts after the call (4단계 티켓 07)', () => {
 })
 
 describe('owner approval status on the call screen (주문 승인 티켓 09)', () => {
-  const approval = (status: string, number = 1): ApprovalJson => ({ status, number, delay_min: 0, reason: '' })
+  const approval = (status: ApprovalJson['status'], number = 1): ApprovalJson => ({
+    status,
+    number,
+    delay_min: 0,
+    reason: '',
+  })
   const stateWith = (turn: number, a: ApprovalJson | null | undefined): CallAction => ({
     type: 'server',
     event: {

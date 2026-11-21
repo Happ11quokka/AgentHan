@@ -149,3 +149,14 @@ def test_the_nudge_is_dropped_after_the_request_was_withdrawn() -> None:
     talk(engine, "취소할게요")
 
     assert engine.approval_still_waiting(1, NOW).utterances == []
+
+
+def test_a_correction_that_cannot_be_made_while_waiting_does_not_read_back_again() -> None:
+    """고치려 했지만 못 알아들은 말(리뷰 4번): 복창을 다시 하면 손님이 "네"로 또 답한다. 사과 뒤
+    "확인 중"만 말하고 요청은 그대로 기다린다."""
+    engine = waiting()
+    r = talk(engine, "나폴레옹 0개요")
+
+    assert r.utterances == ["죄송해요, 제가 잘 못 알아들었어요.", CHECKING]
+    assert (r.state, r.approval_withdrawn, r.readback) == (State.CONFIRM, None, False)
+    assert engine.owner_decided(OwnerDecision(1, "accept"), NOW).utterances == [CLOSING]

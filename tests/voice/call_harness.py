@@ -98,6 +98,17 @@ class RecordingOutbound:
         return self.of(type_, turn)[-1]
 
 
+class _Tee:
+    """주문서를 여러 곳에 넘긴다(서버 `_TeeSink`와 같은 일)."""
+
+    def __init__(self, *sinks: Any) -> None:
+        self._sinks = sinks
+
+    def submit(self, order: Any) -> None:
+        for sink in self._sinks:
+            sink.submit(order)
+
+
 class Call:
     """세션 하나와 그 가짜 포트들. 손님 쪽 동작(말하기·재생 보고)을 흉내 낸다."""
 
@@ -121,11 +132,16 @@ class Call:
         ask_owner: bool = True,
         config: StoreConfig | None = None,
         wall_clock: FakeClock | None = None,
+        hub: Any = None,
     ) -> None:
-        """`knowledge`는 보충 지식 읽기 포트(4단계 티켓 13). `no_owner`면 사장님 쪽 없이 띄운다."""
+        """`knowledge`는 보충 지식 읽기 포트(4단계 티켓 13). `no_owner`면 사장님 쪽 없이 띄운다.
+
+        `hub`는 진짜 사장님 허브(`OwnerHub`)다. 주면 사장님 쪽이 되고, 주문서도 서버처럼 허브와
+        `sink`에 같이 간다(허브와 통화 세션을 함께 도는 시험, 주문 승인 리뷰).
+        """
         self.out = RecordingOutbound()
         self.sink = MemoryOrderSink()
-        self.owner = owner or RecordingOwnerChannel()
+        self.owner = hub or owner or RecordingOwnerChannel()
         self.stt = stt or FakeSttStream()
         self.tts = tts or FakeTts()
         self.clock = clock or FakeClock(NOW)
@@ -138,7 +154,7 @@ class Call:
             tts=self.tts,
             clock=self.clock,
             outbound=self.out,
-            order_sink=self.sink,
+            order_sink=self.sink if hub is None else _Tee(self.sink, hub),
             owner=None if no_owner else self.owner,
             knowledge=knowledge,
             log_dir=self.log_dir,

@@ -3,7 +3,9 @@
 계약대로 submit()은 바로 돌아온다: 주문을 큐에 넣고, 쓰기는 별도 스레드가 한다.
 DB가 꺼져 있거나 실패하면 경고만 남기고 버린다(통화·사장님 화면은 영향 없음).
 
-사장님 결정(주문 승인 티켓 10)도 같은 큐·스레드로 남긴다(`record`, 허브의 `DecisionSink`).
+사장님 결정(주문 승인 티켓 10)도 같은 큐·스레드로 남긴다(`record_decision`, 행 모양은 이 모듈의
+`OwnerDecisionRow`). 전화 허브의 결정 기록을 이 행으로 옮기는 일은 발표 서버(`agenthan.serve`)가
+한다: db는 voice를 import하지 않는다(PRD §7).
 결정은 주문 기록보다 먼저 올 수 있다(통화 중 수락 → 통화 끝 확정). 그래서 둘 다 upsert이고 서로
 다른 열만 고친다: 주문은 주문 열, 결정은 `owner_status`·`reject_reason`·`decided_at`·
 `owner_pickup_time`. 통화가 거절·취소로 끝나 주문 기록이 오지 않으면 결정에 실린 주문서로
@@ -15,17 +17,13 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from psycopg.types.json import Jsonb
 
 from agenthan.core.contracts import Order
 from agenthan.db.conn import guarded
-
-if TYPE_CHECKING:  # 실행 때는 voice를 import하지 않는다(모양만 맞으면 된다)
-    from agenthan.voice.owner.decisions import DecisionRecord
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +50,19 @@ def _order_values(order: Order, store_id: str) -> tuple:
     )
 
 
+@dataclass(frozen=True)
+class OwnerDecisionRow:
+    """phone_orders의 사장님 결정 열 한 벌(마이그레이션 002). 같은 주문이 다시 오면 덮어쓴다."""
+
+    order_id: str
+    owner_status: str  # accepted · auto_accepted · rejected · expired · cancelled
+    reject_reason: str = ""  # out_of_stock · busy · closed · free, 없으면 ""
+    decided_at: str = ""  # ISO 8601(시간대 포함), 없으면 "" → NULL
+    owner_pickup_time: str = ""  # 늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ""
+    # 행이 아직 없을 때(통화가 거절·취소로 끝나 주문 기록이 안 옴) 행을 채울 주문서
+    order: Order | None = field(default=None, compare=False)
+
+
 def save_order(conn, order: Order, store_id: str = "") -> None:
     conn.execute(
         f"INSERT INTO phone_orders ({_ORDER_COLUMNS}) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
@@ -63,7 +74,7 @@ def save_order(conn, order: Order, store_id: str = "") -> None:
     )
 
 
-def save_decision(conn, decision: DecisionRecord, store_id: str = "") -> None:
+def save_decision(conn, decision: OwnerDecisionRow, store_id: str = "") -> None:
     """사장님 결정 열만 고친다. 행이 없고 주문서가 실려 있으면 주문서로 행을 만든다.
 
     결정으로 만든 행의 `status`는 draft다(통화 끝 주문 기록이 아직 안 옴). 확정 주문이 오면
@@ -92,15 +103,15 @@ class PgOrderSink:
     def __init__(self, store_id: str = "", url: str | None = None) -> None:
         self.store_id = store_id
         self.url = url
-        self._queue: queue.Queue[Order | DecisionRecord | None] = queue.Queue()
+        self._queue: queue.Queue[Order | OwnerDecisionRow | None] = queue.Queue()
         self._thread = threading.Thread(target=self._run, name="pg-order-sink", daemon=True)
         self._thread.start()
 
     def submit(self, order: Order) -> None:
         self._queue.put(order)
 
-    def record(self, decision: DecisionRecord) -> None:
-        """`DecisionSink`: 사장님 결정. 주문과 같은 큐라 넣은 순서대로 쓴다."""
+    def record_decision(self, decision: OwnerDecisionRow) -> None:
+        """사장님 결정. 주문과 같은 큐라 넣은 순서대로 쓴다. 바로 돌아온다."""
         self._queue.put(decision)
 
     def close(self, timeout: float = 5.0) -> None:

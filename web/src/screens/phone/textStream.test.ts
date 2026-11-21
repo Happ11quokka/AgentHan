@@ -1,7 +1,7 @@
 // 통화 뒤 "받은 문자" 스트림 (4단계 티켓 07). EventSource는 가짜로 바꿔 끼운다.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CustomerText } from './callState.ts'
-import { TEXTS_WINDOW_MS, openTextStream, textsUrl } from './textStream.ts'
+import { TEXTS_GRACE_MS, TEXTS_WINDOW_MS, openTextStream, textsUrl } from './textStream.ts'
 
 class FakeSource {
   static CLOSED = 2
@@ -69,7 +69,17 @@ describe('received-text stream after the call (ticket 07)', () => {
     expect(opened[0].closed).toBe(true)
   })
 
-  it('closes by itself after two minutes', () => {
+  it('keeps the stream open as long as the window the server announces (review 2)', () => {
+    openTextStream('call-1', () => {}, { open })
+    // 자동 취소 마감을 10분으로 늘린 서버: 창이 11분이다
+    opened[0].emit('sms.snapshot', { call_id: 'call-1', sms: [], window_s: 660 })
+    vi.advanceTimersByTime(TEXTS_WINDOW_MS + 60_000)
+    expect(opened[0].closed).toBe(false)
+    vi.advanceTimersByTime(660_000 - TEXTS_WINDOW_MS - 60_000 + TEXTS_GRACE_MS)
+    expect(opened[0].closed).toBe(true)
+  })
+
+  it('closes by itself after the default window when the server does not say', () => {
     openTextStream('call-1', () => {}, { open })
     vi.advanceTimersByTime(TEXTS_WINDOW_MS - 1)
     expect(opened[0].closed).toBe(false)

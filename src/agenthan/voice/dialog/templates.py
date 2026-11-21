@@ -10,6 +10,7 @@ import re
 from collections.abc import Iterable, Sequence
 from datetime import datetime
 
+from agenthan.voice.dialog.approval import RejectReason
 from agenthan.voice.hangul import final_consonant, has_batchim
 
 # ---------------------------------------------------------------- 수량·단위
@@ -288,17 +289,20 @@ def approval_timeout() -> str:
 
 # 사장님이 통화 중에 거절했다 (주문 승인 티켓 05). 사유마다 고정 사과 한 마디로 통화를 끝낸다.
 # 직접 쓰기(free)는 사장님 글을 읽지 않는다(질문 카드 자유 입력과 같다, 글은 문자로만 간다)
-_REJECTED = {
+_CLOSED = "죄송해요, 지금은 가게 사정으로 주문을 받을 수 없대요."
+_REJECTED: dict[RejectReason, str] = {
     "busy": "죄송해요, 지금 가게가 바빠서 주문을 받기 어렵대요. 다음에 다시 주문해 주세요.",
-    "closed": "죄송해요, 지금은 가게 사정으로 주문을 받을 수 없대요.",
+    "closed": _CLOSED,
     "free": "사장님이 사정을 문자로 남기셨어요. 죄송해요.",
+    # 재료 소진은 보통 `approval_out_of_stock`으로 안내한다(티켓 06). 떨어진 메뉴가 장바구니에
+    # 없을 때만(가짜 결정) 가게 사정 문장으로 끝낸다
+    "out_of_stock": _CLOSED,
 }
 
 
-def approval_rejected(reason: str) -> str:
-    """사장님 거절 사과. 모르는 사유는 가게 사정 문장. 재료 소진은 떨어진 메뉴가 장바구니에 있으면
-    `approval_out_of_stock`으로 따로 안내한다(티켓 06)."""
-    return _REJECTED.get(reason, _REJECTED["closed"])
+def approval_rejected(reason: RejectReason) -> str:
+    """사장님 거절 사과(사유마다 고정 문장)."""
+    return _REJECTED[reason]
 
 
 def approval_delayed(at: datetime) -> str:

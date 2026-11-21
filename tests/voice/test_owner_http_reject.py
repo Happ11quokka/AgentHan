@@ -35,9 +35,10 @@ def test_the_owner_rejects_as_busy_and_the_customer_hears_the_apology(tmp_path) 
                 base = f"/api/owner/orders/{card['id']}"
                 assert client.post(f"{base}/reject?key={KEY}",
                                    json={"reason": "free", "text": " "}).status_code == 422
-                assert client.post(f"{base}/reject?key={KEY}",
-                                   json={"reason": "out_of_stock",
-                                         "menu_ids": []}).status_code == 422  # 메뉴를 골라야
+                no_menu = client.post(f"{base}/reject?key={KEY}",
+                                      json={"reason": "out_of_stock", "menu_ids": []})
+                assert no_menu.status_code == 422  # 메뉴를 골라야
+                assert no_menu.json()["detail"] == "떨어진 메뉴를 주문에서 골라 주세요"
                 assert client.post(f"{base}/reject?key={KEY}",
                                    json={"reason": "rain"}).status_code == 422
                 rejected = client.post(f"{base}/reject?key={KEY}", json={"reason": "busy"})
@@ -48,11 +49,13 @@ def test_the_owner_rejects_as_busy_and_the_customer_hears_the_apology(tmp_path) 
                                    json={"reason": "closed"}).status_code == 409  # 한 번만
                 assert client.post(f"{base}/accept?key={KEY}").status_code == 409
                 update = _until(events, "order.update")["data"]
-                assert (update["status"], [t["text"] for t in update["sms"]]) == (
-                    "rejected", [BUSY_TEXT])
+                assert (update["status"], update["sms"]) == ("rejected", [])  # 말하기 전
 
                 phone.played(5)  # 봇이 먼저 말하는 턴: 사과
                 assert phone.closed_by_server()
+                update = _until(events, "order.update")["data"]
+                assert (update["status"], [t["text"] for t in update["sms"]]) == (
+                    "rejected", [BUSY_TEXT])
 
     assert " ".join(e["text"] for e in phone.of("bot.say", 5)) == BUSY
     assert phone.of("order") == []
