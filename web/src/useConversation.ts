@@ -16,7 +16,11 @@ export const REPORT_POLL_MS = 60_000;
 export const FILL_POLL_MS = 1000;
 
 /** 주소에 ?menu=empty가 있으면 메뉴를 비운 가게로 새 대화를 연다(시연: 메뉴판 사진으로 채우기). */
-const emptyMenuDemo = () => new URLSearchParams(window.location.search).get("menu") === "empty";
+/**
+ * 새 대화는 메뉴가 빈 가게로 시작한다: 사장님이 메뉴판 사진을 올려 채운다(2026-11-22). 파일럿 가게의
+ * 기본 메뉴로 시작하려면 주소에 ?menu=full을 붙인다.
+ */
+const emptyMenuStart = () => new URLSearchParams(window.location.search).get("menu") !== "full";
 
 /** 오늘부터 14일 동안. 날짜는 사장님 기기의 날짜(YYYY-MM-DD). */
 const isoDay = (d: Date) =>
@@ -204,7 +208,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   }, []);
 
   const newChat = useCallback(async () => {
-    const started = await attempt({ kind: "start" }, () => api.start(emptyMenuDemo() ? { emptyMenu: true } : undefined));
+    const started = await attempt({ kind: "start" }, () => api.start(emptyMenuStart() ? { emptyMenu: true } : undefined));
     if (started) show(started.session_id, started, { messages: [], log: [] });
   }, [api, attempt, show]);
 

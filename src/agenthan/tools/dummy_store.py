@@ -91,6 +91,11 @@ def _db_copy(path: Path) -> dict | None:
     return load_assistant_doc(_db_key(path))
 
 
+def has_saved_copy(path: Path) -> bool:
+    """파일이 없어도 DB에 이 경로의 사본이 있다(재배포로 대화 폴더가 사라졌을 때 되살릴 수 있다)."""
+    return _db_copy(path) is not None
+
+
 def _db_save(path: Path, data: dict) -> None:
     """파일을 쓴 뒤 DB에도 한 벌(실패해도 파일은 이미 저장됨)."""
     if not os.environ.get("AGENTHAN_DB_URL"):

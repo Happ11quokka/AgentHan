@@ -2,7 +2,7 @@ import type { Action, MenuEdit, OnboardingInput, Period, ReplyOp, ReplyResult, R
 
 /** 화면이 서버와 주고받는 유일한 길. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface AssistantApi {
-  /** emptyMenu: 시연용, 메뉴만 비운 가게로 시작한다(메뉴판 사진으로 채우는 장면). */
+  /** emptyMenu: 메뉴만 비운 가게로 시작한다(메뉴판 사진으로 채운다). 화면은 기본으로 켠다. */
   start(options?: { emptyMenu?: boolean }): Promise<Started>;
   act(sessionId: string, action: Action): Promise<Turn>;
   say(sessionId: string, text: string): Promise<Turn>;
