@@ -23,6 +23,7 @@
 // 주문 승인 티켓 05: 확인 대기 카드의 [거절] → 사유 시트(`OrderReject.tsx`), 거절 카드는 회색 "거절 · 사유".
 // 주문 승인 티켓 06: 재료 소진은 주문 메뉴 다중 선택. 품절을 건 카드에 "품절로 바꿨어요 [되돌리기]".
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { BrandLogo } from '../../components/BrandMark.tsx'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
 import { RejectButton, RejectedResult, SoldOutMark } from './OrderReject.tsx'
@@ -80,6 +81,7 @@ import {
   answerLabel,
   approvalLeft,
   captionView,
+  discountLine,
   knowledgeView,
   lineView,
   orderMeta,
@@ -99,7 +101,7 @@ const ANSWERS: OwnerAnswer[] = ['yes', 'no', 'unsure']
  * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). 확인 대기: 대기 단계 + 남은 초 + [수락] [+15분]
  * [+30분](티켓 04). 수락: 초록 "수락 · 18:30". 늦춘 수락: 초록 "18:45로 수락 (+15분)"(통화 중이면
  * 손님이 답하는 중 표시). 손님이 늦춘 시각을 거절: 회색. 자동 확정: 그 표시. 손님이 고치는 중·
- * 취소: 버튼 없이 그 표시
+ * 취소·주문 현황에서 손님 취소(전화 주문 현황 티켓 07, "손님 취소"): 버튼 없이 그 표시
  */
 function OrderDecision({
   card,
@@ -160,6 +162,7 @@ function OrderDecision({
     return <p className="owner-withdrawn">{text.delayDeclined(card.owner_pickup_label ?? '')}</p>
   }
   if (outcome === 'expired') return <p className="owner-expired">{text.expired}</p>
+  if (outcome === 'customer_cancelled') return <p className="owner-withdrawn">{text.customerCancelled}</p>
   if (outcome === 'changing' || outcome === 'cancelled') {
     return <p className="owner-withdrawn">{text.withdrawn[outcome === 'changing' ? 'changed' : 'cancelled']}</p>
   }
@@ -282,6 +285,7 @@ export default function OwnerPage() {
   return (
     <main className="owner" lang={lang}>
       <header className="owner-head">
+        <BrandLogo collapsed={false} />
         <h1>{text.title}</h1>
         <p className={`owner-status owner-status-${state.connection}`} role="status">
           {text.connection[state.connection]}
@@ -357,8 +361,8 @@ export default function OwnerPage() {
               `owner-card-${card.status}`,
               `owner-band-${pickupBand(effectivePickup(card), hubNow)}`,
               reminded.has(card.id) ? 'owner-card-remind' : '',
-              // 손님 취소(티켓 07)·늦춘 시각 거절(티켓 04): 회색
-              ['cancelled', 'declined'].includes(orderOutcome(card)) ? 'owner-card-cancelled' : '',
+              // 통화 중 손님 취소·주문 현황 손님 취소(전화 주문 현황 티켓 07)·늦춘 시각 거절(티켓 04): 회색
+              ['cancelled', 'customer_cancelled', 'declined'].includes(orderOutcome(card)) ? 'owner-card-cancelled' : '',
             ].join(' ')}
           >
             <header className="owner-card-head">
@@ -368,6 +372,7 @@ export default function OwnerPage() {
               <strong className="owner-total">{card.total_label}</strong>
             </header>
             {orderMeta(card, lang) && <p className="owner-order-meta">{orderMeta(card, lang)}</p>}
+            {discountLine(card, lang) && <p className="owner-discount">{discountLine(card, lang)}</p>}
             <CardLines lines={card.lines} lang={lang} text={text} />
             {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
             <SentTexts texts={card.sms} lang={lang} />

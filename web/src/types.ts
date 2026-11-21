@@ -6,6 +6,8 @@ export type MenuRow = {
   price: number | null;
   description: string | null;
   photo_url: string | null;
+  /** 대표 그림(실제 사진이 아님, /illustrations/<id>.svg). 사진이 없을 때만 보인다. 예전 서버 응답에는 없다. */
+  illustration_url?: string | null;
   /** 메뉴판 사진으로 올린 메뉴: AI가 채워 사장님 확인 전인 칸. 예전 서버 응답에는 없다. */
   ai?: MenuField[];
   /** 지금 백그라운드에서 채우는 칸(설명·흰 배경 사진 등). 비면 다 채운 것. */
@@ -26,6 +28,8 @@ export type Coupon = {
   discount_value: number;
   start_date: string;
   end_date: string;
+  /** 최소 주문 금액(원). 0이면 조건 없음. 예전 서버 응답·옛 쿠폰에는 없을 수 있다(없으면 0). */
+  min_order?: number;
   status?: string;
 };
 

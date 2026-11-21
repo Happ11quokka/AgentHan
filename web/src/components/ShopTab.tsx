@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useElapsed } from "../useElapsed";
 import { ProgressBar } from "./ProgressBar";
-import { approval, DAYS, discountText, hoursText, MARK_TEXT, periodText, won, type RowMark } from "../labels";
+import { approval, DAYS, discountText, hoursText, MARK_TEXT, minOrderText, periodText, won, type RowMark } from "../labels";
 import type { MenuEdit, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
 import { RoutineSettings } from "./RoutineSettings";
 
@@ -277,6 +277,14 @@ function MenuItemRow({
           {ai.has("photo") && <span className="photo-note">메뉴판 사진</span>}
           {filling.has("polish") && <span className="photo-note busy">다듬는 중</span>}
         </span>
+      ) : m.illustration_url ? (
+        // 사진이 없을 때만: 메뉴 이름으로 고른 대표 그림. 실제 사진이 아니라는 걸 표시로 알린다.
+        <span className="menu-photo-wrap">
+          <img className="menu-photo illustration" src={m.illustration_url} alt="대표 그림" />
+          <span className="photo-note" aria-hidden>
+            대표 그림
+          </span>
+        </span>
       ) : (
         <span className="menu-photo empty" aria-hidden>
           {m.name.slice(0, 1)}
@@ -418,6 +426,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
                 <div className="coupon-body">
                   <strong>{c.title}</strong>
                   <small>{periodText(c)}</small>
+                  {minOrderText(c) && <small>{minOrderText(c)}</small>}
                 </div>
                 <span className="coupon-value">{discountText(c)}</span>
               </Row>

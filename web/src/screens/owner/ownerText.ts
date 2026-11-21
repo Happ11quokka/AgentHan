@@ -40,6 +40,9 @@ export interface OwnerText {
   dismiss: string
   noOrders: string
   pickup: string
+  /** 쿠폰 주문 카드의 할인 줄 "할인 전 12,000₩ · 쿠폰 전화 주문 할인 −1,000₩" (쿠폰 티켓 09) */
+  beforeDiscount: string
+  coupon: string
   /** 주문 카드 주문 시각 앞말 (리뷰 P1) */
   orderedAt: string
   accept: string
@@ -57,6 +60,8 @@ export interface OwnerText {
   delayAsking: string
   delayDeclined: (pickup: string) => string
   withdrawn: Record<'changed' | 'cancelled', string>
+  /** 손님이 주문 현황에서 취소한 카드 (전화 메뉴·주문 현황·쿠폰 티켓 07) */
+  customerCancelled: string
   /** 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 마감 안에 결정하지 않아 손님에게 취소 문자가 갔다 */
   expired: string
   /**
@@ -145,10 +150,12 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     dismiss: 'Закрыть',
     noOrders: 'Заказов пока нет.',
     pickup: 'Забрать в',
+    beforeDiscount: 'До скидки',
+    coupon: 'Купон',
     orderedAt: 'Заказ в',
     accept: 'Принять',
     accepted: 'Принят',
-    approvalStage: { in_call: 'Клиент ждёт на линии', after_call: 'Клиент ждёт SMS' },
+    approvalStage: { in_call: 'Клиент ждёт на линии', after_call: 'Подтверждение после звонка' },
     acceptedAt: (pickup) => `Принят · ${pickup}`,
     autoAccepted: 'Принят автоматически (экран был выключен)',
     acceptLater: (minutes) => `+${minutes} мин`,
@@ -156,6 +163,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     delayAsking: 'Клиент слышит новое время и отвечает',
     delayDeclined: (pickup) => `Клиенту не подошло ${pickup} · заказ отменён`,
     withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
+    // 손님 취소 (티켓 07): 러시아어 화자 확인 전 초안 (사람 확인 대상)
+    customerCancelled: 'Отменено клиентом',
     expired: 'Автоотмена: заказ не подтверждён вовремя',
     // 거절 문구 (티켓 05): 러시아어 화자 확인 전 초안 (사람 확인 대상)
     reject: 'Отказать',
@@ -253,10 +262,12 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     dismiss: '닫기',
     noOrders: '아직 들어온 주문이 없어요.',
     pickup: '픽업',
+    beforeDiscount: '할인 전',
+    coupon: '쿠폰',
     orderedAt: '주문',
     accept: '수락',
     accepted: '수락함',
-    approvalStage: { in_call: '손님 통화 중 확인', after_call: '통화 뒤 확인 (문자로 알림)' },
+    approvalStage: { in_call: '손님 통화 중 확인', after_call: '통화 뒤 확인' },
     acceptedAt: (pickup) => `수락 · ${pickup}`,
     autoAccepted: '자동 확정(사장님 화면 꺼짐)',
     acceptLater: (minutes) => `+${minutes}분`,
@@ -264,6 +275,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     delayAsking: '손님이 바뀐 시각을 듣고 답하는 중',
     delayDeclined: (pickup) => `손님이 ${pickup}를 거절 · 주문 취소`,
     withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
+    customerCancelled: '손님 취소',
     expired: '자동 취소 · 시간 안에 확인 못 함',
     reject: '거절',
     rejectTitle: '거절 사유',
@@ -415,6 +427,20 @@ export function orderMeta(
   const parts = [card.received_label ? `${OWNER_TEXT[lang].orderedAt} ${card.received_label}` : '']
   if (card.customer_name) parts.push(card.customer_name)
   return parts.filter(Boolean).join(' · ')
+}
+
+/**
+ * 쿠폰 주문 카드의 할인 줄 (쿠폰 티켓 09): "할인 전 12,000₩ · 쿠폰 전화 주문 1,000원 할인 −1,000₩".
+ * 카드의 큰 금액(`total_label`)은 낼 금액이다. 쿠폰 이름은 사장님이 비서에 쓴 그대로(번역 안 함).
+ * 할인이 없으면 빈 글(카드가 쿠폰 전과 같다)
+ */
+export function discountLine(
+  card: Partial<Pick<OrderCard, 'discount' | 'discount_label' | 'subtotal_label' | 'coupon_name'>>,
+  lang: OwnerLang,
+): string {
+  if (!card.discount) return ''
+  const text = OWNER_TEXT[lang]
+  return `${text.beforeDiscount} ${card.subtotal_label} · ${text.coupon} ${card.coupon_name} −${card.discount_label}`
 }
 
 export interface CaptionView {

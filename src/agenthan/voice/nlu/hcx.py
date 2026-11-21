@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, get_args
 
 from agenthan.voice.matching import similarity
-from agenthan.voice.nlu.base import Act, ActType, Nlu, NluContext
+from agenthan.voice.nlu.base import RULE_ONLY_ACTS, Act, ActType, Nlu, NluContext
 from agenthan.voice.nlu.budget import RateBudget, UsageLog
 from agenthan.voice.nlu.clova import ClovaClient, ClovaError, load_api_key
 
@@ -37,7 +37,8 @@ log = logging.getLogger(__name__)
 MODEL = "HCX-DASH-002"
 TASK_ENV = "PHONE_NLU_TASK_ID"  # 튜닝 모델 작업 id (5단계 티켓 08). 비면 기본 프롬프트
 FORCE_PARSE_TURN = {"type": "function", "function": {"name": "parse_turn"}}
-ACT_TYPES: tuple[str, ...] = get_args(ActType)
+# 규칙만 내는 act(쿠폰 문의 등)는 빼서 도구 스키마가 그대로다
+ACT_TYPES: tuple[str, ...] = tuple(a for a in get_args(ActType) if a not in RULE_ONLY_ACTS)
 # 모델이 도구 호출을 못 만들었을 때 CLOVA가 주는 본문 코드 ("Unsupported function")
 _TOOL_CALL_FAILED = "40009"
 

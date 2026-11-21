@@ -1,0 +1,90 @@
+[
+  {
+    "id": "default_cake",
+    "name": "케이크",
+    "aliases": [],
+    "keywords": [],
+    "category": "cake",
+    "recipe": {
+      "scene": "cake",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "default_bakery",
+    "name": "빵·과자",
+    "aliases": [],
+    "keywords": [],
+    "category": "bakery",
+    "recipe": {
+      "scene": "bakery",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "default_savory",
+    "name": "짭짤한 요리",
+    "aliases": [],
+    "keywords": [],
+    "category": "savory",
+    "recipe": {
+      "scene": "savory",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "default_soup",
+    "name": "수프",
+    "aliases": [],
+    "keywords": [],
+    "category": "soup",
+    "recipe": {
+      "scene": "soup",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "default_coffee",
+    "name": "커피",
+    "aliases": [],
+    "keywords": [],
+    "category": "coffee",
+    "recipe": {
+      "scene": "coffee",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "default_tea",
+    "name": "차",
+    "aliases": [],
+    "keywords": [],
+    "category": "tea",
+    "recipe": {
+      "scene": "tea",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "default_ade",
+    "name": "에이드·주스",
+    "aliases": [],
+    "keywords": [],
+    "category": "ade",
+    "recipe": {
+      "scene": "ade",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "default_other",
+    "name": "기타",
+    "aliases": [],
+    "keywords": [],
+    "category": "other",
+    "recipe": {
+      "scene": "other",
+      "card": "card_lilac"
+    }
+  }
+]

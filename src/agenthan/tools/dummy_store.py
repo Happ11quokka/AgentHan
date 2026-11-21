@@ -1,19 +1,26 @@
 """Local shop data in a JSON file. With AGENTHAN_DB_URL set, every write is also copied to the
 assistant_store_docs table (agenthan.db), and a missing file is read back from that copy.
-No publishing operations."""
+No publishing operations. `watch` lets the integrated server hear every save of one chat's
+store (the phone takes its menu from it)."""
 
 import copy
 import json
+import logging
 import os
 import re
 import tempfile
 import threading
 import unicodedata
 import uuid
+from collections.abc import Callable
 from pathlib import Path
+
+from agenthan.illustration import assign_illustration
 
 SEED_PATH = Path(__file__).with_name("dummy_store_seed.json")
 DEFAULT_STORE = Path(".agenthan/store.json")
+
+log = logging.getLogger(__name__)
 
 
 class DummyStoreError(Exception):
@@ -102,6 +109,29 @@ _LOCKS_GUARD = threading.Lock()
 MENU_FLAG_FIELDS = ("name", "price", "description", "photo", "polish")
 
 
+# 저장 뒤 알림(전화 메뉴 티켓 02). 비서 대화의 가게 파일을 저장하면 통합 서버가 그 가게를
+# 전화용 가게로 게시한다. 경로마다 등록하므로 미리보기용 임시 사본(`_dry_run`·`place.preview`)은
+# 알리지 않는다.
+_WATCHERS: dict[str, Callable[[dict], None]] = {}
+
+
+def watch(path: str | Path, on_saved: Callable[[dict], None]) -> None:
+    """이 경로의 가게 파일을 저장할 때마다 `on_saved(data)`를 부른다. 저장한 스레드에서, 파일과
+    DB 사본을 쓴 뒤에 부른다. 알림이 실패해도 저장은 끝난 것이다(로그만 남긴다)."""
+    with _LOCKS_GUARD:
+        _WATCHERS[_db_key(Path(path).expanduser())] = on_saved
+
+
+def _notify(path: Path, data: dict) -> None:
+    on_saved = _WATCHERS.get(_db_key(path))
+    if on_saved is None:
+        return
+    try:
+        on_saved(data)
+    except Exception:
+        log.exception("가게 저장 알림 실패 (저장은 됨): %s", path)
+
+
 def _lock_for(path: Path) -> threading.RLock:
     key = str(path.resolve())
     with _LOCKS_GUARD:
@@ -119,6 +149,24 @@ class DummyStore:
         if self.path.resolve() == SEED_PATH.resolve():
             raise DummyStoreError("시드 파일은 실행 저장소로 사용할 수 없습니다.")
         self.lock = _lock_for(self.path)
+
+    @staticmethod
+    def illustrate(record: dict) -> None:
+        """새 메뉴의 대표 그림을 지금 이름으로 고른다. 저장소 잠금 안에서 불리므로 임베딩
+        (네트워크)은 부르지 않는다: 정확한 이름·키워드·분류·이름 끝말만. 임베딩으로 더 맞는
+        그림을 찾는 일은 잠금 밖에서 따로 한다(app.server.fill_illustrations)."""
+        assign_illustration(record)
+
+    @staticmethod
+    def rename_menu(record: dict, name: str) -> bool:
+        """메뉴 이름을 바꾼다(공백 정리). 이름이 실제로 바뀌었으면 대표 그림도 새 이름으로 다시
+        고르고 True. 같은 이름 검사와 잠금은 부르는 쪽이 한다."""
+        tidy = " ".join(name.split())
+        if tidy == record["name"]:
+            return False
+        record["name"] = tidy
+        DummyStore.illustrate(record)
+        return True
 
     def read(self) -> dict:
         """Before the first valid write, read the seed without creating a file."""
@@ -184,6 +232,7 @@ class DummyStore:
                 os.fsync(stream.fileno())
             temporary.replace(self.path)
             _db_save(self.path, data)
+            _notify(self.path, data)
             return
         except OSError:
             pass
@@ -249,6 +298,8 @@ class DummyStore:
                     record["filling"] = [
                         f for f in item.get("filling", []) if f in MENU_FLAG_FIELDS
                     ]
+                    # 이름을 현지화하는 메뉴는 채우기가 이름을 고칠 때 최종 이름으로 다시 고른다
+                    self.illustrate(record)
                     data["menus"].append(record)
                     action = "created"
                 else:
@@ -310,7 +361,7 @@ class DummyStore:
                         raise DummyStoreError("같은 이름의 메뉴가 이미 있어요.")
                     values.pop("name")
                 else:
-                    record["name"] = " ".join(name.split())
+                    self.rename_menu(record, name)
             if "price" in values:
                 if not valid_price(values["price"]):
                     raise DummyStoreError("가격은 0보다 큰 정수(원)로 넣어 주세요.")
@@ -425,6 +476,7 @@ class DummyStore:
                 "price": price,
                 "aliases": [],
             }
+            self.illustrate(record)
             data["menus"].append(record)
         else:
             action = "updated"

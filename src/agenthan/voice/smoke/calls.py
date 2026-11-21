@@ -13,7 +13,9 @@
 
 통화 대본도 가게 데이터로 만든다(`plan_calls`). 픽업은 "지금 바로 갈게요"라서 서버 시각이
 언제든 영업시간 안이면 된다. 영업시간 밖이면 주문을 끝까지 받을 수 없으므로 사장님 연결 통화
-("사장님 바꿔 주세요")로 바꿔 음성 경로(STT → 엔진 → TTS)만 본다.
+("사장님 바꿔 주세요")로 바꿔 음성 경로(STT → 엔진 → TTS)만 본다. 주문은 `SMOKE_ORDER_MIN`원
+이상으로 담는다: 그보다 적으면 서버 가게의 쿠폰(파일럿 "전화 주문 1,000원 할인"은 최소
+10,000원)이 복창 전 권유("더 담으실까요?", 쿠폰 티켓 10)를 해 대본의 "네"가 확정 대신 권유를 받는다.
 
 스모크 표시: `smoke_key`(`PHONE_SMOKE_KEY`)를 `call.start`에 실어 보낸다. 서버가 같은 열쇠를 갖고
 있으면 그 통화는 사장님 화면·주문 받는 곳에 안 가고 턴 기록에 `smoke: true`가 남는다
@@ -45,6 +47,9 @@ Voice = Callable[[str], Awaitable[bytes]]  # 손님 말 → PCM16LE 16kHz mono
 CALL_TIMEOUT_S = 180.0  # 통화 하나의 상한 (실제 속도, HCX 최악 포함)
 OUT_OF_HOURS = "영업시간 밖이라 주문 통화 대신"
 LEAD_MS, TAIL_MS = 300, 400  # 손님 말 앞뒤 무음
+# 스모크 주문의 최소 금액. 파일럿 쿠폰의 최소 주문 금액(`app/pilot_store.json`)이라 이 이상이면
+# 복창 전 쿠폰 권유가 나오지 않는다(쿠폰이 붙거나 쿠폰이 없거나, 어느 쪽이든 "네"로 확정)
+SMOKE_ORDER_MIN = 10_000
 
 
 @dataclass(frozen=True)
@@ -69,18 +74,31 @@ def plan_calls(menu: Sequence[MenuItem], config: StoreConfig, now: datetime,
         return [replace(handoff, note=note)]
     a = plain[0]
     tail = ("지금 바로 갈게요", "네")
+    qty = _qty_for(a, SMOKE_ORDER_MIN, config)
     plans = [CallPlan("order", "order",
-                      (f"{_phrase(a, 1)} 주세요", "아니요, 그게 다예요", *tail), "confirmed",
-                      ((a.id, 1, _defaults(a, config)),))]
+                      (f"{_phrase(a, qty)} 주세요", "아니요, 그게 다예요", *tail), "confirmed",
+                      ((a.id, qty, _defaults(a, config)),))]
     if n >= 2:
         plans.append(handoff)
     if n >= 3 and len(plain) > 1:
         b = plain[1]
+        qty = _qty_for(a, SMOKE_ORDER_MIN - b.price, config)
         plans.append(CallPlan(
             "order-two", "order",
-            (f"{templates.i_rang(_phrase(a, 1))} {_phrase(b, 1)} 주세요", "없어요", *tail),
-            "confirmed", ((a.id, 1, _defaults(a, config)), (b.id, 1, _defaults(b, config)))))
+            (f"{templates.i_rang(_phrase(a, qty))} {_phrase(b, 1)} 주세요", "없어요", *tail),
+            "confirmed", ((a.id, qty, _defaults(a, config)), (b.id, 1, _defaults(b, config)))))
     return plans
+
+
+def _qty_for(item: MenuItem, amount: int, config: StoreConfig) -> int:
+    """`amount`원 이상이 되는 가장 적은 수량(1개 이상).
+
+    주문 한도(수량·금액)를 넘거나 큰 수량 확인(`confirm_qty_from`)에 걸리면 1개로 둔다.
+    """
+    qty = max(1, -(-amount // item.price)) if item.price > 0 else 1
+    over = [(config.max_order_qty, qty), (config.max_order_total, qty * item.price),
+            (config.confirm_qty_from - 1, qty)]
+    return 1 if any(0 < limit < value for limit, value in over) else qty
 
 
 def fake_stt_plan(replies: Sequence[str]) -> CallPlan:

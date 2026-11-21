@@ -25,7 +25,11 @@ ActType = Literal[
     "cancel_order",
     "want_owner",
     "unknown",
+    "ask_coupon",
 ]
+# 규칙 단계(`dialog/rules.py`)만 내는 act. NLU(HCX) 도구 스키마에는 넣지 않는다 (쿠폰 티켓 11:
+# 쿠폰·할인 물음은 키워드 규칙이 먼저 잡고, HCX가 질문으로 내면 엔진이 낱말을 보고 돌린다)
+RULE_ONLY_ACTS: frozenset[str] = frozenset({"ask_coupon"})
 
 
 @dataclass(frozen=True)

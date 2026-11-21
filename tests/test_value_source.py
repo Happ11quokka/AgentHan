@@ -35,6 +35,13 @@ def test_bare_syllables_are_not_numbers():
     assert vs.numbers("일요일 이름 사진") == set()
 
 
+def test_the_verb_make_is_not_ten_thousand():
+    # "만들어 줘"의 만은 수가 아니다. 지어낸 쿠폰 최소 주문 금액 10000이 사장님 말로 통하면 안 된다.
+    assert 10000 not in vs.numbers("2026-11-20까지 만들어 줘")
+    assert 10000 not in vs.numbers("쿠폰 만들래요")
+    assert 10000 in vs.numbers("만 원 이상 사면 할인 쿠폰 만들어 줘")
+
+
 def check(feature, args, said):
     return vs.check(tool_params(feature), args, said, STORE, today=TODAY)
 

@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import App from "./App";
 import { TOOLBOX } from "./components/LeftNav";
-import type { Pending, ReviewsView, Turn } from "./types";
+import type { Pending, Place, ReviewsView, Turn } from "./types";
 import {
   INBOX,
   inboxWith,
@@ -209,6 +209,24 @@ describe("액션", () => {
 });
 
 describe("사진과 승인 카드", () => {
+  test("메뉴판을 올리면 사진 없는 메뉴에 새로고침 없이 대표 그림이 뜨고, 이름이 채워지면 그림도 바뀐다", async () => {
+    const row = { id: "m09", name: "Блюдо дня", price: 6000, description: null, photo_url: null, ai: [], filling: ["name" as const, "description" as const] };
+    const reading: Place = { ...SEED, menu: [{ ...row, illustration_url: "/illustrations/default_other.svg" }] };
+    const filled: Place = {
+      ...SEED,
+      menu: [{ ...row, name: "오늘의 수프", description: "날마다 바뀌는 수프.", illustration_url: "/illustrations/default_soup.svg", ai: ["name", "description"], filling: [] }],
+    };
+    const api = fakeApi([{ reply: "메뉴 1개를 메뉴 탭에 올렸어요.", place: reading, pending: [] }], { place: filled, pending: [] });
+    const { user } = await open(api);
+    await user.upload(screen.getByLabelText("사진 올리기"), CAKE);
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+    const menu = within(await screen.findByRole("tabpanel", { name: "메뉴" }));
+    expect(await menu.findByRole("img", { name: "대표 그림" })).toHaveAttribute("src", "/illustrations/default_other.svg");
+    expect(api.view).not.toHaveBeenCalled(); // 올린 답이 가져온 가게 화면 그대로
+    await waitFor(() => expect(menu.getByRole("img", { name: "대표 그림" })).toHaveAttribute("src", "/illustrations/default_soup.svg"), { timeout: 3000 });
+    expect(menu.getByText("오늘의 수프")).toBeInTheDocument();
+  });
+
   test("사진을 올리면 글과 함께 보내고 내 말풍선에 사진이 보인다", async () => {
     const api = fakeApi([
       { reply: "1. 밀푀유 케이크\n가격은 얼마로 올릴까요?", place: SEED, pending: [photoPending([draft()])] },
@@ -610,6 +628,44 @@ describe("쿠폰 입력 블록", () => {
     expect(api.say).not.toHaveBeenCalled();
     expect(chatArea().queryByRole("form", { name: "쿠폰 만들기" })).not.toBeInTheDocument();
     expect(chatArea().getByText("쿠폰 만들기: 겨울 할인")).toBeInTheDocument();
+  });
+
+  test("최소 주문 금액은 선택이고, 넣으면 미리보기 줄에 조건이 보이고 coupon.create에 같이 간다", async () => {
+    const pending = { task_id: "t9", version: 1, feature: "coupon", after: SEED, changes: {} };
+    const { user, api, form } = await openCoupon(fakeApi([{ reply: "이 쿠폰을 만들까요?", place: SEED, pending: [pending] }]));
+    await user.type(form.getByLabelText("쿠폰 이름"), "전화 주문 할인");
+    await user.click(form.getByRole("radio", { name: "원" }));
+    await user.type(form.getByLabelText("할인 값"), "1000");
+    setDate(form.getByLabelText("시작일"), "2026-12-01");
+    setDate(form.getByLabelText("종료일"), "2026-12-15");
+    expect(form.getByLabelText("최소 주문 금액")).toHaveValue(null);
+    expect(form.getByText("전화 주문 할인 · 1,000원 할인 · 12/01 ~ 12/15")).toBeInTheDocument();
+    await user.type(form.getByLabelText("최소 주문 금액"), "10000");
+    expect(form.getByText("전화 주문 할인 · 1,000원 할인 · 12/01 ~ 12/15 · 10,000원 이상 주문 시")).toBeInTheDocument();
+    await user.click(form.getByRole("button", { name: "미리 보기" }));
+    expect(api.act).toHaveBeenCalledWith("s1", {
+      action_id: "coupon.create",
+      label: "쿠폰 만들기: 전화 주문 할인",
+      args: { title: "전화 주문 할인", discount_type: "amount", discount_value: 1000, start_date: "2026-12-01", end_date: "2026-12-15", min_order: 10000 },
+    });
+  });
+
+  test("최소 주문 금액이 음수나 정수가 아니면 [미리 보기]가 막히고, 0이면 조건 없는 쿠폰이다", async () => {
+    const { user, form } = await openCoupon();
+    await user.type(form.getByLabelText("쿠폰 이름"), "오픈 기념");
+    await user.type(form.getByLabelText("할인 값"), "10");
+    const submit = form.getByRole("button", { name: "미리 보기" });
+    expect(submit).toBeEnabled();
+    for (const bad of ["-1000", "1000.5"]) {
+      await user.clear(form.getByLabelText("최소 주문 금액"));
+      await user.type(form.getByLabelText("최소 주문 금액"), bad);
+      expect(submit).toBeDisabled();
+      expect(form.getByText("최소 주문 금액은 0 이상의 정수(원)로 적거나 비워 주세요.")).toBeInTheDocument();
+    }
+    await user.clear(form.getByLabelText("최소 주문 금액"));
+    await user.type(form.getByLabelText("최소 주문 금액"), "0");
+    expect(submit).toBeEnabled();
+    expect(form.queryByText(/이상 주문 시/)).not.toBeInTheDocument();
   });
 
   test("기본 기간은 오늘부터 14일이고, 빈 칸·범위 밖 값·거꾸로 된 기간이면 [미리 보기]가 막히고 이유가 보인다", async () => {
@@ -1117,6 +1173,40 @@ describe("대표키워드 변경", () => {
     expect(within(card).getByText("새 쿠폰: 평일 오후 메도빅 1,000원 할인")).toBeInTheDocument();
     expect(within(card).getByText("할인: 1,000원")).toBeInTheDocument();
     expect(within(card).getByText("기간: 11/10 ~ 11/30")).toBeInTheDocument();
+  });
+
+  test("최소 주문 금액이 있는 쿠폰은 확인 카드와 홈에 조건이 보이고, 없거나 0이면 조건 문구가 없다", async () => {
+    const coupon = {
+      id: "coupon-1",
+      title: "전화 주문 1,000원 할인",
+      discount_type: "amount" as const,
+      discount_value: 1000,
+      min_order: 10000,
+      start_date: "2026-11-02",
+      end_date: "2026-12-31",
+    };
+    const plain = { ...coupon, id: "coupon-2", title: "첫 방문", min_order: 0 };
+    const old = { id: "coupon-0", title: "옛 쿠폰", discount_type: "percent" as const, discount_value: 5, start_date: "2026-11-01", end_date: "2026-11-30" };
+    const pending = {
+      task_id: "t10",
+      version: 1,
+      feature: "coupon",
+      after: { ...SEED, coupon: [old, coupon, plain] },
+      changes: { coupon: { added: ["coupon-1", "coupon-2"], updated: [], removed: [] } },
+    };
+    const api = fakeApi([{ reply: "만들까요?", place: { ...SEED, coupon: [old] }, pending: [pending] }]);
+    const { user } = await open(api);
+    await say(user, "쿠폰 만들어 줘");
+    const card = await screen.findByRole("region", { name: "저장 전 확인" });
+    expect(within(card).getByText("새 쿠폰: 전화 주문 1,000원 할인")).toBeInTheDocument();
+    expect(within(card).getByText("새 쿠폰: 첫 방문")).toBeInTheDocument();
+    // 조건 줄은 최소 주문 금액이 있는 쿠폰에만 붙는다(쿠폰 두 개 중 하나)
+    expect(within(card).getAllByText("조건: 10,000원 이상 주문 시")).toHaveLength(1);
+    const home = screen.getByRole("tabpanel", { name: "홈" });
+    const row = (title: string) => within(home).getByText(title).closest("li") as HTMLElement;
+    expect(within(row("전화 주문 1,000원 할인")).getByText("10,000원 이상 주문 시")).toBeInTheDocument();
+    expect(within(row("첫 방문")).queryByText(/이상 주문 시/)).not.toBeInTheDocument();
+    expect(within(row("옛 쿠폰")).queryByText(/이상 주문 시/)).not.toBeInTheDocument();
   });
 });
 

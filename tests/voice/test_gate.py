@@ -18,6 +18,7 @@ from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
 from agenthan.voice.gate import CallGate, GateSettings, client_ip
 from agenthan.voice.settings import SettingsError, VoiceSettings
 from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.store_snapshot import StoreSnapshot, fixed_store
 from agenthan.voice.ws import WS_PATH, phone_router
 
 NOW = datetime.fromisoformat("2026-11-08T16:00:00+09:00")
@@ -50,7 +51,8 @@ def _app(tmp_path, **kw: Any) -> FastAPI:
                              now=NOW, **kw)
     app = FastAPI()
     app.include_router(phone_router(
-        store=FakeStoreKnowledge.from_fixture(), config=StoreConfig.from_fixture(),
+        stores=fixed_store(StoreSnapshot.of(FakeStoreKnowledge.from_fixture(),
+                                            StoreConfig.from_fixture())),
         order_sink=MemoryOrderSink(), settings=settings,
     ))
     return app

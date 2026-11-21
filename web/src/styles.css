@@ -1,35 +1,11 @@
-/* 디자인 토큰: 네이버 그린 + 회색 단계, 라이트 모드만 (ADR-0004) */
+/* 디자인 토큰은 전화·사장님 화면과 같이 쓰는 `tokens.css` 한 곳에 있다 (ADR-0004) */
+@import "./tokens.css";
+@import "./brandmark.css";
+
+/* 본 앱 레이아웃 치수 */
 :root {
-  --green: #03c75a;
-  --green-press: #00b843;
-  --green-soft: #e8f9ef;
-  --green-ink: #00873d;
-  --ink: #1e1e23;
-  --ink-2: #505058;
-  --ink-3: #8a8a93;
-  --line: #ececf0;
-  --line-2: #e1e1e6;
-  --surface: #ffffff;
-  --surface-2: #f6f7f8;
-  --surface-3: #f0f1f3;
-  --amber: #b26a00;
-  --amber-soft: #fff4e0;
-  --blue: #2d6cdf;
-  --blue-soft: #eaf1ff;
-  --red: #d93b3b;
-  --red-soft: #fdecec;
-  --radius: 16px;
-  --radius-s: 10px;
-  --shadow: 0 1px 2px rgb(20 20 30 / 4%), 0 4px 16px rgb(20 20 30 / 6%);
   --nav-w: 264px;
   --side-w: 380px;
-  color-scheme: light;
-  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
-    "Malgun Gothic", sans-serif;
-  color: var(--ink);
-  background: var(--surface);
-  -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.01em;
 }
 
 * {
@@ -100,32 +76,7 @@ p {
   padding: 0 8px 18px;
 }
 
-/* 워드마크: 굵은 글꼴 + 초록 그라데이션. H는 기울인 가로획(H/N) SVG. */
-.brand-logo {
-  font-size: 24px;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 1.1;
-}
-
-/* 워드마크 전체에 같은 초록 3스톱이 이어지게, JS가 --brand-w/--brand-x를 넣는다. */
-.brand-logo-text {
-  background-image: linear-gradient(90deg, #2fd17c 0%, #03c75a 45%, #009a4a 100%);
-  background-size: var(--brand-w, 100%) 100%;
-  background-repeat: no-repeat;
-  background-position: var(--brand-x, 0) 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Pretendard em 박스(2048)에 맞춘 H/N 글리프. viewBox 높이 2443 = 1949+494 */
-.brand-hn {
-  display: inline-block;
-  width: calc(1490 / 2048 * 1em);
-  height: calc(2443 / 2048 * 1em);
-  vertical-align: calc(-494 / 2048 * 1em);
-}
+/* 워드마크(.brand-logo·.brand-hn)는 `brandmark.css` */
 
 .new-chat {
   display: flex;
@@ -1004,6 +955,12 @@ p {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-2);
+}
+
+.field > span:first-child small {
+  font-size: inherit;
+  font-weight: 400;
+  color: var(--ink-3);
 }
 
 .field input {
@@ -2471,6 +2428,11 @@ p {
 .menu-photo-wrap .menu-photo {
   display: block;
   background: #fff;
+}
+
+/* 대표 그림은 자기 연한 배경 카드를 가진다(어두운 화면에서도 그대로). 모서리 밖은 비운다. */
+.menu-photo-wrap .menu-photo.illustration {
+  background: transparent;
 }
 
 .menu-item .menu-photo {
