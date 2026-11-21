@@ -25,16 +25,18 @@
 DB를 켜면 바뀌는 것:
 
 - 전화(`agenthan.serve`): 비서가 켜져 있으면(기본) 전화 메뉴는 비서가 게시한 전화용 가게다(전화 메뉴 티켓 02·03).
-  게시할 때마다 게시 값(`serve.phone_store_doc`, 메뉴 id·이름·가격·설명·별칭·원어명·품절 JSON)을
+  게시할 때마다 게시 값(`serve.phone_store_doc`, 메뉴 id·이름·가격·설명·별칭·원어명·품절과 쿠폰 JSON)을
   `stores`의 `phone_published` 줄 `raw`에 남기고, 서버가 다시 뜨면 비서 대화를 열지 않아도 이 값으로
   시작한다. 남은 값이 없으면 파일럿 가게(기본값, DB에 쓰지 않음). 메뉴 벡터는 `embeddings`
   (`store_id = phone_published`)에 두고, 게시가 바뀌면 다음 검색 때 바뀐 메뉴만 임베딩하고 없어진
   메뉴는 지운다. 시드(`db.seed`)와 벡터 채우기(`db.embed`)는 이 줄과 그 메뉴 벡터를 건드리지 않는다.
   전화 설정(영업시간·준비 시간·상한·가게 이름)과 리뷰는 지금처럼 `stores.raw`(PHONE_STORE_FIXTURE와
   같은 파일에서 넣은 것)에서 읽는다. 비서를 끄면(`AGENTHAN_ASSISTANT=off`) 메뉴도 그 가게 것이다.
+  쿠폰도 같은 게시 값에 실려 온다(쿠폰 티켓 09, 저장한 순서, `min_order`가 없던 옛 값은 0). 예전 게시 값에
+  `coupons` 키가 없으면 쿠폰 없음으로 읽는다.
   확정·넘김 주문은 사장님 화면과 함께 `phone_orders`에도 남는다(별도 스레드, 실패해도 통화는 계속).
-  사장님 결정(수락·늦춘 수락·거절·자동 취소)도 같은 행의 결정 열에 남는다(`agenthan.serve`의
-  `DecisionsToDb` → `PgOrderSink.record_decision`, ADR-0009).
+  사장님 결정(수락·늦춘 수락·거절·자동 취소)과 손님 취소도 같은 행의 결정 열에 남는다(`agenthan.serve`의
+  `DecisionsToDb` → `PgOrderSink.record_decision`, ADR-0009·0010).
   서버가 다시 떠 사장님 허브에 주문 카드가 없으면 손님 주문 현황(`GET /api/phone/orders/{id}`)을 이 행의
   마지막 상태로 다시 만든다(`OrdersFromDb` → `db.orders.find_order`, 전화 메뉴·주문 현황·쿠폰 티켓 06).
   DB가 없으면 허브에 있는 주문만 보인다.
@@ -47,7 +49,7 @@ DB를 켜면 바뀌는 것:
 
 | 어디 | 무엇 |
 |---|---|
-| 전화 가게 지식 (`serve.phone_knowledge`) | DB에 전화 가게가 있으면 `RagStoreKnowledge.from_db(그 가게)`. 메뉴 목록은 JSON과 같고 검색만 Part B |
+| 전화 가게 지식 (`serve.phone_knowledge`) | DB에 전화 가게가 있으면 `RagStoreKnowledge.from_db(그 가게)`. 메뉴 목록은 JSON과 같고 검색만 Part B. 비서를 켜면(기본) 메뉴는 아래 전화용 가게 것이고 이 가게는 리뷰·전화 설정의 바탕이다 |
 | 전화용 가게 지식 (`serve.PhoneStores`, 비서 켬) | 게시 값 메뉴로 `RagStoreKnowledge`, 벡터는 `PgVectorIndex(phone_published)`. DB가 없으면 벡터 없이 |
 | 전화: 메뉴 이름을 못 알아들음 (`engine._searched_menus`) | 매처가 거절하면 검색 후보로 되묻는다("꿀 들어간 거" → 메도빅?). 매처가 애매하게(confirm) 고른 메뉴와 검색이 다르면 둘 다 묻는다("얇은 팬케이크" → 메도빅이랑 블린 중에?) |
 | 전화: 손님 질문 답 (`engine._with_related_reviews`) | 질문과 가까운 후기(리뷰 의미 검색) 3개를 답변기 자료 한 줄로. 답변기 스레드에서 |
@@ -68,7 +70,7 @@ DB를 켜면 바뀌는 것:
 | `embedding_cache` | 내용 해시 → 벡터(메뉴·리뷰·질문 공통). 같은 글은 CLOVA를 다시 안 부른다 |
 | `embeddings` | 검색 대상 벡터 `(store_id, kind=menu·review·doc, ref_id)` + HNSW 인덱스 |
 | `eval_cases` | 골드셋·holdout 채점 문항 |
-| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled, 결정 전 ''), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 거절 내용(마이그레이션 004): `reject_menu_ids`(재료 소진의 떨어진 메뉴 id, jsonb 배열)·`reject_text`(직접 쓴 글 원문)·`reject_text_ko`(그 한국어 번역). 결정 전 행(`owner_status` '')은 `created_at`(= 확인 요청을 연 시각) + 자동 취소 마감이 지나면 주문 현황에서 자동 취소로 읽는다. 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다. 쓴 쿠폰(마이그레이션 006): `coupon_id`·`coupon_name`·`discount`(없으면 ''·''·0), `total`은 낼 금액(할인 뒤), 할인 전 = `total` + `discount` |
+| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled·customer_cancelled, 결정 전 ''. cancelled는 통화 중 늦춘 시각을 손님이 거절한 것, customer_cancelled는 손님이 주문 현황에서 취소한 것(마이그레이션 없음)), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 거절 내용(마이그레이션 004): `reject_menu_ids`(재료 소진의 떨어진 메뉴 id, jsonb 배열)·`reject_text`(직접 쓴 글 원문)·`reject_text_ko`(그 한국어 번역). 결정 전 행(`owner_status` '')은 `created_at`(= 확인 요청을 연 시각) + 자동 취소 마감이 지나면 주문 현황에서 자동 취소로 읽는다. 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다. 쓴 쿠폰(마이그레이션 006): `coupon_id`·`coupon_name`·`discount`(없으면 ''·''·0), `total`은 낼 금액(할인 뒤), 할인 전 = `total` + `discount` |
 | `assistant_store_docs` | 비서 대화 가게 파일 사본 |
 
 ## 명령
