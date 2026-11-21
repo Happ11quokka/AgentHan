@@ -29,8 +29,10 @@ PLAIN = Coupon("coupon-2", "단골 500원 할인", "amount", 500, date(2026, 11,
 EXPIRED = Coupon("coupon-0", "지난 행사", "amount", 1000, date(2026, 10, 1), date(2026, 10, 31))
 
 APPLIES = "네, 전화 주문 1,000원 할인 쿠폰이 있어서 1,000원 할인돼요."
-OFFER = ("전화 주문 1,000원 할인 쿠폰이 있는데 2,500원이 부족해요. 아메리카노 하나 더 하시면 "
-         "쓸 수 있어요. 다른 메뉴도 괜찮아요. 더 담으실까요?")
+OFFER = ("2,500원만 더 담으시면 전화 주문 1,000원 할인 쿠폰을 쓸 수 있어요. "
+         "아메리카노 하나 더 담으실까요?")
+# 권유를 다시 하지 않을 때의 부족 답: 권유의 질문 문장을 뺀 첫 문장
+OFFER_FACTS = "2,500원만 더 담으시면 전화 주문 1,000원 할인 쿠폰을 쓸 수 있어요."
 NONE = "지금 쓸 수 있는 쿠폰은 없어요."
 ORDER_Q = "어떤 걸로 드릴까요?"
 MORE_Q = "더 필요하신 거 있으세요?"
@@ -166,7 +168,7 @@ def test_after_the_offer_a_coupon_question_hears_the_facts_not_a_second_offer() 
     talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요")  # 복창 전 권유 (쿠폰 티켓 10)
     readback = talk(engine, "아니요").utterances[-1]
     r = talk(engine, "할인 돼요?")
-    assert r.utterances == [OFFER.removesuffix(" 더 담으실까요?"), readback]
+    assert r.utterances == [OFFER_FACTS, readback]
     assert r.state is State.CONFIRM and r.readback
 
 
@@ -181,7 +183,7 @@ def test_asking_again_while_the_offer_waits_repeats_the_offer_once() -> None:
     assert r.state is State.ORDERING
     pickup_q = talk(engine, "아니요").utterances[-1]
     r = talk(engine, "쿠폰 돼요?")
-    assert r.utterances == [OFFER.removesuffix(" 더 담으실까요?"), pickup_q]
+    assert r.utterances == [OFFER_FACTS, pickup_q]
     assert r.state is State.ASK_PICKUP
 
 
@@ -245,7 +247,7 @@ def test_a_short_cart_while_a_cancel_question_waits_hears_the_facts_only() -> No
     engine = _engine(COUPON)
     talk(engine, "메도빅 하나요", "주문 취소할게요")
     r = talk(engine, "쿠폰 돼요?")
-    assert r.utterances == [OFFER.removesuffix(" 더 담으실까요?"), "주문 취소할까요?"]
+    assert r.utterances == [OFFER_FACTS, "주문 취소할까요?"]
     assert engine._coupon_offered
 
 
