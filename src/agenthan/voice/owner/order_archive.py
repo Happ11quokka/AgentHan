@@ -15,7 +15,9 @@
   칸만 맞추면 DB 쪽도 같은 값을 낸다. 기록에 없는 카드 칸은 기본값이다(통화 중 칸·번역·문자)
 - 단계: 결정 전 기록(`owner_status` '')은 가게 확인 중이다. 다만 허브의 자동 취소 타이머는 서버와
   같이 사라졌으므로, 확인 요청을 연 시각(= 주문서 `created_at`, 손님이 "네"라고 한 턴) + 자동
-  취소 마감이 지났으면 자동 취소(expired)로 읽는다. 기록은 고치지 않는다(읽기만 한다)
+  취소 마감이 지났으면 자동 취소(expired)로 읽는다. 주문서 시각이 지금(가게 시계)보다 뒤인
+  기록도 자동 취소다: `PHONE_NOW` 시계가 다시 뜬 서버에서 같은 시각부터 다시 가서 생긴다(리뷰).
+  기록은 고치지 않는다(읽기만 한다)
 - 손님 취소(`can_cancel`)는 늘 거짓이다: 허브에 카드가 없는 주문은 취소를 받을 곳이 없다
 - 넘김(handoff) 기록은 주문 현황이 없다(통화 결과로 보인다)
 """
@@ -78,7 +80,10 @@ def archived_card(
     decided_at = record.decided_at
     if status == "new":
         deadline = _deadline(order.created_at, expire)
-        if deadline is None or deadline <= now:  # 허브 타이머 대신 자동 취소로 읽는다
+        # 허브 타이머 대신 마감으로 자동 취소를 읽는다. 주문서 시각이 지금보다 뒤면(PHONE_NOW
+        # 시계는 서버가 뜰 때마다 같은 시각에서 다시 간다) 지난 실행의 주문이다: 그 허브 타이머는
+        # 서버와 같이 사라졌고 결정할 곳도 없으므로 자동 취소로 읽는다 (리뷰)
+        if deadline is None or deadline <= now or deadline - expire > now:
             status, decided_at = "expired", deadline.isoformat() if deadline else ""
     auto = status == "auto_accepted"
     lines = [

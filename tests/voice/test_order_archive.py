@@ -67,6 +67,15 @@ def test_an_undecided_record_is_checking_until_five_minutes_after_the_request() 
     assert _outcome(_status(PLACED + EXPIRE)) == ("cancelled", "expired", None, [])
 
 
+def test_an_undecided_record_from_before_a_phone_now_restart_reads_as_expired() -> None:
+    """PHONE_NOW 시계는 서버가 뜰 때마다 같은 시각에서 다시 간다(리뷰): 다시 뜬 서버의 가게 시각이
+    주문서 시각보다 앞이면 지난 실행의 주문이다. 그 허브 타이머도 결정할 곳도 없으니 자동 취소다.
+    """
+    restarted = PLACED - timedelta(minutes=30)
+    assert _outcome(_status(restarted)) == ("cancelled", "expired", None, [])
+    assert _outcome(_status(restarted, owner_status="accepted"))[:2] == ("confirmed", "accepted")
+
+
 def test_owner_decisions_map_to_outcomes() -> None:
     later = _status(owner_status="accepted", owner_pickup_time="2026-11-08T18:45:00+09:00")
     assert later is not None and later["outcome"] == "delayed"
