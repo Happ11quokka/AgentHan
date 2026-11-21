@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 import pytest
@@ -99,13 +100,28 @@ def test_a_handoff_or_an_undecided_draft_has_no_order_status() -> None:
     assert _status(order=Order(id=CALL, lines=ORDER.lines, status="draft")) is None
 
 
+# 쿠폰 주문 (쿠폰 티켓 09): 기록에서도 할인 전·쿠폰 이름·낼 금액이 허브와 같다
+COUPON_ORDER = replace(ORDER, coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인",
+                       discount=1_000)
+
+
+def test_a_coupon_record_reads_back_with_the_discount() -> None:
+    status = _status(order=COUPON_ORDER, owner_status="accepted")
+    assert status is not None and status["amount"] == {
+        "subtotal": 23_000, "discount": 1_000, "coupon_name": "전화 주문 1,000원 할인",
+        "total": 22_000}
+
+
+@pytest.mark.parametrize("order", [pytest.param(ORDER, id="no_coupon"),
+                                   pytest.param(COUPON_ORDER, id="coupon")])
 @pytest.mark.parametrize("decide", [
     pytest.param(lambda hub: hub.accept(CALL, delay_min=15), id="delayed"),
     pytest.param(lambda hub: hub.reject(CALL, "busy"), id="rejected"),
     pytest.param(lambda hub: hub.reject(CALL, "out_of_stock", menu_ids=["m02"]), id="out_of_stock"),
 ])
-def test_the_record_gives_the_same_answer_as_the_hub_card(decide) -> None:
-    """같은 주문: 허브 카드로 만든 응답과 기록으로 만든 응답이 같다(결과·사유·품절 메뉴까지)."""
+def test_the_record_gives_the_same_answer_as_the_hub_card(decide, order) -> None:
+    """같은 주문: 허브 카드로 만든 응답과 기록으로 만든 응답이 같다(결과·사유·품절 메뉴·쿠폰
+    할인까지)."""
     clock = FakeClock(PLACED)
     recorded: list[DecisionRecord] = []
 
@@ -114,8 +130,8 @@ def test_the_record_gives_the_same_answer_as_the_hub_card(decide) -> None:
             recorded.append(decision)
 
     hub = OwnerHub(store=FakeStoreKnowledge.from_fixture(), clock=clock, decision_sink=Sink())
-    hub.open_approval(CALL, ApprovalRequest(1, ORDER, in_call=False), lambda d: None)
-    hub.submit(ORDER)
+    hub.open_approval(CALL, ApprovalRequest(1, order, in_call=False), lambda d: None)
+    hub.submit(order)
     hub.call_ended(CALL, "confirmed")
     clock.set(PLACED + timedelta(minutes=1))
     decide(hub)
@@ -123,7 +139,7 @@ def test_the_record_gives_the_same_answer_as_the_hub_card(decide) -> None:
 
     last = recorded[-1]
     archived = archived_order_status(ArchivedOrder(
-        order=ORDER, owner_status=last.owner_status, decided_at=last.decided_at,
+        order=order, owner_status=last.owner_status, decided_at=last.decided_at,
         owner_pickup_time=last.owner_pickup_time, reject_reason=last.reject_reason,
         reject_menu_ids=last.reject_menu_ids, reject_text=last.reject_text,
         reject_text_ko=last.reject_text_ko), now=clock.now(), expire=EXPIRE)

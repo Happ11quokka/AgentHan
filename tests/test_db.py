@@ -350,6 +350,7 @@ def test_an_order_reads_back_with_its_reject_details(seeded) -> None:
     assert (row.pickup_time, row.created_at) == ("2026-11-25T18:30:00+09:00",
                                                  "2026-11-25T16:00:00+09:00")
     assert row.decided_at.startswith("2026-11-25T")
+    assert (row.coupon_id, row.coupon_name, row.discount) == ("", "", 0)  # 쿠폰 없는 주문
     assert find_order("call-r2", seeded).reject_menu_ids == ("m01",)
     assert find_order("call-nope", seeded) is None
 
@@ -383,6 +384,11 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
     waiting = Order(id="call-s2", lines=delayed.lines, pickup_time=delayed.pickup_time,
                     status="confirmed", created_at="2026-11-25T16:00:00+09:00")
     sink.submit(waiting)  # 통화 뒤 확인 요청: 결정 전에 서버가 꺼졌다
+    coupon = Order(id="call-s3", lines=delayed.lines, pickup_time=delayed.pickup_time,
+                   status="confirmed", created_at="2026-11-25T16:00:00+09:00",
+                   coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인", discount=1000)
+    sink.submit(coupon)  # 쿠폰 주문 (쿠폰 티켓 09): 기록에서도 같은 낼 금액
+    sink.record_decision(_decision("call-s3", "accepted", decided_at="2026-11-25T16:01:00+09:00"))
     sink.flush()
     sink.close()
 
@@ -392,6 +398,7 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
     with TestClient(create_app(settings, order_archive=OrdersFromDb(seeded))) as client:
         moved = client.get("/api/phone/orders/call-s1").json()
         expired = client.get("/api/phone/orders/call-s2").json()
+        discounted = client.get("/api/phone/orders/call-s3").json()
         missing = client.get("/api/phone/orders/call-nope")
 
     assert (moved["stage"], moved["outcome"], moved["can_cancel"]) == ("confirmed", "delayed",
@@ -399,7 +406,9 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
     assert (moved["pickup"]["label"], moved["pickup"]["original_label"]) == ("18:45", "18:30")
     assert moved["lines"] == [{"menu_id": "m01", "name": "메도빅", "quantity": 2, "options": [],
                                "request": "", "subtotal": 15000}]
-    assert moved["amount"] == {"subtotal": 15000, "total": 15000}
+    assert moved["amount"] == {"subtotal": 15000, "total": 15000}  # 쿠폰 없는 주문: 할인 칸 없음
+    assert discounted["amount"] == {"subtotal": 15000, "discount": 1000,
+                                    "coupon_name": "전화 주문 1,000원 할인", "total": 14000}
     assert (expired["stage"], expired["outcome"]) == ("cancelled", "expired")
     assert missing.status_code == 404
 

@@ -137,7 +137,8 @@ def save_decision(conn, decision: OwnerDecisionRow, store_id: str = "") -> None:
 
 @dataclass(frozen=True)
 class PhoneOrderRow:
-    """phone_orders 한 줄 (주문 현황 다시 열기, 티켓 06). 주문 열 + 사장님 결정 열(002·004)."""
+    """phone_orders 한 줄 (주문 현황 다시 열기, 티켓 06). 주문 열(쿠폰 006 포함) + 사장님 결정
+    열(002·004)."""
 
     id: str
     status: str  # draft · confirmed · handoff (통화가 어떻게 끝났나)
@@ -151,13 +152,18 @@ class PhoneOrderRow:
     reject_menu_ids: tuple[str, ...]
     reject_text: str
     reject_text_ko: str
+    # 쓴 쿠폰(마이그레이션 006). 쿠폰 전 행·쿠폰 없는 주문은 ''·''·0
+    coupon_id: str = ""
+    coupon_name: str = ""
+    discount: int = 0
 
 
 def load_order(conn, order_id: str) -> PhoneOrderRow | None:
     """주문 번호(통화 id)로 한 줄. 없으면 None."""
     row = conn.execute(
         "SELECT id, status, lines, pickup_time, created_at, owner_status, reject_reason,"
-        " decided_at, owner_pickup_time, reject_menu_ids, reject_text, reject_text_ko"
+        " decided_at, owner_pickup_time, reject_menu_ids, reject_text, reject_text_ko,"
+        " coupon_id, coupon_name, discount"
         " FROM phone_orders WHERE id = %s",
         (order_id,),
     ).fetchone()
@@ -176,6 +182,9 @@ def load_order(conn, order_id: str) -> PhoneOrderRow | None:
         menu_ids,
         text,
         text_ko,
+        coupon_id,
+        coupon_name,
+        discount,
     ) = row
     return PhoneOrderRow(
         id=id_,
@@ -190,6 +199,9 @@ def load_order(conn, order_id: str) -> PhoneOrderRow | None:
         reject_menu_ids=tuple(str(m) for m in menu_ids or ()),
         reject_text=text,
         reject_text_ko=text_ko,
+        coupon_id=coupon_id,
+        coupon_name=coupon_name,
+        discount=int(discount or 0),
     )
 
 

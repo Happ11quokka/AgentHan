@@ -35,7 +35,7 @@ class ArchivedOrder:
     """전화 주문 기록 한 줄의 주문 현황 몫 (voice 모양). 칸 뜻은 `DecisionRecord`와 같다."""
 
     # 주문서: id(= 통화 id)·줄(주문할 때의 이름·단가)·픽업 시각·통화 결과(confirmed·draft·handoff)·
-    # 주문서를 만든 시각
+    # 주문서를 만든 시각·쓴 쿠폰(`coupon_id`·`coupon_name`·`discount`, 쿠폰 티켓 09)
     order: Order
     owner_status: str = ""  # accepted · auto_accepted · rejected · expired … ('' = 아직)
     reject_reason: str = ""
@@ -88,6 +88,7 @@ def archived_card(
         for line in order.lines
     ]
     names = {line["menu_id"]: line["name_ko"] for line in lines}
+    subtotal = sum(line["subtotal"] for line in lines)
     moved = record.owner_pickup_time if status in ("accepted", "auto_accepted") else ""
     stock_out = record.reject_reason == "out_of_stock"
     return {
@@ -98,7 +99,12 @@ def archived_card(
         "pickup_time": order.pickup_time,
         "pickup_label": _clock_label(order.pickup_time),
         "lines": lines,
-        "total": sum(line["subtotal"] for line in lines),
+        # 금액은 허브 카드와 같다 (쿠폰 티켓 09): 할인 전·쿠폰·낼 금액. 쿠폰 전 기록은 할인 0
+        "subtotal": subtotal,
+        "coupon_id": order.coupon_id,
+        "coupon_name": order.coupon_name,
+        "discount": order.discount,
+        "total": subtotal - order.discount,
         "stage": "after_call" if status == "new" else "",
         "requested_at": order.created_at if not auto else "",
         "decided_at": decided_at,

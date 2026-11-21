@@ -324,7 +324,8 @@ class OrdersFromDb:
         status = row.status if row.status in ("draft", "confirmed", "handoff") else "draft"
         return ArchivedOrder(
             order=Order(id=row.id, lines=lines, pickup_time=row.pickup_time, status=status,
-                        created_at=row.created_at),
+                        created_at=row.created_at, coupon_id=row.coupon_id,
+                        coupon_name=row.coupon_name, discount=row.discount),
             owner_status=row.owner_status, reject_reason=row.reject_reason,
             reject_menu_ids=row.reject_menu_ids, reject_text=row.reject_text,
             reject_text_ko=row.reject_text_ko, decided_at=row.decided_at,
