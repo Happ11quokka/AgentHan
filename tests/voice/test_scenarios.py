@@ -54,6 +54,16 @@ COUPON = [  # 쿠폰 티켓 09: 적용 복창·모자람(쿠폰 말 없음)·기
     "s47-coupon-out-of-period",
     "s48-coupon-dropped-after-fix",
     "s49-coupon-order-status",
+    # 쿠폰 티켓 11: 쿠폰 문의(적용·부족·빈 장바구니). 쿠폰 없는 가게 문의(s63)는 아래 목록에만
+    "s60-coupon-question-applied",
+    "s61-coupon-question-short",
+    "s62-coupon-question-empty-cart",
+]
+COUPON_QUESTION = [  # 쿠폰 티켓 11: 쿠폰 문의 4가지
+    "s60-coupon-question-applied",
+    "s61-coupon-question-short",
+    "s62-coupon-question-empty-cart",
+    "s63-coupon-question-no-coupon",
 ]
 
 
@@ -75,6 +85,7 @@ def test_scenario_files_are_consistent() -> None:
     assert all(s.path.stem == s.id for s in SCENARIOS)
     assert set(REQUIRED) <= set(ids)
     assert set(COUPON) <= set(ids)
+    assert set(COUPON_QUESTION) <= set(ids)
     # 쿠폰이 없는 시나리오는 쿠폰 전 그대로다(고치지 않고 통과한다)
     assert sorted(s.id for s in SCENARIOS if s.coupons) == COUPON
     required = [s for s in SCENARIOS if s.id in REQUIRED]

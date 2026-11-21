@@ -17,6 +17,10 @@
   (6단계 티켓 02). 발화 전체가 그 꼴일 때만 건다. 머리말 없는 "그게 다예요"·"괜찮아요"는 다른
   질문의 답일 수 있어 NLU가 읽는다. 엔진은 예/아니요를 묻는 중(메뉴 확인·시각 제안·취소 확인)에는
   이 규칙을 쓰지 않는다(`no_and_done`, 그때는 "아니요"가 답이고 뒷말은 군말일 수 있다)
+- 쿠폰·할인 물음("쿠폰 돼요?"·"할인 되나요"·"쿠폰 쓸게요")은 `ask_coupon`이다 (쿠폰 티켓 11).
+  발화가 쿠폰·할인 말과 묻는·쓰겠다는 말뿐일 때만 건다. "할인 메뉴 주세요"처럼 다른 말(메뉴 등)이
+  섞이면 NLU가 읽는다(주문이 먼저다). NLU가 그 말을 질문으로 내면 엔진이 쿠폰·할인 낱말을 보고
+  쿠폰 답으로 돌린다(`mentions_coupon`). `ask_coupon`은 규칙만 내는 act라 HCX 도구 스키마에는 없다
 """
 
 from __future__ import annotations
@@ -97,6 +101,25 @@ _HANG_UP = re.compile(
     r"(?:(?:아\s*)?(?:됐어요|됐어|됬어요|됐습니다)\s*)?(?:그냥\s*)?(?:전화\s*)?"
     r"(?:끊을게요|끊을래요|끊겠습니다|끊어요|끊습니다)"
 )
+
+# 쿠폰·할인 물음 (쿠폰 티켓 11). 머리말 + 쿠폰 말 + 조사 + 묻는·쓰겠다는 말(되다·있다·쓰다·적용 …
+# 줄기와 짧은 끝). 메뉴 이름 같은 다른 낱말이 끼면 걸리지 않는다
+_COUPON_WORD = r"(?:쿠폰|할인)"
+_COUPON_HEAD = (
+    r"(?:(?:혹시|근데|그런데|그리고|그럼|저기|저|그|음|어|아|참|여기|지금|오늘|이번에|제가"
+    r"|전화\s*주문(?:은|도|에|으로|이면|하면)?|포장(?:은|도|하면)?)(?:[\s,.!~]+))*"
+)
+_COUPON_PARTICLE = (
+    r"(?:\s*(?:같은|이런|그런)\s*(?:거|건|것))?"
+    r"(?:은요|는요|이요|은|는|이|가|도|을|를|이나|이라도|요)?"
+)
+_COUPON_LINK = r"(?:안|못|수|거|건|게|좀|따로|같이)"
+_COUPON_VERB = r"(?:되|돼|됩|될|있|없|쓰|쓸|써|사용|적용|받|해|하|할|주|가능)[가-힣]{0,5}"
+_COUPON = re.compile(
+    rf"{_COUPON_HEAD}{_COUPON_WORD}(?:\s*{_COUPON_WORD})*{_COUPON_PARTICLE}"
+    rf"(?:\s*(?:{_COUPON_LINK}\s*)*{_COUPON_VERB})*"
+)
+_COUPON_MENTION = re.compile(_COUPON_WORD)
 
 _REPEAT = re.compile(
     r"다시\s*(?:한\s*번\s*)?(?:말해|말씀해)\s*(?:주세요|주실래요|줄래요)?|뭐라고요|뭐라고\s*하셨어요"
@@ -185,6 +208,11 @@ def no_and_done(text: str) -> bool:
     return bool(t) and not _NO.fullmatch(t) and bool(_NO_AND_DONE.fullmatch(t))
 
 
+def mentions_coupon(text: str) -> bool:
+    """쿠폰·할인 낱말이 있다 (쿠폰 티켓 11). 엔진이 NLU가 낸 질문 act를 쿠폰 답으로 돌릴 때 본다."""
+    return bool(_COUPON_MENTION.search(text))
+
+
 def apply_rules(text: str) -> list[Act] | None:
     """규칙에 걸리면 act 목록, 아니면 None."""
     t = _TRAILING.sub("", text.strip())
@@ -203,4 +231,6 @@ def apply_rules(text: str) -> list[Act] | None:
         return [Act("want_owner", free_text=text.strip())]
     if _REPEAT.fullmatch(t):
         return [Act("repeat_please")]
+    if _COUPON.fullmatch(rest):
+        return [Act("ask_coupon", free_text=text.strip())]
     return None

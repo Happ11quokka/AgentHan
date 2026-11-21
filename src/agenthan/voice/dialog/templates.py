@@ -275,6 +275,34 @@ def coupon_phrase(title: str) -> str:
     return title if title.endswith("쿠폰") else f"{title} 쿠폰"
 
 
+def coupon_offer(title: str, short: int, suggest_name: str | None) -> str:
+    """쿠폰 금액이 모자랄 때 권하는 말 (쿠폰 티켓 10·11, spec "쿠폰").
+
+    복창 전 권유(티켓 10)와 쿠폰 문의의 부족 답(티켓 11)이 같이 쓴다. 권할 메뉴가 없으면 메뉴
+    이름 없이 모자란 금액만 말한다.
+    """
+    if suggest_name is None:
+        return f"{won(short)} 더 담으시면 쿠폰을 쓸 수 있어요. 더 담으실까요?"
+    return (f"{coupon_phrase(title)}이 있는데 {won(short)}이 부족해요. {suggest_name} 하나 더 "
+            "하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더 담으실까요?")
+
+
+def coupon_applies(title: str, discount: int) -> str:
+    """쿠폰 문의에 쓸 수 있는 쿠폰이 있을 때 (쿠폰 티켓 11). 뒤에 하던 질문을 다시 한다."""
+    return f"네, {coupon_phrase(title)}이 있어서 {won(discount)} 할인돼요."
+
+
+def coupon_available(title: str, min_order: int) -> str:
+    """장바구니가 빈 채 쿠폰을 물었을 때: 쿠폰 이름과 최소 주문 금액(있으면) (쿠폰 티켓 11)."""
+    condition = f" {won(min_order)} 이상 주문하시면 돼요." if min_order > 0 else ""
+    return f"{coupon_phrase(title)}이 있어요.{condition}"
+
+
+def no_coupon() -> str:
+    """쿠폰 문의에 오늘 쓸 수 있는 쿠폰이 없을 때 (쿠폰 티켓 11)."""
+    return "지금 쓸 수 있는 쿠폰은 없어요."
+
+
 def ask_what_to_fix() -> str:
     return "어떤 걸 고쳐 드릴까요?"
 
@@ -664,7 +692,7 @@ def owner_answer_label(answer: str, *, contains: bool = False) -> str:
 # ---------------------------------------------------------------- 사장님 보충 지식 (4단계 티켓 13)
 
 
-# 메뉴가 아닌 가게 질문(주차·할인)의 보충 요청에 메뉴 이름 대신 쓰는 말 (5단계 티켓 11)
+# 메뉴가 아닌 가게 질문(주차·배달)의 보충 요청에 메뉴 이름 대신 쓰는 말 (5단계 티켓 11)
 STORE_QUESTION = "가게"
 
 
