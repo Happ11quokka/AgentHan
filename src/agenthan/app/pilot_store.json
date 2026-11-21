@@ -933,11 +933,12 @@
   "coupons": [
     {
       "id": "coupon-1",
-      "title": "평일 오후 아메리카노 1,000원 할인",
+      "title": "전화 주문 1,000원 할인",
       "discount_type": "amount",
       "discount_value": 1000,
+      "min_order": 10000,
       "start_date": "2026-11-02",
-      "end_date": "2026-11-30",
+      "end_date": "2026-12-31",
       "status": "published"
     }
   ],

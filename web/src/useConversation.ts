@@ -23,7 +23,7 @@ function blankCoupon(): CouponInput {
   const today = new Date();
   const end = new Date(today);
   end.setDate(end.getDate() + 14);
-  return { title: "", discount_type: "percent", discount_value: "", start_date: isoDay(today), end_date: isoDay(end) };
+  return { title: "", discount_type: "percent", discount_value: "", start_date: isoDay(today), end_date: isoDay(end), min_order: "" };
 }
 
 /** 실패했을 때 [다시 시도]가 되풀이할 일. */
@@ -447,6 +447,8 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
         discount_value: Number(values.discount_value),
         start_date: values.start_date,
         end_date: values.end_date,
+        // 비우거나 0이면 보내지 않는다(서버가 조건 없음 0으로 저장한다).
+        ...(Number(values.min_order) > 0 ? { min_order: Number(values.min_order) } : {}),
       },
     });
   }, [act, sessionId]);

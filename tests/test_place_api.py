@@ -78,6 +78,27 @@ def test_preview_of_a_coupon_lists_the_new_coupon():
     result = place.preview(SEED, "coupon", [{"name": "create_coupon", "arguments": args}])
     assert result["changes"]["coupon"] == {"added": ["coupon-1"], "updated": [], "removed": []}
     assert result["after"]["coupon"][0]["title"] == "오픈 기념"
+    assert result["after"]["coupon"][0]["min_order"] == 0
+
+    floor = {**args, "min_order": 10000}
+    result = place.preview(SEED, "coupon", [{"name": "create_coupon", "arguments": floor}])
+    assert result["after"]["coupon"][0]["min_order"] == 10000
+
+
+def test_a_coupon_saved_before_min_order_reads_as_no_condition():
+    data = json.loads(json.dumps(SEED))
+    data["coupons"] = [
+        {
+            "id": "coupon-1",
+            "title": "옛 쿠폰",
+            "discount_type": "amount",
+            "discount_value": 1000,
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-30",
+            "status": "published",
+        }
+    ]
+    assert place.snapshot(data)["coupon"][0]["min_order"] == 0
 
 
 def test_preview_of_keywords_lists_added_and_removed_words():

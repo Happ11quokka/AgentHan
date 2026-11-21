@@ -1006,6 +1006,12 @@ p {
   color: var(--ink-2);
 }
 
+.field > span:first-child small {
+  font-size: inherit;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
 .field input {
   width: 100%;
   height: 40px;
