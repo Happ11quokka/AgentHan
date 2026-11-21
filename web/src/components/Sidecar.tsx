@@ -1,7 +1,9 @@
 import { useRef } from "react";
+import { avatarState } from "../avatarState";
 import { CONNECTION_TEXT } from "../labels";
 import type { Action, LogEntry, Pending, Period, Place, ReportView, ReviewReport, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
+import { AgentAvatar } from "./AgentAvatar";
 import { Icon } from "./Icon";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
 import { ShopTab } from "./ShopTab";
@@ -23,6 +25,7 @@ type Props = {
   log: LogEntry[];
   online: boolean;
   busy: boolean;
+  hasInput: boolean;
   reviews: Loaded<ReviewsView>;
   report: Loaded<ReportView>;
   period: Period;
@@ -40,35 +43,6 @@ type Props = {
   onClose: () => void;
 };
 
-/**
- * 프로필 원 안의 비서. 일하는 동안(busy) 노트북을 열고 타이핑하고, 쉬면 노트북을 덮는다.
- * 로봇은 기존 agent.png, 노트북은 뒷면이 보이는 SVG다.
- */
-function AgentDesk({ working }: { working: boolean }) {
-  return (
-    <div className="agent-desk" role="img" aria-label="비서 프로필" data-working={working}>
-      <img src="/agent.png" alt="" className="agent-desk-bot" />
-      <span className="agent-desk-glow" aria-hidden />
-      <svg className="agent-desk-laptop" viewBox="0 0 100 50" aria-hidden>
-        <defs>
-          <linearGradient id="lid-back" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#f4f5f7" />
-            <stop offset="1" stopColor="#d9dce1" />
-          </linearGradient>
-        </defs>
-        <g className="lid">
-          <rect x="17" y="4" width="66" height="38" rx="4" fill="url(#lid-back)" stroke="#c4c8cf" strokeWidth="1" />
-          <rect className="lid-logo" x="44" y="17" width="12" height="10" rx="3" fill="#03c75a" />
-          <path d="M47.5 19.5v5M52.5 19.5v5M47.5 22h5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
-        </g>
-        <path d="M8 42h84l-4 5.5a3 3 0 0 1-2.4 1.2H14.4a3 3 0 0 1-2.4-1.2z" fill="#c9ccd2" />
-        <ellipse className="hand hand-l" cx="20" cy="41" rx="6" ry="4.2" fill="#fff" stroke="#03c75a" strokeWidth="1.4" />
-        <ellipse className="hand hand-r" cx="80" cy="41" rx="6" ry="4.2" fill="#fff" stroke="#03c75a" strokeWidth="1.4" />
-      </svg>
-    </div>
-  );
-}
-
 export function Sidecar(props: Props) {
   const { tab, onTab, place, pending, log, online, onClose } = props;
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
@@ -85,7 +59,11 @@ export function Sidecar(props: Props) {
         <Icon name="close" />
       </button>
       <section className="profile">
-        <AgentDesk working={props.busy} />
+        <AgentAvatar state={avatarState({
+          busy: props.busy,
+          hasInput: props.hasInput,
+          hasPendingApproval: Boolean(place) && pending.length > 0,
+        })} />
         <div>
           <strong>사장님 비서</strong>
           <span className="online" data-online={online}>

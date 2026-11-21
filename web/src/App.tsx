@@ -23,6 +23,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
   const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
+  const [hasInput, setHasInput] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
 
   // 리뷰·통계는 그 탭이 열려 있을 때만 읽고, 대화가 바뀌거나 비서 답이 오면 다시 읽는다.
@@ -124,6 +125,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onToggleNav={() => setNavOpen((o) => !o)}
         onToggleSide={() => setSideOpen((o) => !o)}
         onShowReview={showReview}
+        onInputChange={setHasInput}
       />
       <Sidecar
         tab={tab}
@@ -134,6 +136,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         online={chat.online}
         busy={chat.busy}
         reviews={reviews}
+        hasInput={hasInput}
         report={report}
         period={period}
         onPeriod={setPeriod}

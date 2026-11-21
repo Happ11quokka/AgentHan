@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>사이드카 아바타 미리보기</title>
+    <style>
+      #root { display: flow-root; }
+      .avatar-preview { width: min(480px, 100%); margin: 24px auto; padding: 20px; text-align: center; }
+      .avatar-preview h1 { margin: 0; font-size: 18px; }
+      .avatar-preview .profile { padding: 20px; }
+      .avatar-preview .avatar-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; }
+      .avatar-preview button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 16px; background: white; }
+      .avatar-preview button[aria-pressed="true"] { background: var(--green-soft); border-color: var(--green); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/avatarPreview.tsx"></script>
+  </body>
+</html>

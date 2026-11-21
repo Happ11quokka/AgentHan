@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 import App from "./App";
-import type { ReviewsView } from "./types";
+import type { ReviewsView, Turn } from "./types";
 import {
   INBOX,
   inboxWith,
@@ -36,6 +36,47 @@ async function say(user: ReturnType<typeof userEvent.setup>, text: string) {
 }
 
 describe("대화", () => {
+  test("프로필은 포커스·빈 입력·공백에는 idle, 실제 입력에는 listening이며 지우면 돌아온다", async () => {
+    const { user } = await open();
+    const profile = screen.getByRole("img", { name: "비서 프로필" });
+    const input = screen.getByRole("textbox", { name: "비서에게 말하기" });
+    await user.click(input);
+    expect(profile).toHaveAttribute("data-state", "idle");
+    await user.type(input, "   ");
+    expect(profile).toHaveAttribute("data-state", "idle");
+    await user.type(input, "메뉴 알려 줘");
+    expect(profile).toHaveAttribute("data-state", "listening");
+    await user.clear(input);
+    expect(profile).toHaveAttribute("data-state", "idle");
+  });
+
+  test("프로필은 busy에서 speaking, 보이는 승인 카드에서 attention이며 입력보다 승인을 우선한다", async () => {
+    const api = fakeApi();
+    let finish!: (turn: Turn) => void;
+    api.say.mockImplementation(() => new Promise<Turn>((resolve) => { finish = resolve; }));
+    const { user } = await open(api);
+    const profile = screen.getByRole("img", { name: "비서 프로필" });
+    await say(user, "메뉴 바꿔 줘");
+    expect(profile).toHaveAttribute("data-state", "speaking");
+    expect(screen.getByRole("textbox", { name: "비서에게 말하기" })).toHaveValue("");
+    await act(async () => finish({
+      reply: "확인해 주세요", place: SEED,
+      pending: [photoPending([draft({ price: 8500 })], withCake)],
+    }));
+    expect(screen.getByRole("region", { name: "저장 전 확인" })).toBeInTheDocument();
+    expect(profile).toHaveAttribute("data-state", "attention");
+    await user.type(screen.getByRole("textbox", { name: "비서에게 말하기" }), "고칠게요");
+    expect(profile).toHaveAttribute("data-state", "attention");
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+    expect(screen.queryByRole("region", { name: "저장 전 확인" })).not.toBeInTheDocument();
+    expect(profile).toHaveAttribute("data-state", "speaking");
+    await act(async () => finish({ reply: "취소했어요", place: SEED, pending: [] }));
+    expect(profile).toHaveAttribute("data-state", "idle");
+    for (const avatar of screen.getByRole("main").querySelectorAll(".avatar")) {
+      expect(avatar).toHaveAttribute("src", "/agent.png");
+    }
+  });
+
   test("첫 화면에 비서 프로필과 인사가 보이고 새 대화가 시작된다", async () => {
     const { api } = await open();
     expect(api.start).toHaveBeenCalledTimes(1);
