@@ -3,6 +3,7 @@ import { useElapsed } from "../useElapsed";
 import { ProgressBar } from "./ProgressBar";
 import { approval, DAYS, discountText, hoursText, MARK_TEXT, minOrderText, periodText, won, type RowMark } from "../labels";
 import type { MenuEdit, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
+import { Icon } from "./Icon";
 import { RoutineSettings } from "./RoutineSettings";
 
 type Mark = RowMark | undefined;
@@ -42,12 +43,22 @@ function Row({ mark, children }: { mark: Mark; children: ReactNode }) {
   );
 }
 
-function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+/** 사이드카 구역 머리의 [수정]: 대화에서 그 일을 이어 가게 한다. */
+function EditButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="icon-button section-edit" aria-label={`${label} 수정`} title="수정" onClick={onClick}>
+      <Icon name="pencil" size={16} />
+    </button>
+  );
+}
+
+function Section({ title, count, onEdit, children }: { title: string; count?: number; onEdit?: () => void; children: ReactNode }) {
   return (
     <section className="shop-section">
       <h3>
         {title}
         {count !== undefined && <span>{count}</span>}
+        {onEdit && <EditButton label={title} onClick={onEdit} />}
       </h3>
       {children}
     </section>
@@ -394,16 +405,20 @@ type HomeProps = {
   routines: Routines | null;
   onRoutines?: (change: RoutinesChange) => Promise<string | null>;
   onRunReport?: () => Promise<string | null>;
+  /** 구역 머리의 [수정]. 없으면 버튼도 없다. 실행은 대화에서 한다. */
+  onEdit?: (target: HomeEdit) => void;
 };
 
+export type HomeEdit = "hours" | "coupon" | "keywords" | "routines";
+
 /** 홈 탭: 영업시간 · 쿠폰 · 대표키워드 · 루틴 설정. */
-export function HomeTab({ place, pending, report, routines, onRoutines, onRunReport }: HomeProps) {
+export function HomeTab({ place, pending, report, routines, onRoutines, onRunReport, onEdit }: HomeProps) {
   const { view, marks, removed } = overlay(place, pending);
   return (
     <div className="shop home">
       <PendingBanner pending={pending} />
 
-      <Section title="영업시간">
+      <Section title="영업시간" onEdit={onEdit && (() => onEdit("hours"))}>
         <ul className="hours">
           {DAYS.filter(([k]) => k in view.business_hours).map(([key, label]) => (
             <Row key={key} mark={marks.business_hours.get(key)}>
@@ -416,7 +431,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
         </ul>
       </Section>
 
-      <Section title="쿠폰" count={view.coupon.length}>
+      <Section title="쿠폰" count={view.coupon.length} onEdit={onEdit && (() => onEdit("coupon"))}>
         {view.coupon.length + removed.coupon.length === 0 ? (
           <p className="empty">아직 쿠폰이 없어요.</p>
         ) : (
@@ -436,7 +451,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
       </Section>
 
       {view.keywords !== undefined && (
-        <Section title="대표키워드" count={view.keywords.length}>
+        <Section title="대표키워드" count={view.keywords.length} onEdit={onEdit && (() => onEdit("keywords"))}>
           {view.keywords.length + (removed.keywords?.length ?? 0) === 0 ? (
             <p className="empty">아직 대표키워드가 없어요.</p>
           ) : (
@@ -451,7 +466,7 @@ export function HomeTab({ place, pending, report, routines, onRoutines, onRunRep
         </Section>
       )}
 
-      {onRoutines && onRunReport && <RoutineSettings report={report} routines={routines} onChange={onRoutines} onRunReport={onRunReport} />}
+      {onRoutines && onRunReport && <RoutineSettings report={report} routines={routines} onChange={onRoutines} onRunReport={onRunReport} onEdit={onEdit && (() => onEdit("routines"))} />}
     </div>
   );
 }
