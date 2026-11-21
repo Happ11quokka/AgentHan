@@ -1336,12 +1336,12 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
     }
     // 말풍선: 질문과 [모두 저장]만. 변경 줄은 카드에만 있다.
     const bubble = chatArea().getByText(/영업시간·휴무 변경: 아래처럼 바꿀까요\?/).closest(".bubble") as HTMLElement;
-    expect(within(bubble).queryByText("일요일 10:00 ~ 18:00")).not.toBeInTheDocument();
+    expect(within(bubble).queryByText("일요일: 쉬는 날 → 10:00 ~ 18:00")).not.toBeInTheDocument();
     expect(within(bubble).queryByText("답장: 근처 공영주차장을 이용해 주세요")).not.toBeInTheDocument();
     await user.click(within(bubble).getByRole("button", { name: "모두 저장" }));
     expect(api.act).toHaveBeenLastCalledWith("s1", expect.objectContaining({ action_id: "task.approve" }));
     const result = (await chatArea().findByText("저장 완료")).closest(".result") as HTMLElement;
-    expect(within(result).getByText("일요일 10:00 ~ 18:00")).toBeInTheDocument();
+    expect(within(result).getByText("일요일: 쉬는 날 → 10:00 ~ 18:00")).toBeInTheDocument();
     expect(within(result).getByText("답장: 근처 공영주차장을 이용해 주세요")).toBeInTheDocument();
   });
 
@@ -1358,7 +1358,7 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
     // 말풍선에는 같은 저장·취소 칩도, 변경 줄도 다시 나오지 않는다.
     const bubble = chatArea().getByText("영업시간·휴무 변경: 아래처럼 바꿀까요?").closest(".bubble") as HTMLElement;
     expect(within(bubble).queryByRole("button")).not.toBeInTheDocument();
-    expect(within(bubble).queryByText("일요일 10:00 ~ 18:00")).not.toBeInTheDocument();
+    expect(within(bubble).queryByText("일요일: 쉬는 날 → 10:00 ~ 18:00")).not.toBeInTheDocument();
     // 저장하고 카드가 닫혀도 지난 말풍선에 저장·취소 칩이 되살아나지 않는다.
     await user.click(within(card).getByRole("button", { name: "저장" }));
     await chatArea().findByText("저장 완료");
@@ -1525,5 +1525,78 @@ describe("가게 기본 정보 입력 블록", () => {
     expect(card.getByText("전화번호: 02-000-0000 → 02-111-2222")).toBeInTheDocument();
     expect(card.getByText("새 소개글: 새로 쓴 소개글이에요.")).toBeInTheDocument();
     expect(card.queryByText(/정보를 바꿔요/)).not.toBeInTheDocument();
+  });
+});
+
+describe("영업시간 시간표 블록", () => {
+  const HOURS = {
+    mon: { closed: false, open_time: "09:00", close_time: "21:00" },
+    tue: { closed: false, open_time: "09:00", close_time: "21:00" },
+    wed: { closed: false, open_time: "09:00", close_time: "21:00" },
+    thu: { closed: false, open_time: "09:00", close_time: "21:00" },
+    fri: { closed: false, open_time: "09:00", close_time: "22:00" },
+    sat: { closed: false, open_time: "10:00", close_time: "22:00" },
+    sun: { closed: true },
+  };
+  const PLACE = { ...SEED, business_hours: HOURS };
+  function hoursApi(script: Parameters<typeof fakeApi>[0] = [], pending: Pending[] = []) {
+    const api = fakeApi(script, { place: PLACE, pending });
+    api.start.mockResolvedValue({ session_id: "s1", place: PLACE, pending: pending as never[] });
+    return api;
+  }
+  async function openTable(api = hoursApi()) {
+    const opened = await open(api);
+    await opened.user.click(screen.getByRole("button", { name: "AgentHan 도구함" }));
+    await opened.user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "영업시간·휴무 변경" }));
+    const form = chatArea().getByRole("form", { name: "영업시간" });
+    return { ...opened, form: within(form) };
+  }
+  const setTime = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } });
+
+  test("도구함에서 누르면 서버에 묻지 않고 지금 일주일 시간표가 대화에 열린다", async () => {
+    const { api, form } = await openTable();
+    expect(form.getByLabelText("토요일 여는 시간")).toHaveValue("10:00");
+    expect(form.getByLabelText("토요일 닫는 시간")).toHaveValue("22:00");
+    expect(form.getByRole("checkbox", { name: "일요일 쉬는 날" })).toBeChecked();
+    expect(form.queryByLabelText("일요일 여는 시간")).not.toBeInTheDocument();
+    expect(form.getByRole("button", { name: "미리 보기" })).toBeDisabled();
+    expect(api.act).not.toHaveBeenCalled();
+    expect(api.say).not.toHaveBeenCalled();
+  });
+
+  test("고친 요일만 hours.edit로 보낸다: 시간 바꾸기·쉬는 날 풀기·쉬는 날 만들기", async () => {
+    const after = { ...PLACE, business_hours: { ...HOURS, sat: { closed: false, open_time: "11:00", close_time: "22:00" } } };
+    const pending = { task_id: "t4", version: 1, feature: "business_hours", after, changes: {} };
+    const { user, api, form } = await openTable(hoursApi([{ reply: "영업시간·휴무 변경: 아래처럼 바꿀까요?", place: PLACE, pending: [pending] }]));
+    setTime(form.getByLabelText("토요일 여는 시간"), "11:00");
+    await user.click(form.getByRole("checkbox", { name: "일요일 쉬는 날" }));
+    expect(form.getByText("일요일 여는·닫는 시간을 넣어 주세요.")).toBeInTheDocument();
+    expect(form.getByRole("button", { name: "미리 보기" })).toBeDisabled();
+    setTime(form.getByLabelText("일요일 여는 시간"), "10:00");
+    setTime(form.getByLabelText("일요일 닫는 시간"), "18:00");
+    await user.click(form.getByRole("checkbox", { name: "월요일 쉬는 날" }));
+    await user.click(form.getByRole("button", { name: "미리 보기" }));
+    expect(api.act).toHaveBeenCalledWith("s1", {
+      action_id: "hours.edit",
+      label: "영업시간 바꾸기: 월·토·일",
+      args: {
+        entries: [
+          { days: ["mon"], closed: true },
+          { days: ["sat"], closed: false, open_time: "11:00", close_time: "22:00" },
+          { days: ["sun"], closed: false, open_time: "10:00", close_time: "18:00" },
+        ],
+      },
+    });
+    expect(chatArea().queryByRole("form", { name: "영업시간" })).not.toBeInTheDocument();
+    const card = within(await screen.findByRole("region", { name: "저장 전 확인" }));
+    expect(card.getByText("토요일: 10:00 ~ 22:00 → 11:00 ~ 22:00")).toBeInTheDocument();
+  });
+
+  test("서버가 승인 카드 없이 돌려주면 고친 시간표 그대로 다시 연다", async () => {
+    const { user, form } = await openTable(hoursApi([{ reply: "값을 다시 확인해 주세요.", place: PLACE, pending: [] }]));
+    setTime(form.getByLabelText("금요일 닫는 시간"), "23:00");
+    await user.click(form.getByRole("button", { name: "미리 보기" }));
+    const again = within(await chatArea().findByRole("form", { name: "영업시간" }));
+    expect(again.getByLabelText("금요일 닫는 시간")).toHaveValue("23:00");
   });
 });

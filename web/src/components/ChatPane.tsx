@@ -7,6 +7,7 @@ import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
 import { BusinessInfoForm } from "./BusinessInfoForm";
 import { CouponForm } from "./CouponForm";
+import { HoursForm } from "./HoursForm";
 import { Icon } from "./Icon";
 import { ReadingBubble } from "./ReadingBubble";
 import { ReplyText } from "./ReplyText";
@@ -130,7 +131,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
-  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error, chat.couponForm === null, chat.businessForm === null]);
+  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error, chat.couponForm === null, chat.businessForm === null, chat.hoursForm === null]);
 
   return (
     <main
@@ -210,6 +211,16 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               busy={chat.busy}
               onCancel={chat.closeCoupon}
               onSubmit={(values) => void chat.submitCoupon(values)}
+            />
+          )}
+          {chat.hoursForm && (
+            <HoursForm
+              key={JSON.stringify(chat.hoursForm)}
+              initial={chat.hoursForm.initial}
+              start={chat.hoursForm.values}
+              busy={chat.busy}
+              onCancel={chat.closeHours}
+              onSubmit={(values) => void chat.submitHours(values)}
             />
           )}
           {chat.businessForm && (
