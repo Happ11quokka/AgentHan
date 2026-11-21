@@ -349,6 +349,39 @@ def test_paraphrased_reason_is_dropped_not_asked(tmp_path):
     assert bot.pending_action["actions"][0]["preview"]["record"]["status"] == "cancelled"
 
 
+COUPON = {
+    "title": "단골 쿠폰",
+    "discount_type": "amount",
+    "discount_value": 500,
+    "start_date": "2026-11-10",
+    "end_date": "2026-11-20",
+}
+
+
+def coupon_bot(tmp_path, args):
+    fake = base.FakeChat(base.call("create_coupon", args))
+    bot = owner.OwnerAssistant(tmp_path / "store.json", chat=fake, embed=base.fake_embed)
+    bot.route = lambda text: owner.Route("coupon", "select")
+    return bot
+
+
+def test_coupon_min_order_the_owner_said_reaches_the_preview(tmp_path):
+    bot = coupon_bot(tmp_path, {**COUPON, "min_order": 5000})
+    out = bot.ask(
+        "'단골 쿠폰' 5천 원 이상 사면 500원 깎아 주는 쿠폰 2026-11-10부터 2026-11-20까지 만들어 줘"
+    )
+    assert "바꿀까요" in out
+    assert bot.pending_action["actions"][0]["preview"]["record"]["min_order"] == 5000
+
+
+def test_coupon_min_order_the_owner_did_not_say_is_dropped_not_asked(tmp_path):
+    bot = coupon_bot(tmp_path, {**COUPON, "min_order": 10000})
+    out = bot.ask("'단골 쿠폰' 500원 할인으로 2026-11-10부터 2026-11-20까지 만들어 줘")
+    assert "바꿀까요" in out and "최소 주문" not in out
+    assert bot.trace["dropped"] == ["min_order"]
+    assert bot.pending_action["actions"][0]["preview"]["record"]["min_order"] == 0
+
+
 def test_keyword_list_sent_as_add_becomes_the_whole_list():
     store = {"shop": {"keywords": ["러시안 베이커리", "메도빅", "베이커리 카페"]}}
     said = "'러시아 케이크', '수제 메도빅', '홍차 맛집' 이렇게 세개로 해주세요"
