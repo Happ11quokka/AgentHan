@@ -162,6 +162,11 @@ export const ROUTINE_TEXT = {
   draftsOff: "초안 받지 말기",
   draftsOnHint: "새 리뷰가 오면 답글 초안을 미리 써 둬요",
   draftsOffHint: "리뷰 탭에서 [답글 초안 받기]를 누를 때만 써요",
+  alert: "나쁜 리뷰 바로 알림",
+  alertOn: "바로 알려 주기",
+  alertOff: "알리지 않기",
+  alertOnHint: "안 좋은 리뷰가 들어오면 바로 대화로 알려 드려요",
+  alertOffHint: "안 좋은 리뷰도 정기 보고·리뷰 탭에서만 봐요",
 } as const;
 export const FREQUENCY_TEXT: Array<[ReportFrequency, string]> = [
   ["daily", "매일"],

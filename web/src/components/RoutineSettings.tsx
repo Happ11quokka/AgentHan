@@ -79,7 +79,7 @@ export function RoutineSettings({ report, routines, onChange, onRunReport }: Pro
   const enabled = Boolean(report?.enabled);
   const schedule = routines?.report;
   const needsWeekday = schedule?.frequency === "weekly" || schedule?.frequency === "biweekly";
-  const count = routines ? Number(enabled) + Number(routines.drafts) : null;
+  const count = routines ? Number(enabled) + Number(routines.drafts) + Number(Boolean(routines.alert)) : null;
   const runButton = (
     <button type="button" className="ghost small" disabled={running} onClick={() => void run()}>
       {running ? REPORT_TEXT.running : REPORT_TEXT.runNow}
@@ -148,6 +148,18 @@ export function RoutineSettings({ report, routines, onChange, onRunReport }: Pro
                 onToggle={() => void change({ drafts: !routines.drafts })}
               />
             </Routine>
+            {routines.alert !== undefined && (
+              <Routine title={ROUTINE_TEXT.alert} hint={routines.alert ? ROUTINE_TEXT.alertOnHint : ROUTINE_TEXT.alertOffHint} on={routines.alert}>
+                <Switch
+                  label={ROUTINE_TEXT.alert}
+                  on={routines.alert}
+                  onText={ROUTINE_TEXT.alertOn}
+                  offText={ROUTINE_TEXT.alertOff}
+                  disabled={saving}
+                  onToggle={() => void change({ alert: !routines.alert })}
+                />
+              </Routine>
+            )}
           </>
         )}
       </ul>

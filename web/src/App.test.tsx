@@ -922,6 +922,19 @@ describe("답글 대기함", () => {
     const hidden = await openInbox(fakeApi(), { demo: false });
     expect(hidden.panel.queryByRole("button", { name: "새 리뷰 도착 (데모)" })).not.toBeInTheDocument();
   });
+
+  test("새 리뷰가 안 좋으면 비서 알림이 바로 대화에 온다 (나쁜 리뷰 바로 알림)", async () => {
+    const { user, api, panel } = await openInbox(fakeApi(), { demo: true });
+    const ALERT = {
+      id: "alert-1",
+      role: "agent" as const,
+      text: "안 좋은 리뷰가 방금 들어왔어요 (★2)\n“포장이 찌그러져서 왔어요”\n답글로 바로 마음을 전해 보세요.",
+      next_actions: [{ action_id: "review.draft_reply", label: "답글 초안 받기", args: { review_id: "sim-01" } }],
+    };
+    api.view.mockResolvedValueOnce({ place: SEED, pending: [], messages: [ALERT] });
+    await user.click(panel.getByRole("button", { name: "새 리뷰 도착 (데모)" }));
+    expect(await screen.findByText(/안 좋은 리뷰가 방금 들어왔어요/)).toBeInTheDocument();
+  });
 });
 
 describe("홈 루틴 설정 (#33)", () => {

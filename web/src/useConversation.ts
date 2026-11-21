@@ -60,6 +60,8 @@ export type Conversation = {
   routines: Routines | null;
   /** 루틴 설정 스위치·일정을 바꾼다. 대화 턴이 아니다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   changeRoutines: (change: RoutinesChange) => Promise<string | null>;
+  /** 세션 조회를 바로 다시 읽는다(리뷰 도착 직후 비서 알림 받기). 실패는 조용히 넘긴다. */
+  refresh: () => Promise<void>;
 };
 
 let nextId = 1;
@@ -327,6 +329,14 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     return () => clearInterval(timer);
   }, [api, sessionId, reportPollMs, absorb]);
 
+  const refresh = useCallback(async () => {
+    if (!sessionId) return;
+    await api
+      .view(sessionId)
+      .then(absorb)
+      .catch(() => undefined);
+  }, [api, sessionId, absorb]);
+
   const openCoupon = useCallback((initial?: CouponInput) => setCouponForm(initial ?? blankCoupon()), []);
   const closeCoupon = useCallback(() => setCouponForm(null), []);
 
@@ -390,6 +400,6 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
     send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
-    routines, changeRoutines,
+    routines, changeRoutines, refresh,
   };
 }

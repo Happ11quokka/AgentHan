@@ -90,10 +90,12 @@ class ReportRoutine(BaseModel):
 
 
 class Routines(BaseModel):
-    """사이드카 루틴 설정(#33). report: 리뷰 정기 보고, drafts: 답글 초안 미리 쓰기."""
+    """사이드카 루틴 설정(#33). report: 리뷰 정기 보고, drafts: 답글 초안 미리 쓰기,
+    alert: 나쁜 리뷰 바로 알림."""
 
     report: ReportRoutine | None = None
     drafts: bool | None = None
+    alert: bool | None = None
 
 
 class Session:
@@ -193,6 +195,8 @@ class Session:
             # 사이드카 루틴 설정(#33): 화면 스위치·주기·시각 선택이 보여 줄 지금 값
             "routines": {
                 "drafts": self.drafts,
+                # 나쁜 리뷰 바로 알림: 리뷰가 들어오면 안 좋은 리뷰를 비서가 먼저 알린다
+                "alert": settings.get("alert", "negative") != "none",
                 "report": {k: settings.get(k) for k in ("enabled", "frequency", "weekday", "time")},
             },
         }
@@ -340,6 +344,7 @@ def create_app(
         with session.lock:
             store = session.assistant.store
             review_id = inbox.inbox_of(session.assistant).simulate_review(store)
+            session.routine.on_new_review(review_id)  # 리뷰 도착 트리거: 나쁜 리뷰면 바로 알림
             # 초안 미리 쓰기가 꺼져 있으면 사장님이 카드에서 [답글 초안 받기]를 누를 때까지 둔다
             job = claim_drafts(session, [review_id]) if session.drafts else None
             view = inbox.annotate(session.assistant, screens.reviews(store.read()))
@@ -359,6 +364,8 @@ def create_app(
                     session.routine.update(body.report.model_dump())
                 except ValueError as error:
                     raise HTTPException(400, "보고 시각을 확인해 주세요.") from error
+            if body.alert is not None:
+                session.routine.set_alert(body.alert)
             if body.drafts is not None:
                 if body.drafts and not session.drafts:
                     job = claim_drafts(session)

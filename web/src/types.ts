@@ -112,9 +112,11 @@ export type Suggestions = { end: string; items: Suggestion[] };
 
 export type ReportFrequency = "daily" | "weekly" | "biweekly" | "monthly";
 
-/** 사이드카 루틴 설정(#33): 리뷰 정기 보고 일정과 답글 초안 미리 쓰기 켜짐 여부. */
+/** 사이드카 루틴 설정(#33): 리뷰 정기 보고 일정, 답글 초안 미리 쓰기, 나쁜 리뷰 바로 알림 켜짐 여부.
+ * alert: 예전 서버 응답에는 없다. */
 export type Routines = {
   drafts: boolean;
+  alert?: boolean;
   report: { enabled: boolean; frequency: ReportFrequency | null; weekday: string; time: string };
 };
 
@@ -122,6 +124,7 @@ export type Routines = {
 export type RoutinesChange = {
   report?: Partial<{ enabled: boolean; frequency: ReportFrequency; weekday: string; time: string }>;
   drafts?: boolean;
+  alert?: boolean;
 };
 
 /** review_report·messages·routines: 예전 서버 응답에는 없다. */
