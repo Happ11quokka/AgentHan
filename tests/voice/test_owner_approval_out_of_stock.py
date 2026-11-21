@@ -19,7 +19,8 @@ from agenthan.core.contracts import Order, OrderLine
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import ApprovalRequest, OwnerDecision
-from agenthan.voice.owner.hub import OwnerEvent, OwnerHub, UnknownCard
+from agenthan.voice.owner.decisions import decision_of
+from agenthan.voice.owner.hub import AlreadyDecided, OwnerEvent, OwnerHub, UnknownCard
 
 NOW = datetime.fromisoformat("2026-11-08T16:02:00+09:00")
 LATER = datetime.fromisoformat("2026-11-08T16:02:07+09:00")
@@ -229,3 +230,67 @@ def test_a_swapped_order_confirmed_without_a_screen_becomes_an_automatic_accept(
     assert _menus(card) == [("m02", 1), ("m04", 1)]
     assert [item["menu_id"] for item in card["sold_out"]] == ["m01"]
     assert [kind for kind, _ in _texts(hub)] == ["order"]  # 취소 문자는 없다
+
+
+# --- 늦춘 수락(티켓 04)과 함께 ---------------------------------------------------------------
+
+
+def test_out_of_stock_is_refused_once_the_card_is_a_delayed_accept() -> None:
+    """늦춘 수락 뒤(손님이 바뀐 시각을 듣는 중·통화 뒤)에는 재료 소진 거절도 409, 품절도 안 건다."""
+    asking = _hub()
+    _requested(asking)
+    asking.accept("call-1", delay_min=15)  # 통화 중: delay_reply asking
+    with pytest.raises(AlreadyDecided):
+        asking.reject("call-1", "out_of_stock", menu_ids=["m01"])
+
+    after = _hub()
+    _requested(after)
+    after.call_ended("call-1", "hangup")
+    after.accept("call-1", delay_min=30)  # 통화 뒤 늦춘 수락
+    with pytest.raises(AlreadyDecided):
+        after.reject("call-1", "out_of_stock", menu_ids=["m01"])
+
+    for hub in (asking, after):
+        assert hub.sold_out_today() == frozenset()
+        (card,) = asyncio.run(_snapshot(hub))["orders"]
+        assert (card["status"], card["reject_reason"], card["sold_out"]) == ("accepted", "", [])
+
+
+def test_the_rest_accept_is_recorded_with_the_reduced_order() -> None:
+    """떨어진 메뉴만 뺀 확정: 결정 기록(`decision_of`)은 accepted + 남은 메뉴의 주문서."""
+    sink = Recorded()
+    hub = _hub(sink=sink)
+    _requested(hub)
+    hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+
+    hub.submit(_order(NAPOLEON))
+    hub.call_ended("call-1", "confirmed")
+
+    (card,) = asyncio.run(_snapshot(hub))["orders"]
+    record = decision_of(card, _order(NAPOLEON))
+    assert record is not None
+    assert (record.owner_status, record.reject_reason, record.owner_pickup_time) == (
+        "accepted", "", "")
+    last = sink.decisions[-1]
+    assert (last.owner_status, last.reject_reason) == ("accepted", "")
+    assert last.order is not None and last.order.lines == [NAPOLEON]
+
+
+def test_today_sold_out_outlives_the_call_for_the_next_one() -> None:
+    """통화가 남은 메뉴로 끝나도(또는 늦춘 수락이 이어져도) 오늘 품절은 다음 통화에 그대로다."""
+    hub = _hub()
+    _requested(hub)
+    hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    hub.submit(_order(NAPOLEON))
+    hub.call_ended("call-1", "confirmed")
+
+    hub.call_started("call-2")
+    hub.open_approval("call-2", ApprovalRequest(1, Order(
+        id="call-2", lines=[NAPOLEON], pickup_time="2026-11-08T19:00:00+09:00",
+        status="confirmed", created_at="2026-11-08T16:10:00+09:00")), [].append)
+    hub.accept("call-2", delay_min=15)
+    hub.call_ended("call-2", "hangup")
+
+    assert hub.sold_out_today() == {"m01"}
+    assert asyncio.run(_snapshot(hub))["sold_out"]["items"] == [
+        {"menu_id": "m01", "name_ko": "메도빅", "name_owner": "Медовик"}]
