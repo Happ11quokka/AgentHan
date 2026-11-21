@@ -4,7 +4,8 @@
 // 손님 요청은 번역(Papago) + 한국어 원문 + 배지(한국어 원문 규칙). 번역이 오면 같은 카드가 다시 와서 덮어쓴다.
 // 고정 문구는 `ownerText.ts` 사전. 화면 아래에 Papago 표기(이용 조건).
 // 통화 카드(티켓 02): 맨 위 줄에 통화 중 카드, 그 아래 "손님 연락 필요"(넘김)·회색 미완료 카드(닫기 버튼).
-// 알림 소리·깜빡임·리마인드·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
+// 알림 소리·깜빡임·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
+// 확인 대기 카드가 남아 있으면 몇 초마다 다시 울리고 깜빡인다(주문 승인 티켓 08, 예전 1분 리마인드 대체).
 // 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
 // 티켓 06: 시간 초과·통화 끝 카드도 남아 답을 받는다. 질문 카드는 접혀 오고, 사장님이 눌러 펼칠 때만
 // 열람을 알린다(리뷰 P4: 화면이 켜져 있는 것만으로는 "사장님이 보고 계세요"를 보내지 않는다).
@@ -144,7 +145,7 @@ export default function OwnerPage() {
   const chime = useRef<OrderChime | null>(null)
   const releaseWake = useRef<(() => void) | null>(null)
   const [sound, setSound] = useState<Sound>('locked')
-  /** 리마인드가 울린 주문 id. 그 카드를 한 번 더 깜빡인다 */
+  /** 반복 알림 때 다시 깜빡일 확인 대기 주문 id (반복마다 비었다 찼다 한다, 주문 승인 티켓 08) */
   const [reminded, setReminded] = useState<ReadonlySet<string>>(new Set())
   const [now, setNow] = useState(() => Date.now())
   const alerts = useRef<OrderAlerts | null>(null)
@@ -153,11 +154,10 @@ export default function OwnerPage() {
 
   useEffect(() => {
     const current = new OrderAlerts({
-      onArrive: () => chime.current?.play(),
-      onRemind: (id) => {
-        chime.current?.play()
-        setReminded((ids) => new Set(ids).add(id))
-      },
+      ring: () => chime.current?.play(),
+      soundOn: () => chime.current !== null,
+      // 반복마다 대기 카드 깜빡임을 다시 튼다(클래스를 켰다 껐다 하면 애니메이션이 처음부터 돈다)
+      onRepeat: (ids) => setReminded((prev) => (prev.size > 0 ? new Set() : new Set(ids))),
     })
     alerts.current = current
     return () => {
