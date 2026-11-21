@@ -6,10 +6,11 @@
   "questions": [...], "captions": [...], "knowledge": [...], "now": 허브 시각}`), 그 뒤
   `order.update`·`call.update`·`call.caption`·`owner.question`·`owner.question.update`·
   `knowledge.update`(카드 전체)
-- `POST /api/owner/orders/{id}/accept?key=…` 본문(선택) `{"delay_min": 0}`: 확인 대기 주문 수락
-  (new → accepted, 주문 승인 티켓 02). 확정 문자를 보내고 통화 중이면 손님이 마무리를 듣는다.
-  바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나 손님이 고치는 중·취소한 요청은 409,
-  0이 아닌 늦춘 분은 422(티켓 04)
+- `POST /api/owner/orders/{id}/accept?key=…` 본문(선택) `{"delay_min": 0|15|30}`: 확인 대기 주문
+  수락 (new → accepted, 주문 승인 티켓 02). 확정 문자를 보내고 통화 중이면 손님이 마무리를 듣는다.
+  15·30은 늦춘 수락(티켓 04): 통화 중이면 손님이 바뀐 시각을 듣고 답한다(문자는 "네" 뒤), 통화
+  뒤면 늦춘 수락 문자가 바로 간다. 바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나 손님이
+  고치는 중·취소한 요청은 409, 그 밖의 늦춘 분은 422
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 - `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}` 또는
@@ -105,9 +106,10 @@ class KnowledgeSave(BaseModel):
 
 
 class AcceptBody(BaseModel):
-    """수락 버튼(주문 승인 티켓 02). 늦춘 분은 지금 0만 받는다(티켓 04가 15·30을 연다)."""
+    """수락 버튼(주문 승인 티켓 02). 늦춘 분 15·30은 [+15분] [+30분] (티켓 04)."""
 
-    delay_min: Literal[0] = 0
+    delay_min: Literal[0, 15, 30] = 0
+
 
 
 class AnswerBody(BaseModel):

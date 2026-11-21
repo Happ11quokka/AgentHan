@@ -1426,7 +1426,12 @@ class CallSession:
         if result.knowledge_requests:
             self._pass_on(turn, result.knowledge_requests)
         if result.order is not None:
-            if result.order.status == "confirmed" and not self._approval_decided():
+            view = self._approval_view
+            if (result.order.status == "confirmed" and view is not None
+                    and view.status == "delayed"):
+                # 늦춘 시각에 손님이 "네" (티켓 04): 늦춰 수락된 확정
+                self._approval_view = replace(view, status="accepted")
+            elif result.order.status == "confirmed" and not self._approval_decided():
                 self._approval_view = ApprovalView("skipped")  # 확인 없이 바로 확정(승인 건너뜀)
             if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
                 self._sink.submit(result.order)
@@ -2296,12 +2301,20 @@ class CallSession:
         상태는 확인 대기로 남는다. 허브는 같은 id의 확인 카드를 그대로 두고, 통화 끝 알림으로
         통화 뒤 대기(요청 연 때부터 5분)로 넘긴다. 손님이 대기 중에 고치거나 취소한 요청은 이미
         닫혀 넘기지 않는다. `_end`가 대기를 비우기 전에 한 번 부른다.
+
+        사장님이 늦춰 수락했고 손님이 바뀐 시각에 답하지 않은 채 끝났을 때(끊음·무응답, 티켓 04)도
+        그 주문서(원래 시각)를 넘긴다. 허브가 통화 뒤 늦춘 수락처럼 문자를 보낸다.
         """
         wait, request = self._owner_wait, self._approval_sent
         self._approval_sent = None
-        if (wait is None or request is None or wait.key != ("approval", request.number)
-                or self.smoke):
+        if request is None or self.smoke:
             return
+        view = self._approval_view
+        offered = (view is not None and view.status == "delayed"
+                   and view.number == request.number)
+        if not offered and (wait is None or wait.key != ("approval", request.number)):
+            return
+
         try:
             self._sink.submit(request.order)
         except Exception:
@@ -2499,11 +2512,15 @@ class CallSession:
 
 # 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). waiting: 사장님 확인 중.
 # 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) ·
-# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정). 늦춘 수락 제안·거절·
-# 자동 취소(티켓 04~07)는 새 값으로 더한다. 모르는 값은 손님 화면이 배지 없이 둔다
-ApprovalStatus = Literal["waiting", "accepted", "timeout", "withdrawn", "skipped"]
+# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · delayed(사장님이
+# `delay_min`분 늦춰 수락해 손님에게 바뀐 시각을 묻는 중, 티켓 04. "네"면 accepted + `delay_min`,
+# "아니요"면 withdrawn cancelled). 거절(티켓 05~06)은 새 값으로 더한다. 모르는 값은 손님 화면이 배지
+# 없이 둔다
+ApprovalStatus = Literal["waiting", "accepted", "delayed", "timeout", "withdrawn", "skipped"]
 # 사장님 결정 종류 → 손님 화면 상태. 표에 없는 새 결정 종류는 이름을 그대로 싣는다
-_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "timeout": "timeout"}
+_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "delay": "delayed",
+                                    "timeout": "timeout"}
+
 
 
 @dataclass(frozen=True)

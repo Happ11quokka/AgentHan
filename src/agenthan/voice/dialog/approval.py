@@ -8,8 +8,12 @@
 요청 번호는 통화 안에서 1부터 센다. 손님이 기다리는 중에 주문을 고치면 요청을 거두고, 다시
 복창한 뒤 새 번호로 연다. 거둔 번호에 온 결정은 버린다(낡은 결정).
 
-결정 종류: 수락(accept, 늦춘 분 `delay_min`은 티켓 04가 0이 아닌 값을 쓴다)과 시간 초과(timeout,
-세션이 통화 중 대기 시간이 지나면 넣는다). 늦춘 수락·거절(티켓 04~06)은 이 목록과 필드를 넓힌다.
+결정 종류: 수락(accept), 늦춘 수락(delay, `delay_min` 15·30분, 티켓 04)과 시간 초과(timeout,
+세션이 통화 중 대기 시간이 지나면 넣는다). 거절(티켓 05~06)은 이 목록과 필드를 넓힌다.
+
+늦춘 수락은 통화 중이면 손님에게 바뀐 시각을 묻는다("사장님이 7시 15분에 준비 가능하시대요.
+괜찮으세요?"). "네"면 그 시각으로 확정, "아니요"면 주문 취소다(다른 시각 협상은 없다). 취소면
+엔진이 그 요청 번호를 취소(cancelled)로 거둔다(`ApprovalWithdrawn`). 사장님 카드가 취소로 바뀐다.
 """
 
 from __future__ import annotations
@@ -19,8 +23,10 @@ from typing import Literal
 
 from agenthan.core.contracts import Order
 
-# 사장님 결정 종류. 사장님 화면 수락(accept)과 세션이 넣는 시간 초과(timeout)
-DecisionKind = Literal["accept", "timeout"]
+# 사장님 결정 종류. 사장님 화면 수락(accept)·늦춘 수락(delay)과 세션이 넣는 시간 초과(timeout)
+DecisionKind = Literal["accept", "delay", "timeout"]
+# 사장님이 고를 수 있는 늦춘 분 (사장님 화면 [+15분] [+30분], 티켓 04). 0은 그냥 수락
+ACCEPT_DELAYS: tuple[int, ...] = (0, 15, 30)
 # 엔진이 확인 요청을 거둔 이유: 손님이 주문을 고침(changed) · 손님이 주문을 취소함(cancelled)
 WithdrawReason = Literal["changed", "cancelled"]
 
@@ -40,7 +46,7 @@ class OwnerDecision:
 
     request: int  # `ApprovalRequest.number`
     kind: DecisionKind
-    delay_min: int = 0  # 늦춘 수락의 분 (티켓 04). 지금은 0
+    delay_min: int = 0  # 늦춘 수락(delay)의 분 15·30 (티켓 04). 그 밖의 결정은 0
 
 
 @dataclass(frozen=True)

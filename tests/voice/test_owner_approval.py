@@ -214,10 +214,11 @@ def test_a_snapshot_carries_the_waiting_card_and_the_hub_clock() -> None:
     assert snapshot["now"] == NOW.isoformat()  # 화면이 남은 시간을 이 시계로 잰다
 
 
-def test_accept_refuses_unknown_cards_and_a_delay_for_now() -> None:
+def test_accept_refuses_unknown_cards_and_delays_other_than_15_or_30() -> None:
     hub = _hub()
     with pytest.raises(UnknownCard):
         hub.accept("nope")
     hub.open_approval("call-1", ApprovalRequest(1, _order()), lambda d: None)
     with pytest.raises(ValueError):
-        hub.accept("call-1", delay_min=15)  # 늦춘 수락은 티켓 04
+        hub.accept("call-1", delay_min=20)  # 늦춘 분은 [+15분] [+30분]뿐 (티켓 04)
+
