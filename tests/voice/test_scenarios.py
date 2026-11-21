@@ -48,12 +48,18 @@ APPROVAL = [  # 주문 승인 티켓 11: 가게 승인 시나리오 4개 (엔진
 # 통화 중 대기를 켠 승인 시나리오 (통화 중 결정 경로가 깨지지 않았는지, 티켓 04)
 IN_CALL = APPROVAL[:4]
 
-COUPON = [  # 쿠폰 티켓 09: 적용 복창·모자람(쿠폰 말 없음)·기간 밖·고쳐서 빠짐·주문 현황
+COUPON = [  # 쿠폰 티켓 09: 적용 복창·모자람(권유 거절, 티켓 10)·기간 밖·고쳐서 빠짐·주문 현황
     "s45-coupon-applied-readback",
     "s46-coupon-short-plain-readback",
     "s47-coupon-out-of-period",
     "s48-coupon-dropped-after-fix",
     "s49-coupon-order-status",
+    # 쿠폰 티켓 10: 금액이 모자랄 때 권유 (수락·다른 메뉴로 채움·거절·채울 메뉴 없음·복창 뒤 빠짐)
+    "s50-coupon-offer-accepted",
+    "s51-coupon-offer-other-menu",
+    "s52-coupon-offer-declined-once",
+    "s53-coupon-offer-no-menu-fills",
+    "s54-coupon-dropped-after-offer",
     # 쿠폰 티켓 11: 쿠폰 문의(적용·부족·빈 장바구니). 쿠폰 없는 가게 문의(s63)는 아래 목록에만
     "s60-coupon-question-applied",
     "s61-coupon-question-short",

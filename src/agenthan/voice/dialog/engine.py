@@ -48,7 +48,13 @@ from agenthan.voice.dialog.answerer import (
 )
 from agenthan.voice.dialog.approval import ApprovalRequest, ApprovalWithdrawn, OwnerDecision
 from agenthan.voice.dialog.cart import Cart, CartLine
-from agenthan.voice.dialog.coupons import Applied, Coupon, CouponResult, Shortfall, check_coupons
+from agenthan.voice.dialog.coupons import (
+    Applied,
+    Coupon,
+    CouponResult,
+    Shortfall,
+    check_coupons,
+)
 from agenthan.voice.dialog.knowledge import KnowledgeKey, KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.menu_info import MenuAnswer, menu_answer
 from agenthan.voice.dialog.options import find_options
@@ -104,6 +110,9 @@ MAX_OWNER_QUESTIONS = 2
 _REJECT_LABEL = {"busy": "바쁨", "closed": "가게 사정", "free": "사장님 글",
                  "out_of_stock": "재료 소진"}
 MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hcx.py` `_qty`)와 같다
+# 쿠폰 권유(쿠폰 티켓 10)에 이만큼째 못 알아듣거나 말이 없으면 권유를 접고 쿠폰 없이 복창한다.
+# 한 번은 평소처럼 다시 묻는다
+COUPON_OFFER_TRIES = 2
 
 # 손님과 대화 중인 상태. 전역 규칙(취소·사장님 연결·메뉴 질문)을 받는다.
 _ACTIVE = (State.ORDERING, State.CLARIFY, State.ASK_PICKUP, State.CONFIRM)
@@ -256,6 +265,17 @@ class _StockOut:
 
 
 @dataclass(frozen=True)
+class _CouponOffer:
+    """복창 직전에 쿠폰 권유("…더 담으실까요?")를 하고 답을 기다린다 (쿠폰 티켓 10).
+
+    `DialogEngine._coupon_offer`. 상태는 ORDERING이다. 답은 `_on_coupon_offer_answer`가 받는다.
+    """
+
+    suggest: MenuItem | None  # "네"면 하나 담을 메뉴. 메뉴 이름 없는 권유면 None
+    question: str  # 지금 기다리는 질문. 되물을 때 다시 한다
+
+
+@dataclass(frozen=True)
 class _OptionPending:
     """CLARIFY가 필수 옵션 답을 기다린다 (티켓 03). `DialogEngine._pending`에 들어간다."""
 
@@ -289,7 +309,8 @@ SNAPSHOT_FIELDS: dict[str, SnapshotKind] = {
     "_owner_timed_out": "value", "_owner_seen_said": "value",
     "_approval_open": "value", "_approvals": "value", "_cancel_withdrawn": "value",
     "_delay_offer": "value",
-    "_stock_out": "value", "_coupon_offered": "value",
+    "_stock_out": "value",
+    "_coupon_offer": "value", "_coupon_offered": "value",
     "_transcript": "copy", "_pending": "copy",
 }
 
@@ -420,6 +441,10 @@ class DialogEngine:
         self._delay_offer: _DelayOffer | None = None
         # 티켓 06. 재료 소진 거절 뒤 손님 답("빼고"·"바꾸고")을 기다리는 중 (`_StockOut`)
         self._stock_out: _StockOut | None = None
+        # 쿠폰 티켓 10. 쿠폰 권유를 이 통화에서 이미 했다(복창 전 권유, 또는 티켓 11의 쿠폰 문의
+        # 답). 권유는 통화당 한 번이다. `_coupon_offer`는 지금 그 답을 기다리는 권유
+        self._coupon_offered = False
+        self._coupon_offer: _CouponOffer | None = None
 
     # ------------------------------------------------------------ 진입점
 
@@ -538,6 +563,11 @@ class DialogEngine:
         if self._state is State.DONE:
             return self._result(turn)
         self._no_input += 1
+        if self._coupon_offer is not None and self._no_input >= COUPON_OFFER_TRIES:
+            # 쿠폰 권유에 끝내 답이 없다. 권유를 접고 쿠폰 없이 복창한다 (쿠폰 티켓 10)
+            self._say(turn, templates.hello_again())
+            self._drop_coupon_offer(turn)
+            return self._result(turn)
         if self._no_input >= MAX_NO_INPUT:
             self._pending = None
             self._cancel_resume = None
@@ -862,6 +892,8 @@ class DialogEngine:
             return  # 확인 대기 중 그 밖의 말: 턴 끝에 "확인 중이에요, 잠시만요." (`_finish`)
         if self._stock_out is not None and self._on_stock_out_answer(turn, act):
             return
+        if self._coupon_offer is not None and self._on_coupon_offer_answer(turn, act):
+            return
         handler = _HANDLERS.get((self._state, act.type), DialogEngine._on_unhandled)
         handler(self, turn, act)
 
@@ -904,8 +936,9 @@ class DialogEngine:
                     self._ask(turn, templates.ask_order())
                 else:
                     self._ask(turn, templates.anything_else())
-        if turn.pickup_items and self._state is not State.ORDERING:
-            self._finish_pickup_items(turn)
+        if turn.pickup_items and (self._state is not State.ORDERING
+                                  or self._coupon_offer is not None):
+            self._finish_pickup_items(turn)  # 같은 턴의 시각으로 쿠폰 권유까지 갔어도 되받는다
         if turn.unhandled and not turn.asked and self._state not in TERMINAL:
             self._say(turn, templates.not_understood())
             # 확인을 기다리는 중이면 복창을 다시 하지 않는다(손님이 "네"로 또 답한다, 리뷰 4번).
@@ -1013,7 +1046,7 @@ class DialogEngine:
             stale, self._pickup = self._pickup, None
             self._state = State.ASK_PICKUP
             self._apply_verdict(turn, judge_pickup(PickupParse(stale), turn.now, self._config))
-        else:
+        elif not self._offer_coupon(turn):
             self._state = State.CONFIRM
             self._fixing = False
             self._ask_readback(turn)
@@ -1158,6 +1191,8 @@ class DialogEngine:
                 return templates.approval_delayed(self._delay_offer.at)
             if self._state is State.ORDERING and self._stock_out is not None:
                 return self._stock_out.question  # 재료 소진 질문을 다시 (티켓 06)
+            if self._state is State.ORDERING and self._coupon_offer is not None:
+                return self._coupon_offer.question  # 쿠폰 권유를 다시 (쿠폰 티켓 10)
             if self._state is State.ORDERING:
                 if self._fixing:  # 복창에 "아니요" 뒤. 고칠 것을 다시 묻는다 (티켓 06)
                     return templates.ask_what_to_fix()
@@ -1178,6 +1213,8 @@ class DialogEngine:
         """지금 손님 답을 기다리는 슬롯. 같은 슬롯의 실패만 이어서 센다."""
         if self._cancel_resume is not None:
             return "cancel"
+        if self._coupon_offer is not None:
+            return "coupon"
         if self._state is State.CLARIFY:
             return "option" if isinstance(self._pending, _OptionPending) else "order"
         return {State.ASK_PICKUP: "pickup", State.CONFIRM: "confirm"}.get(self._state, "order")
@@ -1215,6 +1252,8 @@ class DialogEngine:
             self._give_up(turn, "slot_failures")
         elif self._over_call_limit():
             self._give_up(turn, "call_failures")
+        elif turn.failed == "coupon" and self._fail_count >= COUPON_OFFER_TRIES:
+            self._drop_coupon_offer(turn)
         elif self._fail_count == HINT_AT_FAILURE and turn.lost:
             self._say_hint(turn)
 
@@ -2315,6 +2354,94 @@ class DialogEngine:
         self._pickup_offer = at
         self._pickup_offer_question = question
         self._ask(turn, question)
+
+    # ------------------------------------------------------------ 쿠폰 권유 (쿠폰 티켓 10)
+    #
+    # 복창 직전(`_advance`)에 쿠폰 계산이 "부족"이면 한 번 권한다: "전화 주문 1,000원 할인 쿠폰이
+    # 있는데 2,500원이 부족해요. 아메리카노 하나 더 하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더
+    # 담으실까요?" 상태는 ORDERING으로 돌아가고 답을 기다린다(`_coupon_offer`).
+    # - "네" → 권한 메뉴를 하나 담고 복창한다(쿠폰이 들어간다)
+    # - 메뉴를 말하면(담기·고치기·빼기·시각) 평소처럼 처리하고 복창한다. 채웠으면 쿠폰이 들어간다
+    # - "아니요"·"그게 다예요" → 장바구니 그대로 쿠폰 없이 복창한다
+    # - 질문·취소·사장님 연결은 평소처럼. 답한 뒤 권유를 다시 한다
+    # - 못 알아들음·무응답은 한 번 다시 묻고, 두 번째(`COUPON_OFFER_TRIES`)면 쿠폰 없이 복창한다
+    # 권유는 통화당 한 번(`_coupon_offered`)이고, 첫 복창 전에만 한다. 복창 뒤 주문을 고쳐 금액이
+    # 모자라지면 권하지 않고 쿠폰이 빠진 금액으로 다시 복창한다(spec "쿠폰" 대화 흐름).
+
+    def _offer_coupon(self, turn: _Turn) -> bool:
+        """복창 직전. 쿠폰 계산이 "부족"이고 권할 수 있으면 권유를 하고 True(복창하지 않는다).
+
+        권할 메뉴(쿠폰 계산 결과)를 하나 더하면 주문 한도(`max_order_qty`·`max_order_total`)를
+        넘으면 메뉴 이름 없이 권한다. 부족액만큼 더 담는 것도 한도를 넘으면 권하지 않는다.
+        """
+        if self._coupon_offered or self._read_back:
+            return False
+        coupon = self._coupon(self._order_day(turn.now))
+        if not isinstance(coupon, Shortfall):
+            return False
+        suggest = coupon.suggest
+        limits = (self._config.max_order_qty, self._config.max_order_total)
+        if suggest is not None and self._cart.add(suggest).over_limit(*limits) is not None:
+            suggest = None
+        if suggest is None and not self._room_for(coupon.short):
+            return False
+        question = templates.coupon_offer(
+            coupon.coupon.title, coupon.short, None if suggest is None else suggest.name_ko)
+        self._coupon_offered = True
+        self._coupon_offer = _CouponOffer(suggest, question)
+        self._state = State.ORDERING
+        self._ask(turn, question, force=True)
+        return True
+
+    def _room_for(self, amount: int) -> bool:
+        """`amount`원어치를 한 개 이상 더 담아도 주문 한도 안인가 (메뉴 이름 없는 권유)."""
+        max_qty, max_total = self._config.max_order_qty, self._config.max_order_total
+        if 0 < max_qty < self._cart.total_qty() + 1:
+            return False
+        return not 0 < max_total < self._cart.total() + amount
+
+    def _on_coupon_offer_answer(self, turn: _Turn, act: Act) -> bool:
+        """쿠폰 권유의 답. 처리했으면 True, 평소 처리기로 넘길 act(질문·취소 등)면 False."""
+        offer = self._coupon_offer
+        assert offer is not None
+        if self._state is not State.ORDERING:
+            self._coupon_offer = None
+            return False
+        if act.type == "yes":
+            if offer.suggest is None:
+                if offer.question == templates.ask_order():
+                    return False  # "어떤 걸로 드릴까요?"에 또 "네": 평소처럼 못 알아들음
+                # 메뉴 이름 없는 권유에 "네": 무엇을 담을지 묻는다. 메뉴를 말하면 바로 복창한다
+                self._coupon_offer = replace(offer, question=templates.ask_order())
+                self._ask(turn, templates.ask_order())
+                return True
+            self._coupon_offer = None
+            self._add_to_cart(turn, offer.suggest, Act("add_item", menu_text=offer.suggest.name_ko))
+            turn.done_ordering = True
+            return True
+        if act.type in ("no", "done_ordering"):
+            self._coupon_offer = None
+            turn.done_ordering = True
+            return True
+        if act.type in ("add_item", "change_qty", "remove_item", "set_option", "set_request",
+                        "set_pickup_time"):
+            self._coupon_offer = None
+            _HANDLERS[(State.ORDERING, act.type)](self, turn, act)
+            if self._state is not State.ORDERING:
+                return True  # 메뉴 되묻기가 열렸다. 답을 받은 뒤는 평소 주문 받기다
+            if turn.failed or turn.unhandled:
+                # 없는 메뉴·한도 초과 등으로 못 담았다. 안내 뒤 권유는 그대로 기다린다
+                self._coupon_offer = offer
+            else:
+                turn.done_ordering = True  # 더 담았다(또는 고쳤다). 다시 묻지 않고 복창한다
+            return True
+        return False
+
+    def _drop_coupon_offer(self, turn: _Turn) -> None:
+        """권유에 끝내 답이 없다(못 알아들음·무응답). 권유를 접고 쿠폰 없이 복창한다."""
+        self._coupon_offer = None
+        self._fail_key, self._fail_count = "", 0
+        self._advance(turn)
 
     # ------------------------------------------------------------ CONFIRM
 

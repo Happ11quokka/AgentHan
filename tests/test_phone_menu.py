@@ -37,8 +37,10 @@ MAX_MESSAGES = 500
 SESSIONS = "/assistant/sessions"
 
 
-def _order_script(*first: str) -> tuple[str, ...]:
-    return (*first, "그게 다예요", "6시 반이요", "네")
+def _order_script(*first: str, offer: bool = False) -> tuple[str, ...]:
+    """주문 → 주문 끝 → 6시 반 → (복창에) "네". `offer`면 금액이 파일럿 쿠폰의 최소 주문
+    금액(10,000원)에 모자라 복창 전에 쿠폰 권유가 나온다(쿠폰 티켓 10). "아니요"로 거절한다."""
+    return (*first, "그게 다예요", "6시 반이요", *(("아니요",) if offer else ()), "네")
 
 
 def _client(tmp_path: Path, replies: tuple[str, ...], **env: str) -> TestClient:
@@ -147,7 +149,7 @@ def _edit(client: TestClient, session: str, menu_id: str, **fields: Any) -> None
 
 def test_a_menu_added_in_the_assistant_is_ordered_on_the_next_call(tmp_path) -> None:
     """온보딩으로 더한 메뉴를 다음 통화가 그 이름·가격으로 받는다. 이름을 조금 틀려도 찾는다."""
-    script = ("쿠키수 하나요", "네", "그게 다예요", "6시 반이요", "네")
+    script = ("쿠키수 하나요", "네", "그게 다예요", "6시 반이요", "아니요", "네")
     with _client(tmp_path, script) as client:
         session = _session(client)
         added = client.post(f"{SESSIONS}/{session}/onboarding", json={
@@ -156,7 +158,7 @@ def test_a_menu_added_in_the_assistant_is_ordered_on_the_next_call(tmp_path) -> 
         assert added.status_code == 200
         cookie = _menu_id(client, session, "쿠키슈")
 
-        order, phone = _call(client, 5)
+        order, phone = _call(client, 6)
 
     assert "혹시 쿠키슈 말씀하신 거 맞으세요?" in phone.says()
     assert _lines(order) == [(cookie, 1, "")]
@@ -165,11 +167,11 @@ def test_a_menu_added_in_the_assistant_is_ordered_on_the_next_call(tmp_path) -> 
 
 
 def test_price_and_name_edits_reach_the_next_call(tmp_path) -> None:
-    with _client(tmp_path, _order_script("허니 메도빅 하나요")) as client:
+    with _client(tmp_path, _order_script("허니 메도빅 하나요", offer=True)) as client:
         session = _session(client)
         _edit(client, session, "m01", name="허니 메도빅", price=8000)
 
-        order, _ = _call(client, 4)
+        order, _ = _call(client, 5)
 
     assert _lines(order) == [("m01", 1, "")]
     assert order["total"] == 8000
@@ -189,7 +191,7 @@ def test_a_deleted_menu_is_not_on_the_phone_menu(tmp_path) -> None:
 
 
 def test_a_call_already_running_keeps_the_menu_it_started_with(tmp_path) -> None:
-    with _client(tmp_path, _order_script("메도빅 하나요")) as client:
+    with _client(tmp_path, _order_script("메도빅 하나요", offer=True)) as client:
         session = _session(client)
         with client.websocket_connect(WS_PATH) as ws:
             running = Phone(ws)
@@ -197,23 +199,23 @@ def test_a_call_already_running_keeps_the_menu_it_started_with(tmp_path) -> None
             running.say(1)
             running.played(1)
             _edit(client, session, "m01", price=9900)  # 통화 중에 가격을 고친다
-            before = running.order(4, start=2)
+            before = running.order(5, start=2)
 
-        after, _ = _call(client, 4)
+        after, _ = _call(client, 5)
 
     assert before["total"] == 7500  # 시작할 때의 가격으로 끝난다
     assert after["total"] == 9900
 
 
 def test_the_chat_that_saved_last_wins(tmp_path) -> None:
-    with _client(tmp_path, _order_script("메도빅 하나요")) as client:
+    with _client(tmp_path, _order_script("메도빅 하나요", offer=True)) as client:
         first, second = _session(client), _session(client)
         _edit(client, first, "m01", price=8000)
         _edit(client, second, "m01", price=8800)
-        assert _call(client, 4)[0]["total"] == 8800
+        assert _call(client, 5)[0]["total"] == 8800
 
         _edit(client, first, "m01", description="꿀 케이크")  # 먼저 대화가 다시 저장한다
-        assert _call(client, 4)[0]["total"] == 8000
+        assert _call(client, 5)[0]["total"] == 8000
 
 
 # ---------------------------------------------------------------- 기본 가게·빈 가게
@@ -222,10 +224,10 @@ def test_the_chat_that_saved_last_wins(tmp_path) -> None:
 def test_without_any_saved_chat_the_phone_takes_the_pilot_menu(tmp_path) -> None:
     """사장님 화면 없이 혼자 건 전화도 파일럿 가게 메뉴로 주문된다. 메뉴를 비운 시연 대화는
     전화 메뉴를 비우지 않는다."""
-    with _client(tmp_path, _order_script("피로시키 하나요")) as client:
-        assert _call(client, 4)[0]["total"] == 4500  # 대화가 하나도 없다
+    with _client(tmp_path, _order_script("피로시키 하나요", offer=True)) as client:
+        assert _call(client, 5)[0]["total"] == 4500  # 대화가 하나도 없다
         _session(client, menu="empty")  # 메뉴판 사진 시연: 메뉴를 비운 가게를 저장한다
-        order, phone = _call(client, 4)
+        order, phone = _call(client, 5)
 
     assert _lines(order) == [("m06", 1, "")]
     assert not any("따뜻하게" in text for text in phone.says())
@@ -243,9 +245,9 @@ def test_with_the_assistant_off_the_phone_keeps_its_own_store(tmp_path) -> None:
 
 def test_an_option_on_an_assistant_menu_is_a_request_the_owner_sees(tmp_path) -> None:
     """비서 메뉴에는 옵션이 없다: "아이스로 주세요"는 요청 사항, 금액 그대로, 온도를 묻지 않는다."""
-    script = _order_script("아메리카노 하나요", "아이스로 주세요")
+    script = _order_script("아메리카노 하나요", "아이스로 주세요", offer=True)
     with _client(tmp_path, script) as client:
-        order, phone = _call(client, 5)
+        order, phone = _call(client, 6)
         with client.stream("GET", f"/api/owner/stream?key={KEY}") as stream:
             snapshot = _first_sse(stream.iter_lines())
 
@@ -405,9 +407,9 @@ def test_after_a_restart_the_first_call_takes_the_last_published_menu(tmp_path, 
         session = _session(client)
         _edit(client, session, "m01", name="허니 메도빅", price=8000)
 
-    with _client(tmp_path / "after", _order_script("허니 메도빅 하나요"),
+    with _client(tmp_path / "after", _order_script("허니 메도빅 하나요", offer=True),
                  AGENTHAN_DB_URL=db) as client:
-        order, _ = _call(client, 4)
+        order, _ = _call(client, 5)
 
     assert _lines(order) == [("m01", 1, "")]
     assert order["total"] == 8000

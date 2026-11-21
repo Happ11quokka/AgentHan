@@ -278,7 +278,8 @@ def coupon_phrase(title: str) -> str:
 def coupon_offer(title: str, short: int, suggest_name: str | None) -> str:
     """쿠폰 금액이 모자랄 때 권하는 말 (쿠폰 티켓 10·11, spec "쿠폰").
 
-    복창 전 권유(티켓 10)와 쿠폰 문의의 부족 답(티켓 11)이 같이 쓴다. 권할 메뉴가 없으면 메뉴
+    복창 전 권유(티켓 10)와 쿠폰 문의의 부족 답(티켓 11)이 같이 쓴다. `short`는 부족액,
+    `suggest_name`은 한 개로 부족액을 채우는 권할 메뉴(쿠폰 계산 결과). 권할 메뉴가 없으면 메뉴
     이름 없이 모자란 금액만 말한다.
     """
     if suggest_name is None:
