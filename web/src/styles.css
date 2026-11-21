@@ -630,6 +630,39 @@ p {
   color: var(--ink-3);
 }
 
+/* 음식 사진 초안: 사장님이 메뉴 이름을 입력한다(#93). */
+.draft-name-input {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.draft-name-input input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.draft-name-input input:focus {
+  outline: 0;
+  border-color: var(--green);
+}
+
+.draft-name-input button {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-s);
+  font-weight: 600;
+}
+
 .draft-meta {
   display: flex;
   flex-wrap: wrap;
