@@ -2,7 +2,8 @@
 
 레시피 하나가 그림 하나다(`recipe(...)`로 만든다):
 
-- vessel: 잔 모양. VESSELS 중 하나(머그·커피잔·찻잔·유리잔·낮은 유리잔·손잡이 유리잔·테이크아웃 컵).
+- vessel: 잔 모양. VESSELS 중 하나(머그·커피잔·찻잔·유리잔·낮은 유리잔·손잡이 유리잔·테이크아웃 컵
+  ·에스프레소 잔).
 - liquid: 음료 색. 아래에서 위로 [색, 두께] 목록(층진 음료). 유리잔은 층이 보이고, 도자기 잔은
   맨 위 색만 보인다. foam: 맨 위 거품 색(없으면 거품 없음).
 - garnish: 고명. GARNISHES 중 이름 목록(레몬·베리·얼음·라떼아트·찻잎·꿀 …). 고명마다 그릴 자리
@@ -25,6 +26,7 @@ from agenthan.illustration.art.style import (
     ellipse,
     group,
     line,
+    num,
     path,
     plate,
     rect,
@@ -398,6 +400,103 @@ def _beans(s: Spot, _r: dict) -> Layers:
     return {"table": out}
 
 
+# ── 가까운 메뉴 고명(티켓 07) ──────────────────────────────────────────────────
+
+
+def _whipped(s: Spot, _r: dict) -> Layers:
+    """음료 위로 솟은 휘핑크림(핫초코·아인슈페너·스무디): 아래가 넓은 층층 봉우리."""
+    base, width = s.level, s.level_rx
+    peak = min(s.rim_y, s.level) - 34
+    tiers = ((0.0, 1.0), (0.25, 0.86), (0.5, 0.66), (0.72, 0.44), (0.9, 0.22))
+    out = []
+    for fy, fw in tiers:
+        y, rx = base + (peak - base) * fy, width * fw
+        out += [
+            ellipse(s.cx, y + 3, rx, rx * 0.36, "cream", shaded=True),
+            ellipse(s.cx, y, rx, rx * 0.34, "cream"),
+        ]
+    out.append(ellipse(s.cx - width * 0.2, base + (peak - base) * 0.5, 6, 3, "white", opacity=0.8))
+    return {"top": out}
+
+
+def _marshmallows(s: Spot, _r: dict) -> Layers:
+    out = []
+    for i, (dx, dy, angle) in enumerate(
+        ((-0.45, -0.1, -15), (-0.05, -0.4, 10), (0.38, -0.05, 25), (0.05, 0.3, -5), (-0.4, 0.4, 30))
+    ):
+        x, y = s.cx + dx * s.level_rx, s.level + dy * s.level_ry
+        fill = "berry_cream" if i % 2 else "white"
+        spin = f"rotate({angle} {num(x)} {num(y)})"
+        out += [
+            rect(x - 8, y - 4, 16, 12, fill, rx=4, shaded=True, transform=spin),
+            rect(x - 8, y - 6, 16, 10, fill, rx=4, transform=spin),
+        ]
+    return {"top": out}
+
+
+def _daisy(x, y, size, center="honey") -> str:
+    petals = [
+        ellipse(0, -9, 3.6, 7, "white", transform=f"rotate({angle})") for angle in range(0, 360, 40)
+    ]
+    return group([*petals, circle(0, 0, 4.5, center)], f"translate({x} {y}) scale({size})")
+
+
+def _chamomile(s: Spot, _r: dict) -> Layers:
+    """카모마일 꽃: 잔 옆에 두 송이, 찻물 위에 한 송이."""
+    x, y = s.table
+    return {
+        "table": [_daisy(x - 14, y + 2, 1.1), _daisy(x + 8, y - 8, 0.85)],
+        "top": [
+            group(
+                [_daisy(0, 0, 0.9, "herbal")],
+                f"translate({s.cx + s.level_rx * 0.3} {s.level}) scale(1 0.5)",
+            )
+        ],
+    }
+
+
+def _orange_rim(s: Spot, _r: dict) -> Layers:
+    return {"top": [citrus_wheel(s.cx - s.rx + 4, s.rim_y + 6, 24, "apricot", "custard")]}
+
+
+def _mango_cubes(s: Spot, _r: dict) -> Layers:
+    out = []
+    for i, (dx, dy) in enumerate(((-0.4, -0.1), (0.05, -0.35), (0.35, 0.15), (-0.1, 0.35))):
+        x, y = s.cx + dx * s.level_rx, s.level + dy * s.level_ry
+        spin = f"rotate({i * 20 - 15} {num(x)} {num(y)})"
+        out += [
+            rect(x - 7, y - 5, 14, 13, "apricot", rx=3, shaded=True, transform=spin),
+            rect(x - 7, y - 7, 14, 11, "apricot", rx=3, transform=spin),
+        ]
+    return {"top": out}
+
+
+def _blueberries(s: Spot, _r: dict) -> Layers:
+    span = s.bottom - s.level
+    top = [
+        _berry(s.cx + dx * s.level_rx, s.level + dy * s.level_ry, 6, "blueberry")
+        for dx, dy in ((-0.4, 0.0), (-0.1, -0.35), (0.2, 0.25), (0.45, -0.1))
+    ]
+    inside = [
+        _berry(s.cx + dx * s.level_rx, s.level + fy * span, 6, "blueberry")
+        for dx, fy in ((-0.35, 0.75), (0.3, 0.85))
+    ]
+    return {"inside": inside, "top": top}
+
+
+def _mint_sprig(s: Spot, _r: dict) -> Layers:
+    x, y = s.table
+    return {
+        "table": [
+            line(f"M{x - 26} {y + 8}L{x + 20} {y - 8}", "leaf_shade", 2.5),
+            _leaf(x - 24, y + 8, -40, 0.6),
+            _leaf(x - 8, y + 2, -120, 0.6),
+            _leaf(x + 4, y - 2, -30, 0.55),
+            _leaf(x + 18, y - 8, -140, 0.5),
+        ]
+    }
+
+
 GARNISHES: dict[str, Callable[[Spot, dict], Layers]] = {
     "steam": _steam,
     "latte_art": _latte_art,
@@ -421,6 +520,13 @@ GARNISHES: dict[str, Callable[[Spot, dict], Layers]] = {
     "honey_dipper": _honey_dipper,
     "vanilla": _vanilla,
     "beans": _beans,
+    "whipped": _whipped,
+    "marshmallows": _marshmallows,
+    "chamomile": _chamomile,
+    "orange_rim": _orange_rim,
+    "mango": _mango_cubes,
+    "blueberries": _blueberries,
+    "mint_sprig": _mint_sprig,
 }
 
 
@@ -677,6 +783,11 @@ VESSELS: dict[str, tuple[Glass | Porcelain | Takeaway, Callable]] = {
     "glass_mug": (Glass(116, 84, 202, 50, 47, 104, True, (62, 218)), _draw_glass),
     # 테이크아웃 컵
     "takeaway": (Takeaway(), _draw_takeaway),
+    # 작은 에스프레소 잔 + 받침(티켓 07)
+    "demitasse": (
+        Porcelain(122, 130, 48, 50, 30, False, (126, 180, 84), (198, 208)),
+        _draw_porcelain,
+    ),
 }
 
 
@@ -835,5 +946,126 @@ ILLUSTRATIONS: list[Illustration] = [
         recipe("tumbler", ["mors"], garnish=["cranberries", "mint"], card="card_mint"),
         aliases=("mors", "크랜베리 모르스"),
         keywords=("모르스", "크랜베리주스"),
+    ),
+    # ── 가까운 메뉴(티켓 07): 카페에 흔한 음료 변형 ──
+    _drink(
+        "drink_espresso", "에스프레소", "coffee",
+        recipe("demitasse", ["coffee"], foam="crema", garnish=["beans", "steam"]),
+        aliases=("espresso", "에스프레소 샷", "도피오", "리스트레토"),
+        keywords=("에스프레소", "espresso"),
+    ),
+    _drink(
+        "drink_hot_chocolate", "핫초코", "coffee",
+        recipe("mug", ["choco"], cup="cup_blue", garnish=["marshmallows", "steam"],
+               card="card_rose"),
+        aliases=("초코", "핫 초코", "코코아", "hot chocolate", "초코 음료"),
+        keywords=("핫초코", "핫초콜릿", "핫초콜렛", "코코아", "초코라떼", "초코라테",
+                  "초콜릿라떼", "초콜렛라떼", "hotchocolate", "cocoa"),
+    ),
+    _drink(
+        "drink_iced_chocolate", "아이스 초코", "coffee",
+        recipe("glass", ["cocoa"], garnish=["straw", "ice", "whipped"], straw="berry",
+               card="card_peach"),
+        aliases=("iced chocolate", "초코 프라페"),
+        keywords=("아이스초코", "아이스초콜릿", "아이스초콜렛", "아이스코코아", "초코프라페"),
+    ),
+    _drink(
+        "drink_vanilla_latte", "바닐라 라떼", "coffee",
+        recipe("mug", ["latte"], cup="white", garnish=["latte_art", "vanilla"],
+               card="card_cream"),
+        aliases=("vanilla latte", "바닐라라테"),
+        keywords=("바닐라라떼", "바닐라라테", "vanillalatte"),
+    ),
+    _drink(
+        "drink_mocha", "카페모카", "coffee",
+        recipe("glass_mug", [["coffee", 1], ["choco", 0.7]], foam="cream", garnish=["cocoa"],
+               card="card_peach"),
+        aliases=("모카", "카페 모카", "cafe mocha", "mocha"),
+        keywords=("카페모카", "모카라떼", "모카커피"),
+    ),
+    _drink(
+        "drink_cold_brew", "콜드브루", "coffee",
+        recipe("tumbler", ["coffee"], garnish=["ice", "beans"], card="card_sky"),
+        aliases=("콜드 브루", "더치 커피", "cold brew"),
+        keywords=("콜드브루", "더치커피", "coldbrew"),
+    ),
+    _drink(
+        "drink_einspanner", "아인슈페너", "coffee",
+        recipe("glass", ["coffee"], garnish=["whipped", "cocoa"], card="card_cream"),
+        aliases=("비엔나 커피", "einspanner"),
+        keywords=("아인슈페너", "아인슈패너", "비엔나커피"),
+    ),
+    _drink(
+        "drink_matcha_latte", "녹차 라떼", "tea",
+        recipe("cup", ["matcha"], garnish=["latte_art"], card="card_mint"),
+        aliases=("말차 라떼", "그린티 라떼", "matcha latte"),
+        keywords=("녹차라떼", "녹차라테", "말차라떼", "말차라테", "그린티라떼", "matchalatte"),
+    ),
+    _drink(
+        "drink_green_tea", "녹차", "tea",
+        recipe("teacup", ["matcha_light"], garnish=["tea_leaves", "steam"], card="card_cream"),
+        aliases=("그린티", "녹차 티", "말차", "green tea"),
+        keywords=("그린티", "greentea"),
+    ),
+    _drink(
+        "drink_chamomile", "카모마일 티", "tea",
+        recipe("teacup", ["herbal"], cup="white", garnish=["chamomile"], card="card_sky"),
+        aliases=("캐모마일", "카모마일 차", "chamomile tea"),
+        keywords=("카모마일", "캐모마일", "chamomile"),
+    ),
+    _drink(
+        "drink_peppermint", "페퍼민트 티", "tea",
+        recipe("glass_mug", ["mint_tea"], garnish=["mint", "mint_sprig", "steam"],
+               card="card_mint"),
+        aliases=("민트 티", "박하차", "peppermint tea"),
+        keywords=("페퍼민트", "민트티", "박하차", "peppermint"),
+    ),
+    _drink(
+        "drink_citron_tea", "유자차", "tea",
+        recipe("mug", ["lemon"], cup="cup_clay", garnish=["lemon_float", "steam"],
+               card="card_peach"),
+        aliases=("유자 티", "유자", "청귤차", "자몽차"),
+        keywords=("유자차", "유자티", "청귤차", "자몽차"),
+    ),
+    _drink(
+        "drink_iced_tea", "아이스티", "tea",
+        recipe("glass", ["tea_light"], garnish=["straw", "ice", "lemon_rim"], straw="white",
+               card="card_sand"),
+        aliases=("아이스 티", "복숭아 아이스티", "iced tea"),
+        keywords=("아이스티", "icedtea"),
+    ),
+    _drink(
+        "drink_strawberry_smoothie", "딸기 스무디", "ade",
+        recipe("glass", ["berry_cream"], garnish=["straw", "strawberry_rim"], straw="white",
+               card="card_lilac"),
+        aliases=("딸기 라떼", "strawberry smoothie"),
+        keywords=("딸기스무디", "스트로베리스무디", "딸기라떼", "딸기주스", "딸기쉐이크"),
+    ),
+    _drink(
+        "drink_mango_smoothie", "망고 스무디", "ade",
+        recipe("glass", ["mango"], garnish=["straw", "mango", "mint"], straw="leaf",
+               card="card_sky"),
+        aliases=("mango smoothie",),
+        keywords=("망고스무디", "망고주스", "망고에이드", "망고"),
+    ),
+    _drink(
+        "drink_yogurt_smoothie", "요거트 스무디", "ade",
+        recipe("glass", [["blueberry", 0.7], ["meringue", 2]], garnish=["straw", "blueberries"],
+               straw="blueberry", card="card_rose"),
+        aliases=("요구르트 스무디", "블루베리 요거트 스무디", "smoothie"),
+        keywords=("스무디", "요거트", "요구르트", "블루베리스무디", "smoothie"),
+    ),
+    _drink(
+        "drink_orange_juice", "오렌지 주스", "ade",
+        recipe("glass", ["apricot"], garnish=["straw", "orange_rim"], straw="white",
+               card="card_mint"),
+        aliases=("오렌지", "오렌지 쥬스", "orange juice"),
+        keywords=("오렌지주스", "오렌지쥬스", "오렌지에이드", "착즙오렌지", "orangejuice"),
+    ),
+    _drink(
+        "drink_kvass", "크바스", "ade",
+        recipe("glass_mug", ["nut_shade"], foam="cream", card="card_sand"),
+        aliases=("끄바스", "kvass", "Квас"),
+        keywords=("크바스", "끄바스", "kvass", "квас"),
     ),
 ]  # fmt: skip

@@ -572,5 +572,564 @@
       ],
       "card": "card_mint"
     }
+  },
+  {
+    "id": "drink_espresso",
+    "name": "에스프레소",
+    "aliases": [
+      "espresso",
+      "에스프레소 샷",
+      "도피오",
+      "리스트레토"
+    ],
+    "keywords": [
+      "에스프레소",
+      "espresso"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "demitasse",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "foam": "crema",
+      "garnish": [
+        "beans",
+        "steam"
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_hot_chocolate",
+    "name": "핫초코",
+    "aliases": [
+      "초코",
+      "핫 초코",
+      "코코아",
+      "hot chocolate",
+      "초코 음료"
+    ],
+    "keywords": [
+      "핫초코",
+      "핫초콜릿",
+      "핫초콜렛",
+      "코코아",
+      "초코라떼",
+      "초코라테",
+      "초콜릿라떼",
+      "초콜렛라떼",
+      "hotchocolate",
+      "cocoa"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "mug",
+      "liquid": [
+        [
+          "choco",
+          1
+        ]
+      ],
+      "garnish": [
+        "marshmallows",
+        "steam"
+      ],
+      "cup": "cup_blue",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "drink_iced_chocolate",
+    "name": "아이스 초코",
+    "aliases": [
+      "iced chocolate",
+      "초코 프라페"
+    ],
+    "keywords": [
+      "아이스초코",
+      "아이스초콜릿",
+      "아이스초콜렛",
+      "아이스코코아",
+      "초코프라페"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "cocoa",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice",
+        "whipped"
+      ],
+      "straw": "berry",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "drink_vanilla_latte",
+    "name": "바닐라 라떼",
+    "aliases": [
+      "vanilla latte",
+      "바닐라라테"
+    ],
+    "keywords": [
+      "바닐라라떼",
+      "바닐라라테",
+      "vanillalatte"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "mug",
+      "liquid": [
+        [
+          "latte",
+          1
+        ]
+      ],
+      "garnish": [
+        "latte_art",
+        "vanilla"
+      ],
+      "cup": "white",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "drink_mocha",
+    "name": "카페모카",
+    "aliases": [
+      "모카",
+      "카페 모카",
+      "cafe mocha",
+      "mocha"
+    ],
+    "keywords": [
+      "카페모카",
+      "모카라떼",
+      "모카커피"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass_mug",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ],
+        [
+          "choco",
+          0.7
+        ]
+      ],
+      "foam": "cream",
+      "garnish": [
+        "cocoa"
+      ],
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "drink_cold_brew",
+    "name": "콜드브루",
+    "aliases": [
+      "콜드 브루",
+      "더치 커피",
+      "cold brew"
+    ],
+    "keywords": [
+      "콜드브루",
+      "더치커피",
+      "coldbrew"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "tumbler",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "garnish": [
+        "ice",
+        "beans"
+      ],
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "drink_einspanner",
+    "name": "아인슈페너",
+    "aliases": [
+      "비엔나 커피",
+      "einspanner"
+    ],
+    "keywords": [
+      "아인슈페너",
+      "아인슈패너",
+      "비엔나커피"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "garnish": [
+        "whipped",
+        "cocoa"
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "drink_matcha_latte",
+    "name": "녹차 라떼",
+    "aliases": [
+      "말차 라떼",
+      "그린티 라떼",
+      "matcha latte"
+    ],
+    "keywords": [
+      "녹차라떼",
+      "녹차라테",
+      "말차라떼",
+      "말차라테",
+      "그린티라떼",
+      "matchalatte"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "cup",
+      "liquid": [
+        [
+          "matcha",
+          1
+        ]
+      ],
+      "garnish": [
+        "latte_art"
+      ],
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "drink_green_tea",
+    "name": "녹차",
+    "aliases": [
+      "그린티",
+      "녹차 티",
+      "말차",
+      "green tea"
+    ],
+    "keywords": [
+      "그린티",
+      "greentea"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "teacup",
+      "liquid": [
+        [
+          "matcha_light",
+          1
+        ]
+      ],
+      "garnish": [
+        "tea_leaves",
+        "steam"
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "drink_chamomile",
+    "name": "카모마일 티",
+    "aliases": [
+      "캐모마일",
+      "카모마일 차",
+      "chamomile tea"
+    ],
+    "keywords": [
+      "카모마일",
+      "캐모마일",
+      "chamomile"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "teacup",
+      "liquid": [
+        [
+          "herbal",
+          1
+        ]
+      ],
+      "garnish": [
+        "chamomile"
+      ],
+      "cup": "white",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "drink_peppermint",
+    "name": "페퍼민트 티",
+    "aliases": [
+      "민트 티",
+      "박하차",
+      "peppermint tea"
+    ],
+    "keywords": [
+      "페퍼민트",
+      "민트티",
+      "박하차",
+      "peppermint"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "glass_mug",
+      "liquid": [
+        [
+          "mint_tea",
+          1
+        ]
+      ],
+      "garnish": [
+        "mint",
+        "mint_sprig",
+        "steam"
+      ],
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "drink_citron_tea",
+    "name": "유자차",
+    "aliases": [
+      "유자 티",
+      "유자",
+      "청귤차",
+      "자몽차"
+    ],
+    "keywords": [
+      "유자차",
+      "유자티",
+      "청귤차",
+      "자몽차"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "mug",
+      "liquid": [
+        [
+          "lemon",
+          1
+        ]
+      ],
+      "garnish": [
+        "lemon_float",
+        "steam"
+      ],
+      "cup": "cup_clay",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "drink_iced_tea",
+    "name": "아이스티",
+    "aliases": [
+      "아이스 티",
+      "복숭아 아이스티",
+      "iced tea"
+    ],
+    "keywords": [
+      "아이스티",
+      "icedtea"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "tea_light",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice",
+        "lemon_rim"
+      ],
+      "straw": "white",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_strawberry_smoothie",
+    "name": "딸기 스무디",
+    "aliases": [
+      "딸기 라떼",
+      "strawberry smoothie"
+    ],
+    "keywords": [
+      "딸기스무디",
+      "스트로베리스무디",
+      "딸기라떼",
+      "딸기주스",
+      "딸기쉐이크"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "berry_cream",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "strawberry_rim"
+      ],
+      "straw": "white",
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "drink_mango_smoothie",
+    "name": "망고 스무디",
+    "aliases": [
+      "mango smoothie"
+    ],
+    "keywords": [
+      "망고스무디",
+      "망고주스",
+      "망고에이드",
+      "망고"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "mango",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "mango",
+        "mint"
+      ],
+      "straw": "leaf",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "drink_yogurt_smoothie",
+    "name": "요거트 스무디",
+    "aliases": [
+      "요구르트 스무디",
+      "블루베리 요거트 스무디",
+      "smoothie"
+    ],
+    "keywords": [
+      "스무디",
+      "요거트",
+      "요구르트",
+      "블루베리스무디",
+      "smoothie"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "blueberry",
+          0.7
+        ],
+        [
+          "meringue",
+          2
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "blueberries"
+      ],
+      "straw": "blueberry",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "drink_orange_juice",
+    "name": "오렌지 주스",
+    "aliases": [
+      "오렌지",
+      "오렌지 쥬스",
+      "orange juice"
+    ],
+    "keywords": [
+      "오렌지주스",
+      "오렌지쥬스",
+      "오렌지에이드",
+      "착즙오렌지",
+      "orangejuice"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "apricot",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "orange_rim"
+      ],
+      "straw": "white",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "drink_kvass",
+    "name": "크바스",
+    "aliases": [
+      "끄바스",
+      "kvass",
+      "Квас"
+    ],
+    "keywords": [
+      "크바스",
+      "끄바스",
+      "kvass",
+      "квас"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass_mug",
+      "liquid": [
+        [
+          "nut_shade",
+          1
+        ]
+      ],
+      "foam": "cream",
+      "card": "card_sand"
+    }
   }
 ]
