@@ -57,6 +57,8 @@ export interface OwnerText {
   delayAsking: string
   delayDeclined: (pickup: string) => string
   withdrawn: Record<'changed' | 'cancelled', string>
+  /** 손님이 주문 현황에서 취소한 카드 (전화 메뉴·주문 현황·쿠폰 티켓 07) */
+  customerCancelled: string
   /** 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 마감 안에 결정하지 않아 손님에게 취소 문자가 갔다 */
   expired: string
   /**
@@ -156,6 +158,8 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     delayAsking: 'Клиент слышит новое время и отвечает',
     delayDeclined: (pickup) => `Клиенту не подошло ${pickup} · заказ отменён`,
     withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
+    // 손님 취소 (티켓 07): 러시아어 화자 확인 전 초안 (사람 확인 대상)
+    customerCancelled: 'Отменено клиентом',
     expired: 'Автоотмена: заказ не подтверждён вовремя',
     // 거절 문구 (티켓 05): 러시아어 화자 확인 전 초안 (사람 확인 대상)
     reject: 'Отказать',
@@ -264,6 +268,7 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     delayAsking: '손님이 바뀐 시각을 듣고 답하는 중',
     delayDeclined: (pickup) => `손님이 ${pickup}를 거절 · 주문 취소`,
     withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
+    customerCancelled: '손님 취소',
     expired: '자동 취소 · 시간 안에 확인 못 함',
     reject: '거절',
     rejectTitle: '거절 사유',
