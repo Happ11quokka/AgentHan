@@ -1,0 +1,115 @@
+{
+  "id": "s70-assistant-menu-option-as-request",
+  "title": "비서 메뉴(옵션 없음)로 주문: \"아이스로\"는 요청 사항, 온도를 묻지 않고 금액 그대로, 통화 뒤 수락",
+  "now": "2026-11-08T17:10:00+09:00",
+  "approval": true,
+  "menus": [
+    {
+      "id": "m01",
+      "name": "메도빅",
+      "price": 7500,
+      "description": "",
+      "aliases": [
+        "꿀케이크",
+        "허니케이크",
+        "메도비크"
+      ],
+      "name_native": "",
+      "sold_out": false
+    },
+    {
+      "id": "m02",
+      "name": "나폴레옹",
+      "price": 7000,
+      "description": "",
+      "aliases": [
+        "나폴레옹케이크"
+      ],
+      "name_native": "",
+      "sold_out": false
+    },
+    {
+      "id": "m03",
+      "name": "아메리카노",
+      "price": 4500,
+      "description": "",
+      "aliases": [],
+      "name_native": "",
+      "sold_out": false
+    },
+    {
+      "id": "m11",
+      "name": "카페라떼",
+      "price": 5000,
+      "description": "",
+      "aliases": [
+        "라떼"
+      ],
+      "name_native": "",
+      "sold_out": false
+    }
+  ],
+  "turns": [
+    {
+      "guest": "아메리카노 하나 아이스로 주세요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m03",
+          "qty": 1,
+          "request": "아이스"
+        }
+      ],
+      "expect_say_exact": [
+        "아메리카노에 아이스라고 적어 둘게요.",
+        "아메리카노 하나요. 더 필요하신 거 있으세요?"
+      ]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "guest": "6시 반이요",
+      "expect_state": "confirm",
+      "expect_say_exact": [
+        "주문 확인할게요. 아메리카노 하나, 6시 반에 찾으러 오시고, 모두 4,500원이에요. 아메리카노에 아이스라고 적어 뒀어요. 맞으세요?"
+      ]
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing",
+      "expect_request": 1,
+      "expect_say_exact": [
+        "주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요. 감사합니다."
+      ]
+    }
+  ],
+  "after_call": [
+    {
+      "owner": "accept"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m03",
+        "quantity": 1,
+        "request": "아이스"
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  },
+  "expect_owner": {
+    "status": "accepted",
+    "sms": [
+      "order"
+    ]
+  },
+  "expect_status": {
+    "stage": "confirmed",
+    "pickup_label": "18:30",
+    "total": 4500
+  }
+}

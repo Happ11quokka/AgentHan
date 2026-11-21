@@ -39,8 +39,8 @@
   빈 한국어·500자 넘는 글 422. 다음 통화부터 엔진이 "사장님 말씀으로는 …"으로 답한다
 
 손님 쪽 (`customer_texts_router`, 티켓 07):
-- `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE
-  (최대 6분, 주문 승인 티켓 03).
+- `GET /api/phone/calls/{id}/sms`: 손님에게 보낸 문자 미리보기 SSE (최대 6분, 주문 승인 티켓 03).
+  예전 손님 화면의 "받은 문자"였고, 지금 손님 화면은 주문 현황(아래)을 연다(전화 주문 현황 티켓 05).
   토큰 없음(통화 id는 추측할 수 없는 값). 모르는 통화는 404
 
 손님 주문 현황 (`customer_orders_router`, 전화 메뉴·주문 현황·쿠폰 티켓 04):
@@ -180,7 +180,7 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
 
     @router.post("/orders/{order_id}/accept")
     async def accept(order_id: str, body: AcceptBody | None = None) -> dict[str, Any]:
-        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(예전 접수 경로와 같은 주소)."""
+        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(승인 전 카드 버튼과 같은 주소)."""
         delay_min = body.delay_min if body is not None else 0
         with _hub_errors({404: "그런 주문이 없어요",
                           409: "이미 결정했거나 손님이 주문을 고치는 중이에요"}):

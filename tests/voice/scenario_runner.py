@@ -71,6 +71,13 @@
       "expect_status": {..., "subtotal": 16500, "discount": 1000, "coupon_name": "…",
                         "total": 15500}
 
+비서 메뉴 (전화 메뉴·주문 현황·쿠폰 티켓 13). 운영 전화는 비서가 게시한 전화용 가게(옵션
+없는 메뉴)를 읽는다. `menus`를 주면 시험 가게 대신 그 메뉴(게시 값 `serve.phone_store_doc`의
+메뉴 모양)로 돌리고, 꼭 고를 것(`required_options`)을 비운다(운영 `PhoneStores`와 같다).
+옵션 말("아이스로요")은 그 줄의 요청 사항이 된다:
+
+      "menus": [{"id": "m03", "name": "아메리카노", "price": 4500, "aliases": []}],
+
 손님 취소 (티켓 07). `after_call`에 손님 화면 [취소하기]도 넣는다(허브 `cancel_by_customer`, 취소
 API가 부르는 것). 거부를 기대하면 `refused`에 거부 사유 코드를 적는다. 사장님 결정이 늦게 와
 거부돼야 하면(한 주문에 결정 한 번) 그 결정에 `"refused": true`:
@@ -95,7 +102,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agenthan.core.contracts import Order
+from agenthan.core.contracts import MenuItem, Order
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import OwnerDecision
@@ -212,6 +219,7 @@ class Scenario:
     expect_status: dict[str, Any] | None = None
     check_status: bool = False
     coupons: tuple[dict[str, Any], ...] = ()  # 가게 쿠폰 (쿠폰 티켓 09)
+    menus: tuple[dict[str, Any], ...] = ()  # 비서 메뉴 = 전화용 가게 (티켓 13). 없으면 시험 가게
     path: Path = field(default=Path(), compare=False)
 
     @classmethod
@@ -233,6 +241,7 @@ class Scenario:
             expect_status=raw.get("expect_status"),
             check_status="expect_status" in raw,
             coupons=tuple(raw.get("coupons", ())),
+            menus=tuple(raw.get("menus", ())),
             path=path,
         )
 
@@ -291,18 +300,34 @@ def _expected_order(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _published_menu(raw: dict[str, Any]) -> MenuItem:
+    """게시 값의 메뉴 한 줄 → 옵션 없는 `MenuItem` (비서 메뉴, 티켓 13)."""
+    return MenuItem(
+        id=str(raw["id"]), name_ko=raw["name"], price=int(raw["price"]),
+        description=raw.get("description", ""), name_native=raw.get("name_native", ""),
+        aliases=tuple(raw.get("aliases", ())), sold_out=bool(raw.get("sold_out", False)))
+
+
 def _store(scenario: Scenario) -> FakeStoreKnowledge:
-    store = FakeStoreKnowledge.from_fixture()
+    if scenario.menus:
+        menu = [_published_menu(raw) for raw in scenario.menus]
+    else:
+        menu = FakeStoreKnowledge.from_fixture().list_menu()
     sold = set(scenario.sold_out)
-    return FakeStoreKnowledge(
-        [replace(m, sold_out=True) if m.id in sold else m for m in store.list_menu()])
+    return FakeStoreKnowledge([replace(m, sold_out=True) if m.id in sold else m for m in menu])
+
+
+def _config(scenario: Scenario) -> StoreConfig:
+    config = StoreConfig.from_fixture()
+    # 비서 메뉴에는 옵션이 없어 꼭 고를 것도 없다 (운영 `PhoneStores`와 같다)
+    return replace(config, required_options={}) if scenario.menus else config
 
 
 def make_engine(scenario: Scenario) -> DialogEngine:
     coupons = [Coupon.from_json(raw) for raw in scenario.coupons]
     assert None not in coupons, f"읽을 수 없는 쿠폰 {scenario.coupons}"
     return DialogEngine(
-        _store(scenario), FakeNlu(), StoreConfig.from_fixture(), order_id=scenario.id,
+        _store(scenario), FakeNlu(), _config(scenario), order_id=scenario.id,
         coupons=[c for c in coupons if c is not None],
     )
 
