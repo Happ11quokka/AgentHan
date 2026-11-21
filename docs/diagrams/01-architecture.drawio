@@ -1,51 +1,198 @@
-<mxfile host="app.diagrams.net"><diagram id="xj6gr9rl-f5ux" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="title" value="AgentHan 추천 구조" style="text;fontFamily=Pretendard;fontSize=20;fontStyle=1;fontColor=#14171C;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="24" y="16" width="400" height="32" as="geometry"/></mxCell>
-<mxCell id="sub" value="방향이며 확정 아님 · 세 파트는 core/contracts.py 로만 연결" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="300" y="18" width="420" height="28" as="geometry"/></mxCell>
-<mxCell id="ncp" value="&lt;b&gt;NAVER Cloud&lt;/b&gt;&amp;nbsp; · 마감 전 NCP Server 1대에 배포" style="rounded=1;arcSize=2;fillColor=#F6F9F7;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=13;fontColor=#00873C;align=left;verticalAlign=top;spacingLeft=48;spacingTop=10;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="199" y="63" width="910" height="560" as="geometry"/></mxCell>
-<mxCell id="ncpi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_server;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="211" y="70" width="30" height="30" as="geometry"/></mxCell>
-<mxCell id="owner" value="&lt;b&gt;사장님&lt;/b&gt;&lt;br&gt;모국어 채팅 · 사진" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="24" y="170" width="140" height="60" as="geometry"/></mxCell>
-<mxCell id="owneri" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#5F6368;shape=mxgraph.gcp2.desktop_and_mobile;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="34" y="182" width="34" height="34" as="geometry"/></mxCell>
-<mxCell id="cust" value="&lt;b&gt;손님&lt;/b&gt;&lt;br&gt;한국어 전화" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="24" y="470" width="140" height="60" as="geometry"/></mxCell>
-<mxCell id="custi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#5F6368;shape=mxgraph.gcp2.phone;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="38" y="482" width="26" height="36" as="geometry"/></mxCell>
-<mxCell id="web" value="&lt;b&gt;사장님 화면&lt;/b&gt;&lt;br&gt;web · React" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="229" y="170" width="150" height="60" as="geometry"/></mxCell>
-<mxCell id="webi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=website;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="237" y="182" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="call" value="&lt;b&gt;통화 화면&lt;/b&gt;&lt;br&gt;휴대폰 브라우저" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="229" y="470" width="150" height="60" as="geometry"/></mxCell>
-<mxCell id="calli" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=mobile_devices;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="237" y="482" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="apiA" value="&lt;b&gt;FastAPI&lt;/b&gt;&lt;br&gt;/assistant" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="429" y="170" width="150" height="60" as="geometry"/></mxCell>
-<mxCell id="apiAi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_run;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="437" y="182" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="apiC" value="&lt;b&gt;FastAPI&lt;/b&gt;&lt;br&gt;/phone" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="429" y="470" width="150" height="60" as="geometry"/></mxCell>
-<mxCell id="apiCi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_run;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="437" y="482" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="idx" value="&lt;b&gt;인덱스&lt;/b&gt;&lt;br&gt;Chroma 등 · data/" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="429" y="320" width="150" height="60" as="geometry"/></mxCell>
-<mxCell id="idxi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=database;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="437" y="332" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="place" value="&lt;b&gt;더미 플레이스 API&lt;/b&gt;&lt;br&gt;메뉴 등록 · 리뷰 · 통계" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=44;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="639" y="80" width="170" height="52" as="geometry"/></mxCell>
-<mxCell id="placei" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_apis;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="647" y="89" width="34" height="34" as="geometry"/></mxCell>
-<mxCell id="A" value="&lt;b&gt;Part A · 사장님 비서&lt;/b&gt;&lt;br&gt;agent/ + tools/" style="rounded=1;arcSize=8;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="639" y="170" width="170" height="60" as="geometry"/></mxCell>
-<mxCell id="Ai" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=ai_hub;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="647" y="182" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="B" value="&lt;b&gt;Part B · 가게 지식&lt;/b&gt;&lt;br&gt;rag/&lt;br&gt;StoreKnowledge 구현" style="rounded=1;arcSize=8;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="639" y="315" width="170" height="70" as="geometry"/></mxCell>
-<mxCell id="Bi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=search_api;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="647" y="332" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="C" value="&lt;b&gt;Part C · 전화 주문&lt;/b&gt;&lt;br&gt;voice/ · 턴 관리&lt;br&gt;주문 대화(HCX)" style="rounded=1;arcSize=8;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="639" y="460" width="170" height="80" as="geometry"/></mxCell>
-<mxCell id="Ci" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=phone;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="647" y="482" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="ai" value="NAVER Cloud AI" style="rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#A9E8C2;dashed=1;fontFamily=Pretendard;fontSize=12;fontStyle=1;fontColor=#00873C;verticalAlign=top;spacingTop=2;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="869" y="140" width="230" height="455" as="geometry"/></mxCell>
-<mxCell id="hcx" value="&lt;b&gt;HyperCLOVA X&lt;/b&gt;&lt;br&gt;HCX-005 · DASH-002" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="884" y="170" width="200" height="60" as="geometry"/></mxCell>
-<mxCell id="hcxi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_natural_language_api;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="892" y="182" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="emb" value="&lt;b&gt;CLOVA 임베딩 v2&lt;/b&gt;&lt;br&gt;bge-m3 · 1024차원" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="884" y="320" width="200" height="60" as="geometry"/></mxCell>
-<mxCell id="embi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=automl_natural_language;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="892" y="332" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="stt" value="&lt;b&gt;CLOVA Speech&lt;/b&gt;&lt;br&gt;실시간 STT" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="884" y="440" width="200" height="56" as="geometry"/></mxCell>
-<mxCell id="stti" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_speech_api;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="892" y="450" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="tts" value="&lt;b&gt;CLOVA Voice&lt;/b&gt;&lt;br&gt;TTS" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="884" y="520" width="200" height="56" as="geometry"/></mxCell>
-<mxCell id="ttsi" value="" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_text_to_speech;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="892" y="530" width="36" height="36" as="geometry"/></mxCell>
-<mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="owner" target="web"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;jumpStyle=arc;html=1;" edge="1" parent="1" source="cust" target="call"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e3" value="SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="web" target="apiA"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e4" value="WS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="call" target="apiC"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="apiA" target="A"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="apiC" target="C"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e7" value="tool 호출" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.425;entryY=1;html=1;" edge="1" parent="1" source="A" target="place"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e8" value="search_menu&lt;br&gt;recent_reviews" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" edge="1" parent="1" source="A" target="B"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e9" value="search_menu" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.5;entryY=1;html=1;" edge="1" parent="1" source="C" target="B"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e10" value="검색" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" edge="1" parent="1" source="B" target="idx"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e11" value="tool 호출" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="A" target="hcx"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e12" value="임베딩" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" edge="1" parent="1" source="B" target="emb"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e13" value="음성→글" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.125;entryX=0;entryY=0.536;html=1;" edge="1" parent="1" source="C" target="stt"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e14" value="글→음성" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.875;entryX=0;entryY=0.357;html=1;" edge="1" parent="1" source="C" target="tts"><mxGeometry relative="1" as="geometry"/></mxCell>
-<mxCell id="e15" value="주문서(Order) → 사장님 언어로 표시" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00873C;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#00873C;labelBackgroundColor=#F6F9F7;jumpStyle=arc;exitX=0.5;exitY=1;entryX=0;entryY=0.75;html=1;" edge="1" parent="1" source="C" target="web"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="724" y="603"/><mxPoint x="214" y="603"/><mxPoint x="214" y="215"/></Array></mxGeometry></mxCell>
-<mxCell id="lgA" value="" style="endArrow=block;endFill=1;strokeColor=#03C75A;strokeWidth=2;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="24" y="580" as="sourcePoint"/><mxPoint x="60" y="580" as="targetPoint"/></mxGeometry></mxCell><mxCell id="lgAt" value="요청·데이터 흐름" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="66" y="570" width="120" height="20" as="geometry"/></mxCell><mxCell id="lgB" value="" style="endArrow=block;endFill=1;strokeColor=#00873C;strokeWidth=1.5;dashed=1;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="24" y="605" as="sourcePoint"/><mxPoint x="60" y="605" as="targetPoint"/></mxGeometry></mxCell><mxCell id="lgBt" value="주문서 전달" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="66" y="595" width="120" height="20" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>
+<mxfile host="localhost">
+  <diagram id="xj6gr9rl-f5ux" name="Page-1">
+    <mxGraphModel dx="1694" dy="784" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;fontFamily=Pretendard;fontSize=20;fontStyle=1;fontColor=#14171C;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" value="AgentHan 전체 구조" vertex="1">
+          <mxGeometry height="32" width="260" x="24" y="16" as="geometry" />
+        </mxCell>
+        <mxCell id="sub" parent="1" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" value="2026-11-21 배포 기준 · 세 파트는 core/contracts.py 로만 연결" vertex="1">
+          <mxGeometry height="28" width="420" x="230" y="18" as="geometry" />
+        </mxCell>
+        <mxCell id="ncp" parent="1" style="rounded=1;arcSize=2;fillColor=#F6F9F7;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=13;fontColor=#00873C;align=left;verticalAlign=top;spacingLeft=48;spacingTop=10;whiteSpace=wrap;html=1;" value="&lt;b&gt;NAVER Cloud&lt;/b&gt;&amp;nbsp; · NCP Server 1대 · app + Caddy" vertex="1">
+          <mxGeometry height="560" width="910" x="199" y="63" as="geometry" />
+        </mxCell>
+        <mxCell id="ncpi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_server;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="211" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="owner" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;사장님&lt;/b&gt;&lt;br&gt;채팅 · 사진 · 승인" vertex="1">
+          <mxGeometry height="60" width="140" x="24" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="owneri" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#5F6368;shape=mxgraph.gcp2.desktop_and_mobile;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="34" width="34" x="34" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="cust" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;손님&lt;/b&gt;&lt;br&gt;한국어 전화" vertex="1">
+          <mxGeometry height="60" width="140" x="24" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="custi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#5F6368;shape=mxgraph.gcp2.phone;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="26" x="38" y="482" as="geometry" />
+        </mxCell>
+        <mxCell id="web" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;사장님 화면&lt;/b&gt;&lt;br&gt;비서 · 주문 카드" vertex="1">
+          <mxGeometry height="60" width="170" x="229" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="webi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=website;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="237" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="call" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;통화 화면&lt;/b&gt;&lt;br&gt;/phone · 휴대폰 크롬" vertex="1">
+          <mxGeometry height="60" width="170" x="229" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="calli" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=mobile_devices;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="237" y="482" as="geometry" />
+        </mxCell>
+        <mxCell id="apiA" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;FastAPI&lt;/b&gt;&lt;br&gt;/assistant/*" vertex="1">
+          <mxGeometry height="60" width="140" x="449" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="apiAi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_run;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="457" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="apiC" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;FastAPI&lt;/b&gt;&lt;br&gt;/api/phone/ws" vertex="1">
+          <mxGeometry height="60" width="140" x="449" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="apiCi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_run;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="457" y="482" as="geometry" />
+        </mxCell>
+        <mxCell id="idx" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;NCP Cloud DB&lt;/b&gt;&lt;br&gt;PostgreSQL + pgvector&lt;br&gt;고가용성" vertex="1">
+          <mxGeometry height="70" width="180" x="404" y="315" as="geometry" />
+        </mxCell>
+        <mxCell id="idxi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_sql;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="412" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="place" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=44;whiteSpace=wrap;html=1;" value="&lt;b&gt;더미 플레이스 API&lt;/b&gt;&lt;br&gt;메뉴·영업시간·쿠폰·리뷰 등" vertex="1">
+          <mxGeometry height="52" width="180" x="639" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="placei" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_apis;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="34" width="34" x="647" y="89" as="geometry" />
+        </mxCell>
+        <mxCell id="A" parent="1" style="rounded=1;arcSize=8;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;Part A · 사장님 비서&lt;/b&gt;&lt;br&gt;agent/ + tools/&lt;br&gt;기능 고르기 → planner" vertex="1">
+          <mxGeometry height="70" width="180" x="639" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="Ai" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=ai_hub;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="647" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="B" parent="1" style="rounded=1;arcSize=8;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;Part B · 가게 지식&lt;/b&gt;&lt;br&gt;rag/ + db/&lt;br&gt;RagStoreKnowledge" vertex="1">
+          <mxGeometry height="70" width="180" x="639" y="315" as="geometry" />
+        </mxCell>
+        <mxCell id="Bi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=search_api;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="647" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="C" parent="1" style="rounded=1;arcSize=8;fillColor=#EAF9F0;strokeColor=#03C75A;strokeWidth=1.5;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;Part C · 전화 주문&lt;/b&gt;&lt;br&gt;voice/ · 말 끝 판정&lt;br&gt;(규칙 + Smart Turn)&lt;br&gt;주문 대화 · 사장님 카드" vertex="1">
+          <mxGeometry height="90" width="180" x="639" y="455" as="geometry" />
+        </mxCell>
+        <mxCell id="Ci" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=phone;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="647" y="482" as="geometry" />
+        </mxCell>
+        <mxCell id="ai" parent="1" style="rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#A9E8C2;dashed=1;fontFamily=Pretendard;fontSize=12;fontStyle=1;fontColor=#00873C;verticalAlign=top;spacingTop=2;whiteSpace=wrap;html=1;" value="NAVER Cloud AI" vertex="1">
+          <mxGeometry height="455" width="230" x="869" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="hcx" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;HyperCLOVA X&lt;/b&gt;&lt;br&gt;DASH-002 · 005 · 007&lt;br&gt;전화 튜닝 모델" vertex="1">
+          <mxGeometry height="70" width="200" x="884" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="hcxi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_natural_language_api;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="892" y="177" as="geometry" />
+        </mxCell>
+        <mxCell id="emb" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;CLOVA 임베딩 v2&lt;/b&gt;&lt;br&gt;bge-m3 · 1024차원" vertex="1">
+          <mxGeometry height="60" width="200" x="884" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="embi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=automl_natural_language;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="892" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="stt" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;CLOVA Speech&lt;/b&gt;&lt;br&gt;실시간 STT" vertex="1">
+          <mxGeometry height="56" width="200" x="884" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="stti" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_speech_api;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="892" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="tts" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;CLOVA Voice&lt;/b&gt;&lt;br&gt;TTS" vertex="1">
+          <mxGeometry height="56" width="200" x="884" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="ttsi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_text_to_speech;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="892" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="owner" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="web" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="cust" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;jumpStyle=arc;html=1;" target="call" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="web" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="apiA" value="HTTPS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="call" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="apiC" value="WSS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="apiA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="A" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="apiC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="C" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="A" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.425;entryY=1;html=1;" target="place" value="tool 호출">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="A" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="B" value="메뉴 찾기&lt;br&gt;답글·톡톡 근거">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="C" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=0.5;exitY=0;entryX=0.5;entryY=1;html=1;" target="B" value="메뉴 후보·가까운 후기">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="B" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="idx" value="SQL·벡터">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="A" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="hcx" value="HCX 호출">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="B" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="emb" value="임베딩">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="C" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.125;entryX=0;entryY=0.536;html=1;" target="stt" value="음성→글">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="C" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.875;entryX=0;entryY=0.357;html=1;" target="tts" value="글→음성">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="C" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00873C;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#00873C;labelBackgroundColor=#F6F9F7;jumpStyle=arc;exitX=0.5;exitY=1;entryX=0;entryY=0.75;html=1;" target="web" value="주문서(Order) → /owner 카드에 사장님 언어로 (SSE)">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="729" y="603" />
+              <mxPoint x="214" y="603" />
+              <mxPoint x="214" y="218" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lgA" edge="1" parent="1" style="endArrow=block;endFill=1;strokeColor=#03C75A;strokeWidth=2;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="24" y="580" as="sourcePoint" />
+            <mxPoint x="60" y="580" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lgAt" parent="1" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" value="요청·데이터 흐름" vertex="1">
+          <mxGeometry height="20" width="120" x="66" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="lgB" edge="1" parent="1" style="endArrow=block;endFill=1;strokeColor=#00873C;strokeWidth=1.5;dashed=1;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="24" y="605" as="sourcePoint" />
+            <mxPoint x="60" y="605" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lgBt" parent="1" style="text;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;" value="주문서 전달" vertex="1">
+          <mxGeometry height="20" width="120" x="66" y="595" as="geometry" />
+        </mxCell>
+        <mxCell id="pap" parent="1" style="rounded=1;arcSize=8;fillColor=#ffffff;strokeColor=#D8E0DB;fontFamily=Pretendard;fontSize=12;fontColor=#14171C;align=left;spacingLeft=50;whiteSpace=wrap;html=1;" value="&lt;b&gt;Papago&lt;/b&gt;&lt;br&gt;카드 문장 → 사장님 언어" vertex="1">
+          <mxGeometry height="56" width="200" x="884" y="246" as="geometry" />
+        </mxCell>
+        <mxCell id="papi" parent="1" style="sketch=0;aspect=fixed;strokeColor=none;fillColor=#03C75A;shape=mxgraph.gcp2.hexIcon;prIcon=cloud_translation_api;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="36" width="36" x="892" y="256" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="C" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#03C75A;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#F6F9F7;jumpStyle=arc;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="pap" value="번역">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="850" y="500" />
+              <mxPoint x="850" y="274" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

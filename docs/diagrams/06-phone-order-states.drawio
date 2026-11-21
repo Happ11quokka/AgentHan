@@ -1,47 +1,47 @@
 <mxfile host="localhost">
   <diagram id="1h5h0gcc-73ai" name="Page-1">
-    <mxGraphModel dx="1354" dy="704" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1694" dy="784" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" parent="1" style="text;fontFamily=Pretendard;fontSize=20;fontStyle=1;fontColor=#14171C;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;" value="Part C · 전화 주문 대화 상태" vertex="1">
-          <mxGeometry height="32" width="440" x="200" y="18" as="geometry" />
+        <mxCell id="title" parent="1" style="text;fontFamily=Pretendard;fontSize=20;fontStyle=1;fontColor=#14171C;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;" value="Part C · 전화 주문 대화 상태 (dialog/states.py)" vertex="1">
+          <mxGeometry height="32" width="520" x="160" y="18" as="geometry" />
         </mxCell>
         <mxCell id="init" parent="1" style="ellipse;fillColor=#14171C;strokeColor=none;whiteSpace=wrap;html=1;" value="" vertex="1">
           <mxGeometry height="24" width="24" x="73" y="24" as="geometry" />
         </mxCell>
-        <mxCell id="greet" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="인사 · 용건 듣기" vertex="1">
+        <mxCell id="greet" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="인사 · AI 고지&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;GREETING&lt;/span&gt;" vertex="1">
           <mxGeometry height="52" width="130" x="20" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="menu" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="메뉴 받기&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;search_menu&lt;/span&gt;" vertex="1">
-          <mxGeometry height="52" width="130" x="230" y="90" as="geometry" />
+        <mxCell id="menu" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="주문 받기&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;메뉴·옵션·수량 · ORDERING&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="230" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="opt" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="옵션 · 수량&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;옵션 가능 여부 확인&lt;/span&gt;" vertex="1">
-          <mxGeometry height="52" width="130" x="440" y="90" as="geometry" />
+        <mxCell id="opt" parent="1" style="rounded=1;arcSize=40;fillColor=#FFFBEA;strokeColor=#E0B84A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="되묻기&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;메뉴 후보·꼭 고를 것·큰 수량&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="485" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="pick" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="픽업 시간 · 연락처" vertex="1">
-          <mxGeometry height="52" width="130" x="650" y="90" as="geometry" />
+        <mxCell id="pick" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="픽업 시각&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;영업시간 안 · ASK_PICKUP&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="650" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="read" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="복창 · 확인&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;템플릿 대사&lt;/span&gt;" vertex="1">
-          <mxGeometry height="52" width="130" x="650" y="260" as="geometry" />
+        <mxCell id="read" parent="1" style="rounded=1;arcSize=40;fillColor=#EAF9F0;strokeColor=#03C75A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="복창 · 확인&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;총액까지 · CONFIRM&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="650" y="260" as="geometry" />
         </mxCell>
-        <mxCell id="done" parent="1" style="rounded=1;arcSize=40;fillColor=#03C75A;strokeColor=#00873C;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#ffffff;whiteSpace=wrap;html=1;" value="주문 확정" vertex="1">
-          <mxGeometry height="52" width="130" x="650" y="430" as="geometry" />
+        <mxCell id="done" parent="1" style="rounded=1;arcSize=40;fillColor=#03C75A;strokeColor=#00873C;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#ffffff;whiteSpace=wrap;html=1;" value="주문 확정&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;CLOSING&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="650" y="430" as="geometry" />
         </mxCell>
-        <mxCell id="fix" parent="1" style="rounded=1;arcSize=40;fillColor=#FFF4E5;strokeColor=#F08C00;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="정정" vertex="1">
-          <mxGeometry height="52" width="130" x="440" y="260" as="geometry" />
+        <mxCell id="fix" parent="1" style="rounded=1;arcSize=40;fillColor=#FFF4E5;strokeColor=#F08C00;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="정정&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;그 줄만 고침&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="440" y="260" as="geometry" />
         </mxCell>
-        <mxCell id="qa" parent="1" style="rounded=1;arcSize=40;fillColor=#E6F4FB;strokeColor=#0091D5;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="메뉴 질문 답하기&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;가게 지식 근거로&lt;/span&gt;" vertex="1">
-          <mxGeometry height="52" width="130" x="230" y="260" as="geometry" />
+        <mxCell id="qa" parent="1" style="rounded=1;arcSize=40;fillColor=#E6F4FB;strokeColor=#0091D5;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="질문 답하기&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;가게 지식 · 후기 3개&lt;/span&gt;" vertex="1">
+          <mxGeometry height="52" width="140" x="230" y="260" as="geometry" />
         </mxCell>
-        <mxCell id="hand" parent="1" style="rounded=1;arcSize=40;fillColor=#FBEBE9;strokeColor=#B4261A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="사장님 연결 · 문자&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;주차·영업시간은 ARS&lt;/span&gt;" vertex="1">
+        <mxCell id="hand" parent="1" style="rounded=1;arcSize=40;fillColor=#FBEBE9;strokeColor=#B4261A;fontFamily=Pretendard;fontSize=13;fontStyle=1;fontColor=#14171C;whiteSpace=wrap;html=1;" value="사장님께 넘김&lt;br&gt;&lt;span style=&quot;font-weight:normal;font-size:11px&quot;&gt;FALLBACK&lt;/span&gt;" vertex="1">
           <mxGeometry height="52" width="130" x="20" y="260" as="geometry" />
         </mxCell>
         <mxCell id="final" parent="1" style="ellipse;shape=doubleEllipse;fillColor=#14171C;strokeColor=#14171C;whiteSpace=wrap;html=1;" value="" vertex="1">
           <mxGeometry height="24" width="24" x="73" y="444" as="geometry" />
         </mxCell>
-        <mxCell id="note" parent="1" style="shape=note;size=10;fillColor=#FFFBEA;strokeColor=#E0B84A;align=left;spacingLeft=10;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;whiteSpace=wrap;html=1;" value="&lt;b&gt;모든 상태 공통&lt;/b&gt;&lt;br&gt;· 손님이 끼어들면 말을 멈추고 듣는다 (barge-in)&lt;br&gt;· 무응답 8초 → &quot;계속 주문하시겠어요?&quot;&lt;br&gt;· HCX는 값 추출·분류만, 대사는 상태별 템플릿" vertex="1">
-          <mxGeometry height="80" width="330" x="210" y="414" as="geometry" />
+        <mxCell id="note" parent="1" style="shape=note;size=10;fillColor=#FFFBEA;strokeColor=#E0B84A;align=left;spacingLeft=10;fontFamily=Pretendard;fontSize=11;fontColor=#14171C;whiteSpace=wrap;html=1;" value="&lt;b&gt;모든 상태 공통&lt;/b&gt;&lt;br&gt;· 손님이 끼어들면(버튼·음성) 말을 멈추고 듣는다&lt;br&gt;· 무응답: &quot;여보세요?&quot; 두 번, 세 번째에 끊음&lt;br&gt;· 같은 질문 두 번째엔 보기를 붙여 되묻음&lt;br&gt;· HCX 튜닝 모델은 해석만, 대사는 상태별 템플릿" vertex="1">
+          <mxGeometry height="100" width="350" x="200" y="400" as="geometry" />
         </mxCell>
         <mxCell id="e1" edge="1" parent="1" source="init" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="greet" value="전화 연결">
           <mxGeometry relative="1" as="geometry" />
@@ -49,13 +49,13 @@
         <mxCell id="e2" edge="1" parent="1" source="greet" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="menu" value="주문할게요">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e3" edge="1" parent="1" source="menu" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="opt" value="메뉴 확인됨">
+        <mxCell id="e3" edge="1" parent="1" source="menu" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9C7A00;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#9C7A00;labelBackgroundColor=#ffffff;exitX=1;exitY=0.3;entryX=0;entryY=0.3;html=1;" target="opt" value="애매·못 알아들음">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4" edge="1" parent="1" source="opt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="pick" value="슬롯 채움">
+        <mxCell id="e4" edge="1" parent="1" source="opt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9C7A00;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#9C7A00;labelBackgroundColor=#ffffff;exitX=0;exitY=0.75;entryX=1;entryY=0.75;html=1;" target="menu" value="답 받음">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5" edge="1" parent="1" source="pick" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="read" value="필수 값 다 모임">
+        <mxCell id="e5" edge="1" parent="1" source="pick" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="read" value="시각 받음">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e6" edge="1" parent="1" source="read" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="done" value="네, 맞아요">
@@ -73,20 +73,28 @@
         <mxCell id="e10" edge="1" parent="1" source="qa" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0091D5;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#0091D5;labelBackgroundColor=#ffffff;exitX=0.75;exitY=0;entryX=0.75;entryY=1;html=1;" target="menu" value="복귀">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e11" edge="1" parent="1" source="qa" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#B4261A;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#B4261A;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="hand" value="근거 없음">
+        <mxCell id="e11" edge="1" parent="1" source="qa" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#B4261A;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#B4261A;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="hand" value="사람 요청">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e12" edge="1" parent="1" source="greet" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#B4261A;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#B4261A;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="hand" value="주문이 아님">
+        <mxCell id="e12" edge="1" parent="1" source="greet" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#B4261A;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#B4261A;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="hand" value="되묻기 5번 · 짜증">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e13" edge="1" parent="1" source="hand" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="final" value="콜백 카드">
+        <mxCell id="e13" edge="1" parent="1" source="hand" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="final" value="사장님 카드에 메모">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e14" edge="1" parent="1" source="done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00873C;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#00873C;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=1;html=1;" target="final" value="Order → 사장님 화면 (사장님 언어)">
+        <mxCell id="e14" edge="1" parent="1" source="done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00873C;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#00873C;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=1;html=1;" target="final" value="Order → /owner 카드 (사장님 언어) · DB phone_orders">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="715" y="530" />
+              <mxPoint x="720" y="530" />
               <mxPoint x="85" y="530" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="menu" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4B5563;strokeWidth=1.5;endArrow=block;endFill=1;fontFamily=Pretendard;fontSize=11;fontColor=#4B5563;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.5;entryY=0;html=1;" target="pick" value="&quot;그게 다예요&quot;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="300" y="66" />
+              <mxPoint x="720" y="66" />
             </Array>
           </mxGeometry>
         </mxCell>

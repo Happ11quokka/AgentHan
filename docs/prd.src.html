@@ -81,7 +81,7 @@
 <tr><td>스마트 ARS는 버튼 5개·정해진 안내뿐</td><td>6차 리서치: 주문·자유 대화 불가</td><td>C가 빈틈을 채움</td></tr>
 </tbody></table>
 <p>안 하는 것: 외부 지도 연동, 재고·발주, 외국어 음성 전화, 실제 전화번호(PSTN) 연결, 사업자 인증이 필요한 플레이스 기능 직접 호출(더미 API로 대신), 컴퓨터 유즈, MCP 서버 시연, 봇 차단.</p>
-<figure class="figure" id="F-00"><div class="fig-wrap">{{svg:00-scope-mindmap}}</div><figcaption><span class="fig-num">[그림 1]</span>범위 (11/08 설계) · <a href="diagrams/00-scope-mindmap.drawio">draw.io 원본</a></figcaption></figure>
+<figure class="figure" id="F-00"><div class="fig-wrap">{{svg:00-scope-mindmap}}</div><figcaption><span class="fig-num">[그림 1]</span>범위 · <a href="diagrams/00-scope-mindmap.drawio">draw.io 원본</a></figcaption></figure>
 
 <h1 id="structure" data-num="3.">3파트 구조와 합치는 법</h1>
 <div class="parts">
@@ -89,7 +89,7 @@
 <div class="part pb"><div class="part-h"><span class="part-tag">B</span>가게 지식</div><p><code>rag/</code> · <code>db/</code> · 정민서</p><p><code>RagStoreKnowledge</code> 하이브리드 검색 + PostgreSQL/pgvector. A와 C가 같이 쓴다.</p></div>
 <div class="part pc"><div class="part-h"><span class="part-tag">C</span>전화 주문</div><p><code>voice/</code> · 임동현</p><p>브라우저 통화 → STT → 말 끝 판정 → 주문 대화 → TTS → 사장님 번역 카드.</p></div>
 </div>
-<figure class="figure" id="F-01"><div class="fig-wrap">{{svg:01-architecture}}</div><figcaption><span class="fig-num">[그림 2]</span>전체 구조 (11/08 설계. 지금은 한 서버 <code>agenthan.serve</code> + NCP Cloud DB) · <a href="diagrams/01-architecture.drawio">draw.io 원본</a></figcaption></figure>
+<figure class="figure" id="F-01"><div class="fig-wrap">{{svg:01-architecture}}</div><figcaption><span class="fig-num">[그림 2]</span>전체 구조 (11/21 배포 기준) · <a href="diagrams/01-architecture.drawio">draw.io 원본</a></figcaption></figure>
 <figure class="figure" id="F-02"><div class="fig-wrap narrow">{{svg:02-contracts}}</div><figcaption><span class="fig-num">[그림 3]</span>파트 사이 계약 · <a href="diagrams/02-contracts.drawio">draw.io 원본</a></figcaption></figure>
 <table>
 <caption><span class="fig-num">[표 5]</span> 따로 만들고 잘 합치는 규칙 <span class="status" data-status="검증 완료">확정</span></caption>
@@ -116,7 +116,7 @@
 <tr><td>A-4</td><td>먼저 제안 (루틴)</td><td>"매주 월요일에 리뷰 정리해 줘"</td><td>리뷰 정기 보고 설정을 미리보기 → 승인 뒤 저장. 답 아래 다음 액션 칩. 정해진 시각에 먼저 말을 거는 푸시는 없음</td><td><span class="status" data-status="적용 완료">구현</span></td></tr>
 <tr><td>A-5</td><td>그 밖의 기능</td><td>"금요일만 10시에 열어"</td><td>메뉴·업체 정보·영업시간·톡톡·주문·예약·대표키워드·쿠폰·새 오픈·매장결제(쓰기), 전화 기록·네이버페이·정산·POS·도움말(조회). <code>docs/tools.md</code></td><td><span class="status" data-status="적용 완료">구현</span></td></tr>
 </tbody></table>
-<figure class="figure" id="F-03b"><div class="fig-wrap">{{svg:03b-assistant-routing}}</div><figcaption><span class="fig-num">[그림 4]</span>사장님 한마디가 도는 순서 (11/08 설계. 지금은 기능 고르기 뒤에 HCX-007 계획 단계가 있다) · <a href="diagrams/03b-assistant-routing.drawio">draw.io 원본</a></figcaption></figure>
+<figure class="figure" id="F-03b"><div class="fig-wrap">{{svg:03b-assistant-routing}}</div><figcaption><span class="fig-num">[그림 4]</span>사장님 한마디가 도는 순서 (planner 기본 모드) · <a href="diagrams/03b-assistant-routing.drawio">draw.io 원본</a></figcaption></figure>
 <figure class="figure" id="F-03"><div class="fig-wrap">{{svg:03-assistant-menu-sequence}}</div><figcaption><span class="fig-num">[그림 5]</span>A-1 메뉴 사진 등록 시퀀스 · <a href="diagrams/03-assistant-menu-sequence.drawio">draw.io 원본</a></figcaption></figure>
 <p>사장님 화면(<code>/</code>)은 세 칸이다. 왼쪽 새 대화·자주 쓰는 일·최근 대화, 가운데 대화(사진 첨부·승인 카드·다음 액션 칩), 오른쪽 사이드카(내 가게·리뷰·손님 통계 탭). 비서가 저장하면 오른쪽이 바로 바뀐다. 새 대화는 파일럿 매장(가상 가게) 하나로 시작한다.</p>
 
@@ -134,7 +134,7 @@
 <tr><td>B-5</td><td>골드셋</td><td>질문-정답 메뉴 60개 + holdout·holdout2, <code>scripts/eval_rag.py</code></td><td><span class="status" data-status="적용 완료">구현</span></td></tr>
 <tr><td>B-6</td><td>DB</td><td>가게·메뉴·리뷰·벡터(HNSW)·전화 주문·비서 가게 사본을 PostgreSQL + pgvector 한 곳에. 더미 19곳 + 실제 1곳</td><td><span class="status" data-status="적용 완료">구현</span></td></tr>
 </tbody></table>
-<figure class="figure" id="F-04"><div class="fig-wrap">{{svg:04-store-rag}}</div><figcaption><span class="fig-num">[그림 6]</span>가게 지식 RAG (11/08 설계. 리랭커는 쓰지 않았다) · <a href="diagrams/04-store-rag.drawio">draw.io 원본</a></figcaption></figure>
+<figure class="figure" id="F-04"><div class="fig-wrap">{{svg:04-store-rag}}</div><figcaption><span class="fig-num">[그림 6]</span>가게 지식 RAG · <a href="diagrams/04-store-rag.drawio">draw.io 원본</a></figcaption></figure>
 <div class="keybox" id="data-rule"><div class="kb-head">데이터 원칙 · 팀 결정</div>
 <ul>
 <li>실제 가게 데이터와 관련 코드는 <code>data/</code>·<code>private/</code>에만 둔다. gitignore와 <code>.githooks/pre-commit</code>이 커밋을 막는다. <b>절대 커밋·푸시하지 않는다.</b></li>
@@ -157,7 +157,7 @@
 <tr><td>C-6</td><td>주문서 전달</td><td><code>Order</code> → <code>OrderSink</code> → 사장님 카드(<code>/owner</code>, Papago 번역, 기본 러시아어)·DB <code>phone_orders</code>. 모르는 질문은 질문 카드</td><td><span class="status" data-status="적용 완료">구현</span></td></tr>
 <tr><td>C-7</td><td>운영 방어</td><td>Origin·IP별 상한, 하루 예산, 점검 모드, HCX 분당 한도 + 규칙 대체, 로그 14일, AI 고지, <code>/healthz</code>, 배포 직후 스모크</td><td><span class="status" data-status="적용 완료">구현</span></td></tr>
 </tbody></table>
-<figure class="figure" id="F-05"><div class="fig-wrap">{{svg:05-phone-pipeline}}</div><figcaption><span class="fig-num">[그림 7]</span>전화 한 턴이 도는 순서 (11/08 설계. 말 끝은 브라우저 VAD 대신 서버 무음 감지 + Smart Turn이 잡는다) · <a href="diagrams/05-phone-pipeline.drawio">draw.io 원본</a></figcaption></figure>
+<figure class="figure" id="F-05"><div class="fig-wrap">{{svg:05-phone-pipeline}}</div><figcaption><span class="fig-num">[그림 7]</span>전화 한 턴이 도는 순서 · <a href="diagrams/05-phone-pipeline.drawio">draw.io 원본</a></figcaption></figure>
 <figure class="figure" id="F-06"><div class="fig-wrap narrow">{{svg:06-phone-order-states}}</div><figcaption><span class="fig-num">[그림 8]</span>주문 대화 상태 · <a href="diagrams/06-phone-order-states.drawio">draw.io 원본</a></figcaption></figure>
 <table class="table-wide">
 <caption><span class="fig-num">[표 9]</span> 벤치마크 비교 (research/05)</caption>
@@ -237,7 +237,7 @@
 <tr><td>11/23~24</td><td>발표 연습</td><td><span class="status" data-status="검증 완료">확정</span></td></tr>
 <tr><td><b>11/25</b></td><td><b>발표</b> (25~30분, 데모 포함)</td><td><span class="status" data-status="검증 완료">확정</span></td></tr>
 </tbody></table>
-<figure class="figure" id="F-07"><div class="fig-wrap">{{svg:07-schedule}}</div><figcaption><span class="fig-num">[그림 9]</span>처음 세운 일정 (11/07 계획, 실제 진행은 표 11) · <a href="diagrams/07-schedule.drawio">draw.io 원본</a></figcaption></figure>
+<figure class="figure" id="F-07"><div class="fig-wrap">{{svg:07-schedule}}</div><figcaption><span class="fig-num">[그림 9]</span>실제 진행 (11/21 기준) · <a href="diagrams/07-schedule.drawio">draw.io 원본</a></figcaption></figure>
 
 <h1 id="eval" data-num="9.">평가와 리스크</h1>
 <table>
@@ -287,7 +287,7 @@
 <li>정본 PRD: <code>docs/PRD.md</code> · 파트별 안내: <code>src/agenthan/*/README.md</code>, <code>web/README.md</code> · DB: <code>docs/db.md</code> · 도구: <code>docs/tools.md</code></li>
 <li>평가: <code>docs/eval-baseline.md</code> · <code>docs/s1-tuning-loh.md</code> · <code>docs/runs/</code></li>
 <li>리서치: <code>docs/research/01-agent-hcx-langgraph.md</code> · <code>02-store-rag.md</code> · <code>03-phone-voice.md</code> · <code>04-web-infra-integration.md</code> · <code>05-channeltalk-voice-benchmark.md</code> · <code>06-semantic-only-hcx.md</code></li>
-<li>도식 원본: <code>docs/diagrams/*.drawio</code> (draw.io로 열어 고친 뒤 SVG로 다시 내보내고 <code>docs/build_prd.py</code> 실행). <code>00</code>~<code>07</code>은 11/08 설계 그림이다</li>
+<li>도식 원본: <code>docs/diagrams/*.drawio</code> (draw.io로 열어 고친 뒤 SVG로 다시 내보내고 <code>docs/build_prd.py</code> 실행). 11/21에 지금 구현에 맞게 다시 그렸다</li>
 </ul>
 <table class="changelog">
 <caption><span class="fig-num">[표 15]</span> 변경 이력</caption>
@@ -295,6 +295,6 @@
 <tbody><tr><td>v0.1</td><td>2026-11-08</td><td>초안 (5·6차 회의 + 리서치 01~05 + 도식 9개)</td></tr>
 <tr><td>v0.2</td><td>2026-11-08</td><td>기술 스택을 앞으로, CLOVA 호출을 네이티브 REST로, A-4 먼저 제안, 담당 확정, D1·D2 정리, 그림 설명 제거</td></tr>
 <tr><td>v0.3</td><td>2026-11-11</td><td>평가·언어 정본을 <code>docs/eval-baseline.md</code>로 (PRD.md만)</td></tr>
-<tr><td>v0.4</td><td>2026-11-21</td><td>개발 마감 뒤 현황으로 전면 갱신: 지금 상태 표, 실제 기술 스택, 기능별 구현 상태, D1(NCP Cloud DB)·D2 결정, 평가 수치, 일정 실제 진행, 리스크 갱신</td></tr></tbody>
+<tr><td>v0.4</td><td>2026-11-21</td><td>개발 마감 뒤 현황으로 전면 갱신: 지금 상태 표, 실제 기술 스택, 기능별 구현 상태, D1(NCP Cloud DB)·D2 결정, 평가 수치, 일정 실제 진행, 리스크 갱신, 그림 9개를 지금 구현에 맞게 다시 그림</td></tr></tbody>
 </table>
 </div>

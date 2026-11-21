@@ -354,7 +354,7 @@ AgentHan/
 - 회의록·인터뷰: 레포 밖 팀 폴더(5차 `1102회의`, 6차 `1106회의`, `1028인터뷰`)
 - 리서치: `docs/research/01-agent-hcx-langgraph.md`, `02-store-rag.md`, `03-phone-voice.md`, `04-web-infra-integration.md`, `05-channeltalk-voice-benchmark.md`, `06-semantic-only-hcx.md`
 - 평가: `docs/eval-baseline.md`, `docs/s1-tuning-loh.md`, `docs/semantic-final.md`, `docs/tuning-points.md`, `docs/runs/`
-- 도식(draw.io 원본 + SVG): `docs/diagrams/`. `00` 범위 · `01` 전체 구조 · `02` 계약 · `03` 메뉴 등록 시퀀스 · `03b` 비서 라우팅 · `04` 가게 지식 RAG · `05` 전화 파이프라인 · `06` 주문 대화 상태 · `07` 일정 · `phone-architecture` 전화 구조. `00`~`07`은 11/08 설계 때 그림이라 세부가 지금 구현과 다를 수 있다(이 문서와 README가 우선)
+- 도식(draw.io 원본 + SVG): `docs/diagrams/`. `00` 범위 · `01` 전체 구조 · `02` 계약 · `03` 메뉴 등록 시퀀스 · `03b` 비서 라우팅 · `04` 가게 지식 RAG · `05` 전화 파이프라인 · `06` 주문 대화 상태 · `07` 일정 · `phone-architecture` 전화 구조. 11/21에 지금 구현에 맞게 다시 그렸다
 - 팀 SDK: `docs/sdk.md` (§2.4)
 
 ## 변경 이력
@@ -364,4 +364,4 @@ AgentHan/
 | v0.1 | 2026-11-08 | 초안 (5·6차 회의, 리서치 01~05, 도식 9개, 데이터 원칙) |
 | v0.2 | 2026-11-08 | 기술 스택을 앞으로, CLOVA 호출을 네이티브 REST로, A-4 먼저 제안, 담당 확정, D1·D2 정리 |
 | v0.3 | 2026-11-11 | 평가·언어 정본을 `docs/eval-baseline.md`로(§0·§4·§10·§11). 코어 한국어 전용, 모국어는 경계 번역 |
-| v0.4 | 2026-11-21 | 개발 마감 뒤 현재 상태로 전면 갱신: 세 파트 구현·통합(#25·#27·#28·#29), 지금 상태 표(§1), 실제 기술 스택(HCX-007 실행·planner 루프·Cloud DB·sslip.io·Smart Turn), 기능 표에 [구현] 상태, D1·D2·가게 확정, 평가 수치(S1·S2·RAG·전화 스모크), 리스크·일정 갱신. `prd.html` 다시 만듦 |
+| v0.4 | 2026-11-21 | 개발 마감 뒤 현재 상태로 전면 갱신: 세 파트 구현·통합(#25·#27·#28·#29), 지금 상태 표(§1), 실제 기술 스택(HCX-007 실행·planner 루프·Cloud DB·sslip.io·Smart Turn), 기능 표에 [구현] 상태, D1·D2·가게 확정, 평가 수치(S1·S2·RAG·전화 스모크), 리스크·일정 갱신. 도식 9개를 지금 구현에 맞게 다시 그리고 `prd.html` 다시 만듦 |

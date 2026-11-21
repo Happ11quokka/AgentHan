@@ -1,6 +1,6 @@
 <mxfile host="localhost">
   <diagram id="mind" name="범위">
-    <mxGraphModel dx="516" dy="741" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1694" dy="784" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -13,19 +13,19 @@
         <mxCell id="m5" edge="1" parent="1" source="m3" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#03C75A;strokeWidth=3;exitX=1;exitY=0.15;entryX=0;entryY=0.5;html=1;" target="m4">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m6" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="기능 매칭 · 위치 안내" vertex="1">
+        <mxCell id="m6" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="기능 매칭 · 17개 기능 도구" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="6" as="geometry" />
         </mxCell>
         <mxCell id="m7" edge="1" parent="1" source="m4" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#03C75A;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m6">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m8" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="메뉴 사진 → 등록" vertex="1">
+        <mxCell id="m8" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="메뉴판·음식 사진 → 등록" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="42" as="geometry" />
         </mxCell>
         <mxCell id="m9" edge="1" parent="1" source="m4" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#03C75A;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m8">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m10" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="리뷰 요약 · 통계 리포트" vertex="1">
+        <mxCell id="m10" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="리뷰 요약·답글 · 통계 리포트" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="78" as="geometry" />
         </mxCell>
         <mxCell id="m11" edge="1" parent="1" source="m4" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#03C75A;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m10">
@@ -49,7 +49,7 @@
         <mxCell id="m17" edge="1" parent="1" source="m12" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#0091D5;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m16">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m18" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#0091D5;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="골드셋으로 정확도" vertex="1">
+        <mxCell id="m18" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#0091D5;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="골드셋 Recall@1 0.800" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="246" as="geometry" />
         </mxCell>
         <mxCell id="m19" edge="1" parent="1" source="m12" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#0091D5;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m18">
@@ -67,7 +67,7 @@
         <mxCell id="m23" edge="1" parent="1" source="m20" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#F08C00;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m22">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m24" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#F08C00;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="턴 관리 · 끼어들기" vertex="1">
+        <mxCell id="m24" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#F08C00;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="말 끝 판정 · 끼어들기" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="358" as="geometry" />
         </mxCell>
         <mxCell id="m25" edge="1" parent="1" source="m20" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#F08C00;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m24">
@@ -91,13 +91,13 @@
         <mxCell id="m31" edge="1" parent="1" source="m28" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#4B5563;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m30">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m32" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#4B5563;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="NCP 모델만" vertex="1">
+        <mxCell id="m32" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#4B5563;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="NCP 모델 API만" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="508" as="geometry" />
         </mxCell>
         <mxCell id="m33" edge="1" parent="1" source="m28" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#4B5563;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m32">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m34" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#4B5563;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="NCP Server 1대 배포" vertex="1">
+        <mxCell id="m34" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#4B5563;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="NCP Server + Cloud DB" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="546" as="geometry" />
         </mxCell>
         <mxCell id="m35" edge="1" parent="1" source="m28" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#4B5563;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m34">
@@ -157,13 +157,13 @@
         <mxCell id="m57" edge="1" parent="1" source="m52" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#B4261A;strokeWidth=1.5;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="m56">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m58" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#B4261A;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="화면 클릭 자동화" vertex="1">
+        <mxCell id="m58" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#B4261A;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="화면 클릭 자동화 · MCP 시연" vertex="1">
           <mxGeometry height="28" width="150" x="10" y="111" as="geometry" />
         </mxCell>
         <mxCell id="m59" edge="1" parent="1" source="m52" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#B4261A;strokeWidth=1.5;exitX=0;exitY=0.5;entryX=1;entryY=0.5;html=1;" target="m58">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="m60" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;html=1;whiteSpace=wrap;" value="먼저 제안 (리뷰 루틴 등)" vertex="1">
+        <mxCell id="m60" parent="1" style="fontFamily=Pretendard;rounded=1;arcSize=50;fillColor=#ffffff;strokeColor=#03C75A;fontColor=#14171C;fontSize=11;whiteSpace=wrap;html=1;" value="리뷰 정기 보고 · 다음 액션" vertex="1">
           <mxGeometry height="28" width="160" x="685" y="114" as="geometry" />
         </mxCell>
         <mxCell id="m61" edge="1" parent="1" source="m4" style="edgeStyle=orthogonalEdgeStyle;curved=1;endArrow=none;strokeColor=#03C75A;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m60">
