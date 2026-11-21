@@ -172,6 +172,9 @@ def menus_of_kind(kind: str, names: Sequence[str]) -> str:
 
 def not_on_menu(menu_names: Sequence[str], drinks: Sequence[str] | None = None) -> str:
     """없는 메뉴. 손님이 마실 것을 찾았고 가게에 음료가 있으면(`drinks`) 음료만 든다."""
+    if drinks and len(drinks) > LIST_MENUS:
+        return (f"죄송해요, 그 메뉴는 없어요. 마실 거는 {_join(drinks[:LIST_MENUS])} 같은 메뉴가 "
+                "있어요.")
     if drinks:
         return f"죄송해요, 그 메뉴는 없어요. 마실 거는 {i_ga(_join(drinks))} 있어요."
     return f"죄송해요, 그 메뉴는 없어요. {menu_list(menu_names)}"
