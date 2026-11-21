@@ -6,7 +6,7 @@ import pytest
 from agenthan.agent.place_matcher import load_features
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.place_report import ChannelFact, KeywordFact, load_report, report_facts
-from agenthan.tools.report_insights import build_insights
+from agenthan.tools.report_insights import build_insights, reply_insight
 
 
 @pytest.fixture
@@ -200,3 +200,15 @@ def test_empty_or_no_comparison_data_has_no_spurious_insights(facts, shop):
         conversion_change_pp=None,
     )
     assert build_insights(facts, shop) == []
+
+
+def test_reviews_without_a_star_rating_are_not_counted_as_low():
+    # Naver place reviews carry no stars: store_data writes rating None (#92 repro crashed here).
+    shop = {
+        "reviews": [
+            {"review_id": "r1", "rating": None, "has_owner_reply": False},
+            {"review_id": "r2", "rating": 2, "has_owner_reply": False},
+        ]
+    }
+    insight = reply_insight(shop)
+    assert insight is not None and insight.evidence["review_ids"] == ["r2"]
