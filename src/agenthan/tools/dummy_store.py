@@ -222,8 +222,9 @@ class DummyStore:
     def add_board_menus(self, items: list[dict]) -> list[dict]:
         """메뉴판 사진에서 읽은 메뉴를 승인 없이 바로 올린다(사장님이 메뉴 탭에서 고친다).
 
-        items: {name, price, name_native?, ai?, filling?}. 같은 이름이 이미 있으면 새로 만들지
-        않고 가격만 맞춘다(바뀌면 ai에 price). 돌려주는 줄마다 action(created|updated|unchanged)."""
+        items: {name, price, name_native?, description?, ai?, filling?}. 같은 이름이 이미 있으면
+        새로 만들지 않고 가격만 맞춘다(바뀌면 ai에 price).
+        돌려주는 줄마다 action(created|updated|unchanged)."""
         with self.lock:
             data = self.read()
             out = []
@@ -240,9 +241,10 @@ class DummyStore:
                         "price": price,
                         "aliases": [],
                     }
-                    native = item.get("name_native")
-                    if isinstance(native, str) and native.strip():
-                        record["name_native"] = " ".join(native.split())
+                    for key in ("name_native", "description"):
+                        value = item.get(key)
+                        if isinstance(value, str) and value.strip():
+                            record[key] = " ".join(value.split())
                     record["ai"] = [f for f in item.get("ai", []) if f in MENU_FLAG_FIELDS]
                     record["filling"] = [
                         f for f in item.get("filling", []) if f in MENU_FLAG_FIELDS

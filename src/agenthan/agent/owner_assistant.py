@@ -2335,7 +2335,12 @@ class OwnerAssistant:
         if result.jobs:
             lines.append(t["board_filling"])
             self.photo_job = menu_board.fill_all(
-                self.store, result.jobs, image, context, call=self.clova_v3
+                self.store,
+                result.jobs,
+                image,
+                context,
+                call=self.clova_v3,
+                menu_list=", ".join(i.name for i in items),
             )
         if result.no_price:
             lines.append(t["board_no_price"].format(names=", ".join(result.no_price)))

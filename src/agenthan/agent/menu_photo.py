@@ -30,6 +30,10 @@ from agenthan.tools.dummy_store import normalize
 
 VISION_MODEL = "HCX-005"
 TEXT_MODEL = "HCX-005"
+# 한국어 이름·설명: HCX-007(추론 끔)이 HCX-005보다 빠르고(메뉴 8개 동시 1.6초 대 3.0초)
+# JSON을 덜 깨뜨리며 외국 음식 설명이 더 정확했다(2026-11-21 실측).
+# 그래도 틀리는 음식은 dish_glossary가 먼저 잡는다.
+LOCALIZE_MODEL = "HCX-007"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_ITEMS = 30
 FUZZY_MIN = 0.8  # 글자 유사도. Медовник↔Медовик 0.93, Народный↔Наполеон 0.5
@@ -46,8 +50,9 @@ LOCALIZE_SYSTEM = (
     "- name_ko: 반드시 한글. 원어 발음을 살린 표기(Медовик→메도빅, Пельмени→펠메니). "
     "다른 음식으로 바꾸지 않는다.\n"
     "- 재료·특징을 빼서 뭉개지 않는다(臭豆腐米粉→취두부 쌀국수).\n"
-    "- description_ko: 한국 손님이 알아듣게 한 문장. 그 음식이 보통 어떤 음식인지 쓰고, "
-    "이 가게만의 재료나 맛은 지어내지 않는다. 무슨 음식인지 전혀 모를 때만 빈 문자열.\n"
+    "- description_ko: 한국 손님이 알아듣게 한 문장. 그 음식이 보통 어떤 음식인지"
+    "(주재료·조리법·먹는 방식) 쓰고, 음료면 음료라고 쓴다. 이 가게만의 재료나 맛은 "
+    "지어내지 않는다. 무슨 음식인지 전혀 모를 때만 빈 문자열.\n"
     '- 출력은 JSON 하나만: {"name_ko": "...", "description_ko": "..."}'
 )
 
@@ -259,21 +264,25 @@ def match_known(name: str, knowledge: StoreKnowledge) -> tuple[MenuItem, str] | 
     return None
 
 
-def localize(name: str, store_context: str = "", *, call: Call = chat_v3) -> tuple[str, str]:
-    """원어 이름 하나 → (한글 메뉴명, 한 문장 설명). 한글이 아니면 이름은 빈 문자열."""
+def localize(
+    name: str, store_context: str = "", *, call: Call = chat_v3, menu_list: str = ""
+) -> tuple[str, str]:
+    """원어 이름 하나 → (한글 메뉴명, 한 문장 설명). 한글이 아니면 이름은 빈 문자열.
+    menu_list: 같은 메뉴판의 다른 메뉴(음식 종류를 가늠하는 참고)."""
+    board = f"같은 메뉴판: {menu_list}\n" if menu_list else ""
     body = {
         "messages": [
             {"role": "system", "content": LOCALIZE_SYSTEM},
             {
                 "role": "user",
-                "content": f"가게: {store_context or '알 수 없음'}\n메뉴 원어 이름: {name}",
+                "content": f"가게: {store_context or '알 수 없음'}\n{board}메뉴 원어 이름: {name}",
             },
         ],
-        "maxTokens": 300,
-        "temperature": 0.1,
+        "maxCompletionTokens": 600,
+        "thinking": {"effort": "none"},
     }
     try:
-        raw = _json_block(_content(call(TEXT_MODEL, body)), "{")
+        raw = _json_block(_content(call(LOCALIZE_MODEL, body)), "{")
     except (ClovaV3Error, MenuPhotoError, ValueError):
         return "", ""
     if not isinstance(raw, dict):
