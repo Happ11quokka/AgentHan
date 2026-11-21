@@ -222,7 +222,7 @@ def offer_add(phrase: str) -> str:
 
 
 def request_noted(menu_name: str, request: str) -> str:
-    return f"{menu_name}에 {request}라고 적어 둘게요."
+    return f"{menu_name}에 {_josa(request, '이라고', '라고')} 적어 둘게요."  # 디카페인이라고
 
 
 # ---------------------------------------------------------------- 픽업·확인·마무리

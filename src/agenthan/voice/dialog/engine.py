@@ -1585,15 +1585,20 @@ class DialogEngine:
         if self._confirm_big_qty(turn, item, replace(act, qty=qty)):
             return
         options = self._default_choices(item)
+        request = ""
         option_text = act.option_text or self._option_in_name(item, act.menu_text)
-        if option_text:
+        if option_text and not self._takes_options(item):
+            request = option_text  # "아이스 아메리카노 하나요" → 요청 사항 "아이스" (전화 메뉴 02)
+        elif option_text:
             options = self._resolve_options(turn, item, option_text, options)
-        line = CartLine(item, qty, options)
-        added = self._cart.add(item, line.qty, options=options)
+        line = CartLine(item, qty, options, request)
+        added = self._cart.add(item, line.qty, options=options, request=request)
         if not self._order_ok(turn, added):  # 주문 전체 상한 (6단계 주문 가드)
             return
         self._cart = added
         self._touch(turn, line)
+        if request:
+            self._say(turn, templates.request_noted(item.name_ko, request))
 
     def _option_in_name(self, item: MenuItem, menu_text: str) -> str:
         """메뉴명 쪽에 붙은 옵션 말("아이스 아메리카노", "아이스아메리카노"). 없으면 "".
@@ -1899,10 +1904,14 @@ class DialogEngine:
         if index is None:
             self._ask(turn, templates.which_item())
             return
+        self._note_request(turn, index, act.free_text)
+
+    def _note_request(self, turn: _Turn, index: int, text: str) -> None:
+        """그 줄의 `request`에 적는다. 이미 있으면 뒤에 붙인다. 금액은 그대로다."""
         line = self._cart.lines[index]
-        request = f"{line.request}, {act.free_text}" if line.request else act.free_text
+        request = f"{line.request}, {text}" if line.request else text
         self._replace_line(turn, index, replace(line, request=request), readback=False)
-        self._say(turn, templates.request_noted(line.item.name_ko, act.free_text))
+        self._say(turn, templates.request_noted(line.item.name_ko, text))
         turn.changed = True
 
     # ------------------------------------------------------------ 티켓 03: 도우미
@@ -1910,6 +1919,14 @@ class DialogEngine:
     def _required_for(self, item: MenuItem) -> tuple[RequiredOption, ...]:
         """그 메뉴의 필수 옵션. 계약 v1 뒤에는 `item.required_options`를 읽는다."""
         return self._config.required_options.get(item.id, ())
+
+    def _takes_options(self, item: MenuItem) -> bool:
+        """고를 수 있는 것(옵션·꼭 고를 것)이 하나라도 있는 메뉴인가.
+
+        없는 메뉴(비서 메뉴는 모두 그렇다)에 손님이 한 옵션 말("아이스로요", "샷 추가요")은
+        "그 옵션이 없어요"라고 하지 않고 그 줄 요청 사항으로 적는다(전화 메뉴 티켓 02).
+        """
+        return bool(item.options or self._required_for(item))
 
     def _unsaid(self, item: MenuItem) -> frozenset[str]:
         """손님에게 말하지 않을 옵션: 꼭 고를 것의 기본값("보통"). 주문서에는 남는다 (티켓 06)."""
@@ -2001,6 +2018,9 @@ class DialogEngine:
 
     def _apply_option(self, turn: _Turn, index: int, text: str) -> None:
         line = self._cart.lines[index]
+        if not self._takes_options(line.item):
+            self._note_request(turn, index, text)
+            return
         options = self._resolve_options(turn, line.item, text, line.options)
         if options == line.options:
             self._touch(turn, line)  # 이미 그 옵션이다. 말없이 넘어가지 않게 되받는다 (티켓 04)
