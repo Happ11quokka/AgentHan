@@ -252,6 +252,7 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
       place: { ...SEED, menu: SEED.menu.map((m) => (m.id === menuId ? { ...m, ...edit, ai: [] } : m)) },
       pending: [],
     })),
+    draftIntroduction: vi.fn(async (_id: string) => ({ text: "이태원 골목에서 매일 아침 메도빅을 굽는 러시안 베이커리예요." })),
     polishMenu: vi.fn(async (_id: string, _menuId: string) => ({ place: SEED, pending: [], message: "다듬기 시작했어요.", started: true })),
     deleteMenu: vi.fn(async (_id: string, menuId: string): Promise<View> => ({
       place: { ...SEED, menu: SEED.menu.filter((m) => m.id !== menuId) },

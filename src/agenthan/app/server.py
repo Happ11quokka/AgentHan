@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 
-from agenthan.agent import menu_board
+from agenthan.agent import intro_draft, menu_board
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
@@ -465,6 +465,21 @@ def create_app(
             result = {**result, **session.view()}
         session.illustrate_later()  # 승인으로 메뉴가 들어왔을 수 있다
         return result
+
+    @app.post("/assistant/sessions/{session_id}/introduction/draft")
+    def draft_introduction(session_id: str) -> dict:
+        """가게 정보 입력 블록의 [추천 글 받기]: 가게 자료로 소개글 초안 한 개 → {text}.
+        대화 턴이 아니고 저장하지 않는다(사장님이 칸에서 고쳐 [미리 보기]를 눌러야 승인 카드).
+        HCX 호출은 세션 잠금 밖에서."""
+        session = get(session_id)
+        with session.lock:
+            data = session.assistant.store.read()
+            chat = session.assistant.chat
+        try:
+            return {"text": intro_draft.draft(data, chat)}
+        except Exception as exc:  # 모델·네트워크 실패는 사장님께 다시 눌러 달라고만 한다
+            logging.getLogger(__name__).info("소개글 추천 실패: %s", type(exc).__name__)
+            raise HTTPException(502, intro_draft.FAILED) from exc
 
     @app.post("/assistant/sessions/{session_id}/photos")
     def send_photo(

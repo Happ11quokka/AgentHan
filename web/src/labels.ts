@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReportFrequency, ReviewReport, ReviewRow } from "./types";
+import type { BusinessInfo, Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReportFrequency, ReviewReport, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -62,6 +62,64 @@ export const COUPON_FORM_TEXT = {
   cancel: "취소",
   submit: "미리 보기",
 } as const;
+
+// ── 가게 기본 정보 입력 블록 ─────────
+export type BusinessField = "name" | "address" | "phone" | "introduction";
+export type BusinessInput = Record<BusinessField, string>;
+export const BUSINESS_FIELDS: BusinessField[] = ["name", "address", "phone", "introduction"];
+export const BUSINESS_NAMES: Record<BusinessField, string> = { name: "상호", address: "주소", phone: "전화번호", introduction: "소개글" };
+
+export const BUSINESS_FORM_TEXT = {
+  heading: "가게 기본 정보",
+  hint: "바꿀 칸만 고치고 [미리 보기]를 누르세요. 저장은 확인 카드에서 한 번 더 눌러야 해요.",
+  placeholders: { name: "예: 샘플 러시안 베이커리", address: "예: 서울시 용산구 …", phone: "예: 02-123-4567", introduction: "손님이 가게를 처음 볼 때 읽는 글이에요." },
+  draft: "추천 글 받기",
+  drafting: "추천 글 쓰는 중…",
+  drafted: "추천 글을 넣었어요. 마음대로 고쳐 쓰세요.",
+  draftFailed: "소개글 추천을 만들지 못했어요. 잠시 뒤 다시 눌러 주세요.",
+  cancel: "취소",
+  submit: "미리 보기",
+} as const;
+
+/** 지금 가게 값으로 채운 입력 블록 처음 값. */
+export function businessInitial(info: BusinessInfo | undefined): BusinessInput {
+  return { name: info?.name ?? "", address: info?.address ?? "", phone: info?.phone ?? "", introduction: info?.introduction ?? "" };
+}
+
+/** 처음 값과 달라진 칸만(앞뒤 공백 정리). */
+export function businessChanges(initial: BusinessInput, values: BusinessInput): Partial<BusinessInput> {
+  const out: Partial<BusinessInput> = {};
+  for (const k of BUSINESS_FIELDS) if (values[k].trim() !== initial[k].trim()) out[k] = values[k].trim();
+  return out;
+}
+
+/** [미리 보기]를 막는 이유. 막을 게 없으면 null. */
+export function businessProblem(changes: Partial<BusinessInput>): string | null {
+  const keys = Object.keys(changes) as BusinessField[];
+  if (!keys.length) return "바꿀 칸을 고쳐 주세요.";
+  const blank = keys.find((k) => !changes[k]);
+  if (blank) return `${BUSINESS_NAMES[blank]}${blank === "introduction" ? "은" : "는"} 비울 수 없어요.`;
+  return null;
+}
+
+/** 대화창에 남는 사장님 말: "가게 정보 바꾸기: 소개글·전화번호". */
+export function businessActionLabel(changes: Partial<BusinessInput>): string {
+  return `가게 정보 바꾸기: ${BUSINESS_FIELDS.filter((k) => k in changes).map((k) => BUSINESS_NAMES[k]).join("·")}`;
+}
+
+/** 승인 카드 줄: 짧은 칸은 "전화번호: 02-000-0000 → 02-111-2222", 소개글은 새 글 전체. */
+function businessLines(before: BusinessInfo | undefined, after: BusinessInfo | undefined): string[] {
+  if (!before || !after) return [];
+  const lines: string[] = [];
+  for (const k of BUSINESS_FIELDS) {
+    const a = before[k] ?? "";
+    const b = after[k] ?? "";
+    if (a === b) continue;
+    if (k === "introduction") lines.push(`새 소개글: ${b || "비움"}`);
+    else lines.push(a ? `${BUSINESS_NAMES[k]}: ${a} → ${b || "비움"}` : `${BUSINESS_NAMES[k]}: ${b}`);
+  }
+  return lines;
+}
 
 /** [미리 보기]를 막는 이유 한 줄. 막을 게 없으면 null. */
 export function couponProblem(c: CouponInput): string | null {
@@ -344,12 +402,13 @@ export function describeChanges(before: Place, after: Place): string[] {
   }
 
   const oldCoupons = new Set(before.coupon.map((c) => c.id));
-  for (const c of after.coupon) if (!oldCoupons.has(c.id)) lines.push(couponLine(c));
+  for (const c of after.coupon) if (!oldCoupons.has(c.id)) lines.push(...couponLines(c));
 
   const oldWords = before.keywords ?? [];
   const newWords = after.keywords ?? oldWords; // 키워드가 없는 응답은 바뀐 것이 없다.
   for (const k of newWords) if (!oldWords.includes(k)) lines.push(`대표키워드 추가 ${k}`);
   for (const k of oldWords) if (!newWords.includes(k)) lines.push(`대표키워드 뺌 ${k}`);
+  lines.push(...businessLines(before.business_info, after.business_info));
   lines.push(...recordChanges(before, after));
   return lines;
 }
@@ -385,7 +444,7 @@ const VALUE_TEXT: Record<string, string> = {
   pickup: "포장",
   delivery: "배달",
 };
-const KNOWN_SECTIONS = new Set(["menu", "business_hours", "coupon", "keywords"]);
+const KNOWN_SECTIONS = new Set(["menu", "business_hours", "coupon", "keywords", "business_info"]);
 
 const isRecordRows = (value: unknown): value is RecordRow[] =>
   Array.isArray(value) && value.every((r) => r && typeof r === "object" && "id" in r && "label" in r && "fields" in r);
@@ -437,13 +496,12 @@ function recordChanges(before: Place, after: Place): string[] {
   return lines;
 }
 
-const squash = (text: string) => text.replace(/\s+/g, "");
-/** 새 쿠폰 한 줄. 쿠폰 이름에 이미 할인 문구가 들어 있으면 다시 붙이지 않는다. 최소 주문 금액 조건은 뒤에 붙인다. */
-function couponLine(c: Coupon) {
-  const discount = discountText(c);
-  const line = squash(c.title).includes(squash(discount)) ? `새 쿠폰 ${c.title}` : `새 쿠폰 ${c.title} ${discount}`;
+/** 새 쿠폰 줄: 이름·할인·기간을 따로. 이름만으로는 할인율·기간을 알 수 없다. 최소 주문 금액 조건이 있으면 한 줄 더. */
+function couponLines(c: Coupon): string[] {
+  const amount = c.discount_type === "percent" ? `${c.discount_value}%` : won(c.discount_value);
+  const lines = [`새 쿠폰: ${c.title}`, `할인: ${amount}`, `기간: ${periodText(c)}`];
   const condition = minOrderText(c);
-  return condition ? `${line} · ${condition}` : line;
+  return condition ? [...lines, `조건: ${condition}`] : lines;
 }
 
 const hasHangul = (text: string) => /[가-힣]/.test(text);

@@ -28,6 +28,8 @@ export interface AssistantApi {
   editMenu(sessionId: string, menuId: string, edit: MenuEdit): Promise<View>;
   /** [사진 다듬기] 2차: CPU 스튜디오 보정(몇 초), GPU 서버가 있으면 SEED Omni(1~2분). message: 사장님께 보일 한 줄. */
   polishMenu(sessionId: string, menuId: string): Promise<View & { message: string; started: boolean }>;
+  /** 가게 정보 입력 블록 [추천 글 받기]: 가게 자료로 쓴 소개글 초안. 대화 턴이 아니고 저장하지 않는다. */
+  draftIntroduction(sessionId: string): Promise<{ text: string }>;
   /** 메뉴판에서 잘못 읽은 줄을 지운다. 대화 턴이 아니다. */
   deleteMenu(sessionId: string, menuId: string): Promise<View>;
 }
@@ -106,5 +108,6 @@ export const httpApi: AssistantApi = {
       body: JSON.stringify(edit),
     }),
   polishMenu: (id, menuId) => call(`${base(id)}/menus/${encodeURIComponent(menuId)}/polish`, { method: "POST" }),
+  draftIntroduction: (id) => call(`${base(id)}/introduction/draft`, { method: "POST" }),
   deleteMenu: (id, menuId) => call(`${base(id)}/menus/${encodeURIComponent(menuId)}`, { method: "DELETE" }),
 };

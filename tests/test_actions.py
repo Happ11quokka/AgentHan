@@ -64,6 +64,7 @@ COUPON = {
         ("stats.day", {}),
         ("coupon.create", COUPON),
         ("hours.edit", {"entries": [{"days": ["sun"], "closed": True}]}),
+        ("business_info.edit", {"introduction": "매일 아침 굽는 러시아 케이크"}),
     ],
 )
 def test_actions_without_routing(setup, name, args):
@@ -104,6 +105,29 @@ def test_coupon_form_min_order_is_saved(setup):
     ).json()
     [saved] = [c for c in done["place"]["coupon"] if c["title"] == COUPON["title"]]
     assert saved["min_order"] == 10000
+
+
+def test_business_info_form_previews_then_saves(setup):
+    _, _, action, _ = setup
+    intro = "매일 아침 굽는 메도빅과 러시아 홍차가 있는 이태원 베이커리"
+    first = action("business_info.edit", {"introduction": intro, "phone": "02-111-2222"}).json()
+    [pending] = first["pending"]
+    assert pending["feature"] == "business_info"
+    assert pending["changes"] == {
+        "business_info": {"added": [], "updated": ["phone", "introduction"], "removed": []}
+    }
+    assert pending["after"]["business_info"]["introduction"] == intro
+    assert first["place"]["business_info"]["introduction"] != intro  # 승인 전에는 그대로
+    done = action(
+        "task.approve", {"task_id": pending["task_id"], "version": pending["version"]}
+    ).json()
+    assert done["place"]["business_info"]["introduction"] == intro
+    assert done["place"]["business_info"]["phone"] == "02-111-2222"
+
+
+def test_business_info_form_rejects_unknown_fields(setup):
+    _, _, action, _ = setup
+    assert action("business_info.edit", {"category": "카페"}).status_code == 400
 
 
 def test_review_id_and_approval(setup):

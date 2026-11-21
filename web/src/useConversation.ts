@@ -1,12 +1,13 @@
 // 대화 상태 한곳: 메시지·가게 화면·승인 대기·오늘 한 일·연결 상태. 사이드카와 승인 카드가 같은 상태를 본다.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type AssistantApi } from "./api";
-import { couponActionLabel, describeChanges, describeReportChange, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
+import { businessActionLabel, businessInitial, couponActionLabel, describeChanges, describeReportChange, REVIEW_POSTED_TEXT, type BusinessInput, type CouponInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
 import type { Action, LogEntry, MenuEdit, Message, OnboardingInput, Pending, Place, ReviewReport, ReviewRow, Routines, RoutinesChange, ServerMessage, ShopInfo, Turn, View } from "./types";
 
 const COUPON_ACTION = "coupon.create";
+const BUSINESS_ACTION = "business_info.edit";
 const SAY_ACTION = "chat.say";
 /** 정해진 때의 리뷰 보고(#98)를 받으려고 세션 조회(/place)를 다시 읽는 간격. */
 export const REPORT_POLL_MS = 60_000;
@@ -48,6 +49,13 @@ export type Conversation = {
   openCoupon: (initial?: CouponInput) => void;
   closeCoupon: () => void;
   submitCoupon: (values: CouponInput) => Promise<void>;
+  /** 대화 영역에 떠 있는 가게 기본 정보 입력 블록의 처음 값(지금 가게 값). 없으면 null. */
+  businessForm: BusinessInput | null;
+  closeBusiness: () => void;
+  /** 블록의 [미리 보기]: 고친 칸만 business_info.edit 액션으로 보낸다. */
+  submitBusiness: (changes: Partial<BusinessInput>) => Promise<void>;
+  /** 블록의 [추천 글 받기]: 소개글 초안. 실패하면 던진다. */
+  draftIntroduction: () => Promise<string>;
   send: (text: string, image?: File) => Promise<void>;
   act: (action: Action) => Promise<void>;
   retry: () => void;
@@ -104,6 +112,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const [online, setOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [couponForm, setCouponForm] = useState<CouponInput | null>(null);
+  const [businessForm, setBusinessForm] = useState<BusinessInput | null>(null);
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [reviewReport, setReviewReport] = useState<ReviewReport | null>(null);
   const [routines, setRoutines] = useState<Routines | null>(null);
@@ -111,6 +120,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const [readingSince, setReadingSince] = useState<number | null>(null);
   const toRetry = useRef<Retryable | null>(null);
   const sentCoupon = useRef<CouponInput | null>(null); // 거절되면 블록을 다시 열 값
+  const sentBusiness = useRef<{ label: string; initial: BusinessInput; changes: Partial<BusinessInput> } | null>(null);
   const inFlight = useRef(false); // 렌더 전에 들어온 두 번째 클릭도 막는다
   const latest = useRef({ place, pending, messages, reviewReport });
   latest.current = { place, pending, messages, reviewReport };
@@ -214,10 +224,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
       resolved && answered && before.pending.some((p) => p.kind === "review" && p.task_id === answered.args.task_id);
     if (answeredReview && answered.action_id === "task.approve") lines.push(REVIEW_POSTED_TEXT);
     const card = turn.pending.find((p) => p.kind === "review" && !before.pending.some((b) => b.task_id === p.task_id));
-    // 이 답이 새로 띄운 변경 카드의 줄. 말풍선의 승인 질문 줄 밑에 같은 내용을 보인다.
-    const previews = turn.pending
-      .filter((p) => !p.kind && !before.pending.some((b) => b.task_id === p.task_id))
-      .map((p) => pendingLines(turn.place, p));
+    // 변경 줄은 승인 카드에만 보인다. 말풍선은 "…아래처럼 바꿀까요?" 질문만(중복 없음).
     const added: Message[] = [
       {
         id: newId(),
@@ -225,7 +232,6 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
         text: turn.reply,
         nextActions: turn.next_actions,
         ...(card && { cardFor: card.task_id }),
-        ...(previews.length && { previews }),
       },
     ];
     if (resolved && (answeredReview || before.pending.some((p) => p.kind !== "review")))
@@ -275,6 +281,10 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     // 쿠폰 값이 거절되면(승인 카드 없이 "값을 다시 확인해 주세요") 넣었던 값 그대로 블록을 다시 연다.
     const sent = sentCoupon.current;
     if (action.action_id === COUPON_ACTION && sent && action.label === couponActionLabel(sent) && !turn.pending.some((p) => p.feature === "coupon")) setCouponForm(sent);
+    // 가게 정보도 승인 카드 없이 돌아오면 고친 값 그대로 블록을 다시 연다.
+    const biz = sentBusiness.current;
+    if (action.action_id === BUSINESS_ACTION && biz && action.label === biz.label && !turn.pending.some((p) => p.feature === "business_info"))
+      setBusinessForm({ ...biz.initial, ...biz.changes });
   }, [api, applyTurn, attempt, sessionId]);
 
   /** 대화 턴 밖에서 한 일(예: 대기함 [올리기])을 '오늘 한 일'에만 남긴다. */
@@ -424,6 +434,11 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
       if (!inFlight.current) setCouponForm((open) => open ?? blankCoupon());
       return;
     }
+    // 값 없이 온 가게 정보 수정(도구함)은 지금 가게 값으로 채운 입력 블록을 연다.
+    if (action.action_id === BUSINESS_ACTION && Object.keys(action.args).length === 0) {
+      if (!inFlight.current) setBusinessForm((open) => open ?? businessInitial(latest.current.place?.business_info));
+      return;
+    }
     if (!sessionId || inFlight.current) return;
     if (!latest.current.messages.some((m) => m.role === "owner")) {
       storage.rememberRecent({ id: sessionId, title: action.label, at: Date.now() });
@@ -453,6 +468,19 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     });
   }, [act, sessionId]);
 
+  const closeBusiness = useCallback(() => setBusinessForm(null), []);
+  const submitBusiness = useCallback(async (changes: Partial<BusinessInput>) => {
+    if (!sessionId || inFlight.current || !businessForm) return;
+    const label = businessActionLabel(changes);
+    sentBusiness.current = { label, initial: businessForm, changes };
+    setBusinessForm(null);
+    await act({ action_id: BUSINESS_ACTION, label, args: changes });
+  }, [act, businessForm, sessionId]);
+  const draftIntroduction = useCallback(async () => {
+    if (!sessionId) throw new Error("no session");
+    return (await api.draftIntroduction(sessionId)).text;
+  }, [api, sessionId]);
+
   const retry = useCallback(() => {
     const job = toRetry.current;
     if (!job || job.kind === "start") void newChat();
@@ -472,6 +500,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   return {
     sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
+    businessForm, closeBusiness, submitBusiness, draftIntroduction,
     send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
     routines, changeRoutines, editMenu, deleteMenu, polishMenu, readingSince, refresh,
   };
