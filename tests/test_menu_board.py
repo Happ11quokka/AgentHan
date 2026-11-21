@@ -748,3 +748,59 @@ def test_refine_box_maps_the_answer_back_and_keeps_the_box_on_failure():
         return {"message": {"content": "잘 모르겠어요"}}
 
     assert menu_board.refine_box(BOARD, box, "김밥", call=nonsense) == box
+
+
+# ---------------------------------------------------------------- 채우기 진행(menu_fill)
+
+
+def test_the_fill_run_keeps_its_start_and_menus_until_everything_is_filled(tmp_path, monkeypatch):
+    """진행 줄의 걸린 초와 'N/M개 완료'는 서버가 정한다: 메뉴 탭을 다시 열어도(다른 탭에 갔다 와도)
+    처음부터 세지 않는다. 늦게 사진을 찾은 메뉴도 같은 일에 더하고, 다 채우면 지운다."""
+    from agenthan.app import place
+    from agenthan.tools import dummy_store
+
+    clock = iter(range(1000, 1100))
+    monkeypatch.setattr(dummy_store, "_now", lambda: float(next(clock)))
+    store, fake, result, board = recovered_board(tmp_path)
+    kimbap, borscht = result.jobs[0].menu_id, result.no_photo[0].menu_id
+    run = store.read()["menu_fill"]
+    assert run["started_at"] == 1000.0 and run["menu_ids"] == [kimbap]
+    assert run["fields"] == [f"{kimbap}/description", f"{kimbap}/photo"]
+
+    store.patch_menu(kimbap, {"description": "김밥 설명"}, by_owner=False)
+    store.patch_menu(borscht, {}, by_owner=False, start=("photo",))  # 이름표로 사진을 찾음
+    run = store.read()["menu_fill"]
+    assert run["started_at"] == 1000.0  # 새로 시작하지 않는다
+    assert run["menu_ids"] == [kimbap, borscht] and len(run["fields"]) == 3
+
+    view = place.snapshot(store.read(), now=1024.6)["menu_fill"]
+    assert view == {
+        "started_at": 1000.0,
+        "seconds": 24.6,
+        "menu_ids": [kimbap, borscht],
+        "fields": 3,
+    }
+
+    store.patch_menu(kimbap, {}, by_owner=False, done=("photo",))
+    store.patch_menu(borscht, {}, by_owner=False, done=("photo",))
+    assert "menu_fill" not in store.read()
+    assert place.snapshot(store.read())["menu_fill"] is None
+
+
+def test_a_polish_alone_is_not_a_fill_run(tmp_path):
+    store, fake, result, board = recovered_board(tmp_path)
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=fake_cutout, no_photo=result.no_photo
+    )()
+    kimbap = result.jobs[0].menu_id
+    store.patch_menu(kimbap, {}, by_owner=False, start=("polish",))
+    assert "menu_fill" not in store.read()
+
+
+def test_the_fill_run_is_not_a_change_to_approve():
+    from agenthan.app import place
+
+    before = {"menu": [], "menu_fill": None}
+    fill = {"started_at": 1.0, "seconds": 2.0, "menu_ids": [], "fields": 0}
+    after = {"menu": [], "menu_fill": fill}
+    assert place.changes(before, after) == {}

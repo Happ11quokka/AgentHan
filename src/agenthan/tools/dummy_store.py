@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import unicodedata
 import uuid
 from collections.abc import Callable
@@ -143,6 +144,39 @@ def _flags(record: dict, key: str) -> list[str]:
     return [v for v in value if v in MENU_FLAG_FIELDS] if isinstance(value, list) else []
 
 
+# 메뉴판 사진 채우기 한 번(진행 줄): 언제 시작했고 어느 메뉴·칸을 채우는지. 화면이 메뉴 탭을 다시
+# 열어도(다른 탭에 갔다 와도) 걸린 초와 'N/M개 완료'를 처음부터 세지 않게 저장소에 둔다.
+# {started_at: 초(epoch), menu_ids: [...], fields: ["<메뉴 id>/<칸>", ...]}. 다 채우면 지운다.
+FILL_KEY = "menu_fill"
+
+
+def _now() -> float:
+    return time.time()
+
+
+def track_fill(data: dict) -> None:
+    """저장 직전: 채우는 칸(사진 다듬기 polish 제외)이 있으면 진행 중인 채우기에 더하고(없으면 지금
+    시작), 하나도 없으면 채우기를 지운다. 늦게 사진을 찾은 메뉴도 같은 채우기에 들어간다."""
+    busy = {}
+    for record in data.get("menus", []):
+        flags = [f for f in _flags(record, "filling") if f != "polish"]
+        if flags:
+            busy[record["id"]] = flags
+    if not busy:
+        data.pop(FILL_KEY, None)
+        return
+    run = data.get(FILL_KEY)
+    if not isinstance(run, dict) or type(run.get("started_at")) not in (int, float):
+        run = {"started_at": _now()}
+    ids = [i for i in run.get("menu_ids") or [] if isinstance(i, str)]
+    fields = {f for f in run.get("fields") or [] if isinstance(f, str)}
+    for menu_id, flags in busy.items():
+        if menu_id not in ids:
+            ids.append(menu_id)
+        fields |= {f"{menu_id}/{flag}" for flag in flags}
+    data[FILL_KEY] = {"started_at": run["started_at"], "menu_ids": ids, "fields": sorted(fields)}
+
+
 class DummyStore:
     def __init__(self, path: str | Path = DEFAULT_STORE):
         self.path = Path(path).expanduser()
@@ -219,6 +253,7 @@ class DummyStore:
         self._write(data)
 
     def _write(self, data: dict) -> None:
+        track_fill(data)
         temporary = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
