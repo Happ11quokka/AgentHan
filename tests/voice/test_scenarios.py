@@ -34,9 +34,18 @@ APPROVAL = [  # 주문 승인 티켓 11: 가게 승인 시나리오 4개 (엔진
     "s30-approval-timeout-auto-cancel",
     # 전화 메뉴·주문 현황 티켓 04: 통화 중 대기 0(기본). "네"에 끊고 통화 뒤 결정을 주문 현황으로
     "s31-no-wait-accept-after-call",
+    "s49-coupon-order-status",  # 쿠폰 티켓 09: 쿠폰 주문의 사장님 카드·주문 현황 금액
 ]
 # 통화 중 대기를 켠 승인 시나리오 (통화 중 결정 경로가 깨지지 않았는지, 티켓 04)
 IN_CALL = APPROVAL[:4]
+
+COUPON = [  # 쿠폰 티켓 09: 적용 복창·모자람(쿠폰 말 없음)·기간 밖·고쳐서 빠짐·주문 현황
+    "s45-coupon-applied-readback",
+    "s46-coupon-short-plain-readback",
+    "s47-coupon-out-of-period",
+    "s48-coupon-dropped-after-fix",
+    "s49-coupon-order-status",
+]
 
 
 def _param(scenario: Scenario) -> object:
@@ -56,6 +65,9 @@ def test_scenario_files_are_consistent() -> None:
     assert len(ids) == len(set(ids))
     assert all(s.path.stem == s.id for s in SCENARIOS)
     assert set(REQUIRED) <= set(ids)
+    assert set(COUPON) <= set(ids)
+    # 쿠폰이 없는 시나리오는 쿠폰 전 그대로다(고치지 않고 통과한다)
+    assert sorted(s.id for s in SCENARIOS if s.coupons) == COUPON
     required = [s for s in SCENARIOS if s.id in REQUIRED]
     assert not any(s.xfail for s in required), "필수 시나리오 10개는 xfail이면 안 된다"
     approval = [s for s in SCENARIOS if s.approval]
@@ -100,6 +112,32 @@ def test_forbidden_passes_a_normal_turn() -> None:
 def test_forbidden_catches(utterances: list[str], rule: str) -> None:
     problems = forbidden(_view(utterances))
     assert any(rule in p for p in problems), problems
+
+
+def test_forbidden_checks_the_readback_against_the_coupon_result() -> None:
+    """쿠폰 티켓 09: 복창 총액은 쿠폰 계산의 낼 금액, "○원 빼고"는 그 할인액이어야 한다."""
+    from datetime import date
+
+    from agenthan.core.contracts import MenuItem
+    from agenthan.voice.dialog.coupons import Coupon, check_coupons
+
+    cart = Cart()
+    cart.add(MenuItem("m01", "메도빅", 12_000), 1)
+    coupon = Coupon("c1", "전화 주문 1,000원 할인", "amount", 1000, date(2026, 11, 1),
+                    date(2026, 11, 30), min_order=10_000)
+    result = check_coupons(12_000, [coupon], date(2026, 11, 8))
+    head = ("주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, "
+            "전화 주문 1,000원 할인 쿠폰이 있어서 ")
+
+    def problems(text: str) -> list[str]:
+        turn = TurnResult([text], State.CONFIRM, cart, None, readback=True, coupon=result)
+        return forbidden(TurnView("6시 반이요", turn, TurnResult([], State.ASK_PICKUP, cart, None)))
+
+    assert problems(head + "1,000원 빼고 모두 11,000원이에요. 맞으세요?") == []
+    wrong_total = problems(head + "1,000원 빼고 모두 12,000원이에요. 맞으세요?")
+    assert any("복창 총액" in p for p in wrong_total)
+    wrong_discount = problems(head + "500원 빼고 모두 11,000원이에요. 맞으세요?")
+    assert any("복창 할인액" in p for p in wrong_discount)
 
 
 def test_forbidden_catches_confirm_turn_without_readback() -> None:

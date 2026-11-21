@@ -157,6 +157,7 @@ from agenthan.voice.dialog.approval import (
     only_the_rest,
 )
 from agenthan.voice.dialog.cart import Cart
+from agenthan.voice.dialog.coupons import Applied, Coupon
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
@@ -429,10 +430,12 @@ class CallSession:
         record_dir: Path | None = None,
         answerer: Answerer | None = None,
         wall_clock: Clock | None = None,
+        coupons: Sequence[Coupon] = (),
     ) -> None:
         self.call_id = call_id or f"call-{uuid.uuid4().hex[:12]}"
         self._store = store
         self._config = config
+        self._coupons = tuple(coupons)  # 통화 시작 때의 가게 쿠폰 (쿠폰 티켓 09)
         self._nlu = nlu
         self._stt = stt
         self._tts = tts
@@ -842,6 +845,7 @@ class CallSession:
             DialogEngine, self._store, self._prefetch, self._config, order_id=self.call_id,
             ask_owner=self._asks_owner, knowledge=self._knowledge, answerer=self._answerer,
             sold_out=self._sold_out_today(),  # 사장님이 건 오늘 품절 (주문 승인 티켓 06)
+            coupons=self._coupons,
         )
         await self._stt.start()
         self._spawn(self._read_stt(), "stt")
@@ -1453,7 +1457,7 @@ class CallSession:
             if not self.smoke:  # 스모크 통화의 주문은 사장님 화면·집계에 넣지 않는다
                 self._sink.submit(result.order)
             self._emit({"type": "order", "turn": turn, "order": _order_json(result.order),
-                        "cart": _cart_json(result.cart), "total": result.cart.total()})
+                        "cart": _cart_json(result.cart), **_order_amount(result.order)})
         utterances = result.utterances
         if self._settings.ack_first and result.ack:
             utterances = templates.ack_first(utterances)  # 첫 소리를 고정 문장 "네."로
@@ -2145,7 +2149,8 @@ class CallSession:
             "interruptible": self._interruptible(),
             "dialog": result.state.value if result else None,
             "cart": _cart_json(result.cart if result else Cart()),
-            "total": result.cart.total() if result else 0,
+            # 낼 금액. 쿠폰이 붙으면 할인 칸도 (쿠폰 티켓 09, `_coupon_amount`)
+            **(_coupon_amount(result) if result else {"total": 0}),
             # 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null
             "approval": None if self._approval_view is None else asdict(self._approval_view),
         })
@@ -2710,6 +2715,28 @@ def _cart_json(cart: Cart) -> list[dict[str, Any]]:
     ]
 
 
+def _coupon_amount(result: TurnResult) -> dict[str, Any]:
+    """`state` 이벤트 금액 (쿠폰 티켓 09): 이번 턴 엔진의 쿠폰 계산 결과 그대로. `total`은 낼
+    금액이고, 쿠폰이 붙으면 `subtotal`(할인 전)·`discount`·`coupon_name`을 더한다. 쿠폰이 없으면
+    예전과 같은 모양(`total`만)."""
+    coupon = result.coupon
+    if not isinstance(coupon, Applied):
+        return {"total": result.cart.total()}
+    return {"total": coupon.total, "subtotal": coupon.subtotal, "discount": coupon.discount,
+            "coupon_name": coupon.coupon.title}
+
+
+def _order_amount(order: Order) -> dict[str, Any]:
+    """`order` 이벤트 금액 (쿠폰 티켓 09): 주문서에 적힌 쿠폰으로.
+
+    모양은 `_coupon_amount`와 같다."""
+    subtotal = sum(line.unit_price * line.quantity for line in order.lines)
+    if not order.discount:
+        return {"total": subtotal}
+    return {"total": subtotal - order.discount, "subtotal": subtotal,
+            "discount": order.discount, "coupon_name": order.coupon_name}
+
+
 def _order_json(order: Order) -> dict[str, Any]:
     return {
         "id": order.id,
@@ -2723,4 +2750,7 @@ def _order_json(order: Order) -> dict[str, Any]:
         "customer_name": order.customer_name,
         "customer_phone": order.customer_phone,
         "transcript": list(order.transcript),
+        "coupon_id": order.coupon_id,
+        "coupon_name": order.coupon_name,
+        "discount": order.discount,
     }

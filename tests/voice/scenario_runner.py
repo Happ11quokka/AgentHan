@@ -58,7 +58,19 @@
       "expect_status": {"stage": "confirmed",  # 마지막 손님 주문 현황(허브 `order_status`). 칸:
                         "pickup_label": "18:30"}  # stage · pickup_label · total. 카드가 없으면 null
 
-금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
+쿠폰 (쿠폰 티켓 09). 가게 쿠폰 목록(비서 쿠폰 JSON 모양, 저장한 순서)을 넣는다. 오늘은 `now`의
+날짜다(가짜 시계). 주문서 기대값에 쿠폰 칸을, 주문 현황 기대값에 금액 칸을 적을 수 있다:
+
+      "coupons": [{"id": "coupon-1", "title": "전화 주문 1,000원 할인", "discount_type": "amount",
+                   "discount_value": 1000, "min_order": 10000,
+                   "start_date": "2026-11-02", "end_date": "2026-12-31"}],
+      "expect_order": {..., "coupon_id": "coupon-1", "coupon_name": "…", "discount": 1000},
+                                               # 없으면 쿠폰 없음(""·""·0)이어야 한다
+      "expect_status": {..., "subtotal": 16500, "discount": 1000, "coupon_name": "…",
+                        "total": 15500}
+
+금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ 쿠폰 계산의
+낼 금액(쿠폰이 없으면 `Cart.total()`), 복창 할인액("○원 빼고") ≠ 쿠폰 계산의 할인액,
 150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴. 무응답 되묻기 앞의 "여보세요?"는 질문으로
 세지 않는다(부르는 말이다).
 """
@@ -76,6 +88,7 @@ from agenthan.core.contracts import Order
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import OwnerDecision
+from agenthan.voice.dialog.coupons import Coupon
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
 from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import State
@@ -89,6 +102,7 @@ SCENARIO_DIR = Path(__file__).parent / "scenarios"
 MAX_SENTENCE = 150
 
 _TOTAL = re.compile(r"모두 ([\d,]+)원")
+_DISCOUNT = re.compile(r"([\d,]+)원 빼고")
 # CONFIRM으로 끝나는 턴의 질문: 최종 복창, 또는 그 자리에서 받은 "주문 취소할까요?"
 _CONFIRM_QUESTION = re.compile(r"모두 [\d,]+원이에요\..*맞으세요\?|주문 취소할까요\?")
 # 가게 승인 시나리오에서 CONFIRM으로 끝나도 되는 말: 확인 대기("확인 중이에요"), 늦춘 시각 질문
@@ -131,9 +145,14 @@ def forbidden(view: TurnView) -> list[str]:
     if view.result.state is State.CONFIRM and not (
             _CONFIRM_QUESTION.search(text) or view.approval and _APPROVAL_CONFIRM.search(text)):
         problems.append(f"복창 없는 CONFIRM: {text}")
+    coupon = view.result.coupon
+    pay = coupon.total if coupon is not None else view.result.cart.total()
     for amount in _TOTAL.findall(text):
-        if int(amount.replace(",", "")) != view.result.cart.total():
-            problems.append(f"복창 총액 {amount}원 ≠ 장바구니 {view.result.cart.total():,}원")
+        if int(amount.replace(",", "")) != pay:
+            problems.append(f"복창 총액 {amount}원 ≠ 낼 금액 {pay:,}원")
+    for amount in _DISCOUNT.findall(text):
+        if coupon is None or int(amount.replace(",", "")) != coupon.discount:
+            problems.append(f"복창 할인액 {amount}원 ≠ 쿠폰 계산 {coupon}")
     for utterance in said:
         for sentence in _SENTENCE_END.split(utterance):
             if len(sentence) > MAX_SENTENCE:
@@ -181,6 +200,7 @@ class Scenario:
     # 시나리오에 칸이 없으면(`check_status` 거짓) 보지 않는다
     expect_status: dict[str, Any] | None = None
     check_status: bool = False
+    coupons: tuple[dict[str, Any], ...] = ()  # 가게 쿠폰 (쿠폰 티켓 09)
     path: Path = field(default=Path(), compare=False)
 
     @classmethod
@@ -201,6 +221,7 @@ class Scenario:
             after_call=raw.get("after_call", []),
             expect_status=raw.get("expect_status"),
             check_status="expect_status" in raw,
+            coupons=tuple(raw.get("coupons", ())),
             path=path,
         )
 
@@ -240,6 +261,9 @@ def _order_view(order: Order | None) -> dict[str, Any] | None:
         ],
         "pickup_time": order.pickup_time,
         "status": order.status,
+        "coupon_id": order.coupon_id,
+        "coupon_name": order.coupon_name,
+        "discount": order.discount,
     }
 
 
@@ -250,6 +274,9 @@ def _expected_order(raw: dict[str, Any] | None) -> dict[str, Any] | None:
         "lines": [{"options": [], "request": "", **line} for line in raw["lines"]],
         "pickup_time": raw.get("pickup_time", ""),
         "status": raw["status"],
+        "coupon_id": raw.get("coupon_id", ""),
+        "coupon_name": raw.get("coupon_name", ""),
+        "discount": raw.get("discount", 0),
     }
 
 
@@ -261,8 +288,11 @@ def _store(scenario: Scenario) -> FakeStoreKnowledge:
 
 
 def make_engine(scenario: Scenario) -> DialogEngine:
+    coupons = [Coupon.from_json(raw) for raw in scenario.coupons]
+    assert None not in coupons, f"읽을 수 없는 쿠폰 {scenario.coupons}"
     return DialogEngine(
-        _store(scenario), FakeNlu(), StoreConfig.from_fixture(), order_id=scenario.id
+        _store(scenario), FakeNlu(), StoreConfig.from_fixture(), order_id=scenario.id,
+        coupons=[c for c in coupons if c is not None],
     )
 
 
@@ -367,8 +397,11 @@ class _Owner:
             got = self.hub.order_status(self.call_id)
         except UnknownCard:
             return None
+        amount = got["amount"]
         return {"stage": got["stage"], "pickup_label": got["pickup"]["label"],
-                "total": got["amount"]["total"]}
+                "total": amount["total"], "subtotal": amount["subtotal"],
+                "discount": amount.get("discount", 0),
+                "coupon_name": amount.get("coupon_name", "")}
 
 
 @dataclass

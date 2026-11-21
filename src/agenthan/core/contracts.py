@@ -115,6 +115,11 @@ class Order:
     # 주문서를 만든 시각. pickup_time과 같은 ISO 8601, 시간대 포함. 예: "2026-11-10T14:03:12+09:00".
     # 모르면 "".
     created_at: str = ""
+    # 쓴 쿠폰(전화 메뉴·주문 현황·쿠폰 티켓 09). 쿠폰이 없으면 ""·""·0. 할인액은 통화가 복창한
+    # 쿠폰 계산 결과다. 낼 금액 = 줄 합계(할인 전 금액) - `discount`. 넘김 주문에는 넣지 않는다
+    coupon_id: str = ""
+    coupon_name: str = ""
+    discount: int = 0
 
 
 class OrderSink(Protocol):

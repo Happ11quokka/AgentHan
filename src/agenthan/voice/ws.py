@@ -198,6 +198,7 @@ def phone_router(
         session = CallSession(
             store=snapshot.store,
             config=config,
+            coupons=snapshot.coupons,  # 가게 쿠폰 (쿠폰 티켓 09)
             nlu=nlu,
             answerer=answerer,
             stt=stt,
