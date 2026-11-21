@@ -1206,8 +1206,15 @@ describe("왼쪽 사이드바 접기", () => {
     const { user, api } = await open();
     const nav = () => screen.getByRole("navigation", { name: "대화 목록" });
     expect(nav()).toHaveAttribute("data-collapsed", "false");
-    await user.click(screen.getByRole("button", { name: "사이드바 접기" }));
+    // 위에는 로고만 있고, 접고 펴는 건 가장자리 인덱스 손잡이가 한다
+    expect(within(nav()).getByText("AgentHan")).toBeInTheDocument();
+    expect(within(nav()).queryByRole("button", { name: /사이드바/ })).not.toBeInTheDocument();
+    const handle = screen.getByRole("button", { name: "사이드바 접기" });
+    expect(handle).toHaveAttribute("aria-expanded", "true");
+    await user.click(handle);
     expect(nav()).toHaveAttribute("data-collapsed", "true");
+    expect(within(nav()).getByText("H")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "사이드바 펼치기" })).toHaveAttribute("aria-expanded", "false");
     expect(within(nav()).queryByText("최근 대화")).not.toBeInTheDocument();
     await user.click(within(nav()).getByRole("button", { name: "요즘 리뷰" }));
     await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", args: {}, label: "요즘 리뷰" }));

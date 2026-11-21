@@ -67,115 +67,123 @@ type Props = {
 export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges = {}, collapsed = false, onToggle, suggestCount = 0, suggestCurrent = false, onSuggest }: Props) {
   const toggleLabel = collapsed ? "사이드바 펼치기" : "사이드바 접기";
   return (
-    <nav className="nav" aria-label="대화 목록" data-collapsed={collapsed}>
-      <div className="brand">
-        {onToggle && (
-          <button type="button" className="icon-button nav-toggle" aria-label={toggleLabel} title={`${toggleLabel} (⌘B)`} onClick={onToggle}>
-            <Icon name="sidebar" size={20} />
+    <>
+      <nav className="nav" aria-label="대화 목록" data-collapsed={collapsed}>
+        {/* 위에는 로고만: 펼치면 AgentHan, 접으면 H */}
+        <div className="brand">
+          <span className="brand-logo">
+            {collapsed ? "H" : "AgentHan"}
+          </span>
+        </div>
+        <button type="button" className="new-chat" onClick={onNew} disabled={busy} aria-label={collapsed ? "새 대화" : undefined} title={collapsed ? "새 대화" : undefined}>
+          <Icon name="plus" />
+          {!collapsed && "새 대화"}
+        </button>
+        {onSuggest && (
+          <button
+            type="button"
+            className="nav-suggest"
+            aria-label={suggestCount ? `비서 제안 (새 제안 ${suggestCount}개)` : "비서 제안"}
+            aria-current={suggestCurrent ? "page" : undefined}
+            title={collapsed ? "비서 제안" : undefined}
+            onClick={onSuggest}
+          >
+            <Icon name="bulb" />
+            {!collapsed && <span>비서 제안</span>}
+            {suggestCount > 0 && (
+              <span className="nav-suggest-badge" aria-hidden>
+                {suggestCount}
+              </span>
+            )}
           </button>
         )}
-        {!collapsed && <span className="brand-logo">AgentHan</span>}
-      </div>
-      <button type="button" className="new-chat" onClick={onNew} disabled={busy} aria-label={collapsed ? "새 대화" : undefined} title={collapsed ? "새 대화" : undefined}>
-        <Icon name="plus" />
-        {!collapsed && "새 대화"}
-      </button>
-      {onSuggest && (
-        <button
-          type="button"
-          className="nav-suggest"
-          aria-label={suggestCount ? `비서 제안 (새 제안 ${suggestCount}개)` : "비서 제안"}
-          aria-current={suggestCurrent ? "page" : undefined}
-          title={collapsed ? "비서 제안" : undefined}
-          onClick={onSuggest}
-        >
-          <Icon name="bulb" />
-          {!collapsed && <span>비서 제안</span>}
-          {suggestCount > 0 && (
-            <span className="nav-suggest-badge" aria-hidden>
-              {suggestCount}
-            </span>
-          )}
-        </button>
-      )}
 
-      {!collapsed && <h2 className="nav-title">자주 쓰는 일</h2>}
-      <ul className="quick">
-        {QUICK.map((q) => (
-          <li key={q.key}>
-            <button
-              type="button"
-              aria-label={q.label}
-              aria-describedby={collapsed ? undefined : `quick-${q.key}`}
-              title={collapsed ? q.label : undefined}
-              onClick={() => onQuick(q)}
-              disabled={busy}
-            >
-              <span className="quick-icon" aria-hidden>
-                <Icon name={q.icon} />
-              </span>
-              {!collapsed && (
-                <span className="quick-text">
-                  <strong>{q.label}</strong>
-                  <small id={`quick-${q.key}`}>{q.hint}</small>
-                </span>
-              )}
-              {Boolean(badges[q.key]) && (
-                <span className="quick-badge" aria-label={quickBadgeText(q.key, badges[q.key] ?? 0)}>
-                  {badges[q.key]}
-                </span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {!collapsed && <h2 className="nav-title">전화 주문</h2>}
-      <ul className="quick">
-        {phoneLinks(window.location.search).map((l) => (
-          <li key={l.key}>
-            <a
-              href={l.href}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={collapsed ? l.label : undefined}
-              title={collapsed ? l.label : undefined}
-              aria-describedby={collapsed ? undefined : `phone-${l.key}`}
-            >
-              <span className="quick-icon" aria-hidden>
-                <Icon name={l.icon} />
-              </span>
-              {!collapsed && (
-                <span className="quick-text">
-                  <strong>{l.label}</strong>
-                  <small id={`phone-${l.key}`}>{l.hint}</small>
-                </span>
-              )}
-            </a>
-          </li>
-        ))}
-      </ul>
-
-      {!collapsed && <h2 className="nav-title">최근 대화</h2>}
-      {collapsed ? null : recent.length === 0 ? (
-        <p className="nav-empty">아직 대화가 없어요.</p>
-      ) : (
-        <ul className="recent" aria-label="최근 대화">
-          {recent.map((r) => (
-            <li key={r.id}>
+        {!collapsed && <h2 className="nav-title">자주 쓰는 일</h2>}
+        <ul className="quick">
+          {QUICK.map((q) => (
+            <li key={q.key}>
               <button
                 type="button"
-                aria-current={r.id === current ? "true" : undefined}
-                onClick={() => onOpen(r.id)}
+                aria-label={q.label}
+                aria-describedby={collapsed ? undefined : `quick-${q.key}`}
+                title={collapsed ? q.label : undefined}
+                onClick={() => onQuick(q)}
                 disabled={busy}
               >
-                <span className="recent-title">{r.title}</span>
-                <span className="recent-time">{whenText(r.at)}</span>
+                <span className="quick-icon" aria-hidden>
+                  <Icon name={q.icon} />
+                </span>
+                {!collapsed && (
+                  <span className="quick-text">
+                    <strong>{q.label}</strong>
+                    <small id={`quick-${q.key}`}>{q.hint}</small>
+                  </span>
+                )}
+                {Boolean(badges[q.key]) && (
+                  <span className="quick-badge" aria-label={quickBadgeText(q.key, badges[q.key] ?? 0)}>
+                    {badges[q.key]}
+                  </span>
+                )}
               </button>
             </li>
           ))}
         </ul>
+
+        {!collapsed && <h2 className="nav-title">전화 주문</h2>}
+        <ul className="quick">
+          {phoneLinks(window.location.search).map((l) => (
+            <li key={l.key}>
+              <a
+                href={l.href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={collapsed ? l.label : undefined}
+                title={collapsed ? l.label : undefined}
+                aria-describedby={collapsed ? undefined : `phone-${l.key}`}
+              >
+                <span className="quick-icon" aria-hidden>
+                  <Icon name={l.icon} />
+                </span>
+                {!collapsed && (
+                  <span className="quick-text">
+                    <strong>{l.label}</strong>
+                    <small id={`phone-${l.key}`}>{l.hint}</small>
+                  </span>
+                )}
+              </a>
+            </li>
+          ))}
+        </ul>
+
+        {!collapsed && <h2 className="nav-title">최근 대화</h2>}
+        {collapsed ? null : recent.length === 0 ? (
+          <p className="nav-empty">아직 대화가 없어요.</p>
+        ) : (
+          <ul className="recent" aria-label="최근 대화">
+            {recent.map((r) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  aria-current={r.id === current ? "true" : undefined}
+                  onClick={() => onOpen(r.id)}
+                  disabled={busy}
+                >
+                  <span className="recent-title">{r.title}</span>
+                  <span className="recent-time">{whenText(r.at)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </nav>
+      {/* 인덱스 손잡이: 사이드바 오른쪽 가장자리에 붙은 책갈피 탭으로 접고 편다(⌘B도 같다). */}
+      {onToggle && (
+        <button type="button" className="nav-handle" aria-label={toggleLabel} aria-expanded={!collapsed} title={`${toggleLabel} (⌘B)`} onClick={onToggle}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d={collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} />
+          </svg>
+        </button>
       )}
-    </nav>
+    </>
   );
 }
