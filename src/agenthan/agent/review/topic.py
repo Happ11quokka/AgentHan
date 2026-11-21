@@ -181,6 +181,11 @@ class MenuCatalog:
                 return items
         return []
 
+    def facts_for(self, store: str, text: str) -> list[dict]:
+        """Shop facts (name, price, description…) of the menus a review talks about, for
+        grounding a reply. Plain catalogs know none; the store adapter fills them."""
+        return []
+
 
 def _norm(s: str) -> str:
     return re.sub(r"\s+", "", s.lower())

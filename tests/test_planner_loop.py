@@ -349,6 +349,33 @@ def test_b5g_one_review_and_alias_are_enough_for_a_chain(
     assert app.ledger.active().preview
 
 
+def test_b5g_with_the_store_rag_spacing_and_typos_count_once_per_review(tmp_path, monkeypatch):
+    """ADR-0008: with the RAG plugged in, mentions are reviews that name the menu."""
+    from agenthan.app import pilot
+
+    monkeypatch.setattr(
+        "agenthan.agent.review_delegate.ask_review_agent",
+        lambda *a: pytest.fail("집계에 리뷰 모델 불필요"),
+    )
+    pilot.use_knowledge()
+    hcx = HCX(
+        [],
+        call("ask_review_agent", request="집계"),
+        call("upsert_menu", name="블린", price=9500),
+        {"role": "assistant", "content": "조회"},
+        plans=[chain_plan(dependent_menu("관찰 메뉴 가격 인상"))],
+    )
+    app = assistant(tmp_path, hcx)
+    data = app.store.read()
+    data["reviews"] = [
+        {**data["reviews"][0], "review_id": "a", "text": "블 린 맛있어요. 블린 또 먹을래요"},
+        {**data["reviews"][0], "review_id": "b", "text": "블린이 제일 좋아요"},
+    ]
+    app.store.write(data)
+    app.ask("리뷰에서 제일 많이 나온 메뉴 가격 올려 줘")
+    assert app.trace["results"][0]["menu_mentions"]["블린"] == 2
+
+
 @pytest.mark.parametrize(
     "owner_text", ["별로인 리뷰만 알려 줘", "손님이 실망했다고 쓴 후기만 통지해 줘"]
 )
@@ -3034,3 +3061,52 @@ def test_b5h_relative_price_is_computed_by_act_and_checked_by_difference(
     if previews:
         assert task.slots["price"].source == "lookup"
     assert app.store.read() == before
+
+
+def _store_material(hcx):
+    """The store data the model saw (single steps use the legacy prompt, chains the planner's)."""
+    for messages, _, _ in hcx.requests:
+        for m in messages:
+            for label in ("가게 자료: ", "가게 데이터: "):
+                if label in str(m.get("content")):
+                    return json.loads(m["content"].split(label, 1)[1].split("\n", 1)[0])
+    raise AssertionError("no store data in any model request")
+
+
+def test_with_the_store_rag_the_menu_step_sees_only_the_named_menu(tmp_path):
+    """ADR-0008: the model gets the menus the owner named, not the whole menu list."""
+    from agenthan.app import pilot
+
+    pilot.use_knowledge()
+    hcx = HCX(["menu"], {"role": "assistant", "content": "확인할게요"})
+    app = assistant(tmp_path, hcx)
+    app.ask("블리니 가격 9500원으로 바꿔 줘")  # an alias of 블린
+
+    material = _store_material(hcx)
+    assert [m["name"] for m in material["menus"]] == ["블린"]
+    assert "전체 4개" in material["menus_note"]
+
+
+def test_with_the_store_rag_an_unnamed_menu_request_still_sees_every_menu(tmp_path):
+    from agenthan.app import pilot
+
+    pilot.use_knowledge()
+    hcx = HCX(["menu"], {"role": "assistant", "content": "확인할게요"})
+    app = assistant(tmp_path, hcx)
+    app.ask("제일 비싼 메뉴 가격 좀 올려 줘")
+
+    material = _store_material(hcx)
+    assert len(material["menus"]) == 4 and "menus_note" not in material
+
+
+def test_with_the_store_rag_a_talktalk_answer_sees_menu_facts_and_hours(tmp_path):
+    from agenthan.app import pilot
+
+    pilot.use_knowledge()
+    hcx = HCX(["talktalk"], {"role": "assistant", "content": "확인할게요"})
+    app = assistant(tmp_path, hcx)
+    app.ask("메도빅 홀케이크 예약 문의에 답장해 줘")
+
+    material = _store_material(hcx)
+    assert material["menu_facts"][0]["name"] == "메도빅"
+    assert material["shop"]["hours"]["mon"]

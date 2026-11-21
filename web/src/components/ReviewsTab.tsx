@@ -16,7 +16,8 @@ import type { Action, ReplyError, ReplyOp, ReplyOpName, ReviewRow, ReviewsView }
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
 
-export function Stars({ rating }: { rating: number }) {
+export function Stars({ rating }: { rating: number | null }) {
+  if (rating === null) return null;
   return (
     <span className="stars" aria-label={`별점 ${rating}점`}>
       {"★★★★★".slice(0, rating)}
@@ -28,7 +29,7 @@ export function Stars({ rating }: { rating: number }) {
 type Filter = "waiting" | "all";
 
 /** 별점 1~2점에 아직 답글이 없으면 맨 위로 올리고 '꼭 읽어 보세요'를 붙인다. */
-const mustRead = (r: ReviewRow) => r.rating <= 2 && !r.has_owner_reply;
+const mustRead = (r: ReviewRow) => r.rating !== null && r.rating <= 2 && !r.has_owner_reply;
 /** 사장님이 고를 초안이 있는 카드(올리기·고치기·건너뛰기). */
 const decidable = (r: ReviewRow) => !r.has_owner_reply && Boolean(r.draft?.text) && r.draft?.status !== "failed";
 /** [기다림]에 보일 카드: 답글 없는 리뷰(건너뛴 것 빼고)와 이번에 올린 답글. */
