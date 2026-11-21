@@ -98,6 +98,9 @@ TIME_EXAMPLE_GAP = timedelta(minutes=30)  # 시각 보기 둘 사이
 MAX_NO_INPUT = 3
 # 사장님 질문 (4단계 티켓 06): 통화당 이만큼까지 연다
 MAX_OWNER_QUESTIONS = 2
+# 거절 사유 → 대화 기록 줄 "사장님: 거절(…)" (주문 승인 티켓 05)
+_REJECT_LABEL = {"busy": "바쁨", "closed": "가게 사정", "free": "사장님 글",
+                 "out_of_stock": "재료 소진"}
 MAX_QTY = 99  # 전화로 한 줄에 받는 수량 상한. HCX 정규화(`nlu/hcx.py` `_qty`)와 같다
 
 # 손님과 대화 중인 상태. 전역 규칙(취소·사장님 연결·메뉴 질문)을 받는다.
@@ -522,6 +525,7 @@ class DialogEngine:
         - 수락 → 지금 마무리 대사(`templates.closing`) + `confirmed`
         - 시간 초과(세션이 넣음) → 문자로 확정을 알린다는 대사 + `confirmed`(사장님 처리 상태는
           허브에서 확인 대기로 남는다)
+        - 거절(티켓 05) → 사유별 고정 사과 + `cancelled`(`_rejected`)
 
         열린 확인 요청이 없거나 번호가 다르면(거둔 요청의 낡은 결정) 말 없는 턴이다.
         """
@@ -536,6 +540,9 @@ class DialogEngine:
         self._cancel_resume = None  # 기다리는 중에 물은 "주문 취소할까요?"는 접는다
         pending = self._owner_open is not None  # 답을 못 받은 사장님 질문 (티켓 06 문자 약속)
         self._owner_open = None
+        if decision.kind == "reject":
+            self._rejected(turn, decision)
+            return self._result(turn)
         self._state = State.CLOSING
         if decision.kind == "timeout":
             self._transcript.append("사장님: (답 없음, 시간 초과)")
@@ -2126,6 +2133,17 @@ class DialogEngine:
         self._approval_open = request.number
         turn.approval_request = request
         self._say(turn, templates.approval_hold())
+
+    def _rejected(self, turn: _Turn, decision: OwnerDecision) -> None:
+        """사장님이 통화 중에 거절했다(주문 승인 티켓 05). 사유별 고정 사과로 끝낸다(`cancelled`).
+
+        주문서는 넘기지 않는다(취소와 같다). 직접 쓰기 사유의 사장님 글은 손님에게 읽지 않는다.
+        허브가 번역해 문자로 보낸다. 재료 소진(티켓 06)은 주문 받기로 돌아가는 다른 길이다.
+        """
+        label = _REJECT_LABEL.get(decision.reason, decision.reason)
+        self._transcript.append(f"사장님: 거절({label})")
+        self._state = State.DONE
+        self._say(turn, templates.approval_rejected(decision.reason))
 
     @on("no", State.CONFIRM)
     def _on_confirm_no(self, turn: _Turn, act: Act) -> None:

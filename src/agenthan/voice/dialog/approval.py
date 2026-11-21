@@ -8,8 +8,10 @@
 요청 번호는 통화 안에서 1부터 센다. 손님이 기다리는 중에 주문을 고치면 요청을 거두고, 다시
 복창한 뒤 새 번호로 연다. 거둔 번호에 온 결정은 버린다(낡은 결정).
 
-결정 종류: 수락(accept, 늦춘 분 `delay_min`은 티켓 04가 0이 아닌 값을 쓴다)과 시간 초과(timeout,
-세션이 통화 중 대기 시간이 지나면 넣는다). 늦춘 수락·거절(티켓 04~06)은 이 목록과 필드를 넓힌다.
+결정 종류: 수락(accept, 늦춘 분 `delay_min`은 티켓 04가 0이 아닌 값을 쓴다), 시간 초과(timeout,
+세션이 통화 중 대기 시간이 지나면 넣는다), 거절(reject, 티켓 05). 거절은 사유(`reason`)를 단다:
+바빠서 못 맞춤(busy) · 영업·가게 사정(closed) · 직접 쓰기(free, 사장님 글은 손님에게 문자로만 가서
+결정에 싣지 않는다) · 재료 소진(out_of_stock, 떨어진 메뉴 id `menu_ids`, 티켓 06).
 """
 
 from __future__ import annotations
@@ -19,8 +21,11 @@ from typing import Literal
 
 from agenthan.core.contracts import Order
 
-# 사장님 결정 종류. 사장님 화면 수락(accept)과 세션이 넣는 시간 초과(timeout)
-DecisionKind = Literal["accept", "timeout"]
+# 사장님 결정 종류. 사장님 화면 수락(accept)·거절(reject)과 세션이 넣는 시간 초과(timeout)
+DecisionKind = Literal["accept", "timeout", "reject"]
+# 거절 사유 (사장님 화면 사유 시트, 티켓 05·06). 허브 카드·DB의 `reject_reason`과 같은 글
+RejectReason = Literal["out_of_stock", "busy", "closed", "free"]
+REJECT_REASONS: tuple[RejectReason, ...] = ("out_of_stock", "busy", "closed", "free")
 # 엔진이 확인 요청을 거둔 이유: 손님이 주문을 고침(changed) · 손님이 주문을 취소함(cancelled)
 WithdrawReason = Literal["changed", "cancelled"]
 
@@ -41,6 +46,8 @@ class OwnerDecision:
     request: int  # `ApprovalRequest.number`
     kind: DecisionKind
     delay_min: int = 0  # 늦춘 수락의 분 (티켓 04). 지금은 0
+    reason: RejectReason | Literal[""] = ""  # 거절 사유 (kind reject만, 티켓 05)
+    menu_ids: tuple[str, ...] = ()  # 재료 소진 거절의 떨어진 메뉴 id들 (티켓 06)
 
 
 @dataclass(frozen=True)

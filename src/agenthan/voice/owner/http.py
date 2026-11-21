@@ -10,6 +10,12 @@
   (new → accepted, 주문 승인 티켓 02). 확정 문자를 보내고 통화 중이면 손님이 마무리를 듣는다.
   바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나 손님이 고치는 중·취소한 요청은 409,
   0이 아닌 늦춘 분은 422(티켓 04)
+- `POST /api/owner/orders/{id}/reject?key=…` 본문 `{"reason": "busy"|"closed"|"free"|"out_of_stock",
+  "menu_ids": [...], "text": "사장님 글"}`: 확인 대기 주문 거절(new → rejected, 주문 승인 티켓 05).
+  사유별 취소 문자를 보내고 통화 중이면 손님이 사유별 사과를 듣고 통화가 끝난다. 직접 쓰기(free)
+  글은 번역해 문자로만 간다. 바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나(수락·거절·
+  자동 취소) 손님이 고치는 중·취소한 요청은 409, 모르는 사유·글 없는 직접 쓰기·500자 넘는 글은
+  422. 재료 소진은 티켓 06 전까지 422
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 - `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}` 또는
@@ -49,6 +55,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
+from agenthan.voice.dialog.approval import RejectReason
 from agenthan.voice.dialog.owner_question import OwnerPost
 from agenthan.voice.owner.hub import (
     AlreadyAnswered,
@@ -110,6 +117,14 @@ class AcceptBody(BaseModel):
     delay_min: Literal[0] = 0
 
 
+class RejectBody(BaseModel):
+    """거절 사유 시트(주문 승인 티켓 05). 재료 소진은 떨어진 메뉴 id들(티켓 06), 직접 쓰기는 글."""
+
+    reason: RejectReason
+    menu_ids: list[str] = Field(default_factory=list, max_length=20)
+    text: str = Field("", max_length=FREE_TEXT_MAX)  # 직접 쓰기 글(사장님 언어). 다른 사유면 무시
+
+
 class AnswerBody(BaseModel):
     """질문 카드 답: 버튼(yes·no·unsure) 또는 자유 입력(free + `text`, 티켓 07)."""
 
@@ -140,6 +155,13 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
         with _hub_errors({404: "그런 주문이 없어요",
                           409: "이미 결정했거나 손님이 주문을 고치는 중이에요"}):
             return hub.accept(order_id, delay_min)
+
+    @router.post("/orders/{order_id}/reject")
+    async def reject(order_id: str, body: RejectBody) -> dict[str, Any]:
+        with _hub_errors({404: "그런 주문이 없어요",
+                          409: "이미 결정했거나 손님이 주문을 고치는 중이에요",
+                          422: "거절 사정을 적어 주세요"}):
+            return hub.reject(order_id, body.reason, menu_ids=body.menu_ids, text=body.text)
 
     @router.post("/calls/{call_id}/dismiss")
     async def dismiss(call_id: str) -> dict[str, Any]:

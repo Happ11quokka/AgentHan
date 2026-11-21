@@ -2302,6 +2302,9 @@ class CallSession:
         if (wait is None or request is None or wait.key != ("approval", request.number)
                 or self.smoke):
             return
+        if any(isinstance(note, OwnerDecision) and note.kind == "reject"
+               and note.request == request.number for note, _ in self._owner_inbox):
+            return  # 거절이 와 있었다(말하기 전에 끝남, 티켓 05). 주문서는 넘기지 않는다
         try:
             self._sink.submit(request.order)
         except Exception:
@@ -2472,10 +2475,13 @@ class CallSession:
         record = self._log.get(turn)
         if isinstance(note, OwnerDecision):
             self._approval_view = ApprovalView(
-                _DECISION_STATUS.get(note.kind, note.kind), note.request, delay_min=note.delay_min)
+                _DECISION_STATUS.get(note.kind, note.kind), note.request, delay_min=note.delay_min,
+                reason=note.reason)  # 거절 사유 (티켓 05)
             if record is not None:  # 결정 종류(시간 초과 포함)와 기다린·미룬 시간
                 record.fields["approval_decision"] = {"request": note.request, "kind": note.kind,
                                                       "delay_min": note.delay_min, **timing}
+                if note.kind == "reject":
+                    record.fields["approval_decision"]["reason"] = note.reason
         elif isinstance(note, OwnerReply):
             number = note.question
             # 허브는 이 알림이 없는 제시간 답을 통화 끝에 문자로 돌린다 (리뷰 C1)
@@ -2499,11 +2505,13 @@ class CallSession:
 
 # 손님 화면의 확인 요청 상태 (주문 승인 티켓 09, spec "손님 통화 화면"). waiting: 사장님 확인 중.
 # 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중 대기 시간이 지나 결과는 문자로) ·
-# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정). 늦춘 수락 제안·거절·
-# 자동 취소(티켓 04~07)는 새 값으로 더한다. 모르는 값은 손님 화면이 배지 없이 둔다
-ApprovalStatus = Literal["waiting", "accepted", "timeout", "withdrawn", "skipped"]
+# withdrawn(손님이 고침·취소, `reason`) · skipped(승인을 건너뛰고 바로 확정) · rejected(사장님 거절,
+# `reason`은 사유, 티켓 05). 늦춘 수락 제안·자동 취소(티켓 04~07)는 새 값으로 더한다. 모르는 값은
+# 손님 화면이 배지 없이 둔다
+ApprovalStatus = Literal["waiting", "accepted", "timeout", "withdrawn", "skipped", "rejected"]
 # 사장님 결정 종류 → 손님 화면 상태. 표에 없는 새 결정 종류는 이름을 그대로 싣는다
-_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "timeout": "timeout"}
+_DECISION_STATUS: dict[str, str] = {"accept": "accepted", "timeout": "timeout",
+                                    "reject": "rejected"}
 
 
 @dataclass(frozen=True)
@@ -2513,7 +2521,8 @@ class ApprovalView:
     status: ApprovalStatus | str
     number: int = 0  # 확인 요청 번호(1부터). 승인을 건너뛰었으면 0
     delay_min: int = 0  # 늦춘 수락의 분 (티켓 04)
-    reason: str = ""  # withdrawn: changed·cancelled. 거절 사유는 티켓 05~06
+    # withdrawn: changed·cancelled. rejected: 거절 사유(busy·closed·free …, 티켓 05)
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -2549,8 +2558,8 @@ def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
         return "handoff"
     if result.state is State.CLOSING:
         return "confirmed"  # 사장님 결정을 말한 봇 턴도 확정이다 (주문 승인)
-    if isinstance(u, _BotTurn):
-        return u.reason
+    if isinstance(u, _BotTurn) and u.reason != "owner_decision":
+        return u.reason  # 사장님 거절을 말한 봇 턴은 아래 취소다 (주문 승인 티켓 05)
     if result.state is State.CLOSING:
         return "confirmed"
     if result.state is State.FALLBACK:

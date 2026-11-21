@@ -32,6 +32,7 @@ from agenthan.voice.dialog.approval import (
     ApprovalRequest,
     DecisionKind,
     OwnerDecision,
+    RejectReason,
     WithdrawReason,
 )
 from agenthan.voice.dialog.knowledge import KnowledgeRequest
@@ -249,6 +250,11 @@ class RecordingOwnerChannel:
         """사장님이 그 확인 요청에 결정했다(낡은 번호 흉내도 그대로 넘긴다)."""
         assert self._decide is not None, "열린 확인 요청이 없어요"
         self._decide(OwnerDecision(number, kind, delay_min))
+
+    def reject(self, number: int, reason: RejectReason, *, menu_ids: tuple[str, ...] = ()) -> None:
+        """사장님이 그 확인 요청을 거절했다(주문 승인 티켓 05, 사유 시트)."""
+        assert self._decide is not None, "열린 확인 요청이 없어요"
+        self._decide(OwnerDecision(number, "reject", reason=reason, menu_ids=menu_ids))
 
     def call_started(self, call_id: str) -> None:
         self.notes.append(("started", call_id))
