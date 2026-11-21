@@ -1,11 +1,14 @@
 // Part C 전화 주문 통화 화면. 이 폴더(src/screens/phone/)는 Part C 몫이다.
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 // 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 서버가 알린 창(기본 6분) 동안 스트림으로 받는다.
+// 통화가 확정 주문으로 끝나면 자막·배지·주문서 대신 주문 현황을 보인다(전화 메뉴·주문 현황 티켓 04, `orderStatus.ts`).
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
+import { callOrderId } from './orderStatus.ts'
+import OrderStatusPanel from './OrderStatusPanel.tsx'
 import { PhoneCall, phoneOptions } from './phoneCall.ts'
 import './phone.css'
 
@@ -25,6 +28,8 @@ function statusLabel(s: CallState): string {
     case 'live':
       return s.phase ? PHASE_LABEL[s.phase] : '연결됨'
     case 'ended': {
+      // 주문으로 끝난 통화: 확정 여부는 아래 주문 현황이 보인다(아직 가게 확인 중일 수 있다, 티켓 04)
+      if (callOrderId(s)) return '통화가 끝났어요 · 주문을 넣었어요'
       // 서버가 끝냈으면 이유를 붙인다(`call.ended`, 리뷰 S13). 문자로 넘긴 확인 요청은 아직 확정 전이다
       const why = awaitingText(s) ? '가게 확인 중이에요' : s.endReason ? endReasonLabel(s.endReason) : null
       return why ? `통화가 끝났어요 · ${why}` : '통화가 끝났어요'
@@ -57,6 +62,7 @@ export default function PhonePage() {
   const cart = state.order?.cart ?? state.cart
   const total = state.order?.total ?? state.total
   const badge = approvalBadge(state)
+  const placed = callOrderId(state) // 주문으로 끝난 통화의 주문 번호. 있으면 주문 현황 화면
 
   return (
     <main className="phone">
@@ -85,26 +91,30 @@ export default function PhonePage() {
         </div>
       )}
 
-      <section
-        ref={captionsRef}
-        className="phone-captions"
-        aria-label="자막"
-        aria-live="polite"
-        onScroll={(e) => {
-          const el = e.currentTarget
-          follow.current = nearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)
-        }}
-      >
-        {state.captions.length === 0 && <p className="phone-empty">통화가 연결되면 대화가 여기에 보여요.</p>}
-        {state.captions.map((c, i) => (
-          <p key={i} className={`phone-line phone-line-${c.who}`}>
-            <span className="phone-who">{c.who === 'bot' ? 'AI' : '손님'}</span>
-            {c.text}
-          </p>
-        ))}
-      </section>
+      {placed && <OrderStatusPanel orderId={placed} />}
 
-      {badge && (
+      {!placed && (
+        <section
+          ref={captionsRef}
+          className="phone-captions"
+          aria-label="자막"
+          aria-live="polite"
+          onScroll={(e) => {
+            const el = e.currentTarget
+            follow.current = nearBottom(el.scrollHeight, el.scrollTop, el.clientHeight)
+          }}
+        >
+          {state.captions.length === 0 && <p className="phone-empty">통화가 연결되면 대화가 여기에 보여요.</p>}
+          {state.captions.map((c, i) => (
+            <p key={i} className={`phone-line phone-line-${c.who}`}>
+              <span className="phone-who">{c.who === 'bot' ? 'AI' : '손님'}</span>
+              {c.text}
+            </p>
+          ))}
+        </section>
+      )}
+
+      {badge && !placed && (
         // 사장님 확인 요청 상태와 결과 (주문 승인 티켓 09)
         <section className={`phone-approval phone-approval-${badge.tone}`} aria-label="사장님 확인" role="status">
           <strong>{badge.label}</strong>
@@ -112,7 +122,7 @@ export default function PhonePage() {
         </section>
       )}
 
-      {(state.order || cart.length > 0) && (
+      {!placed && (state.order || cart.length > 0) && (
         <section className={`phone-order ${state.order ? 'phone-order-final' : ''}`} aria-label="주문서">
           <h2>
             {state.order
