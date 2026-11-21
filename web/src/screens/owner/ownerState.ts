@@ -5,9 +5,16 @@ import type { CustomerText } from '../customerText.ts'
 
 /**
  * 사장님 처리 상태 (Part A 어휘 + expired, 주문 승인). new: 확인 대기(확인 요청 카드).
- * accepted: 수락(자동 확정 포함). rejected·expired는 거절·자동 취소 티켓(03·05)이 보낸다
+ * accepted: 수락(자동 확정 포함). rejected·expired는 거절·자동 취소 티켓(03·05)이 보낸다.
+ * cancelled: 늦춰 수락했는데 손님이 바뀐 시각에 "아니요"(티켓 04)
  */
-export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired'
+export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired' | 'cancelled'
+
+/**
+ * 통화 중 늦춘 수락에 손님 답 (티켓 04). asking: 손님이 바뀐 시각을 듣는 중. yes: 받아들임.
+ * no: 거절(주문 취소). 빈 글: 통화 뒤 늦춘 수락이거나 답 없이 통화가 끝남(문자로 알림)
+ */
+export type DelayReply = '' | 'asking' | 'yes' | 'no'
 
 /** 확인 요청 대기 단계 (주문 승인 티켓 02). 자동 확정 카드는 빈 글 */
 export type ApprovalStage = 'in_call' | 'after_call' | ''
@@ -70,6 +77,10 @@ export interface OrderCard {
   decided_at?: string
   /** 늦춘 수락의 분 (티켓 04) */
   delay_min?: number
+  /** 늦춘 수락의 바뀐 픽업 시각 ISO와 고정 표기 `18:45`. 없으면 빈 글 (티켓 04) */
+  owner_pickup_time?: string
+  owner_pickup_label?: string
+  delay_reply?: DelayReply
   /** 확인 요청 없이 확정됨: 승인 꺼짐·사장님 화면 없음 ("자동 확정(사장님 화면 꺼짐)") */
   auto_accepted?: boolean
   withdrawn?: WithdrawReason
@@ -389,13 +400,16 @@ export function canAccept(card: OrderCard): boolean {
 /**
  * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). waiting: 확인 대기(카운트다운·수락 버튼).
  * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
- * expired: 자동 취소(회색, 버튼 없음, 티켓 03). closed: 그 밖의 처리 상태(거절, 05가 채운다)
+ * expired: 자동 취소(회색, 버튼 없음, 티켓 03). delayed: 늦춰 수락(바뀐 시각, 티켓 04).
+ * declined: 늦춘 시각을 손님이 거절해 취소(회색). closed: 그 밖의 처리 상태(거절, 05가 채운다)
  */
 export type OrderOutcome =
   | 'waiting'
   | 'changing'
   | 'cancelled'
   | 'accepted'
+  | 'delayed'
+  | 'declined'
   | 'auto'
   | 'expired'
   | 'closed'
@@ -406,10 +420,26 @@ export function orderOutcome(card: OrderCard): OrderOutcome {
     if (card.withdrawn === 'cancelled') return 'cancelled'
     return 'waiting'
   }
-  if (card.status === 'accepted') return card.auto_accepted ? 'auto' : 'accepted'
+  if (card.status === 'accepted') {
+    if (card.auto_accepted) return 'auto'
+    return card.delay_min ? 'delayed' : 'accepted'
+  }
   if (card.status === 'expired') return 'expired'
+  if (card.status === 'cancelled' && card.delay_min) return 'declined'
   return 'closed'
 }
+
+/**
+ * 지금 기준인 픽업 시각 (티켓 04): 늦춰 수락한 카드는 바뀐 시각, 그 밖은 손님이 말한 시각.
+ * 카드 위 픽업 표기와 색(`pickupBand`)이 쓴다
+ */
+export function effectivePickup(card: OrderCard): { pickup_time: string; pickup_label: string } {
+  if (card.status === 'accepted' && card.owner_pickup_time) {
+    return { pickup_time: card.owner_pickup_time, pickup_label: card.owner_pickup_label ?? '' }
+  }
+  return { pickup_time: card.pickup_time, pickup_label: card.pickup_label }
+}
+
 
 /** 사장님 결정을 기다리는 주문 카드가 있다(카운트다운을 다시 그린다) */
 export function approvalsWaiting(state: OwnerState): boolean {

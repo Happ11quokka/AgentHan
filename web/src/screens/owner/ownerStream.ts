@@ -75,10 +75,16 @@ async function act(key: string, path: string, body?: unknown): Promise<boolean> 
 
 const id = (value: string) => encodeURIComponent(value)
 
-/** 접수 버튼. 실패(없는 카드 404)면 false */
-export function acceptOrder(key: string, orderId: string): Promise<boolean> {
-  return act(key, `orders/${id(orderId)}/accept`)
+/** 사장님이 고를 수 있는 늦춘 분: [수락] 0, [+15분], [+30분] (주문 승인 티켓 04, 서버 `ACCEPT_DELAYS`) */
+export const ACCEPT_DELAYS = [0, 15, 30] as const
+export type AcceptDelay = (typeof ACCEPT_DELAYS)[number]
+
+
+/** 수락 버튼([+15분]·[+30분]이면 늦춘 수락). 실패(없는 카드 404, 이미 결정 409)면 false */
+export function acceptOrder(key: string, orderId: string, delayMin: AcceptDelay = 0): Promise<boolean> {
+  return act(key, `orders/${id(orderId)}/accept`, delayMin ? { delay_min: delayMin } : undefined)
 }
+
 
 /** 닫기 버튼(넘김·미완료 통화 카드). 실패(통화 중·주문됨 409 등)면 false */
 export function dismissCall(key: string, callId: string): Promise<boolean> {

@@ -1,6 +1,7 @@
 // 손님 통화 화면의 "사장님 확인 중" 배지와 결과 (주문 승인 티켓 09, spec "손님 통화 화면").
 // 서버 `state.approval`(통화 안 마지막 확인 요청 상태)과 받은 문자로 화면 글을 정한다. 통화 중에
-// 답이 없어 문자로 넘긴 주문은 확정 문자(kind order)가 와야 확정으로 보인다.
+// 답이 없어 문자로 넘긴 주문은 확정 문자(kind order, 늦춘 수락이면 delayed)가 와야 확정으로 보인다.
+
 import type { ApprovalJson, CustomerText } from './callState.ts'
 
 /** wait: 기다리는 중 · ok: 확정 · stop: 주문이 성립하지 않음 */
@@ -18,9 +19,12 @@ interface Shown {
   texts: CustomerText[]
 }
 
+/** 확정을 알리는 문자: 주문 확정, 늦춘 수락(바뀐 픽업 시각, 주문 승인 티켓 04) */
+const CONFIRMING: ReadonlySet<CustomerText['kind']> = new Set(['order', 'delayed'])
+
 /** 확인 요청이 문자로 넘어갔고(시간 초과) 아직 확정 문자가 오지 않았다 */
 export function awaitingText(s: Shown): boolean {
-  return s.approval?.status === 'timeout' && !s.texts.some((t) => t.kind === 'order')
+  return s.approval?.status === 'timeout' && !s.texts.some((t) => CONFIRMING.has(t.kind))
 }
 
 /** 배지. 확인 요청이 없었거나 건너뛰었거나(바로 확정) 모르는 상태면 null */
@@ -30,14 +34,25 @@ export function approvalBadge(s: Shown): ApprovalBadge | null {
   switch (a.status) {
     case 'waiting':
       return { tone: 'wait', label: '사장님 확인 중', detail: '가게에서 주문을 확인하고 있어요. 잠시만 기다려 주세요.' }
+    case 'delayed':
+      // 사장님이 늦춰 수락했고 손님이 통화에서 바뀐 시각에 답하는 중 (티켓 04)
+      return {
+        tone: 'wait',
+        label: `사장님이 ${a.delay_min}분 늦게 준비 가능하대요`,
+        detail: '바뀐 시간이 괜찮으시면 "네"라고 말씀해 주세요.',
+      }
     case 'accepted':
       return a.delay_min > 0
         ? { tone: 'ok', label: `사장님이 ${a.delay_min}분 늦춰 수락했어요`, detail: null }
         : { tone: 'ok', label: '사장님이 수락했어요', detail: null }
     case 'timeout':
-      return awaitingText(s)
-        ? { tone: 'wait', label: '가게 확인 중', detail: '확인되는 대로 문자로 알려 드려요. 확정 문자를 받으시면 주문 완료예요.' }
+      if (awaitingText(s)) {
+        return { tone: 'wait', label: '가게 확인 중', detail: '확인되는 대로 문자로 알려 드려요. 확정 문자를 받으시면 주문 완료예요.' }
+      }
+      return s.texts.some((t) => t.kind === 'delayed')
+        ? { tone: 'ok', label: '가게가 시간을 늦춰 확정했어요', detail: '받은 문자에서 바뀐 픽업 시간을 확인해 주세요.' }
         : { tone: 'ok', label: '가게가 주문을 확정했어요', detail: '받은 문자를 확인해 주세요.' }
+
     case 'withdrawn':
       return a.reason === 'cancelled'
         ? { tone: 'stop', label: '주문을 취소했어요', detail: null }
