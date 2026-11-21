@@ -60,6 +60,21 @@ describe("루틴 설정 (#33)", () => {
     expect(change).toHaveBeenCalledWith({ drafts: false });
   });
 
+  test("나쁜 리뷰 바로 알림 스위치는 알려 주기·알리지 않기를 바꾼다", async () => {
+    const { user, change, region } = setup(OFF, { ...routines(), alert: true });
+    const alert = region().getByRole("switch", { name: "나쁜 리뷰 바로 알림" });
+    expect(alert).toHaveAttribute("aria-checked", "true");
+    expect(alert).toHaveTextContent("바로 알려 주기");
+    expect(region().getByText("안 좋은 리뷰가 들어오면 바로 대화로 알려 드려요")).toBeInTheDocument();
+    await user.click(alert);
+    expect(change).toHaveBeenCalledWith({ alert: false });
+  });
+
+  test("알림을 모르는 서버면 알림 스위치를 숨긴다", () => {
+    const { region } = setup(OFF, routines());
+    expect(region().queryByRole("switch", { name: "나쁜 리뷰 바로 알림" })).not.toBeInTheDocument();
+  });
+
   test("실패하면 이유를 보이고, 저장하는 동안 다시 누를 수 없다", async () => {
     let finish: (v: string | null) => void = () => {};
     const change = vi.fn(() => new Promise<string | null>((r) => (finish = r)));

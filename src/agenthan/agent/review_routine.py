@@ -24,6 +24,7 @@ from agenthan.agent.review.report import (
 )
 
 DRAFT_CHIP = "불만 리뷰 답글 초안"
+ALERT_CHIP = "답글 초안 받기"
 
 
 class ReviewRoutine:
@@ -96,6 +97,67 @@ class ReviewRoutine:
             new["anchor"] = now.date().isoformat()
         new["updated_at"] = now.isoformat(timespec="minutes")
         box.settings_store.save(store_id, new)
+
+    def set_alert(self, on: bool) -> None:
+        """사이드카 루틴 설정: 나쁜 리뷰 바로 알림 켜기(불만 리뷰만)·끄기.
+        승인 카드 없이 저장한다."""
+        box = self._box(create=True)
+        store_id = box.ctx["store_id"]
+        new = {**box.settings_store.get(store_id), "alert": "negative" if on else "none"}
+        new["updated_at"] = self.clock().isoformat(timespec="minutes")
+        box.settings_store.save(store_id, new)
+
+    def on_new_review(self, review_id: str) -> None:
+        """리뷰 도착 트리거: 알림이 켜져 있고 안 좋은(부정·혼합) 리뷰면 비서 메시지를 바로 쌓는다.
+        답글 초안 칩으로 사장님이 그 자리에서 대응할 수 있게 한다."""
+        mode = self.settings().get("alert", "negative")
+        if mode == "none":
+            return
+        from agenthan.agent.review.replies import _quote, _review_sentiment, risk_of
+
+        box = self._box(create=True)
+        review = next(
+            (r for r in self.a.store.read()["reviews"] if r["review_id"] == review_id), None
+        )
+        if review is None:
+            return
+        sentiment = box.ctx.get("sentiment")
+        if sentiment is None:
+            from agenthan.agent.review.sentiment import RuleSentiment
+
+            sentiment = RuleSentiment()
+        label = _review_sentiment({"features": [], **review}, sentiment)
+        if label not in ("negative", "mixed") and mode != "every_new":
+            return
+        bad = label in ("negative", "mixed")
+        stars = f" (★{review['rating']})" if review.get("rating") else ""
+        lines = [
+            ("안 좋은 리뷰가 방금 들어왔어요" if bad else "새 리뷰가 방금 들어왔어요") + stars,
+            f"“{_quote(review['text'])}”",
+        ]
+        risk = risk_of(review["text"], label)
+        if risk:
+            lines.append(f"직접 연락이 필요해 보여요: {', '.join(risk['words'])}")
+        if bad:
+            lines.append("답글로 바로 마음을 전해 보세요.")
+        text = "\n".join(lines)
+        self._count += 1
+        self.outbox.append(
+            {
+                "id": f"alert-{self._count}",
+                "role": "agent",
+                "text": text,
+                "next_actions": [
+                    {
+                        "action_id": "review.draft_reply",
+                        "label": ALERT_CHIP,
+                        "args": {"review_id": review_id},
+                    }
+                ],
+            }
+        )
+        self.a.history.append({"role": "assistant", "content": text})
+        self.a._history_task.append(None)
 
     def status(self) -> dict:
         """리뷰 탭 한 줄: '매일 09:00 리뷰 요약 받는 중' / '정기 보고 꺼짐'."""

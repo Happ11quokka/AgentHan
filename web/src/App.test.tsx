@@ -1,7 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import App from "./App";
+import { TOOLBOX } from "./components/LeftNav";
 import type { ReviewsView, Turn } from "./types";
 import {
   INBOX,
@@ -403,6 +405,50 @@ describe("왼쪽 자주 쓰는 일", () => {
     await user.click(screen.getByRole("button", { name: "메뉴 사진 올리기" }));
     expect(opened).toBe(true);
     expect(screen.getByRole("tab", { name: "메뉴" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("왼쪽 AgentHan 도구함", () => {
+  test("비서 기능 카탈로그의 모든 기능이 같은 이름·단계로 들어 있다", () => {
+    const url = `${process.cwd()}/../src/agenthan/agent/place_features.json`; // web/에서 돈다
+    const catalog: Array<{ id: string; name_ko: string; stage: string }> = JSON.parse(readFileSync(url, "utf-8"));
+    const pick = (rows: Array<{ id: string; name: string; stage: string }>) => rows.map((r) => JSON.stringify(r)).sort();
+    expect(pick(TOOLBOX.map((t) => ({ id: t.key, name: t.label, stage: t.stage })))).toEqual(
+      pick(catalog.map((f) => ({ id: f.id, name: f.name_ko, stage: f.stage }))),
+    );
+  });
+
+  test("맨 아래 도구함을 열어 누르면 버튼 없는 기능은 예시 문장을, 버튼 있는 기능은 그 액션을 보내고 패널을 닫는다", async () => {
+    const { user, api } = await open();
+    const toggle = screen.getByRole("button", { name: "AgentHan 도구함" });
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const panel = screen.getByRole("dialog", { name: "AgentHan 도구함" });
+    await user.click(within(panel).getByRole("button", { name: "톡톡 문의 답장" }));
+    await waitFor(() => expect(api.say).toHaveBeenLastCalledWith("s1", "톡톡 문의 온 거 보여 줘"));
+    expect(screen.queryByRole("dialog", { name: "AgentHan 도구함" })).not.toBeInTheDocument();
+    await screen.findByText("알겠어요.");
+    await user.click(toggle);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "방문·유입 통계 조회" }));
+    await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "stats.week", args: {}, label: "방문·유입 통계 조회" }));
+    expect(screen.getByRole("tab", { name: "통계" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("도구함 패널은 Esc로 닫힌다", async () => {
+    const { user } = await open();
+    await user.click(screen.getByRole("button", { name: "AgentHan 도구함" }));
+    expect(screen.getByRole("dialog", { name: "AgentHan 도구함" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "AgentHan 도구함" })).not.toBeInTheDocument();
+  });
+
+  test("전화 주문 카드는 자주 쓰는 일 맨 위에 있고, 손님으로 전화 걸기와 전화 주문 묶음은 없다", async () => {
+    await open();
+    const first = screen.getAllByRole("list")[0].querySelector("li");
+    expect(first).toHaveTextContent("전화 주문 카드");
+    expect(screen.getByRole("link", { name: /전화 주문 카드/ }).getAttribute("href")).toMatch(/^\/owner\?.*lang=ko/);
+    expect(screen.queryByText("손님으로 전화 걸기")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "전화 주문" })).not.toBeInTheDocument();
   });
 });
 
@@ -876,6 +922,19 @@ describe("답글 대기함", () => {
     const hidden = await openInbox(fakeApi(), { demo: false });
     expect(hidden.panel.queryByRole("button", { name: "새 리뷰 도착 (데모)" })).not.toBeInTheDocument();
   });
+
+  test("새 리뷰가 안 좋으면 비서 알림이 바로 대화에 온다 (나쁜 리뷰 바로 알림)", async () => {
+    const { user, api, panel } = await openInbox(fakeApi(), { demo: true });
+    const ALERT = {
+      id: "alert-1",
+      role: "agent" as const,
+      text: "안 좋은 리뷰가 방금 들어왔어요 (★2)\n“포장이 찌그러져서 왔어요”\n답글로 바로 마음을 전해 보세요.",
+      next_actions: [{ action_id: "review.draft_reply", label: "답글 초안 받기", args: { review_id: "sim-01" } }],
+    };
+    api.view.mockResolvedValueOnce({ place: SEED, pending: [], messages: [ALERT] });
+    await user.click(panel.getByRole("button", { name: "새 리뷰 도착 (데모)" }));
+    expect(await screen.findByText(/안 좋은 리뷰가 방금 들어왔어요/)).toBeInTheDocument();
+  });
 });
 
 describe("홈 루틴 설정 (#33)", () => {
@@ -1206,8 +1265,17 @@ describe("왼쪽 사이드바 접기", () => {
     const { user, api } = await open();
     const nav = () => screen.getByRole("navigation", { name: "대화 목록" });
     expect(nav()).toHaveAttribute("data-collapsed", "false");
-    await user.click(screen.getByRole("button", { name: "사이드바 접기" }));
+    // 위에는 로고만 있고, 접고 펴는 건 가장자리 인덱스 손잡이가 한다
+    expect(within(nav()).getByLabelText("AgentHan")).toBeInTheDocument();
+    expect(within(nav()).getByText("Agent")).toBeInTheDocument();
+    expect(within(nav()).queryByRole("button", { name: /사이드바/ })).not.toBeInTheDocument();
+    const handle = screen.getByRole("button", { name: "사이드바 접기" });
+    expect(handle).toHaveAttribute("aria-expanded", "true");
+    await user.click(handle);
     expect(nav()).toHaveAttribute("data-collapsed", "true");
+    expect(within(nav()).getByLabelText("AgentHan")).toBeInTheDocument();
+    expect(within(nav()).queryByText("Agent")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "사이드바 펼치기" })).toHaveAttribute("aria-expanded", "false");
     expect(within(nav()).queryByText("최근 대화")).not.toBeInTheDocument();
     await user.click(within(nav()).getByRole("button", { name: "요즘 리뷰" }));
     await waitFor(() => expect(api.act).toHaveBeenLastCalledWith("s1", { action_id: "review.summary", args: {}, label: "요즘 리뷰" }));

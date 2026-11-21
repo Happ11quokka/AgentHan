@@ -253,3 +253,43 @@ def test_screen_rejects_unknown_schedule_values(tmp_path, report):
     sid = api.post("/assistant/sessions").json()["session_id"]
     assert routines(api, sid, report=report).status_code in (400, 422)
     assert place(api, sid)["review_report"]["text"] == "정기 보고 꺼짐"
+
+
+# ── 나쁜 리뷰 바로 알림: 새 리뷰가 들어오면 안 좋은 리뷰만 비서가 먼저 알린다 ──
+
+
+def simulate(api, sid):
+    return api.post(f"/assistant/sessions/{sid}/reviews/simulate").json()["review_id"]
+
+
+def test_bad_review_alert_is_on_by_default_and_tells_the_owner_right_away(tmp_path):
+    clock = Clock(datetime(2026, 11, 7, 8, 0))
+    api = api_with(tmp_path, clock)
+    sid = api.post("/assistant/sessions").json()["session_id"]
+    assert place(api, sid)["routines"]["alert"] is True
+
+    bad = simulate(api, sid)  # ★2 포장이 찌그러져 왔다
+    [message] = place(api, sid)["messages"]
+    assert message["role"] == "agent"
+    assert message["text"].startswith("안 좋은 리뷰가 방금 들어왔어요")
+    assert "★2" in message["text"] and "포장" in message["text"]
+    assert message["next_actions"] == [
+        {"action_id": "review.draft_reply", "label": "답글 초안 받기", "args": {"review_id": bad}}
+    ]
+    assert place(api, sid)["messages"] == []  # 한 번만
+
+    simulate(api, sid)  # ★5 좋은 리뷰는 알리지 않는다
+    assert place(api, sid)["messages"] == []
+
+
+def test_bad_review_alert_switch_off_keeps_quiet(tmp_path):
+    clock = Clock(datetime(2026, 11, 7, 8, 0))
+    api = api_with(tmp_path, clock)
+    sid = api.post("/assistant/sessions").json()["session_id"]
+
+    body = routines(api, sid, alert=False).json()
+    assert body["pending"] == [] and body["routines"]["alert"] is False
+    simulate(api, sid)
+    assert place(api, sid)["messages"] == []
+
+    assert routines(api, sid, alert=True).json()["routines"]["alert"] is True

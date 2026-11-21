@@ -54,6 +54,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
     if (!id) return;
     await api.simulateReview(id).catch(() => undefined);
     reloadReviews();
+    void chat.refresh(); // 나쁜 리뷰 바로 알림: 들어온 리뷰가 안 좋으면 비서 메시지가 바로 온다
   };
   // 대기함 카드 버튼: 대화 턴이 아니다. 결과로 그 카드와 요약만 바꾸고 채팅 말풍선은 만들지 않는다.
   // 채팅에는 다시 봐야 할 것(검사에 걸려 막힘, 서버 오류)만 화면 알림 한 개로 올린다.
