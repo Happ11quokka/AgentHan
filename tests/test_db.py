@@ -226,6 +226,10 @@ def test_owner_decisions_reach_db_rows_through_serve() -> None:
     assert rows == [OwnerDecisionRow("call-r", "accepted", "", "2026-11-25T16:00:09+09:00",
                                      "2026-11-25T18:45:00+09:00")]
     assert rows[0].order is order
+    DecisionsToDb(Rows()).record(DecisionRecord(
+        "call-r", "rejected", "out_of_stock", "2026-11-25T16:00:09+09:00",
+        reject_menu_ids=("m01",), reject_text="", reject_text_ko=""))
+    assert rows[-1].reject_menu_ids == ("m01",)  # 거절 내용도 옮긴다 (티켓 06)
 
 
 def test_decisions_without_db_are_dropped_quietly() -> None:
@@ -283,6 +287,44 @@ def test_decisions_are_plain_values_and_the_last_one_wins(seeded) -> None:
     assert _owner_row(seeded, "call-d2") == ("draft", "rejected", "out_of_stock", "16:01:00", "",
                                              7500)
     assert _owner_row(seeded, "call-d3") == ("confirmed", "expired", "", "16:07:00", "", 7500)
+
+
+@needs_db
+def test_an_order_reads_back_with_its_reject_details(seeded) -> None:
+    """주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 결정과 거절 내용(마이그레이션 004)이
+    남고, 주문 번호로 한 줄을 다시 읽는다. 없는 번호는 None."""
+    from agenthan.db.orders import PgOrderSink, find_order
+
+    sink = PgOrderSink(url=seeded)
+    order = Order(id="call-r1", lines=[OrderLine("m01", 2, name="메도빅", unit_price=7500)],
+                  pickup_time="2026-11-25T18:30:00+09:00", status="confirmed",
+                  created_at="2026-11-25T16:00:00+09:00")
+    sink.submit(order)
+    sink.record_decision(_decision("call-r1", "rejected", order=order, reject_reason="free",
+                                   reject_text="Закрываемся", reject_text_ko="문을 닫아요",
+                                   decided_at="2026-11-25T16:01:00+09:00"))
+    sink.record_decision(_decision("call-r2", "rejected", order=_phone_order("call-r2"),
+                                   reject_reason="out_of_stock", reject_menu_ids=("m01",)))
+    sink.flush()
+    sink.close()
+
+    row = find_order("call-r1", seeded)
+    assert row is not None
+    assert (row.status, row.owner_status, row.reject_reason, row.reject_text,
+            row.reject_text_ko) == ("confirmed", "rejected", "free", "Закрываемся", "문을 닫아요")
+    assert row.lines == [{"menu_id": "m01", "quantity": 2, "options": [], "request": "",
+                          "name": "메도빅", "unit_price": 7500}]
+    assert (row.pickup_time, row.created_at) == ("2026-11-25T18:30:00+09:00",
+                                                 "2026-11-25T16:00:00+09:00")
+    assert row.decided_at.startswith("2026-11-25T")
+    assert find_order("call-r2", seeded).reject_menu_ids == ("m01",)
+    assert find_order("call-nope", seeded) is None
+
+
+def test_reading_an_order_without_db_finds_nothing() -> None:
+    from agenthan.db.orders import find_order
+
+    assert find_order("call-x", url="") is None  # DB 설정 없음
 
 
 @needs_db

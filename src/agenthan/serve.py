@@ -85,7 +85,9 @@ class DecisionsToDb:
         self._sink.record_decision(OwnerDecisionRow(
             order_id=decision.order_id, owner_status=decision.owner_status,
             reject_reason=decision.reject_reason, decided_at=decision.decided_at,
-            owner_pickup_time=decision.owner_pickup_time, order=decision.order))
+            owner_pickup_time=decision.owner_pickup_time,
+            reject_menu_ids=decision.reject_menu_ids, reject_text=decision.reject_text,
+            reject_text_ko=decision.reject_text_ko, order=decision.order))
 
 
 def phone_knowledge(store_raw: dict | None, settings: VoiceSettings):
