@@ -270,6 +270,16 @@ uv run --frozen --offline pytest -q -m network tests/test_naver_search.py
 
 입출력은 한국어다. 사진 속 메뉴 이름만 원어 그대로 읽어 `name_native`로 남긴다.
 
+**메뉴판 사진은 승인 없이 메뉴 탭에 바로 올린다(2026-11-21, `menu_board.py`).** 분류와 읽기를
+HCX-005 한 번으로 합치고(긴 변 1280px), 가격이 보이는 메뉴를 곧바로 저장한 뒤 한국어 이름·설명
+(HCX-005, 메뉴마다 동시)과 흰 배경 사진(메뉴판 속 음식 사진 칸을 이름표로 메뉴에 붙이고, OpenCV
+윤곽선 칸에 맞춰 잘라 GrabCut 512px·5회)을 백그라운드로 채운다. AI가 채운 칸은 `ai`, 채우는 중인
+칸은 `filling`으로 화면에 보인다. 사장님은 메뉴 탭에서 바로 고치거나(`PATCH /menus/{id}`) 말로
+고친다(기존 승인 카드). 실측(합성 메뉴판 5개): 답 6.6초, 설명·사진까지 10초.
+사진 다듬기(2차, "메도빅 사진 더 예쁘게")는 SEED Omni GPU 서버(`tools/image_polish.py`)로 하며,
+주소가 없으면 준비 중이라고 답한다. 근거는 `docs/research/07-menu-photo-speed.md`.
+아래 1~4(초안 → 승인)는 이제 음식 사진에만 쓴다.
+
 `ask_photo`는 먼저 `menu_photo.fit_for_vision`으로 긴 변 2240px(HCX-005 한도)·10MB를 넘는 사진을
 JPEG로 줄인다. 폰 사진(4032px 등)은 그대로 보내면 거절되거나 10MB 한도에 걸린다(#91).
 

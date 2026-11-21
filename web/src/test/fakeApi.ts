@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { ApiError, type AssistantApi } from "../api";
-import type { Action, DraftRow, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, RoutinesChange, Turn, View } from "../types";
+import type { Action, DraftRow, MenuEdit, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, RoutinesChange, Turn, View } from "../types";
 
 export const SEED: Place = {
   menu: [
@@ -198,6 +198,16 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
     report: vi.fn(async (_id: string, period: Period) => report(period)),
     runReviewReport: vi.fn(async (_id: string): Promise<View> => ({ place: SEED, pending: [], messages: [] })),
     setRoutines: vi.fn(async (_id: string, _change: RoutinesChange): Promise<View> => ({ place: SEED, pending: [] })),
+    // 기본: 그 메뉴 칸만 바꾼 SEED를 돌려준다.
+    editMenu: vi.fn(async (_id: string, menuId: string, edit: MenuEdit): Promise<View> => ({
+      place: { ...SEED, menu: SEED.menu.map((m) => (m.id === menuId ? { ...m, ...edit, ai: [] } : m)) },
+      pending: [],
+    })),
+    polishMenu: vi.fn(async (_id: string, _menuId: string) => ({ place: SEED, pending: [], message: "다듬기 시작했어요.", started: true })),
+    deleteMenu: vi.fn(async (_id: string, menuId: string): Promise<View> => ({
+      place: { ...SEED, menu: SEED.menu.filter((m) => m.id !== menuId) },
+      pending: [],
+    })),
   } satisfies AssistantApi;
   return api;
 }

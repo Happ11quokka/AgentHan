@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import pytest
 
-from agenthan.agent import food_photo
+from agenthan.agent import food_photo, menu_board
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.core.contracts import MenuItem
 from agenthan.core.fakes import FakeStoreKnowledge
@@ -30,6 +30,8 @@ class FakeV3:
         if isinstance(content, list):
             if content[1]["text"] == food_photo.CLASSIFY_PROMPT:
                 answer = "food"
+            elif content[1]["text"] == menu_board.BOARD_PROMPT:
+                answer = '{"kind": "food"}'
             else:
                 answer = json.dumps(
                     {

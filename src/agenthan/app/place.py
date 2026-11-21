@@ -54,7 +54,13 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
     }
     return {
         "menu": [
-            {**{k: m.get(k) for k in MENU_FIELDS}, "photo_url": photo_url(m)}
+            {
+                **{k: m.get(k) for k in MENU_FIELDS},
+                "photo_url": photo_url(m),
+                # 메뉴판 사진으로 올린 메뉴: AI가 채운 칸(ai)과 지금 채우는 칸(filling)
+                "ai": list(m.get("ai") or []),
+                "filling": list(m.get("filling") or []),
+            }
             for m in data.get("menus", [])
         ],
         "business_hours": {day: copy.deepcopy(hours[day]) for day in DAYS if day in hours},

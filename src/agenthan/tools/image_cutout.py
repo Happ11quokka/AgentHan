@@ -38,10 +38,12 @@ def _validate_box(box: tuple[float, float, float, float] | None) -> tuple:
     return (x0, y0, x1, y1)
 
 
-def _foreground_mask(image: np.ndarray, box: tuple) -> np.ndarray:
+def _foreground_mask(
+    image: np.ndarray, box: tuple, work_side: int = _MAX_SIDE, iterations: int = 5
+) -> np.ndarray:
     """가장 큰 영역의 구멍을 채운 뒤 1~2px 부드럽게 한 원본 좌표 마스크."""
     height, width = image.shape[:2]
-    scale = min(1.0, _MAX_SIDE / max(height, width))
+    scale = min(1.0, work_side / max(height, width))
     small = cv2.resize(
         image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA
     )
@@ -59,7 +61,7 @@ def _foreground_mask(image: np.ndarray, box: tuple) -> np.ndarray:
         (left, top, right - left, bottom - top),
         np.zeros((1, 65), np.float64),
         np.zeros((1, 65), np.float64),
-        5,
+        iterations,
         cv2.GC_INIT_WITH_RECT,
     )
     mask = np.isin(labels, (cv2.GC_FGD, cv2.GC_PR_FGD)).astype(np.uint8)
@@ -90,9 +92,13 @@ def cutout_on_white(
     box: tuple[float, float, float, float] | None = None,
     size: int = 1024,
     fmt: str = "JPEG",
+    work_side: int = _MAX_SIDE,
+    iterations: int = 5,
 ) -> CutoutResult:
     """EXIF 회전 반영 → GrabCut 5회 → 흰 배경·8% 여백의 정사각형 바이트.
 
+    work_side·iterations: GrabCut을 돌릴 긴 변과 반복 수. 메뉴판에서 자른 사진은 512px·5회로
+    쓴다(1024px보다 몇 배 빠르고 결과는 비슷하다, docs/research/07-menu-photo-speed.md).
     box는 회전 반영 후 사진 좌표다. 전경 비율이 3% 미만/90% 초과거나
     GrabCut이 실패하면 원본에 정사각형 흰 여백만 더해 ok=False로 반환한다.
     출력 형식은 JPEG(JPG) 또는 PNG이며 파일 저장·네트워크 호출은 하지 않는다.
@@ -125,7 +131,7 @@ def cutout_on_white(
     reason = ""
     ratio = 0.0
     try:
-        mask = _foreground_mask(image, hint)
+        mask = _foreground_mask(image, hint, work_side, iterations)
         ratio = float(np.count_nonzero(mask >= 128) / mask.size)
         if ratio < 0.03:
             reason = "음식 영역이 3% 미만이라 배경을 지우지 못했어요."

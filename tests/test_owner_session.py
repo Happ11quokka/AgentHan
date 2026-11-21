@@ -8,7 +8,9 @@ import test_owner_assistant as base
 from agenthan.agent import owner_assistant as owner
 from agenthan.agent.task_ledger import TaskLedger
 from agenthan.tools.dummy_store import DummyStore
-from test_menu_photo import JPEG, KNOWLEDGE, NAMES, VISION, FakeV3
+from test_food_photo import CAKE
+from test_food_photo import FakeV3 as FoodV3
+from test_menu_photo import KNOWLEDGE
 
 FakeChat, answer, call, read_file = base.FakeChat, base.answer, base.call, base.read_file
 mock_index, offline_by_default = base.mock_index, base.offline_by_default  # fixtures
@@ -103,9 +105,10 @@ def test_photo_drafts_wait_while_another_request_runs(tmp_path, mock_index):
         chat=fake,
         embed=lambda _: mock_index["business_hours"],
         knowledge=KNOWLEDGE,
-        clova_v3=FakeV3(VISION, NAMES),
+        clova_v3=FoodV3(),
     )
-    bot.ask_photo(JPEG)
+    # 메뉴판은 바로 올라가고(menu_board) 초안으로 기다리는 건 음식 사진뿐이다.
+    bot.ask_photo(CAKE.read_bytes())
     out = bot.ask("사진 메뉴는 잠깐 두고, 일요일 영업을 10시부터 6시까지로 바꿔 주세요")
     assert "바꿀까요" in out and bot.menu_drafts is not None
     out = bot.ask("네")

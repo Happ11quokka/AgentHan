@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 
+from agenthan.agent import menu_board
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
@@ -89,6 +90,14 @@ class ReportRoutine(BaseModel):
     time: str | None = None
 
 
+class MenuEdit(BaseModel):
+    """메뉴 탭에서 사장님이 직접 고친 칸만. 대화 턴이 아니고 승인 카드도 없다."""
+
+    name: str | None = None
+    price: int | None = Field(default=None, gt=0)
+    description: str | None = None
+
+
 class Routines(BaseModel):
     """사이드카 루틴 설정(#33). report: 리뷰 정기 보고, drafts: 답글 초안 미리 쓰기."""
 
@@ -117,7 +126,10 @@ class Session:
         return f"/assistant/sessions/{self.id}/photos/{name}"
 
     def _menu_photo_url(self, record: dict) -> str | None:
-        return self._photo_path(record["id"]) if record.get("photo") else None
+        if not record.get("photo"):
+            return None
+        # 흰 배경 사진을 새로 만들면 버전이 올라 화면이 예전 사진을 캐시에서 꺼내지 않는다.
+        return f"{self._photo_path(record['id'])}?v={record.get('photo_version') or 0}"
 
     def view(self) -> dict:
         data = self.assistant.store.read()
@@ -248,13 +260,19 @@ def create_app(
         return session
 
     @app.post("/assistant/sessions")
-    def start() -> dict:
+    def start(menu: Literal["empty"] | None = None) -> dict:
+        """menu=empty: 시연용. 메뉴만 비운 가게로 시작한다(메뉴판 사진으로 채우는 장면)."""
         session_id = uuid.uuid4().hex
         folder = root / session_id
         folder.mkdir(parents=True)
         session = sessions[session_id] = Session(
             session_id, make_assistant(folder / "store.json"), clock, drafts=prepare_on_start
         )
+        if menu == "empty":
+            store = session.assistant.store
+            data = store.read()
+            data["menus"] = []
+            store.write(data)
         if prepare_on_start:
             with session.lock:
                 job = claim_drafts(session)
@@ -266,10 +284,13 @@ def create_app(
         session = get(session_id)
         with session.lock:
             reply = session.assistant.ask(message.text)
+            job = session.assistant.take_photo_job()  # "메도빅 사진 더 예쁘게" → 사진 다듬기
             result = {"reply": reply, **session.view()}
             if session.assistant.agent_mode == "planner":
                 result["next_actions"] = session.assistant.next_actions
-            return result
+        if job is not None:
+            in_background(job)
+        return result
 
     @app.post("/assistant/sessions/{session_id}/actions")
     def run_action(session_id: str, action: ButtonAction) -> dict:
@@ -293,7 +314,50 @@ def create_app(
             raise HTTPException(422, "빈 사진입니다.")
         with session.lock:
             reply = session.assistant.ask_photo(data, text)
-            return {"reply": reply, **session.view()}
+            job = session.assistant.take_photo_job()
+            result = {"reply": reply, **session.view()}
+        if job is not None:
+            in_background(job)  # 설명·흰 배경 사진 채우기. 화면은 /place로 채워지는 걸 본다.
+        return result
+
+    @app.patch("/assistant/sessions/{session_id}/menus/{menu_id}")
+    def edit_menu(session_id: str, menu_id: str, body: MenuEdit) -> dict:
+        """메뉴 탭에서 사장님이 직접 고친 값. 세션 잠금 없이 저장소 잠금만 쓴다(대화 턴이
+        길어도 바로 저장된다)."""
+        session = get(session_id)
+        fields = body.model_dump(exclude_none=True)
+        if not fields:
+            raise HTTPException(422, "고칠 값이 없습니다.")
+        try:
+            record = session.assistant.store.patch_menu(menu_id, fields, by_owner=True)
+        except DummyStoreError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if record is None:
+            raise HTTPException(404, "없는 메뉴입니다.")
+        return session.view()
+
+    @app.post("/assistant/sessions/{session_id}/menus/{menu_id}/polish")
+    def polish_menu_photo(session_id: str, menu_id: str) -> dict:
+        """메뉴 탭 [AI로 다듬기]: SEED Omni로 흰 배경 사진을 다시 그린다(2차, 1~2분).
+        message: 사장님께 보일 한 줄(시작했어요 / 준비 중이에요 / 사진이 없어요)."""
+        session = get(session_id)
+        try:
+            message, job = menu_board.start_polish(session.assistant.store, menu_id)
+        except DummyStoreError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        if job is not None:
+            in_background(job)
+        return {"message": message, "started": job is not None, **session.view()}
+
+    @app.delete("/assistant/sessions/{session_id}/menus/{menu_id}")
+    def delete_menu(session_id: str, menu_id: str) -> dict:
+        session = get(session_id)
+        try:
+            if not session.assistant.store.delete_menu(menu_id):
+                raise HTTPException(404, "없는 메뉴입니다.")
+        except DummyStoreError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return session.view()
 
     @app.post("/assistant/sessions/{session_id}/onboarding")
     def onboard(session_id: str, body: Onboarding) -> dict:

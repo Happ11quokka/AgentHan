@@ -2,10 +2,12 @@
 assistant_store_docs table (agenthan.db), and a missing file is read back from that copy.
 No publishing operations."""
 
+import copy
 import json
 import os
 import re
 import tempfile
+import threading
 import unicodedata
 import uuid
 from pathlib import Path
@@ -90,11 +92,33 @@ def _db_save(path: Path, data: dict) -> None:
     save_assistant_doc(_db_key(path), data)
 
 
+# 메뉴판 사진은 메뉴를 먼저 등록하고 설명·사진을 백그라운드에서 채운다. 그 쓰기와 대화 턴·
+# 사장님 직접 수정이 같은 파일을 읽고-고치고-쓰므로 경로마다 잠금 하나로 줄 세운다.
+_LOCKS: dict[str, threading.RLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+# 메뉴 줄의 ai·filling에 들어가는 칸 이름. ai: AI가 채워 사장님 확인 전인 칸,
+# filling: 지금 백그라운드에서 채우는 칸(polish: 흰 배경 사진을 이미지 모델로 다듬는 중).
+MENU_FLAG_FIELDS = ("name", "price", "description", "photo", "polish")
+
+
+def _lock_for(path: Path) -> threading.RLock:
+    key = str(path.resolve())
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(key, threading.RLock())
+
+
+def _flags(record: dict, key: str) -> list[str]:
+    value = record.get(key)
+    return [v for v in value if v in MENU_FLAG_FIELDS] if isinstance(value, list) else []
+
+
 class DummyStore:
     def __init__(self, path: str | Path = DEFAULT_STORE):
         self.path = Path(path).expanduser()
         if self.path.resolve() == SEED_PATH.resolve():
             raise DummyStoreError("시드 파일은 실행 저장소로 사용할 수 없습니다.")
+        self.lock = _lock_for(self.path)
 
     def read(self) -> dict:
         """Before the first valid write, read the seed without creating a file."""
@@ -168,6 +192,155 @@ class DummyStore:
                 temporary.unlink()
         raise DummyStoreError("더미 저장소에 저장할 수 없습니다.")
 
+    def _save_photo(self, record: dict, photo: bytes, photo_mime: str | None) -> None:
+        """메뉴 사진 파일을 쓰고 record에 경로와 버전(화면 캐시를 깨는 값)을 적는다."""
+        if photo_mime not in ("image/jpeg", "image/png") or not isinstance(photo, bytes):
+            raise DummyStoreError("사진 형식이 올바르지 않습니다.")
+        if self.path.parent.resolve() == SEED_PATH.parent.resolve():
+            raise DummyStoreError("시드 파일 옆에는 사진을 저장할 수 없습니다.")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", record["id"]):
+            raise DummyStoreError("메뉴 ID가 올바르지 않습니다.")
+        photo_dir = self.path.parent / "photos"
+        filename = record["id"] + (".png" if photo_mime == "image/png" else ".jpg")
+        temporary = None
+        try:
+            photo_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=photo_dir, suffix=".tmp", delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(photo)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.replace(photo_dir / filename)
+        except OSError:
+            raise DummyStoreError("사진을 저장할 수 없습니다.") from None
+        finally:
+            if temporary is not None and temporary.exists():
+                temporary.unlink()
+        record["photo"] = f"photos/{filename}"
+        record["photo_version"] = int(record.get("photo_version") or 0) + 1
+
+    def add_board_menus(self, items: list[dict]) -> list[dict]:
+        """메뉴판 사진에서 읽은 메뉴를 승인 없이 바로 올린다(사장님이 메뉴 탭에서 고친다).
+
+        items: {name, price, name_native?, ai?, filling?}. 같은 이름이 이미 있으면 새로 만들지
+        않고 가격만 맞춘다(바뀌면 ai에 price). 돌려주는 줄마다 action(created|updated|unchanged)."""
+        with self.lock:
+            data = self.read()
+            out = []
+            for item in items:
+                name, price = item.get("name"), item.get("price")
+                if not isinstance(name, str) or not normalize(name) or not valid_price(price):
+                    continue
+                key = normalize(name)
+                record = next((m for m in data["menus"] if normalize(m["name"]) == key), None)
+                if record is None:
+                    record = {
+                        "id": str(uuid.uuid4()),
+                        "name": " ".join(name.split()),
+                        "price": price,
+                        "aliases": [],
+                    }
+                    native = item.get("name_native")
+                    if isinstance(native, str) and native.strip():
+                        record["name_native"] = " ".join(native.split())
+                    record["ai"] = [f for f in item.get("ai", []) if f in MENU_FLAG_FIELDS]
+                    record["filling"] = [
+                        f for f in item.get("filling", []) if f in MENU_FLAG_FIELDS
+                    ]
+                    data["menus"].append(record)
+                    action = "created"
+                else:
+                    action = "unchanged"
+                    if record["price"] != price:
+                        record["price"] = price
+                        record["ai"] = sorted(set(_flags(record, "ai")) | {"price"})
+                        action = "updated"
+                    wanted = [f for f in item.get("filling", []) if f == "photo"]
+                    if wanted and not record.get("photo"):
+                        record["filling"] = sorted(set(_flags(record, "filling")) | set(wanted))
+                out.append({"action": action, "record": copy.deepcopy(record)})
+            self._write(data)
+            return out
+
+    def patch_menu(
+        self,
+        menu_id: str,
+        fields: dict,
+        *,
+        by_owner: bool,
+        done: tuple[str, ...] = (),
+        start: tuple[str, ...] = (),
+        photo: bytes | None = None,
+        photo_mime: str | None = None,
+    ) -> dict | None:
+        """메뉴 한 줄의 이름·가격·설명·사진을 고친다. 없는 메뉴면 None.
+
+        by_owner=True: 사장님이 메뉴 탭에서 직접 고친 값. 그 칸의 AI 표시와 채우는 중 표시를
+        지우고, 뒤에서 채우던 값이 늦게 와도 덮어쓰지 않는다.
+        by_owner=False: 백그라운드 채우기. 아직 filling에 남은 칸만 쓰고(사장님이 먼저 고친
+        칸은 건너뜀), 쓴 칸은 ai에 더한다. done: 값이 없어도 채우기를 끝낼 칸.
+        start: 새로 채우기 시작할 칸(예: 사진 다듬기 polish)."""
+        with self.lock:
+            data = self.read()
+            record = next((m for m in data["menus"] if m["id"] == menu_id), None)
+            if record is None:
+                return None
+            ai, filling = set(_flags(record, "ai")), set(_flags(record, "filling"))
+            values = {k: v for k, v in fields.items() if k in ("name", "price", "description")}
+            if photo is not None:
+                values["photo"] = photo
+            if not by_owner:
+                keep = filling | ({"photo"} if "polish" in filling else set())
+                values = {k: v for k, v in values.items() if k in keep}
+            if "name" in values:
+                name = values["name"]
+                if not isinstance(name, str) or not normalize(name):
+                    raise DummyStoreError("메뉴 이름이 비어 있어요.")
+                clash = any(
+                    normalize(m["name"]) == normalize(name) and m["id"] != menu_id
+                    for m in data["menus"]
+                )
+                if clash:
+                    if by_owner:
+                        raise DummyStoreError("같은 이름의 메뉴가 이미 있어요.")
+                    values.pop("name")
+                else:
+                    record["name"] = " ".join(name.split())
+            if "price" in values:
+                if not valid_price(values["price"]):
+                    raise DummyStoreError("가격은 0보다 큰 정수(원)로 넣어 주세요.")
+                record["price"] = values["price"]
+            if "description" in values:
+                text = values["description"]
+                record["description"] = " ".join(text.split()) if isinstance(text, str) else ""
+            if "photo" in values:
+                self._save_photo(record, photo, photo_mime)
+            written = set(values)
+            if by_owner:
+                ai -= written
+                filling -= written
+            else:
+                ai |= {k for k in written if k != "name" or values.get("name")}
+                filling -= written | set(done)
+                if "photo" in written:
+                    filling.discard("polish")
+            filling |= set(start)
+            record["ai"] = sorted(ai)
+            record["filling"] = sorted(filling)
+            self._write(data)
+            return copy.deepcopy(record)
+
+    def delete_menu(self, menu_id: str) -> bool:
+        """메뉴판에서 잘못 읽은 줄을 사장님이 지운다."""
+        with self.lock:
+            data = self.read()
+            kept = [m for m in data["menus"] if m["id"] != menu_id]
+            if len(kept) == len(data["menus"]):
+                return False
+            data["menus"] = kept
+            self._write(data)
+            return True
+
     def set_shop_info(self, name: str, category: str) -> dict:
         """처음 쓰는 사장님 온보딩(#94): 가게 이름·업종만 바꾸고 나머지 가게 정보는 둔다."""
         values = {"name": name, "category": category}
@@ -191,7 +364,31 @@ class DummyStore:
         create_only: bool = False,
     ) -> dict:
         """같은 이름이면 가격을 고치고, 없으면 등록한다. description·name_native는 줄 때만 저장
-        (메뉴 사진 등록 A-1)."""
+        (메뉴 사진 등록 A-1). 사장님이 승인한 값이라 그 칸의 AI 표시(ai)는 지운다."""
+        with self.lock:
+            return self._upsert_menu(
+                name,
+                price,
+                description=description,
+                name_native=name_native,
+                photo=photo,
+                photo_mime=photo_mime,
+                menu_id=menu_id,
+                create_only=create_only,
+            )
+
+    def _upsert_menu(
+        self,
+        name: str,
+        price: int,
+        *,
+        description: str | None,
+        name_native: str | None,
+        photo: bytes | None,
+        photo_mime: str | None,
+        menu_id: str | None,
+        create_only: bool,
+    ) -> dict:
         if not isinstance(name, str) or not normalize(name) or not valid_price(price):
             raise DummyStoreError("메뉴 이름과 양의 정수 가격(원)이 필요합니다.")
         extra = {
@@ -222,32 +419,12 @@ class DummyStore:
             previous_price = record["price"]
             record["price"] = price
         record.update(extra)
+        confirmed = {"name", "price"} | {k for k in extra if k == "description"}
         if photo is not None:
-            if photo_mime not in ("image/jpeg", "image/png") or not isinstance(photo, bytes):
-                raise DummyStoreError("사진 형식이 올바르지 않습니다.")
-            if self.path.parent.resolve() == SEED_PATH.parent.resolve():
-                raise DummyStoreError("시드 파일 옆에는 사진을 저장할 수 없습니다.")
-            if not re.fullmatch(r"[A-Za-z0-9_-]+", record["id"]):
-                raise DummyStoreError("메뉴 ID가 올바르지 않습니다.")
-            photo_dir = self.path.parent / "photos"
-            filename = record["id"] + (".png" if photo_mime == "image/png" else ".jpg")
-            temporary = None
-            try:
-                photo_dir.mkdir(parents=True, exist_ok=True)
-                with tempfile.NamedTemporaryFile(
-                    dir=photo_dir, suffix=".tmp", delete=False
-                ) as stream:
-                    temporary = Path(stream.name)
-                    stream.write(photo)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                temporary.replace(photo_dir / filename)
-            except OSError:
-                raise DummyStoreError("사진을 저장할 수 없습니다.") from None
-            finally:
-                if temporary is not None and temporary.exists():
-                    temporary.unlink()
-            record["photo"] = f"photos/{filename}"
+            self._save_photo(record, photo, photo_mime)
+            confirmed.add("photo")
+        if record.get("ai"):
+            record["ai"] = [f for f in _flags(record, "ai") if f not in confirmed]
         self._write(data)
         saved = next(m for m in self.read()["menus"] if m["id"] == record["id"])
         result = {"ok": True, "action": action, "record": saved}

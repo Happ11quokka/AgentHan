@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { approval, DAYS, discountText, hoursText, MARK_TEXT, periodText, won, type RowMark } from "../labels";
-import type { Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
+import type { MenuEdit, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
 import { RoutineSettings } from "./RoutineSettings";
 
 type Mark = RowMark | undefined;
@@ -63,41 +63,283 @@ function PendingBanner({ pending }: { pending: Pending[] }) {
   );
 }
 
+export type OnMenuEdit = (menuId: string, edit: MenuEdit) => Promise<string | null>;
+export type OnMenuDelete = (menuId: string) => Promise<string | null>;
+export type OnMenuPolish = (menuId: string) => Promise<string>;
+
+type Field = "name" | "price" | "description";
+
+/** AI가 채운 칸 안내. 사장님이 그 칸을 고치면 사라진다. */
+const AI_HINT = "AI가 사진에서 읽거나 만든 내용이에요. 맞는지 확인하고 눌러서 고쳐 주세요.";
+
+/**
+ * 메뉴 한 줄. 저장된 메뉴는 이름·설명·가격을 눌러 바로 고친다(승인 카드 없음, Enter 저장 · Esc 취소).
+ * 메뉴판 사진으로 올린 메뉴는 채우는 중인 칸(filling)을 흐린 자리로, AI가 채운 칸(ai)을 배지로 보인다.
+ */
+function MenuItemRow({
+  m,
+  mark,
+  oldPrice,
+  onEdit,
+  onDelete,
+  onPolish,
+}: {
+  m: MenuRow;
+  mark: Mark;
+  oldPrice: string | null;
+  onEdit?: OnMenuEdit;
+  onDelete?: OnMenuDelete;
+  onPolish?: OnMenuPolish;
+}) {
+  const [editing, setEditing] = useState<Field | null>(null);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const ai = new Set(m.ai ?? []);
+  const filling = new Set(m.filling ?? []);
+  const editable = Boolean(onEdit) && mark !== "removed";
+
+  const begin = (field: Field) => {
+    if (!editable) return;
+    setError(null);
+    setEditing(field);
+    setValue(field === "price" ? (m.price !== null ? String(m.price) : "") : (m[field] ?? ""));
+  };
+  const cancel = () => {
+    setEditing(null);
+    setError(null);
+  };
+  const commit = async () => {
+    if (!editing || !onEdit || saving) return;
+    const text = value.trim();
+    let edit: MenuEdit;
+    if (editing === "price") {
+      const price = Number(text.replace(/[,\s원]/g, ""));
+      if (!Number.isInteger(price) || price <= 0) {
+        setError("가격은 0보다 큰 숫자로 넣어 주세요.");
+        return;
+      }
+      if (price === m.price) return cancel();
+      edit = { price };
+    } else {
+      if (editing === "name" && !text) {
+        setError("이름은 비울 수 없어요.");
+        return;
+      }
+      if (text === (m[editing] ?? "")) return cancel();
+      edit = { [editing]: text };
+    }
+    setSaving(true);
+    const failed = await onEdit(m.id, edit);
+    setSaving(false);
+    if (failed) setError(failed);
+    else cancel();
+  };
+  const remove = async () => {
+    if (!onDelete) return;
+    setSaving(true);
+    const failed = await onDelete(m.id);
+    setSaving(false);
+    if (failed) setError(failed);
+    setConfirmDelete(false);
+  };
+
+  const input = (field: Field, label: string) =>
+    editing === field ? (
+      <span className="menu-edit">
+        {field === "description" ? (
+          <textarea
+            aria-label={label}
+            value={value}
+            rows={2}
+            autoFocus
+            disabled={saving}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancel();
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void commit();
+              }
+            }}
+          />
+        ) : (
+          <input
+            aria-label={label}
+            value={value}
+            inputMode={field === "price" ? "numeric" : undefined}
+            autoFocus
+            disabled={saving}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancel();
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) void commit();
+            }}
+          />
+        )}
+        <button type="button" className="menu-edit-save" disabled={saving} onClick={() => void commit()}>
+          저장
+        </button>
+        <button type="button" className="menu-edit-cancel" disabled={saving} onClick={cancel}>
+          취소
+        </button>
+      </span>
+    ) : null;
+
+  const field = (name: Field, label: string, children: ReactNode, className?: string) =>
+    input(name, label) ??
+    (editable ? (
+      <button type="button" className={`menu-field ${className ?? ""}`} data-ai={ai.has(name) || undefined} aria-label={`${label}: 눌러서 고치기`} onClick={() => begin(name)}>
+        {children}
+      </button>
+    ) : (
+      <span className={className} data-ai={ai.has(name) || undefined}>
+        {children}
+      </span>
+    ));
+
+  return (
+    <li className="menu-item" data-mark={mark} data-filling={filling.size > 0 || undefined}>
+      <div className="menu-body">
+        <div className="menu-tags">
+          {mark && <span className="mark">{MARK_TEXT[mark]}</span>}
+          {ai.size > 0 && (
+            <span className="ai-badge" title={AI_HINT}>
+              AI 추측
+            </span>
+          )}
+        </div>
+        {field(
+          "name",
+          "메뉴 이름",
+          <strong>
+            {m.name}
+            {filling.has("name") && <span className="filling-note"> · 한국어 이름 만드는 중</span>}
+          </strong>,
+        )}
+        {filling.has("description") ? (
+          <span className="skeleton-line" aria-label="설명 쓰는 중" />
+        ) : (
+          field(
+            "description",
+            "메뉴 설명",
+            m.description ? <span className="menu-desc">{m.description}</span> : editable ? <span className="menu-add">+ 설명 넣기</span> : null,
+          )
+        )}
+        <p className="menu-price">
+          {oldPrice && <s>{oldPrice}</s>}
+          {field("price", "가격", <span>{m.price !== null ? won(m.price) : "가격 없음"}</span>)}
+        </p>
+        {error && (
+          <p className="menu-error" role="alert">
+            {error}
+          </p>
+        )}
+        {note && <p className="menu-note">{note}</p>}
+        {onDelete && mark !== "removed" && (
+          <div className="menu-delete">
+            {confirmDelete ? (
+              <>
+                <span>이 메뉴를 지울까요?</span>
+                <button type="button" className="danger" disabled={saving} onClick={() => void remove()}>
+                  지우기
+                </button>
+                <button type="button" disabled={saving} onClick={() => setConfirmDelete(false)}>
+                  취소
+                </button>
+              </>
+            ) : (
+              <>
+                {onPolish && m.photo_url && !filling.has("polish") && (
+                  <button
+                    type="button"
+                    className="menu-polish"
+                    title="HyperCLOVA X SEED Omni로 흰 배경 제품 사진을 다시 그려요. 한 장에 1~2분 걸려요."
+                    disabled={saving}
+                    onClick={async () => setNote(await onPolish(m.id))}
+                  >
+                    AI로 사진 다듬기
+                  </button>
+                )}
+                <button type="button" className="menu-delete-open" aria-label={`${m.name} 지우기`} onClick={() => setConfirmDelete(true)}>
+                  지우기
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {filling.has("photo") ? (
+        <span className="menu-photo skeleton" aria-label="흰 배경 사진 만드는 중" />
+      ) : m.photo_url ? (
+        <span className="menu-photo-wrap">
+          <img className="menu-photo" src={m.photo_url} alt="" />
+          {ai.has("photo") && <span className="photo-note">메뉴판 사진</span>}
+          {filling.has("polish") && <span className="photo-note busy">AI로 다듬는 중 (1~2분)</span>}
+        </span>
+      ) : (
+        <span className="menu-photo empty" aria-hidden>
+          {m.name.slice(0, 1)}
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** 메뉴판 사진 칸이 채워지는 동안 위에 한 줄. */
+function FillingBanner({ menu }: { menu: MenuRow[] }) {
+  const count = menu.filter((m) => m.filling?.some((f) => f !== "polish")).length;
+  if (!count) return null;
+  return (
+    <p className="shop-banner filling" role="status">
+      메뉴판에서 올린 메뉴 {count}개의 설명과 흰 배경 사진을 채우고 있어요.
+    </p>
+  );
+}
+
 /** 메뉴 탭: 네이버 플레이스처럼 테두리 없는 줄(이름·설명·가격, 오른쪽 사진). 승인 전 변경은 알약 배지. */
-export function MenuTab({ place, pending }: { place: Place; pending: Pending[] }) {
+export function MenuTab({
+  place,
+  pending,
+  onEdit,
+  onDelete,
+  onPolish,
+}: {
+  place: Place;
+  pending: Pending[];
+  onEdit?: OnMenuEdit;
+  onDelete?: OnMenuDelete;
+  onPolish?: OnMenuPolish;
+}) {
   const { view, marks, removed } = overlay(place, pending);
   const before = new Map(place.menu.map((m) => [m.id, m]));
   return (
     <div className="shop">
       <PendingBanner pending={pending} />
+      <FillingBanner menu={place.menu} />
       <Section title="메뉴" count={view.menu.length}>
         {view.menu.length + removed.menu.length === 0 ? (
-          <p className="empty">아직 메뉴가 없어요.</p>
+          <p className="empty">아직 메뉴가 없어요. 대화창에 메뉴판 사진을 올리면 여기에 바로 채워져요.</p>
         ) : (
           <ul className="menu-list">
             {[...view.menu, ...removed.menu].map((m) => {
               const mark = marks.menu.get(m.id);
               const old = mark === "updated" ? before.get(m.id) : undefined;
               const oldPrice = old && old.price !== m.price && old.price !== null ? won(old.price) : null;
+              // 승인 전 변경(미리보기)에만 있는 줄은 아직 저장되지 않아 고칠 수 없다.
+              const saved = before.has(m.id) && !mark;
               return (
-                <li key={m.id} className="menu-item" data-mark={mark}>
-                  <div className="menu-body">
-                    {mark && <span className="mark">{MARK_TEXT[mark]}</span>}
-                    <strong>{m.name}</strong>
-                    {m.description && <p className="menu-desc">{m.description}</p>}
-                    <p className="menu-price">
-                      {oldPrice && <s>{oldPrice}</s>}
-                      <span>{m.price !== null ? won(m.price) : "가격 없음"}</span>
-                    </p>
-                  </div>
-                  {m.photo_url ? (
-                    <img className="menu-photo" src={m.photo_url} alt="" />
-                  ) : (
-                    <span className="menu-photo empty" aria-hidden>
-                      {m.name.slice(0, 1)}
-                    </span>
-                  )}
-                </li>
+                <MenuItemRow
+                  key={m.id}
+                  m={m}
+                  mark={mark}
+                  oldPrice={oldPrice}
+                  onEdit={saved ? onEdit : undefined}
+                  onDelete={saved ? onDelete : undefined}
+                  onPolish={saved ? onPolish : undefined}
+                />
               );
             })}
           </ul>

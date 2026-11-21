@@ -7,7 +7,7 @@ import urllib.error
 
 import pytest
 
-from agenthan.agent import menu_photo
+from agenthan.agent import menu_board, menu_photo
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.core import llm
 from agenthan.core.fakes import FakeStoreKnowledge
@@ -41,6 +41,15 @@ class FakeV3:
         if isinstance(content, list):
             if content[1]["text"] == "사진을 분류해 menu_board, food, other 중 한 단어만 답하세요.":
                 return {"message": {"content": "menu_board"}}
+            if content[1]["text"] == menu_board.BOARD_PROMPT:
+                # 분류와 읽기를 합친 질문(menu_board.read_board)에는 같은 줄을 kind로 감싸 답한다.
+                try:
+                    rows = menu_photo._json_block(self.vision, "[")
+                except ValueError:
+                    rows = []
+                kind = "menu_board" if rows else "other"
+                answer = {"kind": kind, "items": rows}
+                return {"message": {"content": json.dumps(answer, ensure_ascii=False)}}
             assert content[0]["dataUri"]["data"].startswith("data:image/jpeg;base64,")
             return {"message": {"content": self.vision}}
         name = content.rsplit("메뉴 원어 이름: ", 1)[1]
@@ -190,74 +199,6 @@ def assistant(tmp_path, chat=None, vision=VISION):
 
 def menu_names(tmp_path):
     return {m["name"]: m for m in DummyStore(tmp_path / "store.json").read()["menus"]}
-
-
-def test_photo_shows_drafts_and_saves_nothing_before_approval(tmp_path):
-    bot = assistant(tmp_path)
-    out = bot.ask_photo(JPEG, "이거 올려 줘")
-    assert out.startswith("메뉴판에서 메뉴 3개를 읽었어요.")
-    assert "1. 메도빅 (Медовик) · 7,500원" in out and "[기존 메뉴, 변경 없음]" in out
-    assert "3. ? (Пельмени) · ?" in out and "가격 확인 필요" in out
-    assert out.endswith("저장 전에 알려 주세요: 3번 Пельмени 이름·가격")
-    assert [f["name_ko"] for f in bot.menu_form()] == ["메도빅", "시르니키", ""]
-    assert not (tmp_path / "store.json").exists()
-
-
-def test_approve_waits_until_every_draft_is_filled(tmp_path):
-    bot = assistant(tmp_path)
-    bot.ask_photo(JPEG)
-    out = bot.ask("네 저장해 주세요")
-    assert out == "저장 전에 알려 주세요: 3번 Пельмени 이름·가격"
-    assert not (tmp_path / "store.json").exists()
-    assert [f["name_ko"] for f in bot.menu_form()] == ["메도빅", "시르니키", ""]
-
-
-def test_cancel_saves_nothing(tmp_path):
-    bot = assistant(tmp_path)
-    bot.ask_photo(JPEG)
-    assert bot.ask("취소할게요") == "메뉴 등록을 취소했어요. 저장한 것은 없어요."
-    assert not (tmp_path / "store.json").exists()
-
-
-def test_edit_then_approve(tmp_path):
-    chat = FakeChat(
-        tool_call({"number": 3, "name_ko": "펠메니", "price": 10000}),
-        tool_call({"number": 2, "remove": True}, "call-2"),
-        {"role": "assistant", "content": "3번을 고치고 2번을 뺐어요."},
-    )
-    bot = assistant(tmp_path, chat)
-    bot.ask_photo(JPEG)
-    out = bot.ask("3번은 펠메니 10000원, 2번은 빼 줘")
-    assert out.startswith("3번을 고치고 2번을 뺐어요.\n고쳤어요.")
-    assert "2. 펠메니 (Пельмени) · 10,000원" in out and "시르니키" not in out
-    # 편집 요청에는 초안 번호와 편집 도구만 붙는다
-    messages, tools = chat.requests[0]
-    assert [t["function"]["name"] for t in tools] == ["edit_menu_draft"]
-    assert '"number": 3' in messages[0]["content"]
-    bot.ask("그대로 올려줘")
-    assert set(menu_names(tmp_path)) == {"메도빅", "나폴레옹", "아메리카노", "블린", "펠메니"}
-
-
-@pytest.mark.parametrize(
-    ("arguments", "error"),
-    [
-        ({"number": 9, "price": 1000}, "no_such_number"),
-        ({"number": 1, "price": 0}, "invalid_price"),
-        ("not json", "invalid_arguments"),
-    ],
-)
-def test_invalid_edits_change_nothing(tmp_path, arguments, error):
-    bot = assistant(tmp_path)
-    bot.ask_photo(JPEG)
-    before = bot.menu_form()
-    assert bot._apply_draft_edit(arguments)["error"] == error
-    assert bot.menu_form() == before
-
-
-def test_photo_without_menu(tmp_path):
-    bot = assistant(tmp_path, vision="[]")
-    assert bot.ask_photo(JPEG).startswith("사진에서 메뉴를 찾지 못했어요")
-    assert bot.menu_drafts is None
 
 
 def test_upsert_menu_keeps_optional_fields(tmp_path):

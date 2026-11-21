@@ -30,6 +30,7 @@ from agenthan.agent import (
     actions,
     feature_selector,
     food_photo,
+    menu_board,
     menu_photo,
     planner,
     report_explainer,
@@ -560,6 +561,16 @@ PHOTO_TEXT = {
     "won": "원",
     "food_guess": "AI 추측, 이름을 확인해 주세요",
     "cutout_failed": "배경 지우기 실패, 원본 사진 사용",
+    "board_added": "메뉴판에서 읽은 메뉴 {n}개를 메뉴 탭에 올렸어요.",
+    "board_updated": "기존 메뉴 {n}개는 가격을 맞췄어요: {names}.",
+    "board_unchanged": "이미 있는 메뉴 {n}개는 그대로 뒀어요.",
+    "board_filling": "설명과 흰 배경 사진은 지금 채우는 중이에요.",
+    "board_no_price": (
+        "가격이 안 보이는 메뉴는 올리지 않았어요: {names}. 가격을 알려 주시면 올릴게요."
+    ),
+    "board_edit": (
+        "틀린 곳은 메뉴 탭에서 바로 고치거나 말로 알려 주세요 (예: 블린 가격 9500원으로)."
+    ),
 }
 # Posting words while a review reply draft waits for the owner.
 REVIEW_POST = re.compile(r"등록|올려|올리|게시|확정|이대로|그대로")
@@ -652,6 +663,8 @@ class OwnerAssistant:
         self.knowledge = knowledge or FakeStoreKnowledge.from_fixture()
         self.clova_v3 = clova_v3 or menu_photo.chat_v3
         self._photo_preview = None
+        # 메뉴판 사진을 올린 뒤 설명·사진을 채울 일. 서버가 턴이 끝난 뒤 잠금 밖에서 돌린다.
+        self.photo_job: Callable[[], None] | None = None
         # One owner turn runs through the LangGraph turn graph (ADR-0003).
         self._turn_route: Route | None = None
         self._turn_plan_input: dict | None = None  # Shadow planner input, read before the turn.
@@ -1021,6 +1034,9 @@ class OwnerAssistant:
         text = text.strip()
         if not text:
             return HELP
+        polished = self._ask_polish(text)
+        if polished is not None:
+            return polished
         reply = turn_graph.run(self.turns, text)
         if self.agent_mode == "planner":
             self.next_actions = self._suggest(self.next_actions)
@@ -2249,13 +2265,12 @@ class OwnerAssistant:
         context = " ".join(filter(None, [shop.get("name"), shop.get("category")]))
         image = menu_photo.fit_for_vision(image)  # 폰 사진은 HCX-005 해상도 한도를 넘는다 (#91)
         try:
-            kind = food_photo.classify_photo(image, call=self.clova_v3)
+            # 분류와 메뉴판 읽기를 한 번에 (docs/research/07-menu-photo-speed.md)
+            kind, items = menu_board.read_board(image, call=self.clova_v3)
             if kind == "other":
                 return "메뉴판이나 음식 사진을 보내 주세요."
             if kind == "menu_board":
-                drafts = menu_photo.draft_menus(
-                    image, self.knowledge, store_context=context, call=self.clova_v3
-                )
+                return self._register_board(image, items, text, context)
             else:
                 draft = food_photo.draft_from_food(
                     image, self.knowledge, store_context=context, call=self.clova_v3
@@ -2301,6 +2316,56 @@ class OwnerAssistant:
             else t["read"].format(n=len(drafts))
         )
         return self._end_turn(heading + "\n" + self._draft_lines() + "\n" + self._photo_question())
+
+    def _register_board(self, image: bytes, items: list, text: str, context: str) -> str:
+        """메뉴판 메뉴를 승인 없이 메뉴 탭에 올리고, 설명·사진 채우기를 photo_job에 둔다."""
+        t = PHOTO_TEXT
+        try:
+            result = menu_board.register(self.store, items, self.knowledge)
+        except DummyStoreError:
+            return t["save_failed"]
+        lines = []
+        if result.created:
+            lines.append(t["board_added"].format(n=len(result.created)))
+        if result.updated:
+            names = ", ".join(result.updated)
+            lines.append(t["board_updated"].format(n=len(result.updated), names=names))
+        if result.unchanged:
+            lines.append(t["board_unchanged"].format(n=len(result.unchanged)))
+        if result.jobs:
+            lines.append(t["board_filling"])
+            self.photo_job = menu_board.fill_all(
+                self.store, result.jobs, image, context, call=self.clova_v3
+            )
+        if result.no_price:
+            lines.append(t["board_no_price"].format(names=", ".join(result.no_price)))
+        if not lines:
+            return t["none"]
+        if result.created or result.updated:
+            lines.append(t["board_edit"])
+        reply = "\n".join(lines)
+        self.history.append({"role": "user", "content": text or "(메뉴판 사진)"})
+        self.history.append({"role": "assistant", "content": reply})
+        return reply
+
+    def _ask_polish(self, text: str) -> str | None:
+        """'메도빅 사진 더 예쁘게' → SEED Omni 사진 다듬기(2차). 그런 말이 아니면 None."""
+        if self.ledger.open_tasks():
+            return None  # 승인 대기 중인 일이 있으면 원래 대화 흐름이 먼저다
+        target = menu_board.polish_target(text, self.store.read()["menus"])
+        if target is None:
+            return None
+        reply, job = menu_board.start_polish(self.store, target["id"])
+        if job is not None:
+            self.photo_job = job
+        self.history.append({"role": "user", "content": text})
+        self.history.append({"role": "assistant", "content": reply})
+        self.next_actions = []
+        return reply
+
+    def take_photo_job(self) -> Callable[[], None] | None:
+        job, self.photo_job = self.photo_job, None
+        return job
 
     def _regenerate_food_description(self, draft):
         result = food_photo.text_json(

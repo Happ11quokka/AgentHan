@@ -86,6 +86,17 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
     },
     [saveRoutines, reloadReviews],
   );
+  // 메뉴판 사진을 올려 메뉴가 채워지기 시작하면 메뉴 탭을 열어 채워지는 모습을 보인다.
+  // (이전 렌더의 값과 비교해 렌더 중에 바꾼다: 효과 안 setState를 피한다)
+  const filling = Boolean(chat.place?.menu.some((m) => m.filling?.length));
+  const [wasFilling, setWasFilling] = useState(false);
+  if (filling !== wasFilling) {
+    setWasFilling(filling);
+    if (filling) {
+      setTab("menu");
+      setSideOpen(true);
+    }
+  }
   const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
 
   // 처음 쓰는 사장님(#94): 가게 이름이나 업종이 빈 대화는 온보딩부터. 데모는 ?onboarding=1로 늘 띄운다.
@@ -157,6 +168,9 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onRunReport={chat.runReport}
         routines={chat.routines}
         onRoutines={changeRoutines}
+        onEditMenu={chat.editMenu}
+        onDeleteMenu={chat.deleteMenu}
+        onPolishMenu={chat.polishMenu}
         onClose={() => setSideOpen(false)}
       />
       <button
