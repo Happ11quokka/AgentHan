@@ -168,6 +168,16 @@ class DummyStore:
                 temporary.unlink()
         raise DummyStoreError("더미 저장소에 저장할 수 없습니다.")
 
+    def set_shop_info(self, name: str, category: str) -> dict:
+        """처음 쓰는 사장님 온보딩(#94): 가게 이름·업종만 바꾸고 나머지 가게 정보는 둔다."""
+        values = {"name": name, "category": category}
+        if any(not isinstance(v, str) or not normalize(v) for v in values.values()):
+            raise DummyStoreError("가게 이름과 업종이 필요합니다.")
+        data = self.read()
+        data["shop"].update({k: " ".join(v.split()) for k, v in values.items()})
+        self._write(data)
+        return data["shop"]
+
     def upsert_menu(
         self,
         name: str,

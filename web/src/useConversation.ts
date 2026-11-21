@@ -4,7 +4,7 @@ import { ApiError, type AssistantApi } from "./api";
 import { couponActionLabel, describeChanges, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
-import type { Action, LogEntry, Message, Pending, Place, ReviewRow, Turn, View } from "./types";
+import type { Action, LogEntry, Message, OnboardingInput, Pending, Place, ReviewRow, ShopInfo, Turn, View } from "./types";
 
 const COUPON_ACTION = "coupon.create";
 
@@ -25,6 +25,8 @@ export type Conversation = {
   sessionId: string | null;
   messages: Message[];
   place: Place | null;
+  /** 가게 이름·업종. 예전 서버라 모르면 null. */
+  shop: ShopInfo | null;
   pending: Pending[];
   log: LogEntry[];
   recent: storage.Recent[];
@@ -45,10 +47,14 @@ export type Conversation = {
   open: (id: string) => Promise<void>;
   addLog: (lines: string[]) => void;
   notify: (text: string, reviewId: string) => void;
+  /** 온보딩 값을 저장한다. 성공하면 null, 실패하면 사장님께 보일 문장. */
+  onboard: (values: OnboardingInput) => Promise<string | null>;
 };
 
 let nextId = 1;
 const newId = () => nextId++;
+
+const ONBOARD_FAILED = "저장하지 못했어요. 다시 시도해 주세요.";
 
 const isOffline = (e: unknown) => e instanceof ApiError && e.status === 0;
 const friendly = (e: unknown) =>
@@ -58,6 +64,7 @@ export function useConversation(api: AssistantApi): Conversation {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [place, setPlace] = useState<Place | null>(null);
+  const [shop, setShop] = useState<ShopInfo | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [recent, setRecent] = useState<storage.Recent[]>(storage.loadRecent);
@@ -120,6 +127,7 @@ export function useConversation(api: AssistantApi): Conversation {
     setMessages(saved.messages);
     setLog(saved.log);
     setPlace(view.place);
+    setShop(view.shop ?? null);
     setPending(view.pending);
     setCouponForm(null);
     setReviewRows([]);
@@ -177,6 +185,7 @@ export function useConversation(api: AssistantApi): Conversation {
     if (lines.length) setLog((l) => [...l, { at: Date.now(), lines }]);
     setMessages((m) => [...m, ...added]);
     setPlace(turn.place);
+    if (turn.shop) setShop(turn.shop);
     setPending(turn.pending);
   }, []);
 
@@ -221,6 +230,25 @@ export function useConversation(api: AssistantApi): Conversation {
   const notify = useCallback((text: string, reviewId: string) => {
     setMessages((m) => [...m, { id: newId(), role: "notice", text, reviewId }]);
   }, []);
+
+  /** 온보딩 [시작하기]: 대화 턴이 아니라 가게 저장소에 바로 저장한다(사장님이 넣은 값만). */
+  const onboard = useCallback(
+    async (values: OnboardingInput) => {
+      if (!sessionId) return ONBOARD_FAILED;
+      try {
+        const view = await api.onboard(sessionId, values);
+        setPlace(view.place);
+        setPending(view.pending);
+        setShop(view.shop ?? { name: values.name, category: values.category });
+        setOnline(true);
+        return null;
+      } catch (e) {
+        if (isOffline(e)) setOnline(false);
+        return isOffline(e) ? friendly(e) : ONBOARD_FAILED;
+      }
+    },
+    [api, sessionId],
+  );
 
   const openCoupon = useCallback((initial?: CouponInput) => setCouponForm(initial ?? blankCoupon()), []);
   const closeCoupon = useCallback(() => setCouponForm(null), []);
@@ -275,8 +303,8 @@ export function useConversation(api: AssistantApi): Conversation {
   }, [newChat, open]);
 
   return {
-    sessionId, messages, place, pending, log, recent, busy, online, error,
+    sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
-    send, act, retry, newChat, open, addLog, notify,
+    send, act, retry, newChat, open, addLog, notify, onboard,
   };
 }

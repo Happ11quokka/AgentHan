@@ -1973,3 +1973,55 @@ img.working {
 @media (prefers-reduced-motion: reduce) {
   img.working { animation: none; }
 }
+
+/* 처음 쓰는 사장님 온보딩(#94): 승인 카드와 같은 틀을 화면 가운데에 */
+.onboarding {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: var(--surface-2);
+}
+
+.onboarding .onboarding-form {
+  margin-left: 0;
+  width: 100%;
+}
+
+.onboarding-form header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.onboarding-form header p,
+.onboarding-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.field .segmented.chips {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field .segmented.chips button {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
+.onboarding-menus {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 8px;
+}
+
+.onboarding-menus legend {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}

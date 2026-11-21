@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { httpApi, type AssistantApi } from "./api";
 import { ChatPane } from "./components/ChatPane";
 import { LeftNav, type Quick } from "./components/LeftNav";
+import { Onboarding } from "./components/Onboarding";
 import { Sidecar, type Tab } from "./components/Sidecar";
 import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./labels";
-import type { Period, ReplyError, ReplyOp, ReplyResult, ReviewRow } from "./types";
+import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow } from "./types";
 import { useConversation } from "./useConversation";
 import { useLoad } from "./useLoad";
 
@@ -72,6 +73,20 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
     setFocusReview({ id: reviewId, at: Date.now() });
   };
   const report = useLoad(tab === "stats" && id ? () => api.report(id, period) : null, `${turn}:${tab}:${period}`);
+
+  // 처음 쓰는 사장님(#94): 가게 이름이나 업종이 빈 대화는 온보딩부터. 데모는 ?onboarding=1로 늘 띄운다.
+  const [forceOnboarding, setForceOnboarding] = useState(() => new URLSearchParams(window.location.search).get("onboarding") === "1");
+  const { shop, onboard } = chat;
+  const finishOnboarding = useCallback(
+    async (values: OnboardingInput) => {
+      const error = await onboard(values);
+      if (!error) setForceOnboarding(false);
+      return error;
+    },
+    [onboard],
+  );
+  if (shop && (forceOnboarding || !shop.name.trim() || !shop.category.trim()))
+    return <Onboarding key={chat.sessionId} initial={shop} onSubmit={finishOnboarding} />;
 
   const quick = (q: Quick) => {
     setNavOpen(false);

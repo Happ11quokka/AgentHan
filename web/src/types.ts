@@ -73,7 +73,13 @@ export type Pending = {
   drafts?: DraftRow[];
 };
 
-export type View = { place: Place; pending: Pending[] };
+/** 가게 이름·업종. 둘 중 하나라도 비면 처음 쓰는 가게라 온보딩을 띄운다(#94). 예전 서버 응답에는 없다. */
+export type ShopInfo = { name: string; category: string };
+
+export type View = { place: Place; pending: Pending[]; shop?: ShopInfo };
+
+/** 온보딩에서 사장님이 직접 넣은 값만 (POST /onboarding). 메뉴는 0~3개. */
+export type OnboardingInput = ShopInfo & { menus: Array<{ name: string; price: number }> };
 
 export type Action = { action_id: string; label: string; args: Record<string, unknown> };
 

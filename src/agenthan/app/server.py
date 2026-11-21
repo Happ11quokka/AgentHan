@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.app import pilot, place, screens
+from agenthan.tools.dummy_store import DummyStoreError
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
@@ -37,6 +38,35 @@ class ButtonAction(BaseModel):
     action_id: str
     args: dict = {}
     label: str
+
+
+def _filled(value: str) -> str:
+    if not value.strip():
+        raise ValueError("빈 값입니다.")
+    return " ".join(value.split())
+
+
+class OnboardingMenu(BaseModel):
+    name: str
+    price: int = Field(gt=0)
+
+    @field_validator("name")
+    @classmethod
+    def filled(cls, value: str) -> str:
+        return _filled(value)
+
+
+class Onboarding(BaseModel):
+    """처음 쓰는 사장님 온보딩(#94). 사장님이 넣은 값만 온다. 메뉴는 0~3개."""
+
+    name: str
+    category: str
+    menus: list[OnboardingMenu] = Field(default=[], max_length=3)
+
+    @field_validator("name", "category")
+    @classmethod
+    def filled(cls, value: str) -> str:
+        return _filled(value)
 
 
 class ReplyOp(BaseModel):
@@ -118,7 +148,13 @@ class Session:
                     ),
                 }
             )
-        return {"place": place.snapshot(data, self._menu_photo_url), "pending": pending}
+        shop = data.get("shop", {})
+        return {
+            "place": place.snapshot(data, self._menu_photo_url),
+            "pending": pending,
+            # 화면이 온보딩을 띄울지 정한다(#94): 이름이나 업종이 비면 처음 쓰는 가게.
+            "shop": {k: shop.get(k) or "" for k in ("name", "category")},
+        }
 
     def photo(self, name: str) -> tuple[bytes, str] | None:
         """A waiting draft's photo or a saved menu's photo, as (bytes, media type)."""
@@ -213,6 +249,21 @@ def create_app(
         with session.lock:
             reply = session.assistant.ask_photo(data, text)
             return {"reply": reply, **session.view()}
+
+    @app.post("/assistant/sessions/{session_id}/onboarding")
+    def onboard(session_id: str, body: Onboarding) -> dict:
+        """처음 쓰는 사장님(#94): 사장님이 넣은 가게 이름·업종(shop)과 대표 메뉴(menus)를 그대로
+        저장한다. 대화 턴이 아니고 네이버로 보내지 않는다(더미 저장소만)."""
+        session = get(session_id)
+        with session.lock:
+            store = session.assistant.store
+            try:
+                store.set_shop_info(body.name, body.category)
+                for menu in body.menus:
+                    store.upsert_menu(menu.name, menu.price)
+            except DummyStoreError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            return session.view()
 
     @app.get("/assistant/sessions/{session_id}/photos/{name}")
     def show_photo(session_id: str, name: str) -> Response:
