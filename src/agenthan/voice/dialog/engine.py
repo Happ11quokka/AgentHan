@@ -1434,6 +1434,9 @@ class DialogEngine:
 
     def _answer_menu_info(self, turn: _Turn, act: Act) -> None:
         turn.answered = True
+        if self._say_menus_of_kind(turn):  # 종류 질문은 메뉴 설명으로 바로 (답변기보다 앞)
+            self._answer_ready = None
+            return
         item, unlisted = self._asked_item(act)
         question = act.free_text or act.menu_text or turn.heard
         if self._answerer is not None:
@@ -1616,6 +1619,9 @@ class DialogEngine:
 
     def _answer_store_question(self, turn: _Turn, act: Act) -> None:
         turn.answered = True
+        if self._say_menus_of_kind(turn):  # 종류 질문은 메뉴 설명으로 바로 (답변기보다 앞)
+            self._answer_ready = None
+            return
         if self._answerer is None:
             self._say(turn, templates.dont_know())
             return
@@ -2909,8 +2915,10 @@ class DialogEngine:
         return [m.name_ko for m in self._matcher.available()]
 
     def _say_menus_of_kind(self, turn: _Turn) -> bool:
-        """답변기가 못 답한 종류 질문("음료 뭐 있어요?")을 가게 메뉴의 종류·설명으로 답한다
-        (실통화 2026-11-22: 음료 23개 메뉴에서 답변기가 "모름"·형식 틀림). 답했으면 True."""
+        """종류 질문("음료 뭐 있어요?", "케이크는 뭐 있어요?")을 가게 메뉴의 종류·설명으로 답한다.
+        메뉴판 순서대로 네 개까지라 대표 메뉴가 먼저 나온다. 답변기는 이름에 "케이크"가 든 메뉴만
+        골라 메도빅·나폴레옹을 빠뜨렸고, 음료 23개 메뉴에서는 "모름"·형식 틀림이었다(실통화
+        2026-11-22). 답했으면 True."""
         kind, names = menus_of_kind(turn.heard, self._matcher.available())
         if not names:
             return False

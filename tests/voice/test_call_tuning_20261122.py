@@ -249,3 +249,18 @@ def test_many_drinks_are_cut_to_four() -> None:
     assert templates.not_on_menu(["메도빅"], names) == (
         "죄송해요, 그 메뉴는 없어요. 마실 거는 아메리카노, 카페라떼, 바닐라라떼, 헤이즐넛라떼 같은 "
         "메뉴가 있어요.")
+
+
+class _NamesOnly:
+    """이름에 "케이크"가 든 메뉴만 고르는 답변기(실통화의 답)."""
+
+    def answer(self, request: AnswerRequest) -> AnswerReply:
+        return AnswerReply("answer", say="메도빅 홀케이크 있어요.")
+
+
+def test_a_kind_question_is_answered_from_descriptions_before_the_answerer() -> None:
+    """같은 날 04:30 실통화: "케이크는 뭐 있어요"에 답변기가 치즈·초코·레드벨벳 케이크만 대고 대표
+    메도빅·나폴레옹을 빠뜨렸다. 종류 질문은 메뉴판 순서대로 종류·설명으로 바로 답한다."""
+    nlu = _Nlu({"케이크는 뭐 있어요?": [Act("ask_other", free_text="케이크는 뭐 있어요?")]})
+    r = _engine(nlu, _NamesOnly()).handle("케이크는 뭐 있어요?", NOW)
+    assert r.utterances[0].startswith("케이크는 메도빅, 나폴레옹")
