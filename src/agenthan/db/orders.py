@@ -9,13 +9,13 @@ DB가 꺼져 있거나 실패하면 경고만 남기고 버린다(통화·사장
 결정은 주문 기록보다 먼저 올 수 있다(통화 중 수락 → 통화 끝 확정). 그래서 둘 다 upsert이고 서로
 다른 열만 고친다: 주문은 주문 열, 결정은 `owner_status`·`reject_reason`·`decided_at`·
 `owner_pickup_time`과 거절 내용(`reject_menu_ids`·`reject_text`·`reject_text_ko`, 마이그레이션
-004). 통화가 거절·취소로 끝나 주문 기록이 오지 않으면 결정에 실린 주문서로 행을 채운다.
+003). 통화가 거절·취소로 끝나 주문 기록이 오지 않으면 결정에 실린 주문서로 행을 채운다.
 
 주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 서버가 다시 떠 사장님 허브에 카드가 없을 때
 `find_order`가 주문 한 줄을 `PhoneOrderRow`로 읽는다. 손님 모양으로 바꾸는 일은 전화 쪽이 한다
 (`agenthan.serve`가 잇는다).
 
-쿠폰(쿠폰 티켓 09, 마이그레이션 006): 주문 열에 `coupon_id`·`coupon_name`·`discount`가 있고
+쿠폰(쿠폰 티켓 09, 마이그레이션 004): 주문 열에 `coupon_id`·`coupon_name`·`discount`가 있고
 `total`은 낼 금액(할인 뒤)이다. 할인 전 금액 = `total` + `discount`. 쿠폰 전 행은 ''·''·0.
 """
 
@@ -41,7 +41,7 @@ _ORDER_COLUMNS = (
 _ORDER_VALUES = ",".join(["%s"] * 13)
 
 
-# 사장님 결정 열(002·004). `save_decision`이 이 열만 고친다
+# 사장님 결정 열(002·003). `save_decision`이 이 열만 고친다
 _OWNER_COLUMNS = (
     "owner_status",
     "reject_reason",
@@ -85,7 +85,7 @@ class OwnerDecisionRow:
     reject_reason: str = ""  # out_of_stock · busy · closed · free, 없으면 ""
     decided_at: str = ""  # ISO 8601(시간대 포함), 없으면 "" → NULL
     owner_pickup_time: str = ""  # 늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ""
-    # 거절 내용(마이그레이션 004): 재료 소진의 떨어진 메뉴 id들, 직접 쓰기 글 원문과 한국어 번역
+    # 거절 내용(마이그레이션 003): 재료 소진의 떨어진 메뉴 id들, 직접 쓰기 글 원문과 한국어 번역
     reject_menu_ids: tuple[str, ...] = ()
     reject_text: str = ""
     reject_text_ko: str = ""
@@ -139,8 +139,8 @@ def save_decision(conn, decision: OwnerDecisionRow, store_id: str = "") -> None:
 
 @dataclass(frozen=True)
 class PhoneOrderRow:
-    """phone_orders 한 줄 (주문 현황 다시 열기, 티켓 06). 주문 열(쿠폰 006 포함) + 사장님 결정
-    열(002·004)."""
+    """phone_orders 한 줄 (주문 현황 다시 열기, 티켓 06). 주문 열(쿠폰 004 포함) + 사장님 결정
+    열(002·003)."""
 
     id: str
     status: str  # draft · confirmed · handoff (통화가 어떻게 끝났나)
@@ -154,7 +154,7 @@ class PhoneOrderRow:
     reject_menu_ids: tuple[str, ...]
     reject_text: str
     reject_text_ko: str
-    # 쓴 쿠폰(마이그레이션 006). 쿠폰 전 행·쿠폰 없는 주문은 ''·''·0
+    # 쓴 쿠폰(마이그레이션 004). 쿠폰 전 행·쿠폰 없는 주문은 ''·''·0
     coupon_id: str = ""
     coupon_name: str = ""
     discount: int = 0

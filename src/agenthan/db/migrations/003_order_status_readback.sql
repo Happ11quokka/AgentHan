@@ -9,7 +9,8 @@
 -- (owner_status '')은 이 시각 + 자동 취소 마감이 지나면 자동 취소로 읽는다.
 -- 기존 행은 빈 값이다.
 
+-- 열 더하기는 IF NOT EXISTS: 번호를 003으로 당기기 전(004)에 이미 올린 개발 DB도 그대로 지나간다
 ALTER TABLE phone_orders
-    ADD COLUMN reject_menu_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-    ADD COLUMN reject_text     text  NOT NULL DEFAULT '',
-    ADD COLUMN reject_text_ko  text  NOT NULL DEFAULT '';
+    ADD COLUMN IF NOT EXISTS reject_menu_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS reject_text     text  NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS reject_text_ko  text  NOT NULL DEFAULT '';

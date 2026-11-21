@@ -184,7 +184,7 @@ def test_order_sink_writes_phone_orders(seeded) -> None:
 
 @needs_db
 def test_a_coupon_order_keeps_its_coupon_and_the_payable_total(seeded) -> None:
-    """쿠폰 칸(마이그레이션 006). total은 낼 금액(할인 뒤)이다 (쿠폰 티켓 09)."""
+    """쿠폰 칸(마이그레이션 004). total은 낼 금액(할인 뒤)이다 (쿠폰 티켓 09)."""
     from agenthan.db.orders import PgOrderSink
 
     sink = PgOrderSink(url=seeded)
@@ -205,7 +205,7 @@ def test_a_coupon_order_keeps_its_coupon_and_the_payable_total(seeded) -> None:
 
 @needs_db
 def test_an_order_row_from_before_coupons_reads_as_no_coupon(seeded) -> None:
-    """마이그레이션 006 전 모양으로 넣은 행(쿠폰 칸 없이)도 그대로 읽힌다: ''·''·0."""
+    """마이그레이션 004 전 모양으로 넣은 행(쿠폰 칸 없이)도 그대로 읽힌다: ''·''·0."""
     with dbconn.connect(seeded) as c:
         c.execute("INSERT INTO phone_orders (id, status, lines, total) VALUES (%s, %s, %s, %s)",
                   ("call-old-1", "confirmed", json.dumps([{"menu_id": "m01", "quantity": 1}]),
@@ -324,7 +324,7 @@ def test_decisions_are_plain_values_and_the_last_one_wins(seeded) -> None:
 
 @needs_db
 def test_an_order_reads_back_with_its_reject_details(seeded) -> None:
-    """주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 결정과 거절 내용(마이그레이션 004)이
+    """주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 결정과 거절 내용(마이그레이션 003)이
     남고, 주문 번호로 한 줄을 다시 읽는다. 없는 번호는 None."""
     from agenthan.db.orders import PgOrderSink, find_order
 
