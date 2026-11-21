@@ -11,7 +11,7 @@ from pathlib import Path
 
 from agenthan.agent import menu_photo
 from agenthan.agent.owner_assistant import RECORD_TARGETS
-from agenthan.illustration import illustration_url
+from agenthan.illustration import ILLUSTRATION_KEY, illustration_url
 from agenthan.tools.dummy_store import DummyStore
 from agenthan.tools.feature_tools import execute_feature_tool
 
@@ -59,7 +59,7 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
                 **{k: m.get(k) for k in MENU_FIELDS},
                 "photo_url": photo_url(m),
                 # 대표 그림(사진이 아님). 사진이 있어도 보내고, 무엇을 보일지는 화면이 정한다.
-                "illustration_url": illustration_url(m.get("illustration")),
+                "illustration_url": illustration_url(m.get(ILLUSTRATION_KEY)),
                 # 메뉴판 사진으로 올린 메뉴: AI가 채운 칸(ai)과 지금 채우는 칸(filling)
                 "ai": list(m.get("ai") or []),
                 "filling": list(m.get("filling") or []),

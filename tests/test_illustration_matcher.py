@@ -8,11 +8,12 @@ import json
 import pytest
 
 from agenthan.illustration import embedding_index, library
-from agenthan.illustration.matcher import assign_illustration, assign_missing, pick_illustration
-
-
-def broken_embed(_text):
-    raise RuntimeError("임베딩 서버가 응답하지 않음")
+from agenthan.illustration.matcher import (
+    assign_illustration,
+    assign_missing,
+    once_per_name,
+    pick_illustration,
+)
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ def fake_catalog(tmp_path, monkeypatch):
         {
             "id": "cake_medovik",
             "name": "메도빅",
-            "aliases": ["메도빅 꿀 케이크"],
+            "aliases": ["메도빅 허니 케이크"],
             "keywords": ["메도빅"],
             "category": "cake",
             "recipe": {},
@@ -59,7 +60,7 @@ def fake_catalog(tmp_path, monkeypatch):
     ("name", "expected"),
     [
         ("메도빅", "cake_medovik"),
-        ("메도빅꿀케이크", "cake_medovik"),  # 별칭: 띄어쓰기는 보지 않는다
+        ("메도빅허니케이크", "cake_medovik"),  # 별칭: 띄어쓰기는 보지 않는다
         ("초코 메도빅", "cake_medovik_choco"),
         ("메도빅 초코", "cake_medovik_choco"),  # 가장 긴 키워드가 이긴다
         ("메도빅 홀 케이크", "cake_medovik_whole"),
@@ -71,29 +72,53 @@ def test_exact_name_then_longest_keyword(fake_catalog, name, expected):
 
 
 def test_a_keyword_beats_the_category_default(fake_catalog):
-    assert pick_illustration("메도빅 라떼", "Coffee") == "cake_medovik"
+    assert pick_illustration("오늘의 메도빅", "Cake") == "cake_medovik"
 
 
-def test_no_clue_at_all_is_other():
+@pytest.mark.parametrize(
+    ("name", "category", "expected"),
+    [
+        # 11/21 리뷰에서 재현한 세 가지: 다른 무리의 키워드가 이름 앞에 있어도 그리로 가지 않는다
+        ("얼그레이 케이크", "Cake", "default_cake"),  # 얼그레이 차 그림이 아니다
+        ("망고 케이크", None, "default_cake"),  # 망고 스무디가 아니다(끝말 "케이크"가 단서)
+        ("티라미수 라떼", "Coffee", "default_coffee"),  # 티라미수 케이크가 아니다
+        ("티라미수 라떼", None, "default_coffee"),
+        # 같은 무리의 키워드는 그대로 붙는다
+        ("허니 얼그레이", "Tea", "drink_earl_grey"),
+        ("레몬 타르트", "Cake", "cake_lemon_tart"),
+        # 이름이 그 키워드로 끝나면 끝말은 따로 된 단서가 아니다("초코"는 커피 끝말)
+        ("메도빅 초코", None, "cake_medovik_choco"),
+    ],
+)
+def test_the_keyword_step_stays_in_the_category_group(name, category, expected, broken_embed):
+    assert pick_illustration(name, category, broken_embed) == expected
+
+
+def test_without_a_group_clue_any_keyword_matches(broken_embed):
+    assert pick_illustration("얼그레이 한 잔", None, broken_embed) == "drink_earl_grey"
+    assert pick_illustration("오늘의 티라미수", None, broken_embed) == "cake_tiramisu"
+
+
+def test_no_clue_at_all_is_other(broken_embed):
     assert pick_illustration("가나다", None, broken_embed) == "default_other"
     assert pick_illustration("", None, broken_embed) == "default_other"
     assert pick_illustration("  !! ", "  ", broken_embed) == "default_other"
 
 
-def test_a_failing_embedding_falls_back_to_the_category_default():
+def test_a_failing_embedding_falls_back_to_the_category_default(broken_embed):
     assert pick_illustration("가나다", "Tea", broken_embed) == "default_tea"
 
 
-def test_category_field_comes_before_the_name_ending():
+def test_category_field_comes_before_the_name_ending(broken_embed):
     assert pick_illustration("가나다 티", "Coffee", broken_embed) == "default_coffee"
 
 
-def test_same_input_same_illustration():
+def test_same_input_same_illustration(broken_embed):
     picks = {pick_illustration("가나다 에이드", None, broken_embed) for _ in range(5)}
     assert picks == {"default_ade"}
 
 
-def test_every_pick_is_in_the_catalog():
+def test_every_pick_is_in_the_catalog(broken_embed):
     ids = library.catalog_ids()
     for name in ("메도빅", "아메리카노", "보르시", "가나다", "스파게티", "Сырники"):
         assert pick_illustration(name, None, broken_embed) in ids
@@ -105,7 +130,7 @@ def test_illustration_url_is_the_web_static_path_or_none():
     assert library.illustration_url(None) is None
 
 
-def test_assign_missing_fills_menus_without_their_own_illustration():
+def test_assign_missing_fills_menus_without_their_own_illustration(broken_embed):
     menus = [
         {"id": "a", "name": "가나다 케이크"},
         {"id": "b", "name_ko": "가나다 수프"},  # 픽스처 기록은 name_ko
@@ -114,7 +139,7 @@ def test_assign_missing_fills_menus_without_their_own_illustration():
         {"id": "d", "name": "가나다 라떼", "illustration": "removed_one"},  # 없어진 그림은 다시
         {"id": "e", "name": "가나다", "category": "Ade"},
     ]
-    assert assign_missing(menus, broken_embed) is True
+    assert assign_missing(menus) is True
     assert [m["illustration"] for m in menus] == [
         "default_cake",
         "default_soup",
@@ -122,22 +147,22 @@ def test_assign_missing_fills_menus_without_their_own_illustration():
         "default_coffee",
         "default_ade",
     ]
-    assert assign_missing(menus, broken_embed) is False
+    assert assign_missing(menus) is False
 
 
-def test_a_category_default_is_upgraded_when_the_catalog_grows(fake_catalog):
+def test_a_category_default_is_upgraded_when_the_catalog_grows(fake_catalog, broken_embed):
     """예전에 기본 그림을 받은 메뉴도 카탈로그에 자기 그림이 생기면(카탈로그 지문이 바뀐 뒤
     처음 세션을 열 때) 바뀐다. 지문이 그대로면 기본 그림을 다시 고르지 않는다."""
     menus = [{"id": "a", "name": "메도빅", "illustration": "default_cake"}]
-    assert assign_missing(menus, broken_embed) is False
+    assert assign_missing(menus) is False
     assert menus[0]["illustration"] == "default_cake"
-    assert assign_missing(menus, broken_embed, repick_defaults=True) is True
+    assert assign_missing(menus, repick_defaults=True) is True
     assert menus[0]["illustration"] == "cake_medovik"
 
 
-def test_an_own_illustration_stays_until_the_name_changes(fake_catalog):
+def test_an_own_illustration_stays_until_the_name_changes(fake_catalog, broken_embed):
     menu = {"id": "a", "name": "메도빅 홀케이크", "illustration": "cake_medovik"}
-    assert assign_missing([menu], broken_embed) is False
+    assert assign_missing([menu]) is False
     assert menu["illustration"] == "cake_medovik"  # 세션을 열어도 그대로
     menu["name"] = "초코 메도빅"
     assert assign_illustration(menu, broken_embed) is True
@@ -228,7 +253,7 @@ def test_a_category_clue_keeps_the_match_in_its_group(embedded_catalog):
 
 
 def test_a_failing_embedding_or_missing_key_falls_back_without_raising(
-    embedded_catalog, monkeypatch
+    embedded_catalog, monkeypatch, broken_embed
 ):
     from agenthan.core import embedding
 
@@ -258,24 +283,18 @@ def test_exact_names_and_keywords_never_call_the_embedding(embedded_catalog):
     assert calls == []
 
 
-def test_each_menu_is_embedded_once_and_not_again_on_reopen(embedded_catalog):
+def test_a_batch_embeds_each_name_once(embedded_catalog):
     calls = []
-    embed = embed_from({"보르쉬": axis(0.1, 0.0, 0.95), "가나다": axis(1.0, 1.0, 1.0)}, calls)
-    menus = [
-        {"id": "a", "name": "보르쉬"},
-        {"id": "b", "name": "가나다"},
-        {"id": "c", "name": "가나다", "category": "Tea"},  # 같은 이름은 한 번만 임베딩
-        {"id": "d", "name": "메도빅"},  # 키워드로 정해지면 부르지 않는다
+    embed = once_per_name(
+        embed_from({"보르쉬": axis(0.1, 0.0, 0.95), "가나다": axis(1.0, 1.0, 1.0)}, calls)
+    )
+    picks = [
+        pick_illustration("보르쉬", None, embed),
+        pick_illustration("가나다", None, embed),
+        pick_illustration("가나다", "Tea", embed),  # 같은 이름은 한 번만 임베딩
+        pick_illustration("메도빅", None, embed),  # 키워드로 정해지면 부르지 않는다
     ]
-    assert assign_missing(menus, embed) is True
-    assert [m["illustration"] for m in menus] == [
-        "dish_borsch",
-        "default_other",
-        "default_tea",
-        "cake_medovik",
-    ]
-    assert calls == ["보르쉬", "가나다"]
-    assert assign_missing(menus, embed) is False  # 세션을 다시 열 때: 그림 id가 저장돼 있다
+    assert picks == ["dish_borsch", "default_other", "default_tea", "cake_medovik"]
     assert calls == ["보르쉬", "가나다"]
 
 
@@ -287,10 +306,55 @@ def test_once_the_embedding_fails_the_rest_of_the_batch_skips_it(embedded_catalo
         calls.append(text)
         raise TimeoutError("임베딩 서버가 멈춤")
 
-    menus = [{"id": str(i), "name": f"가나다{i} 케이크"} for i in range(5)]
-    assert assign_missing(menus, failing) is True
-    assert {m["illustration"] for m in menus} == {"default_cake"}
+    embed = once_per_name(failing)
+    picks = {pick_illustration(f"가나다{i} 케이크", None, embed) for i in range(5)}
+    assert picks == {"default_cake"}
     assert len(calls) == 1
+
+
+def test_assign_missing_never_embeds(embedded_catalog):
+    """저장소 잠금 안에서 쓰는 채우기라 임베딩(네트워크)을 부를 길이 없다."""
+    menus = [{"id": "a", "name": "보르쉬"}]
+    assert assign_missing(menus) is True
+    assert menus[0]["illustration"] == "default_other"
+
+
+# --- git 밖 실제 가게 별칭(data/illustration_aliases.json) ------------------------------
+
+
+def test_the_private_alias_file_is_used_when_present(tmp_path, monkeypatch, broken_embed):
+    path = tmp_path / "aliases.json"
+    path.write_text(
+        json.dumps({"가나다 특제": "cake_napoleon", "없는 그림": "cake_gone"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(library.PRIVATE_ALIASES_ENV, str(path))
+    assert library.private_aliases() == {"가나다 특제": "cake_napoleon"}  # 없는 id는 뺀다
+    assert pick_illustration("가나다  특제!", None, broken_embed) == "cake_napoleon"
+    assert pick_illustration("가나다 특제", "Coffee", broken_embed) == "cake_napoleon"
+
+
+def test_the_private_alias_file_is_ignored_when_absent_or_broken(
+    tmp_path, monkeypatch, broken_embed
+):
+    monkeypatch.setenv(library.PRIVATE_ALIASES_ENV, str(tmp_path / "missing.json"))
+    assert library.private_aliases() == {}
+    assert pick_illustration("가나다 특제", None, broken_embed) == "default_other"
+    broken = tmp_path / "broken.json"
+    broken.write_text("[not json", encoding="utf-8")
+    monkeypatch.setenv(library.PRIVATE_ALIASES_ENV, str(broken))
+    assert library.private_aliases() == {}
+    assert pick_illustration("가나다 특제", None, broken_embed) == "default_other"
+
+
+def test_the_private_alias_file_changes_the_catalog_version(tmp_path, monkeypatch):
+    """별칭 파일을 더하거나 고치면 기본 그림 메뉴를 다시 고르도록 지문이 바뀐다."""
+    from agenthan.illustration.matcher import catalog_version
+
+    monkeypatch.setenv(library.PRIVATE_ALIASES_ENV, str(tmp_path / "aliases.json"))
+    before = catalog_version()
+    (tmp_path / "aliases.json").write_text('{"가나다": "cake_napoleon"}', encoding="utf-8")
+    assert catalog_version() != before
 
 
 def test_the_embedding_pick_is_stable(embedded_catalog):

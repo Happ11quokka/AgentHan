@@ -14,11 +14,10 @@
 
 import functools
 import json
-from collections.abc import Callable
 from pathlib import Path
 
 from agenthan.core.embedding import ClovaEmbeddingError, embed_text, validate_embedding
-from agenthan.illustration.library import load_catalog
+from agenthan.illustration.library import Embed, load_catalog
 
 INDEX_PATH = Path(__file__).with_name("catalog_embeddings.json")
 MODEL = "CLOVA embedding v2"
@@ -74,7 +73,7 @@ def _write(items: dict[str, dict]) -> None:
         stored.cache_clear()
 
 
-def build_index(embed: Callable[[str], list[float]] | None = None) -> list[str]:
+def build_index(embed: Embed | None = None) -> list[str]:
     """카탈로그 전체 id의 벡터를 쓴다. 저장된 글과 같으면 그 벡터를 다시 쓰고 새 글만 임베딩.
 
     임베딩한 그림 id를 돌려준다. 중간에 실패해도 그때까지 임베딩한 것은 저장하고 예외를 다시

@@ -8,11 +8,6 @@ import pytest
 
 from agenthan.illustration.matcher import pick_illustration
 
-
-def broken_embed(_text):
-    raise RuntimeError("임베딩 서버가 응답하지 않음")
-
-
 TABLE = [
     # 카탈로그 이름과 정확히 같으면
     ("케이크", None, "default_cake"),
@@ -56,5 +51,5 @@ TABLE = [
 
 
 @pytest.mark.parametrize(("name", "category", "expected"), TABLE)
-def test_category_defaults(name, category, expected):
+def test_category_defaults(name, category, expected, broken_embed):
     assert pick_illustration(name, category, broken_embed) == expected

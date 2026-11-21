@@ -7,11 +7,6 @@ import pytest
 
 from agenthan.illustration.matcher import pick_illustration
 
-
-def broken_embed(_text):
-    raise RuntimeError("임베딩 서버가 응답하지 않음")
-
-
 # (메뉴 이름, 분류 또는 None, 기대하는 그림 id)
 TABLE: list[tuple[str, str | None, str]] = [
     # 파일럿 가게(src/agenthan/app/pilot_store.json)의 러시아 요리·음료
@@ -52,11 +47,11 @@ TABLE: list[tuple[str, str | None, str]] = [
 
 
 @pytest.mark.parametrize(("name", "category", "expected"), TABLE)
-def test_dish_illustrations(name, category, expected):
+def test_dish_illustrations(name, category, expected, broken_embed):
     assert pick_illustration(name, category, broken_embed) == expected
 
 
-def test_dishes_that_look_alike_get_different_pictures():
+def test_dishes_that_look_alike_get_different_pictures(broken_embed):
     """수프·만두·팬케이크·빵끼리 서로 다른 그림이고, 분류 기본 그림으로 떨어지지 않는다."""
     names = ["보르시", "펠메니", "블린", "시르니키", "피로시키", "감자 피로그", "오레쉬키"]
     picked = [pick_illustration(name, None, broken_embed) for name in names]

@@ -28,11 +28,6 @@ NAMES = {
 }
 
 
-def broken_embed(_text):
-    """대표 그림 고르기의 임베딩 단계는 테스트에서 늘 실패시킨다(진짜 임베딩을 부르지 않음)."""
-    raise RuntimeError("임베딩 서버가 응답하지 않음")
-
-
 def board_image():
     """흰 메뉴판 위에 음식 사진 칸 두 개(질감 있는 네모)."""
     image = np.full((600, 800, 3), 255, np.uint8)
@@ -162,7 +157,7 @@ def test_photo_regions_find_the_picture_cells_and_snap_a_loose_box():
 
 
 def run_board(tmp_path, answer=ITEMS):
-    store = DummyStore(tmp_path / "store.json", embed=broken_embed)
+    store = DummyStore(tmp_path / "store.json")
     store.write({"shop": {"name": "베이커리"}, "menus": [], "reviews": []})
     store.upsert_menu("메도빅", 7500, name_native="Медовик", description="꿀 케이크")
     fake = FakeV3(answer)
@@ -227,7 +222,8 @@ def test_a_failing_menu_does_not_stop_the_others_and_clears_filling(tmp_path):
 
 
 def picked(name):
-    return pick_illustration(name, None, broken_embed)
+    """저장소는 잠금 안에서 임베딩 없이 고른다(임베딩은 app.server.fill_illustrations가 밖에서)."""
+    return pick_illustration(name)
 
 
 def test_board_menus_get_the_illustration_of_their_final_localized_name(tmp_path):
@@ -270,6 +266,56 @@ def test_menus_added_or_renamed_in_chat_get_an_illustration(tmp_path):
     assert menus(store)["가나다 수프"]["illustration"] == picked("가나다 수프")
     store.upsert_menu("가나다 라떼", 6000)  # 사진 초안 승인으로 들어온 메뉴
     assert menus(store)["가나다 라떼"]["illustration"] == picked("가나다 라떼")
+
+
+def test_store_paths_never_reach_the_embedding_step(tmp_path, monkeypatch):
+    """저장소 잠금 안에서 그림을 고르는 길(메뉴판 등록·채우기의 이름 변경·대화 도구·메뉴 탭·사진
+    승인)은 임베딩 단계에 닿지 않는다. 임베딩은 잠금 밖 app.server.fill_illustrations만 한다."""
+    from agenthan.illustration import matcher
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    def no_embedding(*_args):
+        pytest.fail("저장소 경로가 임베딩을 불렀어요")
+
+    monkeypatch.setattr(matcher, "_nearest", no_embedding)
+    store, fake, result = run_board(tmp_path)
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    execute_feature_tool(store, "upsert_menu", {"name": "쀍뷁", "price": 5000})
+    execute_feature_tool(store, "upsert_menu", {"name": "쀍뷁", "new_name": "쀍뷁 둘"})
+    menu_id = menus(store)["쀍뷁 둘"]["id"]
+    store.patch_menu(menu_id, {"name": "쀍뷁 셋"}, by_owner=True)
+    store.upsert_menu("쀍뷁 넷", 6000)
+    assert menus(store)["쀍뷁 셋"]["illustration"] == "default_other"
+
+
+def test_a_chat_menu_change_does_not_lose_a_concurrent_menu_tab_save(tmp_path):
+    """대화의 메뉴 도구(_menu)는 읽고-고치고-쓰는 동안 저장소 잠금을 잡는다: 그 사이 들어온
+    메뉴 탭 저장(백그라운드 채우기와 같은 잠금)은 기다렸다가 쓰이고, 덮여서 사라지지 않는다."""
+    import threading
+
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    store, _, _ = run_board(tmp_path)
+    kimbap = menus(store)["김밥"]["id"]
+    real_read = store.read
+    other = []
+
+    def read():
+        data = real_read()
+        if not other:  # 대화 도구가 처음 읽은 직후, 메뉴 탭에서 김밥 가격을 고친다
+            edit = {"price": 4700}
+            job = threading.Thread(target=lambda: store.patch_menu(kimbap, edit, by_owner=True))
+            other.append(job)
+            other[0].start()
+            other[0].join(timeout=0.3)  # 잠금이 있으면 여기서 끝나지 못한다
+        return data
+
+    store.read = read
+    execute_feature_tool(store, "upsert_menu", {"name": "가나다 에이드", "price": 5000})
+    other[0].join(timeout=5)
+    saved = menus(store)
+    assert saved["김밥"]["price"] == 4700
+    assert saved["가나다 에이드"]["price"] == 5000
 
 
 def test_a_price_change_keeps_the_illustration(tmp_path):

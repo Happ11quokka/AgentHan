@@ -6,6 +6,7 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
 """
 
 import copy
+import logging
 import threading
 import uuid
 from collections.abc import Callable
@@ -22,12 +23,26 @@ from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
 from agenthan.core.embedding import embed_text
-from agenthan.illustration import assign_missing, catalog_version
-from agenthan.tools.dummy_store import DummyStoreError
+from agenthan.illustration import (
+    ILLUSTRATION_KEY,
+    Embed,
+    assign_missing,
+    catalog_version,
+    is_default,
+    menu_name,
+    once_per_name,
+    pick_illustration,
+)
+from agenthan.tools.dummy_store import DummyStore, DummyStoreError
+
+log = logging.getLogger(__name__)
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
 # 저장소 최상위: 마지막으로 그림을 맞춘 카탈로그 지문(fill_illustrations)
 ILLUSTRATION_VERSION_KEY = "illustration_catalog"
+# 저장소 최상위: {메뉴 id: 이름} 그 이름으로 임베딩까지 해 본 메뉴(같은 이름을 다시
+# 임베딩하지 않게). 카탈로그 지문이 바뀌면 비운다.
+ILLUSTRATION_TRIED_KEY = "illustration_tried"
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
 
 
@@ -119,15 +134,18 @@ class Session:
         assistant: OwnerAssistant,
         clock: Callable[[], datetime] = datetime.now,
         drafts: bool = False,
-        illustration_embed: Callable[[str], list[float]] | None = None,
+        illustration_embed: Embed | None = None,
     ):
         self.id = session_id
         self.assistant = assistant
         # 대표 그림 고르기의 임베딩 단계(None이면 키워드·분류 기본 그림만). create_app 참고.
-        # 그림을 고르는 곳(세션 열 때 채우기, 저장소의 메뉴 추가·이름 변경)이 모두 이것 하나를 쓴다.
-        # 비서의 embed(기능 찾기용)는 그림에 쓰지 않는다.
+        # 저장소는 잠금 안에서 임베딩 없이 바로 고르고, 임베딩은 fill_illustrations만 잠금 밖에서
+        # 쓴다. 비서의 embed(기능 찾기용)는 그림에 쓰지 않는다.
         self.illustration_embed = illustration_embed
-        assistant.store.embed = illustration_embed
+        # 그림 채우기(illustrate_later)는 한 세션에 하나만: 도는 중에 또 부르면 끝난 뒤 한 번 더
+        self._fill_guard = threading.Lock()
+        self._fill_running = False
+        self._fill_again = False
         # 답글 초안 미리 쓰기(#33): 켜져 있으면 새 리뷰마다 초안을 백그라운드로 미리 쓴다
         self.drafts = drafts
         assistant.clock = clock  # 리뷰 보고 미리보기의 '다음 보고' 시각도 같은 시계로
@@ -137,6 +155,40 @@ class Session:
 
     def _photo_path(self, name: str) -> str:
         return f"/assistant/sessions/{self.id}/photos/{name}"
+
+    def illustrate_later(self) -> None:
+        """메뉴가 바뀐 뒤(메뉴판 채우기 끝, 대화 턴, 메뉴 탭 저장, 온보딩): 대표 그림 채우기를
+        백그라운드로 돌린다(응답을 막지 않는다). 이미 도는 중이면 끝난 뒤 한 번 더 돈다."""
+        with self._fill_guard:
+            if self._fill_running:
+                self._fill_again = True
+                return
+            self._fill_running = True
+
+        def run() -> None:
+            while True:
+                try:
+                    fill_illustrations(self)
+                except Exception:  # noqa: BLE001 - 그림 채우기가 실패해도 세션은 그대로
+                    log.exception("menu illustration fill failed")
+                with self._fill_guard:
+                    if not self._fill_again:
+                        self._fill_running = False
+                        return
+                    self._fill_again = False
+
+        in_background(run)
+
+    def then_illustrate(self, job: Callable[[], None]) -> Callable[[], None]:
+        """백그라운드 일(메뉴판 채우기 등)이 끝나면 대표 그림 채우기를 잇는다."""
+
+        def run() -> None:
+            try:
+                job()
+            finally:
+                self.illustrate_later()
+
+        return run
 
     def _menu_photo_url(self, record: dict) -> str | None:
         if not record.get("photo"):
@@ -252,36 +304,80 @@ def claim_drafts(session: Session, review_ids: list[str] | None = None) -> Calla
     return lambda: box.write_claimed(claimed)
 
 
-def fill_illustrations(session: Session) -> None:
-    """세션을 열 때 그림이 정해지지 않은 메뉴(예전 세션·시드 가게)에 대표 그림을 한 번 정해 둔다.
-    그림 카탈로그·임베딩 인덱스가 바뀐 뒤(catalog_version) 처음 열 때는 분류 기본 그림을 받은
-    메뉴도 다시 고른다. 새 메뉴·이름이 바뀐 메뉴는 저장소가 쓸 때 고른다(DummyStore.illustrate).
-
-    임베딩은 저장소 잠금 밖에서 부르고, 잠금을 다시 잡아 그 사이 이름·그림이 그대로인 메뉴에만
-    결과를 넣는다."""
-    store = session.assistant.store
+def assign_missing_illustrations(store: DummyStore) -> None:
+    """세션을 열 때, 저장소 잠금 안에서 바로(임베딩 없이): 그림이 없거나 카탈로그에 없는 메뉴
+    (예전 세션·시드 가게)에 그림을 정한다. 그림 카탈로그·임베딩 인덱스·실제 가게 별칭이 바뀐 뒤
+    (catalog_version) 처음이면 분류 기본 그림을 받은 메뉴도 다시 고르고 임베딩 기록을 비운다."""
     version = catalog_version()
     with store.lock:
         data = store.read()
-    menus = copy.deepcopy(data["menus"])
-    repick = data.get(ILLUSTRATION_VERSION_KEY) != version
-    changed = assign_missing(menus, session.illustration_embed, repick_defaults=repick)
-    if not changed and not repick:
+        repick = data.get(ILLUSTRATION_VERSION_KEY) != version
+        changed = assign_missing(data["menus"], repick_defaults=repick)
+        if repick:
+            data[ILLUSTRATION_VERSION_KEY] = version
+            data[ILLUSTRATION_TRIED_KEY] = {}
+        if changed or repick:
+            store.write(data)
+
+
+def _needs_embedding(menu: dict, tried: dict) -> bool:
+    """분류 기본 그림이고, 이름을 채우는 중이 아니며, 지금 이름으로 아직 임베딩해 보지 않은 메뉴."""
+    return (
+        is_default(menu.get(ILLUSTRATION_KEY))
+        and "name" not in (menu.get("filling") or [])
+        and tried.get(menu.get("id")) != menu_name(menu)
+    )
+
+
+def fill_illustrations(session: Session) -> None:
+    """대표 그림 채우기. 저장소 경로(메뉴 추가·이름 변경)는 잠금 안에서 임베딩 없이 바로 고르고,
+    CLOVA 임베딩(네트워크, 느리거나 멈출 수 있음)은 여기서만 잠금 밖에서 부른다.
+
+    1. 잠금 안, 바로: 그림이 없는 메뉴를 채운다(assign_missing_illustrations).
+    2. 잠금 밖: 분류 기본 그림인 메뉴 중 지금 이름으로 아직 임베딩해 보지 않은 메뉴만 임베딩해
+       가까운 그림을 찾는다. 같은 이름은 한 번만, 한 번 실패하면 이번에는 더 부르지 않는다.
+    3. 잠금 안: 그 사이 이름·그림이 그대로인 메뉴에만 결과를 넣고, 임베딩이 된 이름을 기록한다
+       (임베딩이 실패한 이름은 다음에 다시 해 본다)."""
+    store = session.assistant.store
+    assign_missing_illustrations(store)
+    embed = session.illustration_embed
+    if embed is None:
         return
-    before = {m["id"]: m for m in data["menus"] if "id" in m}
-    picked = {m["id"]: m["illustration"] for m in menus if "id" in m}
     with store.lock:
         data = store.read()
+        tried = data.get(ILLUSTRATION_TRIED_KEY) or {}
+        todo = [copy.deepcopy(m) for m in data["menus"] if "id" in m and _needs_embedding(m, tried)]
+    if not todo:
+        return
+    embedded: set[str] = set()
+
+    def tracked(text: str) -> list[float]:
+        vector = embed(text)
+        embedded.add(text)
+        return vector
+
+    batch = once_per_name(tracked)
+    picks = {m["id"]: pick_illustration(menu_name(m), m.get("category"), batch) for m in todo}
+    before = {m["id"]: m for m in todo}
+    with store.lock:
+        data = store.read()
+        ids = {m.get("id") for m in data["menus"]}
+        tried = {k: v for k, v in (data.get(ILLUSTRATION_TRIED_KEY) or {}).items() if k in ids}
+        changed = False
         for menu in data["menus"]:
             old = before.get(menu.get("id"))
-            if (
-                old is not None
-                and (old.get("name"), old.get("name_ko")) == (menu.get("name"), menu.get("name_ko"))
-                and old.get("illustration") == menu.get("illustration")
+            if old is None or (menu_name(old), old.get(ILLUSTRATION_KEY)) != (
+                menu_name(menu),
+                menu.get(ILLUSTRATION_KEY),
             ):
-                menu["illustration"] = picked[menu["id"]]
-        data[ILLUSTRATION_VERSION_KEY] = version
-        store.write(data)
+                continue  # 그 사이 이름이나 그림이 바뀌었다: 다음 채우기가 다시 본다
+            changed = changed or menu[ILLUSTRATION_KEY] != picks[menu["id"]]
+            menu[ILLUSTRATION_KEY] = picks[menu["id"]]
+            if menu_name(menu).strip() in embedded:
+                tried[menu["id"]] = menu_name(menu)
+        if changed or tried != data.get(ILLUSTRATION_TRIED_KEY):
+            data[ILLUSTRATION_TRIED_KEY] = tried
+            store.write(data)
 
 
 def in_background(job: Callable[[], None]) -> None:
@@ -293,12 +389,13 @@ def create_app(
     root: str | Path = DEFAULT_ROOT,
     prepare_on_start: bool = False,
     clock: Callable[[], datetime] = datetime.now,
-    illustration_embed: Callable[[str], list[float]] | None = None,
+    illustration_embed: Embed | None = None,
 ) -> FastAPI:
     """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
     clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다).
     illustration_embed: 대표 그림 고르기에서 메뉴 이름을 임베딩하는 함수. 운영 앱은 CLOVA
-    임베딩 v2, 기본값 None은 임베딩 없이 고른다(테스트가 네트워크에 닿지 않게)."""
+    임베딩 v2, 기본값 None은 임베딩 없이 고른다(테스트가 네트워크에 닿지 않게). 임베딩은
+    세션을 열 때와 메뉴가 바뀐 뒤 백그라운드에서만 부른다(Session.illustrate_later)."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -327,7 +424,8 @@ def create_app(
             data = store.read()
             data["menus"] = []
             store.write(data)
-        fill_illustrations(session)
+        assign_missing_illustrations(session.assistant.store)  # 첫 화면부터 그림이 있게
+        session.illustrate_later()  # 기본 그림 메뉴는 임베딩으로 더 맞는 그림을 찾아본다
         if prepare_on_start:
             with session.lock:
                 job = claim_drafts(session)
@@ -344,7 +442,8 @@ def create_app(
             if session.assistant.agent_mode == "planner":
                 result["next_actions"] = session.assistant.next_actions
         if job is not None:
-            in_background(job)
+            in_background(session.then_illustrate(job))
+        session.illustrate_later()  # 대화로 메뉴를 더하거나 이름을 바꿨을 수 있다
         return result
 
     @app.post("/assistant/sessions/{session_id}/actions")
@@ -355,7 +454,9 @@ def create_app(
                 result = session.assistant.run_action(action.action_id, action.args, action.label)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
-            return {**result, **session.view()}
+            result = {**result, **session.view()}
+        session.illustrate_later()  # 승인으로 메뉴가 들어왔을 수 있다
+        return result
 
     @app.post("/assistant/sessions/{session_id}/photos")
     def send_photo(
@@ -372,7 +473,9 @@ def create_app(
             job = session.assistant.take_photo_job()
             result = {"reply": reply, **session.view()}
         if job is not None:
-            in_background(job)  # 설명·흰 배경 사진 채우기. 화면은 /place로 채워지는 걸 본다.
+            # 설명·흰 배경 사진 채우기. 화면은 /place로 채워지는 걸 본다. 끝나면 최종 이름으로 그림
+            in_background(session.then_illustrate(job))
+        session.illustrate_later()  # 한글 이름 그대로 올라간 메뉴는 지금 찾아본다
         return result
 
     @app.patch("/assistant/sessions/{session_id}/menus/{menu_id}")
@@ -389,6 +492,7 @@ def create_app(
             raise HTTPException(422, str(exc)) from exc
         if record is None:
             raise HTTPException(404, "없는 메뉴입니다.")
+        session.illustrate_later()  # 이름을 고쳤으면 임베딩으로 더 맞는 그림을 찾아본다
         return session.view()
 
     @app.post("/assistant/sessions/{session_id}/menus/{menu_id}/polish")
@@ -427,7 +531,9 @@ def create_app(
                     store.upsert_menu(menu.name, menu.price)
             except DummyStoreError as exc:
                 raise HTTPException(422, str(exc)) from exc
-            return session.view()
+            result = session.view()
+        session.illustrate_later()  # 메뉴마다 임베딩하지 않고, 잠금 밖에서 한 묶음으로
+        return result
 
     @app.get("/assistant/sessions/{session_id}/photos/{name}")
     def show_photo(session_id: str, name: str) -> Response:
