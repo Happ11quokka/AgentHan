@@ -30,9 +30,11 @@ export interface OrderJson {
  * 확인 중. 결과: accepted(수락, `delay_min`은 늦춘 분) · delayed(늦춘 시각을 손님에게 묻는 중, 티켓 04) ·
  * rejected(사장님 거절, `reason`은 사유, 티켓 05) · timeout(통화 중에 답이 없어 결과는 문자로) ·
  * withdrawn(손님이 고침·취소, `reason`) · skipped(확인 없이 바로 확정). 통화 뒤 결과(수락·거절·자동 취소)는
- * 상태가 아니라 받은 문자로 온다
+ * 상태가 아니라 받은 문자로 온다. after_call: 통화 중 대기 0(기본)이라 통화 뒤 확인 요청을 열고 통화를 끝냈다.
+ * 결과는 주문 현황(`orderStatus.ts`)으로 본다 (전화 메뉴·주문 현황 티켓 04)
  */
-export type ApprovalStatus = 'waiting' | 'accepted' | 'delayed' | 'rejected' | 'timeout' | 'withdrawn' | 'skipped'
+export type ApprovalStatus =
+  'waiting' | 'accepted' | 'delayed' | 'rejected' | 'timeout' | 'withdrawn' | 'skipped' | 'after_call'
 
 /** 거절 사유(서버 `RejectReason`, 사장님 화면 `RejectReason`과 같은 값) */
 export type ApprovalRejectReason = 'out_of_stock' | 'busy' | 'closed' | 'free'

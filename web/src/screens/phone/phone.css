@@ -309,3 +309,98 @@
   line-height: 1.5;
   color: var(--phone-muted);
 }
+
+/* 주문 현황 (전화 메뉴·주문 현황 티켓 04). 통화가 확정 주문으로 끝나면 자막·주문서 자리에 보인다 */
+.phone-status-card {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--phone-line);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.phone-status-card h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.phone-status-ok {
+  border-color: var(--phone-accent);
+}
+
+.phone-status-ok h2 {
+  color: var(--phone-accent);
+}
+
+.phone-status-stop {
+  border-color: var(--phone-danger);
+}
+
+.phone-status-stop h2 {
+  color: var(--phone-danger);
+}
+
+.phone-status-detail {
+  margin: 6px 0 0;
+  color: var(--phone-muted);
+}
+
+.phone-steps {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phone-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--phone-muted);
+}
+
+.phone-step::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--phone-line);
+  box-sizing: border-box;
+}
+
+.phone-step-done::before {
+  border-color: var(--phone-accent);
+  background: var(--phone-accent);
+}
+
+.phone-step-current {
+  color: inherit;
+  font-weight: 700;
+}
+
+.phone-step-current::before {
+  border-color: var(--phone-accent);
+}
+
+.phone-status-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--phone-line);
+}
+
+.phone-status-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.phone-status-card .phone-btn {
+  margin-top: 12px;
+  width: 100%;
+}

@@ -43,6 +43,11 @@
   (최대 6분, 주문 승인 티켓 03).
   토큰 없음(통화 id는 추측할 수 없는 값). 모르는 통화는 404
 
+손님 주문 현황 (`customer_orders_router`, 전화 메뉴·주문 현황·쿠폰 티켓 04):
+- `GET /api/phone/orders/{id}`: 주문 번호(= 통화 id)로 주문 한 건의 현황. 모양과 단계는
+  `order_status.py`(줄 목록·금액·픽업 시각·단계 checking·confirmed·cancelled). 토큰 없음(주문
+  번호가 열쇠다). 주문 카드가 없으면(모르는 번호·주문 없이 끝난 통화) 404 "주문을 찾을 수 없어요"
+
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
   못 붙여서 쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
 - SSE는 FastAPI 내장 응답을 쓴다: 15초 핑, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
@@ -74,6 +79,8 @@ from agenthan.voice.owner.hub import (
 
 OWNER_PREFIX = "/api/owner"
 CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
+# 손님 주문 현황 (티켓 04). 화면 주소 `/phone/orders/<번호>`와 겹치지 않게 `/api` 아래에 둔다
+CUSTOMER_ORDERS_PREFIX = "/api/phone/orders"
 # 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 최소 시간 (4단계 spec "최대 2분"). 서버는
 # 통화 뒤 확인 대기의 수락·자동 취소 문자까지 받게 `max(이 값, 자동 취소 마감 + 60초)`로 연다
 # (`server.py`, 주문 승인 티켓 03). 창 길이는 `sms.snapshot`의 `window_s`로 화면에 알린다
@@ -230,6 +237,21 @@ def customer_texts_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) ->
     ) -> AsyncIterator[ServerSentEvent]:
         async for event in _until_window(events, window_s):
             yield event
+
+    return router
+
+
+def customer_orders_router(hub: OwnerHub) -> APIRouter:
+    """손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04). 사장님 토큰이 없다(주문 번호가 열쇠다).
+
+    `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 없으면 404.
+    """
+    router = APIRouter(prefix=CUSTOMER_ORDERS_PREFIX)
+
+    @router.get("/{order_id}")
+    async def order_status(order_id: str) -> dict[str, Any]:
+        with _hub_errors({404: "주문을 찾을 수 없어요"}):
+            return hub.order_status(order_id)
 
     return router
 

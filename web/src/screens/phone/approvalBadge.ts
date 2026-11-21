@@ -86,6 +86,9 @@ export function approvalBadge(s: Shown): ApprovalBadge | null {
   switch (a.status) {
     case 'waiting':
       return { tone: 'wait', label: '사장님 확인 중', detail: '가게에서 주문을 확인하고 있어요. 잠시만 기다려 주세요.' }
+    case 'after_call':
+      // 통화 중 대기 0: 주문을 넣고 끊는다. 통화가 끝나면 화면이 주문 현황으로 바뀐다 (전화 메뉴·주문 현황 티켓 04)
+      return { tone: 'wait', label: '주문을 넣었어요', detail: '통화가 끝나면 이 화면에서 가게 확인 결과를 보여 드려요.' }
     case 'delayed':
       // 사장님이 늦춰 수락했고 손님이 통화에서 바뀐 시각에 답하는 중 (티켓 04)
       return {

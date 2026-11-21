@@ -3,6 +3,7 @@
 엔진 상태는 늘리지 않는다. 열린 확인 요청 하나를 들고, 턴 결과에 요청(주문 스냅숏, 번호)을
 싣는다. 사장님 결정은 `owner_decided`로 들어와 마무리 대사와 통화 결과가 된다. 세션이
 `handle(approval=)`을 주지 않으면(설정 꺼짐·사장님 화면 없음) 예전처럼 바로 확정한다.
+통화 중 대기를 켠 설정(`wait_in_call`)의 길이다. 기본(대기 0)은 `test_engine_order_placed.py`.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ def make_engine() -> DialogEngine:
 def talk(engine: DialogEngine, *texts: str, approval: bool = True) -> TurnResult:
     result = None
     for text in texts:
-        result = engine.handle(text, NOW, approval=approval)
+        result = engine.handle(text, NOW, approval=approval, wait_in_call=True)
     assert result is not None
     return result
 

@@ -9,7 +9,8 @@
 - 카드는 통화 id(= `Order.id`)마다 하나다. 이벤트는 카드 전체를 덮어쓴다(바뀐 칸만 보내지 않는다)
 - 주문 카드(`order.update`): 확정 주문. 처리 상태 new(확인 대기) → accepted(수락) (주문 승인 티켓
   02). 복창에 "네"가 오면 통화 세션이 확인 요청을 연다(`open_approval`). 그때 주문 카드를 바로
-  만든다: `request`(요청 번호), `stage`(in_call 통화 중 · after_call 통화 뒤), `requested_at`,
+  만든다: `request`(요청 번호), `stage`(in_call 통화 중 · after_call 통화 뒤. 통화 중 대기 0인
+  기본 설정의 요청은 처음부터 after_call, 전화 메뉴·주문 현황 티켓 04), `requested_at`,
   `deadline_at`(통화 중 = 연 시각 + `approval_wait_s`, 통화 뒤 = 연 시각 + `approval_expire_s`),
   `decided_at`, `delay_min`, `withdrawn`(기다리는 중에 손님이 고침 changed · 취소 cancelled, 결정을
   안 받는다). 결정은 한 번만 받는다(두 번째는 `AlreadyDecided`). 수락하면 확정 문자를 보내고(통화
@@ -75,6 +76,8 @@
   줄을 덮어써 다시 보낸다(실패하면 원문만). AI 말은 번역하지 않는다(`text_owner` = "").
   CLOVA Speech `translation.targets`는 쓰지 않는다(응답 형식이 문서에 없다, spec "Papago 실측").
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
+- 손님 주문 현황 (전화 메뉴·주문 현황 티켓 04, `order_status`): 주문 번호(통화 id)로 주문 카드
+  하나를 손님 모양(줄·금액·픽업 시각·단계)으로 돌려준다. 단계 규칙은 `order_status.py`
 - 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
   주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
   (order), 확인 요청 자동 취소(expired, 주문 승인 티켓 03), 늦은 버튼 답(late_answer, 시간
@@ -161,6 +164,7 @@ from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
+from agenthan.voice.owner.order_status import order_status
 from agenthan.voice.owner.translate import Translator
 from agenthan.voice.store_snapshot import StoreProvider
 
@@ -639,6 +643,18 @@ class OwnerHub:
                                  "answer_text": text.strip(),
                                  "saved_at": self._clock.now().isoformat()})
 
+    def order_status(self, order_id: str) -> dict[str, Any]:
+        """손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04, 모양은 `order_status.py`). 주문 번호는
+        통화 id다. 주문 카드가 없으면(확정 없이 끝난 통화·모르는 번호·지워진 카드) `UnknownCard`.
+
+        마감 지난 확인 대기 카드는 먼저 자동 취소한다(타이머가 늦어도 "확인 중"으로 보이지 않게).
+        """
+        self.expire_due()
+        card = self._orders.get(order_id)
+        if card is None:
+            raise UnknownCard(order_id)
+        return order_status(card, unspoken=order_id in self._unspoken)
+
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         """그 통화의 손님에게 보낸 문자(보낸 순서). 없거나 모르는 통화면 빈 목록 (티켓 07)."""
         return list(self._customer_sms.get(call_id, ()))
@@ -833,14 +849,23 @@ class OwnerHub:
     def _open_approval(
         self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
     ) -> None:
-        """확인 요청 → 확인 대기(new) 주문 카드. 같은 통화에 새 번호로 오면 앞 카드를 대신한다."""
-        card = self._approval_card(request.order, number=request.number, stage="in_call")
+        """확인 요청 → 확인 대기(new) 주문 카드. 같은 통화에 새 번호로 오면 앞 카드를 대신한다.
+
+        통화 뒤 확인 요청(`request.in_call` 거짓, 통화 중 대기 0)은 처음부터 통화 뒤 단계(마감 =
+        연 시각 + `approval_expire_s`)다. 결정을 기다리는 통화가 없으니 받는 곳을 두지 않는다:
+        결정은 바로 굳는다(통화 뒤 결정과 같다).
+        """
+        stage = "in_call" if request.in_call else "after_call"
+        card = self._approval_card(request.order, number=request.number, stage=stage)
         if (before := self._orders.get(call_id)) is not None:
             card["sold_out"] = before.get("sold_out", [])  # 재료 소진 뒤 다시 요청 (티켓 06)
         self._stock_out_open.discard(call_id)  # 바꿔서 다시 요청했다. 취소 문자는 없다
         self._order_of[call_id] = request.order
         self._orders[call_id] = card
-        self._deciders[call_id] = reply
+        if request.in_call:
+            self._deciders[call_id] = reply
+        else:
+            self._deciders.pop(call_id, None)
         self._publish("order.update", card)
         self._translate_later(card)
         self._prune()

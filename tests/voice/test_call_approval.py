@@ -4,6 +4,8 @@
 결정은 세션이 준 받는 곳으로 들어오고, 세션은 듣는 중이 되면 봇이 먼저 말하는 턴으로 엔진에
 넣는다. 질문 카드와 같은 대기 장치(01)를 쓴다. 가짜 사장님: 즉시 수락(accept) · 결정 안 함(hold,
 시험이 `decide`로 늦은 결정을 흉내 냄) · 화면 없음(off, 기본).
+
+통화 중 대기를 켠 설정(`approval_wait_s` > 0)의 길이다. 기본(대기 0)은 `test_call_order_placed.py`.
 """
 
 from __future__ import annotations
@@ -65,7 +67,8 @@ def test_an_owner_who_accepts_at_once_is_heard_after_the_hold_line(tmp_path) -> 
     owner = RecordingOwnerChannel(approval="accept")
 
     async def call() -> Call:
-        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner) as c:
+        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner,
+                        settings=waiting(approval_wait_s=5.0)) as c:
             await to_yes(c)
             await bot_turn(c, 5)  # 수락을 말하는 봇 턴
             await asyncio.wait_for(c.session.wait_done(), WAIT)
@@ -254,7 +257,8 @@ def test_the_customer_screen_sees_the_wait_and_then_the_accept(tmp_path) -> None
     owner = RecordingOwnerChannel(approval="accept")
 
     async def call() -> Call:
-        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner) as c:
+        async with Call(tmp_path, stt=FakeSttStream(replies=SCRIPT), owner=owner,
+                        settings=waiting(approval_wait_s=5.0)) as c:
             await to_yes(c)
             await bot_turn(c, 5)
             await asyncio.wait_for(c.session.wait_done(), WAIT)

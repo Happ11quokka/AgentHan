@@ -266,6 +266,14 @@ def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
     return f"네, {spoken_time(pickup)}까지 준비해 둘게요.{later} 감사합니다."
 
 
+def order_placed(*, owner_pending: bool = False) -> str:
+    """복창에 "네": 통화 뒤 확인 요청을 열고 통화를 끝낸다 (전화 메뉴·주문 현황 티켓 04, 통화 중
+    대기 0). 결정은 손님 화면의 주문 현황으로 알린다. 확인 요청을 "접수"라고 하지 않는다(용어집).
+    사장님 답을 못 받은 질문이 있으면 `closing`처럼 문자 약속을 붙인다."""
+    later = " 여쭤보신 건 확인해서 문자로 알려 드릴게요." if owner_pending else ""
+    return f"주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요.{later} 감사합니다."
+
+
 def approval_hold() -> str:
     """복창에 "네": 사장님께 주문 확인을 요청했다 (주문 승인 티켓 02). 이 턴의 마지막 말이다."""
     return "사장님께 주문 확인 중이에요. 잠시만요."

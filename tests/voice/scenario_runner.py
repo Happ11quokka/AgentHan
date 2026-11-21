@@ -45,8 +45,18 @@
                                                # sold_out_today(오늘 품절 메뉴 id들)
 
 "owner"도 턴이라 기대값 칸(expect_state·expect_say …)을 그대로 쓴다. 이음매: 엔진 + 사장님 허브.
-"timeout"은 세션의 통화 중 대기 타이머를 대신한다(허브 시계를 `APPROVAL_WAIT_S`만큼 옮기고 시간
+"timeout"은 세션의 통화 중 대기 타이머를 대신한다(허브 시계를 `approval_wait_s`만큼 옮기고 시간
 초과 결정을 넣는다). 20초·10초 재안내의 실제 시간은 세션 시험(`test_call_approval*.py`)이 본다.
+
+통화 중 대기 (전화 메뉴·주문 현황 티켓 04). 기본은 0(서버 기본값과 같다): 복창 "네"에 엔진이 통화
+뒤 확인 요청을 열고 "주문 넣어 드렸어요"로 끝낸다. 통화 중 "owner" 턴은 없고, 결정은 통화가 끝난 뒤
+`after_call`로 넣는다. 통화 중에 기다리는 시나리오(s27~s30)는 대기 시간을 적는다:
+
+      "approval_wait_s": 20,                   # 통화 중 대기(초). 0보다 크면 통화가 결정을 기다린다
+      "after_call": [{"owner": "accept"}],     # 통화가 끝난 뒤 사장님 결정(허브 공개 함수, 통화로
+                                               # 가지 않는다). after_call_s보다 먼저 넣는다
+      "expect_status": {"stage": "confirmed",  # 마지막 손님 주문 현황(허브 `order_status`). 칸:
+                        "pickup_label": "18:30"}  # stage · pickup_label · total. 카드가 없으면 null
 
 금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
 150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴. 무응답 되묻기 앞의 "여보세요?"는 질문으로
@@ -64,7 +74,6 @@ from typing import Any
 
 from agenthan.core.contracts import Order
 from agenthan.core.fakes import FakeStoreKnowledge
-from agenthan.voice.call.defaults import APPROVAL_WAIT_S
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import OwnerDecision
 from agenthan.voice.dialog.engine import DialogEngine, TurnResult
@@ -73,7 +82,7 @@ from agenthan.voice.dialog.states import State
 from agenthan.voice.nlu.base import Act
 from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.owner.decisions import DecisionRecord
-from agenthan.voice.owner.hub import OwnerHub
+from agenthan.voice.owner.hub import OwnerHub, UnknownCard
 from agenthan.voice.store_config import StoreConfig
 
 SCENARIO_DIR = Path(__file__).parent / "scenarios"
@@ -166,6 +175,12 @@ class Scenario:
     approval: bool = False  # 사장님 화면이 켜진 가게 (주문 승인 티켓 11, 모듈 설명)
     after_call_s: float = 0.0  # 통화가 끝난 뒤 허브 시계를 옮길 초 (자동 취소 마감)
     expect_owner: dict[str, Any] | None = None  # 통화(와 after_call_s) 뒤 사장님 쪽 기대값
+    approval_wait_s: float = 0.0  # 통화 중 대기(초). 0이면 통화 뒤 확인 요청 (티켓 04)
+    after_call: list[dict[str, Any]] = field(default_factory=list)  # 통화 뒤 사장님 결정
+    # 통화(와 통화 뒤 결정·after_call_s) 뒤 손님 주문 현황. null은 주문 카드 없음.
+    # 시나리오에 칸이 없으면(`check_status` 거짓) 보지 않는다
+    expect_status: dict[str, Any] | None = None
+    check_status: bool = False
     path: Path = field(default=Path(), compare=False)
 
     @classmethod
@@ -182,6 +197,10 @@ class Scenario:
             approval=raw.get("approval", False),
             after_call_s=raw.get("after_call_s", 0.0),
             expect_owner=raw.get("expect_owner"),
+            approval_wait_s=raw.get("approval_wait_s", 0.0),
+            after_call=raw.get("after_call", []),
+            expect_status=raw.get("expect_status"),
+            check_status="expect_status" in raw,
             path=path,
         )
 
@@ -263,7 +282,9 @@ class _Owner:
         self.call_id = scenario.id  # = 주문 id
         self.clock = clock
         self.records: list[DecisionRecord] = []  # 허브가 내보낸 결정 기록 (DB로 가는 것)
-        self.hub = OwnerHub(store=_store(scenario), clock=clock, decision_sink=self)
+        self.wait_s = scenario.approval_wait_s
+        self.hub = OwnerHub(store=_store(scenario), clock=clock, decision_sink=self,
+                            approval_wait_s=self.wait_s)
         self.inbox: list[OwnerDecision] = []  # 허브가 통화에 넘긴 결정
         self.open: int | None = None  # 열린 확인 요청 번호
         self.requested: list[dict[str, Any]] = []  # 그 요청의 장바구니
@@ -281,6 +302,10 @@ class _Owner:
         if (request := result.approval_request) is not None:
             self.hub.open_approval(self.call_id, request, self.inbox.append)
             self.open, self.requested, self.approved = request.number, _cart_rows(result), None
+            if not request.in_call:
+                # 통화 뒤 확인 요청: 주문서가 같은 턴에 넘어간다(시간 초과 문자 약속과 같다).
+                # 결정은 통화로 오지 않는다
+                self.open, self.approved = None, self.requested
         if result.order is not None:
             self.hub.submit(result.order)
 
@@ -289,7 +314,7 @@ class _Owner:
         kind = turn["owner"]
         if kind == "timeout":
             assert self.open is not None, "열린 확인 요청이 없는데 시간 초과"
-            self.clock.set(self.clock.now() + timedelta(seconds=APPROVAL_WAIT_S))
+            self.clock.set(self.clock.now() + timedelta(seconds=self.wait_s))
             decision = OwnerDecision(self.open, "timeout")
         else:
             if kind == "accept":
@@ -310,9 +335,20 @@ class _Owner:
         self.open = None
         return decision
 
-    def ended(self, order: Order | None, after_s: float) -> dict[str, Any]:
-        """통화 끝 → (허브 시계를 옮기고 자동 취소 검사) → 사장님 쪽에서 보이는 것."""
+    def ended(self, order: Order | None, after_s: float,
+              after_call: list[dict[str, Any]]) -> dict[str, Any]:
+        """통화 끝 → 통화 뒤 사장님 결정 → (허브 시계를 옮기고 자동 취소 검사) → 사장님 쪽과 손님
+        주문 현황에서 보이는 것."""
         self.hub.call_ended(self.call_id, order.status if order is not None else "cancelled")
+        for turn in after_call:  # 사장님 화면 버튼 (결정은 통화로 가지 않는다)
+            if turn["owner"] == "accept":
+                self.hub.accept(self.call_id, turn.get("delay_min", 0))
+            elif turn["owner"] == "reject":
+                self.hub.reject(self.call_id, turn["reason"], menu_ids=turn.get("menu_ids", ()),
+                                text=turn.get("text", ""))
+            else:
+                raise ValueError(f"모르는 통화 뒤 결정: {turn['owner']!r}")
+        assert self.inbox == [], f"통화 뒤 결정이 통화로 갔다 {self.inbox}"
         if after_s:
             self.clock.set(self.clock.now() + timedelta(seconds=after_s))
             self.hub.expire_due()
@@ -324,6 +360,15 @@ class _Owner:
             "sms": [t["kind"] for t in self.hub.customer_texts(self.call_id)],
             "sold_out_today": sorted(self.hub.sold_out_today()),
         }
+
+    def status(self) -> dict[str, Any] | None:
+        """손님 주문 현황(허브 `order_status`)에서 시나리오가 보는 칸. 주문 카드가 없으면 None."""
+        try:
+            got = self.hub.order_status(self.call_id)
+        except UnknownCard:
+            return None
+        return {"stage": got["stage"], "pickup_label": got["pickup"]["label"],
+                "total": got["amount"]["total"]}
 
 
 @dataclass
@@ -340,6 +385,7 @@ def run(scenario: Scenario) -> Run:
     clock = FakeClock(scenario.now)
     owner = _Owner(scenario, clock) if scenario.approval else None
     approval = owner is not None
+    in_call = scenario.approval_wait_s > 0  # 통화 중 대기 (티켓 04)
     out = Run()
     before = engine.start(clock.now())
     out.transcript += [f"AI: {u}" for u in before.utterances]
@@ -358,10 +404,11 @@ def run(scenario: Scenario) -> Run:
         elif event == "not_heard":
             result = engine.not_heard(clock.now())
         elif turn.get("wait_request"):
-            result = engine.handle(guest, clock.now(), wait_request=True, approval=approval)
+            result = engine.handle(guest, clock.now(), wait_request=True, approval=approval,
+                                   wait_in_call=in_call)
             out.transcript.append(f"손님: {guest}")
         else:
-            result = engine.handle(guest, clock.now(), approval=approval)
+            result = engine.handle(guest, clock.now(), approval=approval, wait_in_call=in_call)
             out.transcript.append(f"손님: {guest}")
         if owner is not None:
             owner.took(result)
@@ -402,8 +449,17 @@ def run(scenario: Scenario) -> Run:
     if out.order is not None and _talk(out.order.transcript) != _talk(out.transcript):
         out.failures.append("Order.transcript가 실제 대화와 다르다")
     if owner is not None:
-        seen = owner.ended(out.order, scenario.after_call_s)
+        seen = owner.ended(out.order, scenario.after_call_s, scenario.after_call)
         for key, value in (scenario.expect_owner or {}).items():
             if seen[key] != value:
                 out.failures.append(f"사장님 쪽 {key}: {seen[key]!r} ≠ {value!r}")
+        if scenario.check_status:
+            status, want_status = owner.status(), scenario.expect_status
+            if want_status is None or status is None:
+                if status != want_status:
+                    out.failures.append(f"주문 현황 {status!r} ≠ {want_status!r}")
+            else:
+                for key, value in want_status.items():
+                    if status[key] != value:
+                        out.failures.append(f"주문 현황 {key}: {status[key]!r} ≠ {value!r}")
     return out

@@ -44,7 +44,12 @@ from agenthan.voice import adapters
 from agenthan.voice.gate import CallGate
 from agenthan.voice.housekeeping import INTERVAL_S, Housekeeper
 from agenthan.voice.owner.decisions import DecisionSink
-from agenthan.voice.owner.http import TEXTS_WINDOW_S, customer_texts_router, owner_router
+from agenthan.voice.owner.http import (
+    TEXTS_WINDOW_S,
+    customer_orders_router,
+    customer_texts_router,
+    owner_router,
+)
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
 from agenthan.voice.runtime import HcxRuntime
@@ -153,6 +158,7 @@ def create_app(
     # 마감보다 1분 길게 연다 (주문 승인 티켓 03)
     app.include_router(customer_texts_router(
         hub, window_s=max(TEXTS_WINDOW_S, settings.approval_expire_s + 60)))
+    app.include_router(customer_orders_router(hub))  # 손님 주문 현황 (전화 주문 현황 티켓 04)
     if not settings.owner_key:
         log.warning("PHONE_OWNER_KEY가 없어 사장님 화면(/api/owner/*)이 잠겨 있음 (모두 401)")
     if (settings.web_dist / "index.html").is_file():

@@ -207,6 +207,9 @@ class _Turn:
     # 주문 승인 티켓 02. 이번 턴에 확인 요청을 열 수 있다(세션이 `handle(approval=)`로 알림)와
     # 이번 턴에 연·거둔 확인 요청
     approval: bool = False
+    # 통화가 사장님 결정을 기다린다(통화 중 대기가 켜짐, `handle(wait_in_call=)`). 거짓이면 통화
+    # 뒤 확인 요청을 열고 바로 끝낸다 (전화 메뉴·주문 현황 티켓 04)
+    wait_in_call: bool = False
     approval_request: ApprovalRequest | None = None
     approval_withdrawn: ApprovalWithdrawn | None = None
     answer: AnswerReply | None = None  # 5단계 티켓 11. 이번 턴에 답변기가 낸 결과 (로그용)
@@ -414,12 +417,13 @@ class DialogEngine:
         return self._result(turn)
 
     def handle(self, text: str, now: datetime, *, wait_request: bool = False,
-               approval: bool = False) -> TurnResult:
+               approval: bool = False, wait_in_call: bool = False) -> TurnResult:
         """손님 말 하나. `wait_request`는 끝말 규칙이 기다림 요청("잠깐만요")으로 본 말이다.
 
-        `approval`이면(주문 승인 티켓 02) 이 턴에 복창에 "네"가 오면 바로 마무리하지 않고 사장님께
-        확인 요청을 연다. 세션이 설정이 켜져 있고 사장님 화면이 붙어 있을 때 준다. 아니면 예전처럼
-        바로 확정한다(승인 건너뜀).
+        `approval`이면(주문 승인 티켓 02) 이 턴에 복창에 "네"가 오면 사장님께 확인 요청을 연다.
+        세션이 설정이 켜져 있고 사장님 화면이 붙어 있을 때 준다. 아니면 예전처럼 바로 확정한다(승인
+        건너뜀). `wait_in_call`(통화 중 대기가 켜짐)이면 통화가 결정을 기다리고, 아니면(기본, 전화
+        메뉴·주문 현황 티켓 04) 통화 뒤 확인 요청을 열고 "주문 넣어 드렸어요"로 바로 끝낸다.
 
         기다림 요청이면(3단계 티켓 04) 앞부분만 해석한다. 앞부분이 없으면 NLU를 부르지 않고
         "네, 천천히 말씀하세요"만 한다(실패로 세지 않음). 앞부분이 있으면 평소처럼 처리한 뒤
@@ -427,7 +431,8 @@ class DialogEngine:
         """
         if self._state is State.GREETING:
             raise RuntimeError("start()를 먼저 불러야 해요")
-        turn = _Turn(self._local(now), cart_before=self._cart, approval=approval)
+        turn = _Turn(self._local(now), cart_before=self._cart, approval=approval,
+                     wait_in_call=wait_in_call)
         if self._state is State.DONE:
             return self._result(turn)
         self._transcript.append(f"손님: {text}")
@@ -2195,15 +2200,27 @@ class DialogEngine:
         if self._approval_open is not None:
             self._say(turn, templates.approval_hold())  # 이미 확인 중이다. 요청을 다시 열지 않는다
             return
-        if turn.approval:
+        if turn.approval and turn.wait_in_call:
             self._open_approval(turn)
             return
         self._state = State.CLOSING
         # 답을 못 받은 사장님 질문이 있으면 문자 약속을 붙이고 닫는다 (티켓 06)
-        self._say(turn, self._ok(turn, templates.closing(
-            self._pickup, owner_pending=self._owner_open is not None)))
+        pending = self._owner_open is not None
+        if turn.approval:
+            self._place_order(turn, pending)
+        else:
+            self._say(turn, self._ok(turn, templates.closing(self._pickup, owner_pending=pending)))
         self._owner_open = None
         turn.order_status = "confirmed"
+
+    def _place_order(self, turn: _Turn, owner_pending: bool) -> None:
+        """통화 중 대기 0 (전화 메뉴·주문 현황 티켓 04): 통화 뒤 확인 요청을 열고 "주문 넣어
+        드렸어요"로 끝낸다. 주문서는 이 턴에 넘어간다(시간 초과 문자 약속과 같다). 결정은 통화로
+        오지 않으니 열린 요청으로 들지 않는다."""
+        self._approvals += 1
+        turn.approval_request = ApprovalRequest(
+            self._approvals, self._build_order("confirmed", turn.now), in_call=False)
+        self._say(turn, self._ok(turn, templates.order_placed(owner_pending=owner_pending)))
 
     def _open_approval(self, turn: _Turn) -> None:
         """복창에 "네": 사장님께 확인 요청을 연다(주문 승인 티켓 02). 상태는 CONFIRM 그대로.
