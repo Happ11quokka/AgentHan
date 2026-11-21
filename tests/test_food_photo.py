@@ -124,7 +124,8 @@ def test_full_edit_approve_and_photo(tmp_path):
     before = CAKE.read_bytes()
     answer = assistant.ask_photo(before)
     assert all(
-        x in answer for x in ["AI 추측: 밀푀유 케이크", "허니 케이크", "나폴레옹", "가격 확인 필요"]
+        x in answer
+        for x in ["사진으로 본 이름: 밀푀유 케이크", "허니 케이크", "나폴레옹", "가격 확인 필요"]
     )
     assert "메뉴 이름을 입력해 주세요" in answer
     preview = Path(assistant.menu_form()[0]["photo"])
@@ -225,7 +226,7 @@ def test_existing_requires_explicit_confirmation(tmp_path):
 def test_owner_name_and_bad_box_fallback(tmp_path):
     assistant = bot(tmp_path, fake=FakeV3(owner_name="메도빅"))
     answer = assistant.ask_photo(CAKE.read_bytes(), "메도빅 올려 줘")
-    assert "메도빅" in answer and "AI 추측" not in answer
+    assert "메도빅" in answer and "사진으로 본 이름" not in answer
     assistant.ask("취소")
     seen = []
 

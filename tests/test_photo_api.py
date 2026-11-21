@@ -118,7 +118,7 @@ def test_food_photo_asks_the_name_and_the_price_in_one_question(tmp_path):
     reply = send_photo(api, session_id, CAKE.read_bytes()).json()["reply"]
     question = reply.splitlines()[-1]
     assert "메뉴 이름을 입력해 주세요" in question and "가격" in question
-    assert "AI 추측: 밀푀유 케이크" in question
+    assert "사진으로 본 이름: 밀푀유 케이크" in question
     assert "이대로 저장할까요" not in reply
 
 

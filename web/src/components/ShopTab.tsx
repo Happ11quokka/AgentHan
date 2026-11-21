@@ -72,7 +72,8 @@ export type OnMenuPolish = (menuId: string) => Promise<string>;
 type Field = "name" | "price" | "description";
 
 /** AI가 채운 칸 안내. 사장님이 그 칸을 고치면 사라진다. */
-const AI_HINT = "AI가 사진에서 읽거나 만든 내용이에요. 맞는지 확인하고 눌러서 고쳐 주세요.";
+/** 사진에서 자동으로 채운 칸(점선 밑줄)에 손을 올리면 보이는 안내. */
+const AUTO_HINT = "사진에서 읽어 자동으로 채웠어요. 맞는지 확인하고 눌러서 고쳐 주세요.";
 
 /**
  * 메뉴 한 줄. 저장된 메뉴는 이름·설명·가격을 눌러 바로 고친다(승인 카드 없음, Enter 저장 · Esc 취소).
@@ -193,11 +194,11 @@ function MenuItemRow({
   const field = (name: Field, label: string, children: ReactNode, className?: string) =>
     input(name, label) ??
     (editable ? (
-      <button type="button" className={`menu-field ${className ?? ""}`} data-ai={ai.has(name) || undefined} aria-label={`${label}: 눌러서 고치기`} onClick={() => begin(name)}>
+      <button type="button" className={`menu-field ${className ?? ""}`} data-ai={ai.has(name) || undefined} title={ai.has(name) ? AUTO_HINT : undefined} aria-label={`${label}: 눌러서 고치기`} onClick={() => begin(name)}>
         {children}
       </button>
     ) : (
-      <span className={className} data-ai={ai.has(name) || undefined}>
+      <span className={className} data-ai={ai.has(name) || undefined} title={ai.has(name) ? AUTO_HINT : undefined}>
         {children}
       </span>
     ));
@@ -207,11 +208,6 @@ function MenuItemRow({
       <div className="menu-body">
         <div className="menu-tags">
           {mark && <span className="mark">{MARK_TEXT[mark]}</span>}
-          {ai.size > 0 && (
-            <span className="ai-badge" title={AI_HINT}>
-              AI 추측
-            </span>
-          )}
         </div>
         {field(
           "name",
