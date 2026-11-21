@@ -17,6 +17,7 @@
   padding: 16px 16px max(16px, env(safe-area-inset-bottom));
   /* 화면 높이에 고정: 자막만 안에서 스크롤하고 말 끝·끊기 버튼은 늘 보이게 */
   height: 100dvh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -443,6 +444,7 @@
   z-index: 1;
   display: grid;
   place-items: center;
+  box-sizing: border-box;
   width: 32px;
   height: 32px;
   border: 2px solid var(--phone-line);
