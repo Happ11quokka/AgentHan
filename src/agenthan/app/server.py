@@ -437,6 +437,11 @@ def create_app(
             if (session := sessions.get(session_id)) is not None:
                 return session  # 같은 대화의 다른 요청이 먼저 되살렸다
             path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                # DB 사본을 파일로 먼저 내려 둔다. 운영의 make_assistant(`pilot.assistant`)는 파일이
+                # 없으면 파일럿 가게를 깔아서, 그대로 부르면 사본 대신 기본 메뉴가 열렸다
+                store = DummyStore(path)
+                store.write(store.read())
             session = Session(session_id, make_assistant(path), clock,
                               drafts=prepare_on_start, illustration_embed=illustration_embed)
             if on_save is not None:
