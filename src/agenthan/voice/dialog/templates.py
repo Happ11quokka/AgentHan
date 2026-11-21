@@ -260,7 +260,8 @@ def final_readback(
     body = (f"{cart_summary}, {spoken_time(pickup)}에 찾으러 오시고, {discount}"
             f"모두 {won(total)}이에요.")
     parts = [head, body]
-    parts += [f"{name}에 {request}라고 적어 뒀어요." for name, request in requests]
+    parts += [f"{name}에 {_josa(request, '이라고', '라고')} 적어 뒀어요."  # 디카페인이라고
+              for name, request in requests]
     return " ".join([*parts, "맞으세요?"])
 
 

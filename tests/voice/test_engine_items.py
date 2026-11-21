@@ -265,6 +265,9 @@ def test_option_on_item_with_no_options_is_noted_as_a_request(engine: DialogEngi
     assert r.cart.total() == 7000
     assert r.utterances[0] == "나폴레옹에 디카페인이라고 적어 둘게요."
     assert questions(r) == 1
+    # 복창도 같은 조사로 읽는다(리뷰): "디카페인이라고 적어 뒀어요"
+    readback = talk(engine, "그게 다예요", "6시 반이요").utterances[-1]
+    assert "나폴레옹에 디카페인이라고 적어 뒀어요." in readback
 
 
 def test_option_said_with_a_menu_that_has_none_is_a_request_on_that_line(
