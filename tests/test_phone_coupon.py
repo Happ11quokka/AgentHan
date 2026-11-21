@@ -102,7 +102,8 @@ def test_every_place_shows_the_same_payable_total(tmp_path) -> None:
     assert (card["subtotal"], card["coupon_name"], card["discount"], card["total"]) == (
         12000, PILOT_COUPON, 1000, 11000)
     assert status["amount"] == {"subtotal": 12000, "discount": 1000,
-                                "coupon_name": PILOT_COUPON, "total": 11000}
+                                "coupon_name": PILOT_COUPON,
+                                "coupon_label": f"{PILOT_COUPON} 쿠폰", "total": 11000}
     if TEST_URL:
         assert _db_row(TEST_URL, order_id) == (11000, "coupon-1", PILOT_COUPON, 1000)
 
