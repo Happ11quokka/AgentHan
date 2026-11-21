@@ -32,8 +32,10 @@ def test_snapshot_has_the_place_and_record_sections():
         "business_hours",
         "coupon",
         "keywords",
+        "business_info",
         *owner.RECORD_TARGETS,
     }
+    assert view["business_info"] == {k: SEED["shop"].get(k) for k in place.BUSINESS_FIELDS}
     assert view["keywords"] == SEED["shop"].get("keywords", [])
     assert view["menu"][0] == {
         "id": "m01",

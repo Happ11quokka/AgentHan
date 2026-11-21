@@ -4,6 +4,7 @@ import type { Action, Message } from "../types";
 import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
+import { BusinessInfoForm } from "./BusinessInfoForm";
 import { CouponForm } from "./CouponForm";
 import { Icon } from "./Icon";
 import { ReadingBubble } from "./ReadingBubble";
@@ -31,9 +32,19 @@ type BubbleProps = {
   busy: boolean;
   /** 이 답이 띄운 승인 카드가 아직 떠 있다: 카드와 겹치는 인용·질문은 빼고 첫 줄만 보인다. */
   lead: boolean;
+  /** 카드 버튼을 숨긴 묶음 카드의 작업 id. 저장·취소 칩은 이 작업일 때만 말풍선에 둔다. */
+  bundled: Set<string>;
 };
 
-function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
+const TASK_CHIPS = new Set(["task.approve", "task.cancel"]);
+/**
+ * 말풍선에 둘 칩. 저장·취소는 승인 카드의 버튼과 같으니 빼고, 카드 버튼을 숨긴 묶음([모두 저장])일
+ * 때만 둔다. 카드가 닫힌 뒤의 지난 저장·취소 칩도 되살리지 않는다.
+ */
+const bubbleChips = (actions: Action[] | undefined, bundled: Set<string>) =>
+  (actions ?? []).filter((a) => !TASK_CHIPS.has(a.action_id) || bundled.has(String(a.args.task_id)));
+
+function Bubble({ message, onAction, onShowReview, busy, lead, bundled }: BubbleProps) {
   if (message.role === "notice") {
     return (
       <div className="notice" role="status">
@@ -77,10 +88,10 @@ function Bubble({ message, onAction, onShowReview, busy, lead }: BubbleProps) {
     <div className="row agent">
       <img className="avatar" src="/agent.png" alt="" />
       <div className="bubble agent">
-        <ReplyText text={message.text} lead={lead} previews={message.previews} />
-        {message.nextActions && message.nextActions.length > 0 && (
+        <ReplyText text={message.text} lead={lead} />
+        {bubbleChips(message.nextActions, bundled).length > 0 && (
           <div className="suggestions">
-            {message.nextActions.map((action, i) => (
+            {bubbleChips(message.nextActions, bundled).map((action, i) => (
               <button key={i} type="button" disabled={busy} onClick={() => onAction(action)}>{action.label}</button>
             ))}
           </div>
@@ -113,7 +124,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
-  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error, chat.couponForm === null]);
+  }, [chat.messages.length, chat.busy, chat.pending.length, chat.error, chat.couponForm === null, chat.businessForm === null]);
 
   return (
     <main
@@ -179,6 +190,7 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               onShowReview={onShowReview}
               busy={chat.busy}
               lead={m.role === "agent" && Boolean(m.cardFor) && open.has(m.cardFor!)}
+              bundled={bundled}
             />
           ))}
           {!chat.busy &&
@@ -201,6 +213,16 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
               busy={chat.busy}
               onCancel={chat.closeCoupon}
               onSubmit={(values) => void chat.submitCoupon(values)}
+            />
+          )}
+          {chat.businessForm && (
+            <BusinessInfoForm
+              key={JSON.stringify(chat.businessForm)}
+              initial={chat.businessForm}
+              busy={chat.busy}
+              onCancel={chat.closeBusiness}
+              onSubmit={(changes) => void chat.submitBusiness(changes)}
+              onDraft={chat.draftIntroduction}
             />
           )}
           {chat.busy && chat.readingSince !== null && (

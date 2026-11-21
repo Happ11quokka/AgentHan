@@ -32,6 +32,13 @@ ACTIONS = {
             "create_coupon",
             inputs=("title", "discount_type", "discount_value", "start_date", "end_date"),
         ),
+        # 가게 기본 정보 입력 블록의 [미리 보기]. 사장님이 바꾼 칸만 보낸다.
+        Action(
+            "business_info.edit",
+            "가게 정보 수정",
+            "update_business_info",
+            inputs=("name", "address", "phone", "introduction"),
+        ),
         Action("hours.edit", "영업시간 수정", "update_business_hours", inputs=("entries",)),
         Action(
             "keywords.edit", "대표키워드 수정", "set_representative_keywords", inputs=("keywords",)

@@ -12,7 +12,7 @@ from pathlib import Path
 from agenthan.agent import menu_photo
 from agenthan.agent.owner_assistant import RECORD_TARGETS
 from agenthan.tools.dummy_store import DummyStore
-from agenthan.tools.feature_tools import execute_feature_tool
+from agenthan.tools.feature_tools import BUSINESS_FIELDS, execute_feature_tool
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 MENU_FIELDS = ("id", "name", "price", "description")
@@ -66,6 +66,8 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
         "business_hours": {day: copy.deepcopy(hours[day]) for day in DAYS if day in hours},
         "coupon": copy.deepcopy(data.get("coupons", [])),
         "keywords": list(data.get("shop", {}).get("keywords", [])),
+        # 가게 기본 정보: 입력 블록의 처음 값이자, 승인 카드가 바뀌기 전·후를 비교하는 값
+        "business_info": {k: data.get("shop", {}).get(k) for k in BUSINESS_FIELDS},
         **records,
     }
 

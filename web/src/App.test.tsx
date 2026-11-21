@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import App from "./App";
 import { TOOLBOX } from "./components/LeftNav";
-import type { ReviewsView, Turn } from "./types";
+import type { Pending, ReviewsView, Turn } from "./types";
 import {
   INBOX,
   inboxWith,
@@ -358,7 +358,9 @@ describe("사이드카 [홈]·[메뉴]", () => {
     const added = await within(home).findByText("오픈 기념");
     expect(added.closest("[data-mark]")).toHaveAttribute("data-mark", "added");
     const card = screen.getByRole("region", { name: "저장 전 확인" });
-    expect(within(card).getByText("새 쿠폰 오픈 기념 10% 할인")).toBeInTheDocument();
+    expect(within(card).getByText("새 쿠폰: 오픈 기념")).toBeInTheDocument();
+    expect(within(card).getByText("할인: 10%")).toBeInTheDocument();
+    expect(within(card).getByText("기간: 11/20 ~ 11/30")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "메뉴" }));
     const menu = screen.getByRole("tabpanel", { name: "메뉴" });
     expect(within(menu).getByText("메도빅")).toBeInTheDocument();
@@ -1028,7 +1030,9 @@ describe("리뷰 정기 보고 (#98)", () => {
     );
     const { user } = await open(api);
     await say(user, "매일 리뷰 요약해서 보내 줘");
-    await user.click(await chatArea().findByRole("button", { name: "모두 저장" }));
+    // 카드가 하나면 저장·취소는 카드에만 있다(말풍선 칩은 중복이라 숨김).
+    const card = within(await screen.findByRole("region", { name: "저장 전 확인" }));
+    await user.click(card.getByRole("button", { name: "저장" }));
     const result = (await chatArea().findByText("저장 완료")).closest(".result") as HTMLElement;
     expect(within(result).getByText(line)).toBeInTheDocument();
     expect(chatArea().queryByText(/저장 안 함/)).not.toBeInTheDocument();
@@ -1044,7 +1048,8 @@ describe("리뷰 정기 보고 (#98)", () => {
     );
     const { user } = await open(api);
     await say(user, "매일 리뷰 요약해서 보내 줘");
-    await user.click(await chatArea().findByRole("button", { name: "모두 취소" }));
+    const card = within(await screen.findByRole("region", { name: "저장 전 확인" }));
+    await user.click(card.getByRole("button", { name: "취소" }));
     const result = (await chatArea().findByText(/저장 안 함/)).closest(".result") as HTMLElement;
     expect(within(result).queryByText(/리뷰 정기 보고/)).not.toBeInTheDocument();
   });
@@ -1089,7 +1094,7 @@ describe("대표키워드 변경", () => {
     expect(within(list).getByText("메도빅").closest("[data-mark]")).toHaveAttribute("data-mark", "added");
   });
 
-  test("쿠폰 이름에 할인 문구가 있으면 확인 카드에서 되풀이하지 않는다", async () => {
+  test("쿠폰 확인 카드는 이름과 따로 할인·기간을 보인다(이름에 할인 문구가 있어도)", async () => {
     const coupon = {
       id: "coupon-1",
       title: "평일 오후 메도빅 1,000원 할인",
@@ -1109,7 +1114,9 @@ describe("대표키워드 변경", () => {
     const { user } = await open(api);
     await say(user, "쿠폰 만들어 줘");
     const card = await screen.findByRole("region", { name: "저장 전 확인" });
-    expect(within(card).getByText("새 쿠폰 평일 오후 메도빅 1,000원 할인")).toBeInTheDocument();
+    expect(within(card).getByText("새 쿠폰: 평일 오후 메도빅 1,000원 할인")).toBeInTheDocument();
+    expect(within(card).getByText("할인: 1,000원")).toBeInTheDocument();
+    expect(within(card).getByText("기간: 11/10 ~ 11/30")).toBeInTheDocument();
   });
 });
 
@@ -1164,9 +1171,9 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
     expect(within(card).getByText("상태: 답장 전 → 답장 저장(아직 안 보냄)")).toBeInTheDocument();
     expect(within(card).queryByText(/케이크 예약/)).not.toBeInTheDocument();
     expect(within(card).queryByText(/정보를 바꿔요/)).not.toBeInTheDocument();
-    // 말풍선의 승인 질문 밑에도 같은 줄이 보인다.
+    // 말풍선은 질문만: 변경 줄은 카드에만 있다(중복 없음).
     const bubble = chatArea().getByText("톡톡 문의 답장: 아래처럼 바꿀까요?").closest(".bubble")!;
-    expect(within(bubble as HTMLElement).getByText("답장: 근처 공영주차장을 이용해 주세요")).toBeInTheDocument();
+    expect(within(bubble as HTMLElement).queryByText("답장: 근처 공영주차장을 이용해 주세요")).not.toBeInTheDocument();
     // 기록은 [홈] 탭을 깨뜨리지 않는다.
     expect(screen.getByRole("tabpanel", { name: "홈" })).toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "저장" }));
@@ -1208,10 +1215,10 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
       expect(within(card).queryByRole("button", { name: "취소" })).not.toBeInTheDocument();
       expect(within(card).getByText(/모두 저장/)).toBeInTheDocument();
     }
-    // 말풍선: 질문마다 그 카드의 변경 줄.
-    const bubble = chatArea().getByText("영업시간·휴무 변경: 아래처럼 바꿀까요?").closest(".bubble") as HTMLElement;
-    expect(within(bubble).getByText("일요일 10:00 ~ 18:00")).toBeInTheDocument();
-    expect(within(bubble).getByText("답장: 근처 공영주차장을 이용해 주세요")).toBeInTheDocument();
+    // 말풍선: 질문과 [모두 저장]만. 변경 줄은 카드에만 있다.
+    const bubble = chatArea().getByText(/영업시간·휴무 변경: 아래처럼 바꿀까요\?/).closest(".bubble") as HTMLElement;
+    expect(within(bubble).queryByText("일요일 10:00 ~ 18:00")).not.toBeInTheDocument();
+    expect(within(bubble).queryByText("답장: 근처 공영주차장을 이용해 주세요")).not.toBeInTheDocument();
     await user.click(within(bubble).getByRole("button", { name: "모두 저장" }));
     expect(api.act).toHaveBeenLastCalledWith("s1", expect.objectContaining({ action_id: "task.approve" }));
     const result = (await chatArea().findByText("저장 완료")).closest(".result") as HTMLElement;
@@ -1220,12 +1227,23 @@ describe("톡톡·주문·예약 같은 기록 변경", () => {
   });
 
   test("카드가 하나면 지금처럼 카드에 [저장]·[취소]가 있다", async () => {
-    const api = fakeApi([{ reply: BUNDLE_REPLY.split("\n").slice(0, 3).join("\n"), next_actions: CHIPS, place: BEFORE, pending: [HOURS_PENDING] }]);
+    const api = fakeApi([
+      { reply: BUNDLE_REPLY.split("\n").slice(0, 3).join("\n"), next_actions: CHIPS, place: BEFORE, pending: [HOURS_PENDING] },
+      { reply: "저장했어요.", place: { ...BEFORE, business_hours: HOURS }, pending: [] },
+    ]);
     const { user } = await open(api);
     await say(user, "일요일도 열어 줘");
     const card = await screen.findByRole("region", { name: "저장 전 확인" });
     expect(within(card).getByRole("button", { name: "저장" })).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "취소" })).toBeInTheDocument();
+    // 말풍선에는 같은 저장·취소 칩도, 변경 줄도 다시 나오지 않는다.
+    const bubble = chatArea().getByText("영업시간·휴무 변경: 아래처럼 바꿀까요?").closest(".bubble") as HTMLElement;
+    expect(within(bubble).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(bubble).queryByText("일요일 10:00 ~ 18:00")).not.toBeInTheDocument();
+    // 저장하고 카드가 닫혀도 지난 말풍선에 저장·취소 칩이 되살아나지 않는다.
+    await user.click(within(card).getByRole("button", { name: "저장" }));
+    await chatArea().findByText("저장 완료");
+    expect(within(bubble).queryByRole("button")).not.toBeInTheDocument();
   });
 });
 
@@ -1316,5 +1334,77 @@ describe("비서 제안", () => {
     await user.click(within(card).getByRole("button", { name: "나중에" }));
     expect(page.queryByText("대표키워드 설정")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /비서 제안/ })).toHaveAccessibleName("비서 제안 (새 제안 1개)");
+  });
+});
+
+describe("가게 기본 정보 입력 블록", () => {
+  const INFO = { name: "샘플 러시안 베이커리", address: "서울시 용산구 가상로 0", phone: "02-000-0000", introduction: "작은 러시안 베이커리예요." };
+  const PLACE = { ...SEED, business_info: INFO };
+
+  /** 새 대화가 이 가게 정보로 시작하는 가짜 서버. */
+  function bizApi(script: Parameters<typeof fakeApi>[0] = [], pending: Pending[] = []) {
+    const api = fakeApi(script, { place: PLACE, pending });
+    api.start.mockResolvedValue({ session_id: "s1", place: PLACE, pending: pending as never[] });
+    return api;
+  }
+
+  async function openForm(api = bizApi()) {
+    const opened = await open(api);
+    await opened.user.click(screen.getByRole("button", { name: "AgentHan 도구함" }));
+    await opened.user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "가게 기본 정보 수정" }));
+    const form = chatArea().getByRole("form", { name: "가게 기본 정보" });
+    return { ...opened, form: within(form) };
+  }
+
+  test("도구함에서 누르면 서버에 묻지 않고 지금 값으로 채운 상호·주소·전화번호·소개글 칸이 대화에 열린다", async () => {
+    const { api, form } = await openForm();
+    expect(form.getByLabelText("상호")).toHaveValue(INFO.name);
+    expect(form.getByLabelText("주소")).toHaveValue(INFO.address);
+    expect(form.getByLabelText("전화번호")).toHaveValue(INFO.phone);
+    expect(form.getByLabelText("소개글")).toHaveValue(INFO.introduction);
+    expect(form.getByRole("button", { name: "미리 보기" })).toBeDisabled(); // 고친 칸이 없다
+    expect(api.act).not.toHaveBeenCalled();
+    expect(api.say).not.toHaveBeenCalled();
+  });
+
+  test("[추천 글 받기]는 소개글 칸만 채우고, [미리 보기]는 고친 칸만 business_info.edit로 보낸다", async () => {
+    const pending = { task_id: "t3", version: 1, feature: "business_info", after: { ...PLACE, business_info: { ...INFO, introduction: "x" } }, changes: {} };
+    const { user, api, form } = await openForm(bizApi([{ reply: "아래처럼 바꿀까요?", place: PLACE, pending: [pending] }]));
+    await user.click(form.getByRole("button", { name: "추천 글 받기" }));
+    expect(api.draftIntroduction).toHaveBeenCalledWith("s1");
+    await waitFor(() => expect(form.getByLabelText("소개글")).toHaveValue("이태원 골목에서 매일 아침 메도빅을 굽는 러시안 베이커리예요."));
+    expect(form.getByText("추천 글을 넣었어요. 마음대로 고쳐 쓰세요.")).toBeInTheDocument();
+    expect(api.act).not.toHaveBeenCalled(); // 추천은 저장하지 않는다
+    await user.clear(form.getByLabelText("전화번호"));
+    await user.type(form.getByLabelText("전화번호"), "02-111-2222");
+    await user.click(form.getByRole("button", { name: "미리 보기" }));
+    expect(api.act).toHaveBeenCalledWith("s1", {
+      action_id: "business_info.edit",
+      label: "가게 정보 바꾸기: 전화번호·소개글",
+      args: { phone: "02-111-2222", introduction: "이태원 골목에서 매일 아침 메도빅을 굽는 러시안 베이커리예요." },
+    });
+    expect(chatArea().queryByRole("form", { name: "가게 기본 정보" })).not.toBeInTheDocument();
+  });
+
+  test("추천이 실패하면 칸은 그대로 두고 다시 누르라고 알린다. 상호를 비우면 막힌다", async () => {
+    const api = bizApi();
+    api.draftIntroduction.mockRejectedValueOnce(new Error("502"));
+    const { user, form } = await openForm(api);
+    await user.click(form.getByRole("button", { name: "추천 글 받기" }));
+    expect(await form.findByText("소개글 추천을 만들지 못했어요. 잠시 뒤 다시 눌러 주세요.")).toBeInTheDocument();
+    expect(form.getByLabelText("소개글")).toHaveValue(INFO.introduction);
+    await user.clear(form.getByLabelText("상호"));
+    expect(form.getByText("상호는 비울 수 없어요.")).toBeInTheDocument();
+    expect(form.getByRole("button", { name: "미리 보기" })).toBeDisabled();
+  });
+
+  test("승인 카드에 바뀌는 가게 정보가 보인다", async () => {
+    const after = { ...PLACE, business_info: { ...INFO, phone: "02-111-2222", introduction: "새로 쓴 소개글이에요." } };
+    const pending = { task_id: "t3", version: 1, feature: "business_info", after, changes: {} };
+    await open(bizApi([], [pending]));
+    const card = within(await screen.findByRole("region", { name: "저장 전 확인" }));
+    expect(card.getByText("전화번호: 02-000-0000 → 02-111-2222")).toBeInTheDocument();
+    expect(card.getByText("새 소개글: 새로 쓴 소개글이에요.")).toBeInTheDocument();
+    expect(card.queryByText(/정보를 바꿔요/)).not.toBeInTheDocument();
   });
 });
