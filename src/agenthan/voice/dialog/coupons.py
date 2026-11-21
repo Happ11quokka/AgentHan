@@ -3,6 +3,10 @@
     result = check_coupons(cart.total(), coupons, today, menu)
     result.total  # 낼 금액. 복창·손님 화면·사장님 카드·주문 현황·DB 합계가 모두 이 값을 쓴다
 
+주문서에는 계산 결과의 쿠폰·할인액이 적힌다(`Order.coupon_*`·`discount`). 적힌 할인액으로 낼 금액을
+다시 낼 때는 `payable`(사장님 카드·주문 현황·통화 이벤트), 금액 칸 한 벌(할인 전·낼 금액·할인·쿠폰
+이름)은 `amount_json`이다. DB(voice를 import하지 않는다)는 계약의 `Order.total`을 쓴다(같은 셈).
+
 할인 전 금액(장바구니 합계)과 가게 쿠폰 목록, 오늘(가게 시각) 날짜를 받아 셋 중 하나를 돌려준다.
 
 - `Applied`(적용): 쓸 쿠폰, 할인액, 낼 금액
@@ -89,7 +93,7 @@ class Applied:
 
     @property
     def total(self) -> int:
-        return self.subtotal - self.discount
+        return payable(self.subtotal, self.discount)
 
 
 @dataclass(frozen=True)
@@ -122,6 +126,20 @@ class NoCoupon:
 
 
 CouponResult = Applied | Shortfall | NoCoupon
+
+
+def payable(subtotal: int, discount: int) -> int:
+    """낼 금액 = 할인 전 금액 - 할인액 (할인액은 계산이 할인 전 금액을 넘지 않게 정했다)."""
+    return subtotal - discount
+
+
+def amount_json(subtotal: int, discount: int = 0, coupon_name: str = "") -> dict[str, Any]:
+    """금액 칸 한 벌 (통화 `state`·`order` 이벤트, 주문 현황 `amount`): `subtotal`(할인 전)·
+    `total`(낼 금액). 쿠폰을 쓴 주문만 `discount`·`coupon_name`이 붙는다(없으면 쿠폰 전과 같다)."""
+    amount: dict[str, Any] = {"subtotal": subtotal, "total": payable(subtotal, discount)}
+    if discount:
+        amount |= {"discount": discount, "coupon_name": coupon_name}
+    return amount
 
 
 def check_coupons(

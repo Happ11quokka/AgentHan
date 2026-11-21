@@ -41,16 +41,16 @@ rejected(거절) · out_of_stock(재료 소진 거절) · expired(5분 무응답
 거부 사유(`cancel_refusal`)는 지금 결과(`outcome`) 그대로, 통화가 받는 때는 in_call이다. 손님에게
 보일 한 줄은 `CANCEL_REFUSED`
 
-금액 (쿠폰 티켓 09): `subtotal`은 줄 합계, `total` = `subtotal` - 할인액(낼 금액, 사장님 카드
-`total`과 같다). 쿠폰을 쓴 주문만 `discount`·`coupon_name`(주문서에 적힌 쿠폰, 카드 칸)이 있다.
-쿠폰이 없으면 응답이 쿠폰 전과 똑같다(할인 칸 없음). 카드에 쿠폰 칸이 없으면(쿠폰 전 카드) 할인
-없음으로 읽는다.
+금액 (쿠폰 티켓 09): 카드의 `subtotal`(줄 합계)·`discount`·`coupon_name`으로 금액 칸 한 벌
+(`coupons.amount_json`)을 만든다. `total`은 낼 금액(사장님 카드 `total`과 같은 셈). 쿠폰을 쓴
+주문만 `discount`·`coupon_name`이 있다. 쿠폰이 없으면 응답이 쿠폰 전과 똑같다(할인 칸 없음).
 """
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
+from agenthan.voice.dialog.coupons import amount_json
 from agenthan.voice.owner import sms
 
 OrderStage = Literal["checking", "confirmed", "cancelled"]
@@ -101,9 +101,10 @@ def _reason(card: dict[str, Any], outcome: OrderOutcome | None) -> dict[str, str
     if code == "out_of_stock":
         text = sms.rejected_text(code, _menu_names(card, card["reject_menu_ids"]))
     elif code == "free":
-        # 번역이 끝났으면 번역문. 번역하지 못했으면(취소 문자가 원문으로 나감) 원문. 번역 중이면 ""
-        texted = any(t["kind"] == "rejected" for t in card.get("sms", ()))
-        text = card.get("reject_text_ko") or (card["reject_text"] if texted else "")
+        # 번역이 끝났으면 번역문. 번역하지 못했으면(`reject_text_settled`, 취소 문자가 원문으로
+        # 나감) 원문. 번역 중이면 ""
+        settled = card["reject_text_settled"]
+        text = card["reject_text_ko"] or (card["reject_text"] if settled else "")
     else:
         text = sms.rejected_text(code)
     return {"code": code, "text": text}
@@ -115,7 +116,7 @@ CancelRefusal = Literal["accepted", "auto", "rejected", "out_of_stock", "expired
                         "customer_cancelled", "in_call"]
 
 # 거부 사유 → 손님 화면 한 줄 (티켓 07). 진 쪽 화면은 이 줄과 함께 이긴 결과(현황)를 보인다
-CANCEL_REFUSED: dict[str, str] = {
+CANCEL_REFUSED: dict[CancelRefusal, str] = {
     "accepted": "가게가 이미 주문을 확정했어요. 취소하려면 가게로 전화 주세요.",
     "auto": "가게가 이미 주문을 확정했어요. 취소하려면 가게로 전화 주세요.",
     "rejected": "가게에서 이미 주문을 취소했어요.",
@@ -157,8 +158,6 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False,
     else:
         pickup = {"time": card["pickup_time"], "label": card["pickup_label"],
                   "original_time": "", "original_label": ""}
-    subtotal = sum(line["subtotal"] for line in card["lines"])
-    discount = card.get("discount", 0)
     stage = order_stage(card, unspoken=unspoken)
     outcome = order_outcome(card, stage)
     return {
@@ -171,7 +170,8 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False,
              "subtotal": line["subtotal"]}
             for line in card["lines"]
         ],
-        "amount": _amount(subtotal, discount, card.get("coupon_name", "")),
+        # 카드의 할인 전 금액·할인·쿠폰 이름 그대로 (낼 금액은 카드 `total`과 같은 셈)
+        "amount": amount_json(card["subtotal"], card["discount"], card["coupon_name"]),
         "pickup": pickup,
         "outcome": outcome,
         "reason": _reason(card, outcome),
@@ -180,10 +180,3 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False,
         "can_cancel": cancellable and can_cancel(card, stage, outcome),  # 손님 취소 (티켓 07)
     }
 
-
-def _amount(subtotal: int, discount: int, coupon_name: str) -> dict[str, Any]:
-    """주문 현황 금액 칸. 할인 칸은 쿠폰을 쓴 주문만 (쿠폰 티켓 09)."""
-    amount: dict[str, Any] = {"subtotal": subtotal, "total": subtotal - discount}
-    if discount:
-        amount |= {"discount": discount, "coupon_name": coupon_name}
-    return amount

@@ -178,7 +178,8 @@ from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
 from agenthan.voice.owner.order_archive import ArchivedOrder, OrderArchive, archived_order_status
-from agenthan.voice.owner.order_status import cancel_refusal, order_status
+from agenthan.voice.owner.order_card import clock_label, order_card, won_label
+from agenthan.voice.owner.order_status import CancelRefusal, cancel_refusal, order_status
 from agenthan.voice.owner.translate import Translator
 from agenthan.voice.store_snapshot import StoreProvider
 
@@ -216,7 +217,7 @@ class NotCancellable(Exception):
     `code`: 거부 사유(`order_status.cancel_refusal`), `status`: 지금 손님 현황(진 쪽 화면이 보인다).
     """
 
-    def __init__(self, code: str, status: dict[str, Any]) -> None:
+    def __init__(self, code: CancelRefusal, status: dict[str, Any]) -> None:
         super().__init__(code)
         self.code = code
         self.status = status
@@ -238,7 +239,7 @@ _LATE = frozenset({"timeout", "call_ended"})
 _UNDECIDED: dict[str, Any] = {
     "status": "new", "decided_at": "", "delay_min": 0, "owner_pickup_time": "",
     "owner_pickup_label": "", "delay_reply": "", "reject_reason": "", "reject_menu_ids": [],
-    "reject_text": "", "reject_text_ko": ""}
+    "reject_text": "", "reject_text_ko": "", "reject_text_settled": False}
 
 
 @dataclass(frozen=True)
@@ -685,7 +686,11 @@ class OwnerHub:
         card = self._orders.get(order_id)
         if card is None:
             raise UnknownCard(order_id)
-        return order_status(card, unspoken=order_id in self._unspoken, cancellable=True)
+        return self._customer_status(card)
+
+    def _customer_status(self, card: dict[str, Any]) -> dict[str, Any]:
+        """허브 주문 카드 → 손님 현황. 허브 카드는 손님 취소 API가 받는다(`cancellable`)."""
+        return order_status(card, unspoken=card["id"] in self._unspoken, cancellable=True)
 
     def cancel_by_customer(self, order_id: str) -> dict[str, Any]:
         """손님 취소 (전화 메뉴·주문 현황·쿠폰 티켓 07): 손님이 주문 현황에서 [취소하기]를 눌렀다.
@@ -759,8 +764,7 @@ class OwnerHub:
         try:
             card = self._orders.get(order_id)
             if card is not None:  # 구독을 연 사이 상한으로 지워졌으면 첫 현황 없이 기다린다
-                status = order_status(card, unspoken=order_id in self._unspoken,
-                                      cancellable=True)
+                status = self._customer_status(card)
                 self._order_sent[order_id] = status
                 yield OwnerEvent("order.status", status, self._seq)
             while True:
@@ -777,7 +781,7 @@ class OwnerHub:
         watchers = self._order_watchers.get(order_id)
         if not watchers:
             return
-        status = order_status(card, unspoken=order_id in self._unspoken, cancellable=True)
+        status = self._customer_status(card)
         if self._order_sent.get(order_id) == status:
             return
         self._order_sent[order_id] = status
@@ -969,6 +973,9 @@ class OwnerHub:
             "reject_menu_ids": [],
             "reject_text": "",
             "reject_text_ko": "",
+            # 그 글의 번역이 끝났다(됐거나 못 했거나): 손님 주문 현황의 사유 한 줄이 정해졌다.
+            # 번역을 못 했으면 원문이 한 줄이다(`order_status._reason`)
+            "reject_text_settled": False,
             # 이 카드에서 오늘 품절로 바꾼 메뉴(티켓 06): [{"menu_id", "name_ko", "name_owner"}].
             # 지금도 품절인지는 오늘 품절 목록(`owner.sold_out`)으로 본다(되돌리기 버튼)
             "sold_out": [],
@@ -1543,6 +1550,7 @@ class OwnerHub:
             text = sms.rejected_free_text(translated)
         else:
             text = sms.untranslated_rejected_text(card["reject_text"])
+        self._orders[order_id] = {**card, "reject_text_settled": True}
         self._text_customer(order_id, "rejected", text, translate_failed=not translated)
 
     def _text_written_answer(self, question_id: str, translated: str) -> None:
@@ -1560,30 +1568,8 @@ class OwnerHub:
         return {"lines": card_lines, "total": total, "total_label": won_label(total)}
 
     def _order_card(self, order: Order) -> dict[str, Any]:
-        lines = self._card_lines(order.lines)
-        subtotal = sum(line["subtotal"] for line in lines)
-        total = subtotal - order.discount  # 낼 금액: 통화가 복창한 쿠폰 할인 (쿠폰 티켓 09)
         received_at = order.created_at or self._clock.now().isoformat()
-        return {
-            "id": order.id,
-            "status": "new",
-            "received_at": received_at,
-            "received_label": clock_label(received_at),  # 주문 시각 `16:05` (이야기 25, 리뷰 P1)
-            # 손님 이름(성). 지금 통화 엔진은 이름을 받지 않아 비어 있다. 차 있으면 카드에 보인다
-            "customer_name": order.customer_name,
-            "pickup_time": order.pickup_time,
-            "pickup_label": clock_label(order.pickup_time),
-            "lines": lines,
-            "total": total,
-            "total_label": won_label(total),
-            # 쿠폰 (쿠폰 티켓 09). 쿠폰이 없으면 할인 0·이름 "" (카드에 할인 줄이 없다)
-            "subtotal": subtotal,
-            "subtotal_label": won_label(subtotal),
-            "coupon_id": order.coupon_id,
-            "coupon_name": order.coupon_name,
-            "discount": order.discount,
-            "discount_label": won_label(order.discount),
-        }
+        return order_card(order, self._card_lines(order.lines), received_at)
 
     def _card_lines(self, order_lines: Sequence[OrderLine]) -> list[dict[str, Any]]:
         """주문 카드·통화 카드가 같이 쓰는 줄 모양."""
@@ -1737,15 +1723,3 @@ def _later(iso: str, minutes: int) -> str:
     if not iso:
         return ""
     return (datetime.fromisoformat(iso) + timedelta(minutes=minutes)).isoformat()
-
-
-def clock_label(iso: str) -> str:
-    """ISO 8601 시각 → `18:30` (가게 시각 그대로, 24시간제). 비면 빈 글."""
-    if not iso:
-        return ""
-    return datetime.fromisoformat(iso).strftime("%H:%M")
-
-
-def won_label(amount: int) -> str:
-    """원 금액 → `25,000₩` (언어와 상관없는 고정 표기)."""
-    return f"{amount:,}₩"

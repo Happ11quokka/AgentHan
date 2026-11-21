@@ -113,6 +113,8 @@ _STATUS: tuple[tuple[type[Exception], int], ...] = (
     (AlreadyDecided, 409),  # 주문 결정은 한 번만 (주문 승인 티켓 02)
     (ValueError, 422),  # 모르는 답·빈 글
 )
+# 손님 주문 현황 경로들(조회·구독·취소)의 404 문구
+_ORDER_NOT_FOUND = {404: "주문을 찾을 수 없어요"}
 
 
 @contextmanager
@@ -270,18 +272,18 @@ def customer_orders_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) -
 
     def watch(order_id: str) -> AsyncIterator[OwnerEvent]:
         # 스트림을 열기 전에(의존성에서) 모르는 주문을 404로 거절한다
-        with _hub_errors({404: "주문을 찾을 수 없어요"}):
+        with _hub_errors(_ORDER_NOT_FOUND):
             return hub.watch_order(order_id)
 
     @router.get("/{order_id}")
     async def order_status(order_id: str) -> dict[str, Any]:
-        with _hub_errors({404: "주문을 찾을 수 없어요"}):
+        with _hub_errors(_ORDER_NOT_FOUND):
             return await hub.lookup_order_status(order_id)
 
     @router.post("/{order_id}/cancel")
     async def cancel(order_id: str) -> dict[str, Any]:
         try:
-            with _hub_errors({404: "주문을 찾을 수 없어요"}):
+            with _hub_errors(_ORDER_NOT_FOUND):
                 return hub.cancel_by_customer(order_id)
         except NotCancellable as refused:
             raise HTTPException(status_code=409, detail={

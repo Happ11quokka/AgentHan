@@ -157,7 +157,7 @@ from agenthan.voice.dialog.approval import (
     only_the_rest,
 )
 from agenthan.voice.dialog.cart import Cart
-from agenthan.voice.dialog.coupons import Applied, Coupon
+from agenthan.voice.dialog.coupons import Applied, Coupon, amount_json
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
 from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
@@ -2721,20 +2721,15 @@ def _coupon_amount(result: TurnResult) -> dict[str, Any]:
     예전과 같은 모양(`total`만)."""
     coupon = result.coupon
     if not isinstance(coupon, Applied):
-        return {"total": result.cart.total()}
-    return {"total": coupon.total, "subtotal": coupon.subtotal, "discount": coupon.discount,
-            "coupon_name": coupon.coupon.title}
+        return amount_json(result.cart.total())
+    return amount_json(coupon.subtotal, coupon.discount, coupon.coupon.title)
 
 
 def _order_amount(order: Order) -> dict[str, Any]:
     """`order` 이벤트 금액 (쿠폰 티켓 09): 주문서에 적힌 쿠폰으로.
 
     모양은 `_coupon_amount`와 같다."""
-    subtotal = sum(line.unit_price * line.quantity for line in order.lines)
-    if not order.discount:
-        return {"total": subtotal}
-    return {"total": subtotal - order.discount, "subtotal": subtotal,
-            "discount": order.discount, "coupon_name": order.coupon_name}
+    return amount_json(order.subtotal, order.discount, order.coupon_name)
 
 
 def _order_json(order: Order) -> dict[str, Any]:

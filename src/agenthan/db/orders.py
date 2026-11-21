@@ -55,8 +55,8 @@ _OWNER_COLUMNS = (
 
 def _order_values(order: Order, store_id: str) -> tuple:
     lines = [asdict(line) for line in order.lines]
-    # 낼 금액(할인 뒤). 할인액은 통화가 복창한 쿠폰 계산 결과다 (쿠폰 티켓 09, 마이그레이션 006)
-    total = sum(line.unit_price * line.quantity for line in order.lines) - order.discount
+    # 낼 금액(할인 뒤, `Order.total`). 할인액은 통화가 복창한 쿠폰 계산 결과다 (쿠폰 티켓 09)
+    total = order.total
     return (
         order.id,
         store_id,

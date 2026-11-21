@@ -11,8 +11,9 @@
 - voice와 db는 서로를 import하지 않는다(PRD §7). db 행 → `ArchivedOrder`로 옮기는 일은
   `agenthan.serve`가 한다
 - 기록 한 줄을 허브 주문 카드 모양으로 되살린 뒤(`archived_card`) 허브와 같은 `order_status`로
-  응답을 만든다. 그래서 응답에 칸을 더하는 티켓(05 결과·사유, 07 손님 취소, 09 할인)은 카드
-  칸만 맞추면 DB 쪽도 같은 값을 낸다. 기록에 없는 카드 칸은 기본값이다(통화 중 칸·번역·문자)
+  응답을 만든다. 카드의 주문서 칸(줄·금액·픽업 시각)은 허브와 같은 `order_card.order_card`가
+  만든다. 그래서 응답에 칸을 더하는 티켓(05 결과·사유, 07 손님 취소, 09 할인)은 카드 칸만 맞추면
+  DB 쪽도 같은 값을 낸다. 기록에 없는 카드 칸은 기본값이다(통화 중 칸·번역·문자)
 - 단계: 결정 전 기록(`owner_status` '')은 가게 확인 중이다. 다만 허브의 자동 취소 타이머는 서버와
   같이 사라졌으므로, 확인 요청을 연 시각(= 주문서 `created_at`, 손님이 "네"라고 한 턴) + 자동
   취소 마감이 지났으면 자동 취소(expired)로 읽는다. 주문서 시각이 지금(가게 시계)보다 뒤인
@@ -29,6 +30,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from agenthan.core.contracts import Order
+from agenthan.voice.owner.order_card import clock_label, order_card
 from agenthan.voice.owner.order_status import order_status
 
 
@@ -93,39 +95,28 @@ def archived_card(
         for line in order.lines
     ]
     names = {line["menu_id"]: line["name_ko"] for line in lines}
-    subtotal = sum(line["subtotal"] for line in lines)
     moved = record.owner_pickup_time if status in ("accepted", "auto_accepted") else ""
     stock_out = record.reject_reason == "out_of_stock"
-    return {
-        "id": order.id,
+    # 주문서 칸(줄·금액·픽업 시각)은 허브 카드와 같은 함수로 (리뷰). 금액은 쿠폰 전 기록이면 할인 0
+    return order_card(order, lines, order.created_at) | {
         "status": "accepted" if auto else status,
         "auto_accepted": auto,
-        "received_at": order.created_at,
-        "pickup_time": order.pickup_time,
-        "pickup_label": _clock_label(order.pickup_time),
-        "lines": lines,
-        # 금액은 허브 카드와 같다 (쿠폰 티켓 09): 할인 전·쿠폰·낼 금액. 쿠폰 전 기록은 할인 0
-        "subtotal": subtotal,
-        "coupon_id": order.coupon_id,
-        "coupon_name": order.coupon_name,
-        "discount": order.discount,
-        "total": subtotal - order.discount,
         "stage": "after_call" if status == "new" else "",
         "requested_at": order.created_at if not auto else "",
         "decided_at": decided_at,
         "delay_min": _minutes_between(order.pickup_time, moved),
         "owner_pickup_time": moved,
-        "owner_pickup_label": _clock_label(moved),
+        "owner_pickup_label": clock_label(moved),
         "delay_reply": "",
         "withdrawn": "",
         "reject_reason": record.reject_reason,
         "reject_menu_ids": list(record.reject_menu_ids),
         "reject_text": record.reject_text,
         "reject_text_ko": record.reject_text_ko,
-        # 직접 쓰기 거절 문자는 나갔다(기록을 읽을 때 번역은 이미 끝났다). 그래서 번역이 없으면
-        # 허브의 번역 실패와 같이 원문이 사유 한 줄이다(`order_status._reason`)
-        "sms": [{"kind": "rejected"}] if status == "rejected" and record.reject_reason == "free"
-        else [],
+        # 직접 쓰기 거절 글의 번역은 기록을 읽을 때 이미 끝났다(됐거나 못 했거나). 그래서 번역이
+        # 없으면 허브의 번역 실패와 같이 원문이 사유 한 줄이다(`order_status._reason`)
+        "reject_text_settled": status == "rejected" and record.reject_reason == "free",
+        "sms": [],
         "sold_out": [
             {"menu_id": menu_id, "name_ko": names.get(menu_id, menu_id),
              "name_owner": names.get(menu_id, menu_id)}
@@ -145,8 +136,3 @@ def _minutes_between(start: str, end: str) -> int:
     if not start or not end:
         return 0
     return round((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60)
-
-
-def _clock_label(iso: str) -> str:
-    """`hub.clock_label`과 같다(허브가 이 모듈을 import해서 거꾸로는 못 쓴다)."""
-    return datetime.fromisoformat(iso).strftime("%H:%M") if iso else ""

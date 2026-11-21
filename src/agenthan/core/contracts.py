@@ -121,6 +121,16 @@ class Order:
     coupon_name: str = ""
     discount: int = 0
 
+    @property
+    def subtotal(self) -> int:
+        """줄 합계(할인 전 금액): 줄마다 한 개 가격 × 수량."""
+        return sum(line.unit_price * line.quantity for line in self.lines)
+
+    @property
+    def total(self) -> int:
+        """낼 금액 = 줄 합계 - `discount` (전화 쿠폰 계산 `coupons.payable`과 같은 셈)."""
+        return self.subtotal - self.discount
+
 
 class OrderSink(Protocol):
     """주문을 받는 쪽. 데모에서는 메모리 저장 + 사장님 화면 표시."""
