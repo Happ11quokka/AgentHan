@@ -522,6 +522,29 @@ HELP_GENERIC = re.compile(
 )
 
 
+# "쿠폰 만드는 법": 우리 비서에서 그 기능을 쓰는 방법. 기능 이름·키워드가 맞으면 이 안내를 준다.
+HOW_TO = re.compile(
+    r"(?:하는|만드는|쓰는|올리는|바꾸는|다는|보는|받는|등록하는)\s*(?:법|방법)|사용\s*법"
+)
+
+
+def _feature_how_to(query: str) -> list[dict]:
+    key = normalize(query)
+    rows = []
+    for f in load_features():
+        words = [f["name_ko"], *f.get("keywords_ko", [])]
+        if any(len(normalize(w)) >= 2 and normalize(w) in key for w in words):
+            rows.append(
+                {
+                    "id": f"how-{f['id']}",
+                    "title": f"{f['name_ko']} 하는 법",
+                    "how": f"왼쪽 아래 도구함에서 '{f['name_ko']}' 버튼을 누르거나, "
+                    f"비서에게 바로 말해 주세요. {f['summary_ko']}",
+                }
+            )
+    return rows[:1]
+
+
 def _help(store, args):
     key = normalize(args["query"])
     found = [
@@ -529,8 +552,11 @@ def _help(store, args):
         for a in HELP_ARTICLES
         if any(normalize(k) in key for k in a["topics"]) or key in normalize(a["title"])
     ]
-    if not found and all(HELP_GENERIC.search(word) for word in key.split()):
+    # 한 글자 낱말("수", "법")은 주제가 아니다.
+    if not found and all(HELP_GENERIC.search(w) for w in args["query"].split() if len(w) > 1):
         found = [a for a in HELP_ARTICLES if a["id"] == "help-5"]
+    if not found and HOW_TO.search(args["query"]):
+        found = _feature_how_to(args["query"])
     if found:
         return {"ok": True, "action": "read", "found": True, "records": found}
     # Nothing matches: say so and point to the customer center (not a matching article).

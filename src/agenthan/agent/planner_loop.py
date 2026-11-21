@@ -164,6 +164,20 @@ OUT = (
     "우리 가게의 메뉴·영업시간·쿠폰·리뷰·통계는 도와드릴 수 있어요."
 )
 # 계획은 대상을 고르고, 저장 권한은 기존 승인 문법으로 확인한다(단어 일부는 승인 아님).
+# 고객센터 안내 글(help-4)에는 주소가 없어 "고객센터 문의하기:" 뒤가 비었다. 답 문장에만 붙인다
+# (도구 결과는 그대로 둬서 평가 녹화와 맞춘다).
+HELP_CENTER = "네이버 고객센터 https://help.naver.com"
+
+
+def help_line(row: dict) -> str:
+    """도움말 한 줄: 사용법 안내 문장, "제목: 주소", 고객센터면 안내 주소."""
+    if row.get("how"):
+        return f"{row['title']}: {row['how']}"
+    if row.get("url"):
+        return f"{row['title']}: {row['url']}"
+    return f"{row['title']}: {HELP_CENTER}" if row.get("id") == "help-4" else row["title"]
+
+
 CANCEL_WORDS = re.compile(r"취소|그만|안\s*할|안\s*해|됐어|하지\s*마|말래|접을|no\b", re.I)
 MAX_SHOWN = 8
 SHOWN_TURNS = 3  # "최근 보여 준 것"은 직전 몇 턴의 조회·버튼 결과만 남긴다.
@@ -676,8 +690,15 @@ class PlannerLoop:
         return {"answer": answer}
 
     def plan(self, state):
-        from agenthan.agent.owner_assistant import Route
+        from agenthan.agent.owner_assistant import Route, keyword_feature
 
+        # 점검에서 엉뚱한 기능으로 간 문장(어제 손님, ~하는 법, 순위 올리기)은
+        # 모델 계획 없이 그 기능으로 보낸다.
+        keyword = None if self.started else keyword_feature(state["text"])
+        if keyword and not (self.last_preview() is not None and self.approves(state["text"])):
+            self.a.trace["keyword_route"] = keyword
+            self.legacy_route = Route(keyword, "keyword")
+            return {"next": "legacy"}
         tasks = self.open_view()
         shown = self.shown_view()
         self.review_candidates = (
@@ -2884,7 +2905,7 @@ class PlannerLoop:
                 if result.get("found")
                 else "맞는 도움말이 없어 고객센터를 안내해요."
             )
-            return "\n".join([head, *(f"{r['title']}: {r.get('url', '')}" for r in rows)])
+            return "\n".join([head, *(help_line(r) for r in rows)])
         return result.get("text")
 
     def read_text(self):
