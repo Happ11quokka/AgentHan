@@ -6,6 +6,7 @@
 // 다시 열면 끝나지 않은 주문으로 가고, [새로 전화하기]는 새 통화 화면으로 돌아간다(티켓 06, `orderRoute.ts`).
 // 취소된 주문의 [다시 주문하기]는 같은 길로 통화 화면에 돌아가 바로 새 통화를 건다.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { BrandLogo } from '../../components/BrandMark.tsx'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { DiscountRows } from './DiscountRows.tsx'
@@ -137,6 +138,7 @@ export default function PhonePage() {
     return (
       <main className="phone">
         <header className="phone-head">
+          <BrandLogo collapsed={false} />
           <p className="phone-store">가게 전화 주문</p>
           <p className={`phone-status phone-status-${fromCall ? state.status : 'idle'}`} role="status">
             {fromCall ? statusLabel(state) : '주문 현황'}
@@ -164,6 +166,7 @@ export default function PhonePage() {
   return (
     <main className="phone">
       <header className="phone-head">
+        <BrandLogo collapsed={false} />
         <p className="phone-store">가게 전화 주문</p>
         <p className={`phone-status phone-status-${state.status} phone-phase-${state.phase ?? 'none'}`} role="status">
           {statusLabel(state)}
