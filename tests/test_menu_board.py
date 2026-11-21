@@ -65,9 +65,11 @@ class FakeV3:
     """메뉴판 읽기 질문에는 board 답을, 메뉴 하나 질문에는 NAMES를 돌려준다. 이름표 읽기에는
     잘라 온 자리의 이름표 색(labels: 이름 → BGR)으로 답한다."""
 
-    def __init__(self, board: dict | str, labels: dict = BOARD_LABELS):
+    def __init__(self, board: dict | str, labels: dict = BOARD_LABELS, strip: list | None = None):
         self.board = board
         self.labels = labels
+        # 조각 읽기마다 같은 답(합칠 때 겹친 줄은 하나로). 없으면 빈 줄
+        self.strip = list(strip or [])
         self.calls = []
 
     def __call__(self, model, body):
@@ -80,6 +82,9 @@ class FakeV3:
                 return {"message": {"content": json.dumps(photos, ensure_ascii=False)}}
             if text.startswith("메뉴판 일부를 잘라 낸 그림이다"):  # 사진 위치 다시 묻기
                 return {"message": {"content": '{"box": [0.2, 0.2, 0.8, 0.8]}'}}
+            if text == menu_board.STRIP_PROMPT:  # 큰 가로 메뉴판의 세로 조각 읽기
+                answer = json.dumps({"items": self.strip}, ensure_ascii=False)
+                return {"message": {"content": answer}}
             if text == menu_board.LABEL_PROMPT:  # 사진 아래 이름표 읽기
                 uri = content[0]["dataUri"]["data"]
                 label = label_by_color(base64.b64decode(uri.split(",", 1)[1]), self.labels)
@@ -163,7 +168,9 @@ def test_big_photos_are_shrunk_for_reading():
     big = cv2.imencode(".jpg", np.zeros((3000, 4000, 3), np.uint8))[1].tobytes()
     fake = FakeV3(ITEMS)
     menu_board.read_board(big, call=fake)
-    uri = fake.calls[0]["messages"][0]["content"][0]["dataUri"]["data"]
+    [whole] = [c for c in fake.calls
+               if c["messages"][0]["content"][1]["text"] == menu_board.BOARD_PROMPT]
+    uri = whole["messages"][0]["content"][0]["dataUri"]["data"]
     sent = cv2.imdecode(np.frombuffer(base64.b64decode(uri.split(",", 1)[1]), np.uint8), 1)
     assert max(sent.shape[:2]) == menu_board.READ_SIDE
 
@@ -937,3 +944,59 @@ def test_the_fill_run_is_not_a_change_to_approve():
     fill = {"started_at": 1.0, "seconds": 2.0, "menu_ids": [], "fields": 0}
     after = {"menu": [], "menu_fill": fill}
     assert place.changes(before, after) == {}
+
+
+# ---------------------------------------------------------------- 큰 가로 메뉴판 (2026-11-22)
+# 메뉴 54개인 네 칸 메뉴판을 한 번에 읽자 HCX-005가 24개에서 멈췄다
+# (오른쪽 베이커리 칸 통째로 빠짐).
+
+
+def wide_board() -> bytes:
+    return cv2.imencode(".jpg", np.full((1000, 1500, 3), 255, np.uint8))[1].tobytes()
+
+
+def test_a_wide_board_is_also_read_in_strips_and_merged_in_column_order():
+    whole = {"kind": "menu_board", "items": [
+        {"name": "아메리카노 (아아)", "price": 4500}, {"name": "뱅쇼", "price": 6500}],
+        "photos": []}
+    strip = [{"name": "아메리카노", "price": 4500},
+             {"name": "★대표 메도빅 (꿀 케이크) ……", "price": 7500},
+             {"name": "* 인기 피로그 (러시아식 파이) …", "price": 4500},
+             {"name": "뱅쇼 …", "price": 6500},
+             {"name": "(고기 / 감자 / 양배추 중 선택)", "price": None}]
+    fake = FakeV3(whole, strip=strip)
+    kind, items = menu_board.read_board(wide_board(), call=fake)
+    assert kind == "menu_board"
+    assert [(i.name, i.price, i.subtitle) for i in items] == [
+        ("아메리카노", 4500, "아아"),  # 조각과 전체에 다 있으면 하나로, 풀이는 채운다
+        ("메도빅", 7500, "꿀 케이크"),  # 앞 표시·점선을 뗀다
+        ("피로그", 4500, "러시아식 파이"),
+        ("뱅쇼", 6500, ""),  # 조각이 놓친 줄은 전체 읽기에서
+    ]
+    texts = [c["messages"][0]["content"][1]["text"] for c in fake.calls]
+    assert texts.count(menu_board.STRIP_PROMPT) == len(menu_board.STRIPS)
+
+
+def test_a_small_or_tall_photo_is_read_once():
+    tall = cv2.imencode(".jpg", np.full((1600, 1200, 3), 255, np.uint8))[1].tobytes()
+    for image in (BOARD, tall):
+        fake = FakeV3(ITEMS)
+        menu_board.read_board(image, call=fake)
+        assert len(fake.calls) == 1
+
+
+def test_a_failed_strip_read_keeps_the_whole_read():
+    class Broken(FakeV3):
+        def __call__(self, model, body):
+            if body["messages"][-1]["content"][1]["text"] == menu_board.STRIP_PROMPT:
+                raise menu_board.ClovaV3Error("down")
+            return super().__call__(model, body)
+
+    whole = {"kind": "menu_board", "items": [{"name": "메도빅", "price": 7500}], "photos": []}
+    items = menu_board.read_board(wide_board(), call=Broken(whole))[1]
+    assert [i.name for i in items] == ["메도빅"]
+
+
+def test_a_food_photo_ignores_the_strips():
+    fake = FakeV3({"kind": "food"}, strip=[{"name": "메도빅", "price": 7500}])
+    assert menu_board.read_board(wide_board(), call=fake) == ("food", [])

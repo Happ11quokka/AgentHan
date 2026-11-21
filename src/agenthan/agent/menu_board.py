@@ -52,6 +52,27 @@ BOARD_PROMPT = (
     "음식 사진에 붙은 이름표는 items에 다시 쓰지 마라. 같은 메뉴를 두 번 쓰지 마라."
 )
 
+# 가로로 긴 큰 메뉴판(칸이 여럿, 메뉴 50~70개)은 한 번에 읽으면 HCX-005가 중간에 멈춘다
+# (실측 2026-11-22: 54개 중 24개, 오른쪽 베이커리 칸 통째로 빠짐, finishReason stop).
+# 겹치게 세로로 세 조각을 내 조각마다 메뉴 줄만 다시 읽고(동시에) 전체 읽기와 합친다.
+# 조각마다 글자가 커져 더 잘 읽힌다(같은 메뉴판 51개)
+STRIPS: tuple[tuple[float, float], ...] = ((0.0, 0.36), (0.27, 0.64), (0.5, 1.0))
+STRIP_MIN_WIDTH = 1200  # 이 너비(px) 이상이고
+STRIP_MIN_RATIO = 1.3  # 가로/세로가 이 이상인 사진만 조각낸다
+BOARD_MAX_ITEMS = 80  # 메뉴판 한 장에서 올리는 메뉴 수 상한
+STRIP_PROMPT = (
+    "메뉴판 사진의 일부다. 이름과 가격이 함께 적힌 메뉴 줄을 위에서 아래로, 왼쪽 칸부터 빠짐없이 "
+    "모두 적어라. JSON 하나만 답하라: "
+    '{"items": [{"name": 사진에 적힌 글자 그대로(번역하거나 다른 단어로 바꾸지 마라), '
+    '"price": 원 단위 정수(가격이 둘이면 앞의 것), 안 보이면 null}]}. '
+    "음식 사진 아래 이름표처럼 가격이 없는 글자는 쓰지 마라. "
+    "잘려서 가격이 안 보이는 줄은 쓰지 마라."
+)
+# 메뉴 이름에 딸려 읽힌 점선(가격까지 잇는 줄)과 앞에 붙은 표시("★대표", "* 인기")
+_LEADER = re.compile(r"\s*(?:[.·‥ㆍ]{2,}|…).*$")
+_BADGE = re.compile(r"^(?:[*★☆•]\s*)?(?:대표|인기|추천|베스트|BEST|Best|NEW|New|HOT|Hot)\s+(?=\S)")
+_MARK = re.compile(r"^[*★☆•]+\s*")
+
 Kind = Literal["menu_board", "food", "other"]
 Box = tuple[float, float, float, float]
 Call = Callable[[str, dict], dict]
@@ -92,8 +113,62 @@ def _box(value: object) -> Box | None:
     return (x0, y0, x1, y1)
 
 
+def clean_name(name: str) -> str:
+    """읽은 메뉴 이름에서 점선·앞 표시를 뗀다.
+
+    "★대표 메도빅 (꿀 케이크) ……" → "메도빅 (꿀 케이크)"."""
+    name = _LEADER.sub("", " ".join(name.split()))
+    return _MARK.sub("", _BADGE.sub("", name)).strip()
+
+
+def strips_of(data: bytes) -> list[bytes]:
+    """가로로 긴 큰 메뉴판이면 세로 조각들, 아니면 빈 목록."""
+    import cv2
+    import numpy as np
+
+    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return []
+    height, width = image.shape[:2]
+    if width < STRIP_MIN_WIDTH or width < STRIP_MIN_RATIO * height:
+        return []
+    return [shrink(crop(data, (x0, 0.0, x1, 1.0), margin=0), READ_SIDE) for x0, x1 in STRIPS]
+
+
+def _read_strip(part: bytes, call: Call) -> list[tuple[str, int | None]]:
+    """조각 하나의 메뉴 줄(이름, 가격). 실패하면 빈 목록(전체 읽기는 그대로 쓴다)."""
+    body = {
+        "messages": [{"role": "user", "content": [
+            image_content(part, menu_photo.detect_mime(part)),
+            {"type": "text", "text": STRIP_PROMPT}]}],
+        "maxTokens": 3000,
+        "temperature": 0.1,
+    }
+    try:
+        raw = menu_photo._json_block(menu_photo._content(call(menu_photo.VISION_MODEL, body)), "{")
+    except (ClovaV3Error, ValueError) as error:
+        log.warning("menu board strip read failed: %s", type(error).__name__)
+        return []
+    rows = raw.get("items") if isinstance(raw, dict) else None
+    return [(row["name"], menu_photo.parse_price(row.get("price")))
+            for row in rows or [] if isinstance(row, dict) and isinstance(row.get("name"), str)]
+
+
 def read_board(data: bytes, *, call: Call = chat_v3) -> tuple[Kind, list[BoardItem]]:
-    """사진 한 장 → (종류, 메뉴판이면 메뉴 줄). HCX-005 한 번."""
+    """사진 한 장 → (종류, 메뉴판이면 메뉴 줄). HCX-005 한 번. 가로로 긴 큰 메뉴판은 세로 조각을
+    함께 읽어(`STRIPS`, 동시에) 빠진 메뉴 줄을 채운다."""
+    parts = strips_of(data)
+    if not parts:
+        return _read_whole(data, call, [])
+    with ThreadPoolExecutor(max_workers=len(parts)) as pool:
+        strips = [pool.submit(_read_strip, part, call) for part in parts]
+        whole = _read_whole(data, call, strips)
+    return whole
+
+
+def _read_whole(data: bytes, call: Call, strips: list) -> tuple[Kind, list[BoardItem]]:
+    """전체 읽기(종류·메뉴·음식 사진). `strips`(조각 읽기 Future)가 있으면 메뉴 줄을 합친다:
+    조각 순서(왼쪽 칸부터)가 먼저, 조각에 없던 전체 읽기 메뉴는 뒤에."""
     small = shrink(data, READ_SIDE)
     body = {
         "messages": [
@@ -130,21 +205,37 @@ def read_board(data: bytes, *, call: Call = chat_v3) -> tuple[Kind, list[BoardIt
     kind = raw.get("kind")
     if kind not in ("menu_board", "food", "other"):
         kind = "other"
-    items: list[BoardItem] = []
-    seen: set[str] = set()
+    whole: list[BoardItem] = []
     for row in raw.get("items") or [] if kind == "menu_board" else []:
         if not isinstance(row, dict) or not isinstance(row.get("name"), str):
             continue
-        name, subtitle = split_subtitle(" ".join(row["name"].split()))
-        key = menu_photo._norm(name)
-        if not key or key in seen:
-            continue
-        seen.add(key)
+        name, subtitle = split_subtitle(clean_name(row["name"]))
         price = menu_photo.parse_price(row.get("price"))
-        items.append(BoardItem(name, price, _box(row.get("box")), subtitle))
+        whole.append(BoardItem(name, price, _box(row.get("box")), subtitle))
+    pieces: list[BoardItem] = []
+    if kind == "menu_board":
+        for future in strips:
+            for raw_name, price in future.result():
+                name, subtitle = split_subtitle(clean_name(raw_name))
+                if price is not None and not name.startswith("("):
+                    pieces.append(BoardItem(name, price, None, subtitle))
+    items: list[BoardItem] = []
+    by_key: dict[str, BoardItem] = {}
+    for item in pieces + whole:
+        key = menu_photo._norm(item.name)
+        if not key:
+            continue
+        if key in by_key:  # 같은 메뉴: 빠진 칸만 채운다(가격·위치·풀이)
+            kept = by_key[key]
+            kept.price = kept.price if kept.price is not None else item.price
+            kept.box = kept.box or item.box
+            kept.subtitle = kept.subtitle or item.subtitle
+            continue
+        by_key[key] = item
+        items.append(item)
     if kind == "menu_board" and not items:
         kind = "other"
-    items = items[: menu_photo.MAX_ITEMS]
+    items = items[:BOARD_MAX_ITEMS]
     attach_photos(items, raw.get("photos") if kind == "menu_board" else None)
     return kind, items
 
