@@ -46,7 +46,9 @@
 손님 주문 현황 (`customer_orders_router`, 전화 메뉴·주문 현황·쿠폰 티켓 04):
 - `GET /api/phone/orders/{id}`: 주문 번호(= 통화 id)로 주문 한 건의 현황. 모양과 단계는
   `order_status.py`(줄 목록·금액·픽업 시각·단계 checking·confirmed·cancelled). 토큰 없음(주문
-  번호가 열쇠다). 주문 카드가 없으면(모르는 번호·주문 없이 끝난 통화) 404 "주문을 찾을 수 없어요"
+  번호가 열쇠다). 허브에 주문 카드가 없으면(서버가 다시 뜸) 전화 주문 기록(DB)의 마지막 상태로
+  같은 모양을 준다(티켓 06, `order_archive.py`). 둘 다 없으면(모르는 번호·주문 없이 끝난 통화·DB
+  없음) 404 "주문을 찾을 수 없어요"
 
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
   못 붙여서 쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -244,14 +246,15 @@ def customer_texts_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) ->
 def customer_orders_router(hub: OwnerHub) -> APIRouter:
     """손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04). 사장님 토큰이 없다(주문 번호가 열쇠다).
 
-    `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 없으면 404.
+    `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 카드가 없으면 전화
+    주문 기록(티켓 06, `OwnerHub.lookup_order_status`). 둘 다 없으면 404.
     """
     router = APIRouter(prefix=CUSTOMER_ORDERS_PREFIX)
 
     @router.get("/{order_id}")
     async def order_status(order_id: str) -> dict[str, Any]:
         with _hub_errors({404: "주문을 찾을 수 없어요"}):
-            return hub.order_status(order_id)
+            return await hub.lookup_order_status(order_id)
 
     return router
 

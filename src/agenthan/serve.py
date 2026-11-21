@@ -8,7 +8,9 @@
 - voice는 core 말고 다른 파트를 import하지 않는 규칙이라, 둘을 묶는 일은 이 파일이 한다.
 - AGENTHAN_DB_URL이 있으면 전화 가게 메뉴를 DB에서 읽고 확정·넘김 주문과 사장님 결정(수락·거절 …)을
   phone_orders 표에 남긴다
-  (`agenthan.db`). 비서 가게 파일도 쓸 때마다 DB에 한 벌 남는다(tools/dummy_store.py).
+  (`agenthan.db`). 서버가 다시 떠 허브에 카드가 없는 주문의 손님 주문 현황도 이 표에서 읽는다
+  (전화 메뉴·주문 현황·쿠폰 티켓 06, `OrdersFromDb`).
+  비서 가게 파일도 쓸 때마다 DB에 한 벌 남는다(tools/dummy_store.py).
 - AGENTHAN_ASSISTANT=off면 비서를 붙이지 않는다(전화만). 대화마다 가게 파일을
   AGENTHAN_SESSIONS_DIR(기본 .agenthan/sessions)에 쓴다.
 """
@@ -22,6 +24,7 @@ from fastapi import FastAPI
 
 from agenthan.voice import server as voice_server
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink
+from agenthan.voice.owner.order_archive import ArchivedOrder, OrderArchive
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_snapshot import fixed_store
 
@@ -42,6 +45,7 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
         stores=fixed_store(store),
         order_sinks=sinks,
         decision_sink=decisions,  # 사장님 결정도 DB에 (주문 승인 티켓 10)
+        order_archive=phone_order_archive(settings),  # 주문 현황 다시 열기 (티켓 06)
     )
     include_assistant(app, settings.env)  # from_env면 os.environ·.env를 합친 값
     return app
@@ -88,6 +92,48 @@ class DecisionsToDb:
             owner_pickup_time=decision.owner_pickup_time,
             reject_menu_ids=decision.reject_menu_ids, reject_text=decision.reject_text,
             reject_text_ko=decision.reject_text_ko, order=decision.order))
+
+
+def phone_order_archive(settings: VoiceSettings) -> OrderArchive | None:
+    """AGENTHAN_DB_URL이 있으면 phone_orders를 읽는 주문 기록, 없으면 None(허브만)."""
+    from agenthan import db
+
+    url = settings.env.get(db.DB_URL_ENV, "").strip()
+    return OrdersFromDb(url) if url else None
+
+
+class OrdersFromDb:
+    """전화 주문 기록 읽기: DB 행(db `PhoneOrderRow`) → voice `ArchivedOrder` (티켓 06).
+
+    `DecisionsToDb`의 거꾸로다. 두 파트는 서로를 import하지 않는다(PRD §7). 동기 DB 읽기라 허브가
+    루프 밖 스레드에서 부른다. DB가 꺼져 있거나 실패하면 None(손님 화면은 "찾을 수 없어요").
+    """
+
+    def __init__(self, url: str) -> None:
+        self._url = url
+
+    def load(self, order_id: str) -> ArchivedOrder | None:
+        from agenthan.core.contracts import Order, OrderLine
+        from agenthan.db.orders import find_order
+
+        row = find_order(order_id, self._url)
+        if row is None:
+            return None
+        lines = [
+            OrderLine(menu_id=str(line.get("menu_id", "")), quantity=int(line.get("quantity", 0)),
+                      options=tuple(line.get("options") or ()),
+                      request=str(line.get("request") or ""), name=str(line.get("name") or ""),
+                      unit_price=int(line.get("unit_price") or 0))
+            for line in row.lines
+        ]
+        status = row.status if row.status in ("draft", "confirmed", "handoff") else "draft"
+        return ArchivedOrder(
+            order=Order(id=row.id, lines=lines, pickup_time=row.pickup_time, status=status,
+                        created_at=row.created_at),
+            owner_status=row.owner_status, reject_reason=row.reject_reason,
+            reject_menu_ids=row.reject_menu_ids, reject_text=row.reject_text,
+            reject_text_ko=row.reject_text_ko, decided_at=row.decided_at,
+            owner_pickup_time=row.owner_pickup_time)
 
 
 def phone_knowledge(store_raw: dict | None, settings: VoiceSettings):

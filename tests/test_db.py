@@ -328,6 +328,50 @@ def test_reading_an_order_without_db_finds_nothing() -> None:
 
 
 @needs_db
+def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> None:
+    """서버가 다시 떠 허브에 카드가 없다: 조회 API가 phone_orders의 마지막 상태를 같은 모양으로
+    돌려준다(serve `OrdersFromDb`). 결정 전 주문은 요청 + 5분이 지났으면 자동 취소다."""
+    from datetime import datetime
+
+    from fastapi.testclient import TestClient
+
+    from agenthan.db.orders import PgOrderSink
+    from agenthan.serve import OrdersFromDb, phone_order_archive
+    from agenthan.voice.server import create_app
+    from agenthan.voice.settings import VoiceSettings
+
+    sink = PgOrderSink(url=seeded)
+    delayed = Order(id="call-s1", lines=[OrderLine("m01", 2, name="메도빅", unit_price=7500)],
+                    pickup_time="2026-11-25T18:30:00+09:00", status="confirmed",
+                    created_at="2026-11-25T16:00:00+09:00")
+    sink.submit(delayed)
+    sink.record_decision(_decision("call-s1", "accepted", decided_at="2026-11-25T16:01:00+09:00",
+                                   owner_pickup_time="2026-11-25T18:45:00+09:00"))
+    waiting = Order(id="call-s2", lines=delayed.lines, pickup_time=delayed.pickup_time,
+                    status="confirmed", created_at="2026-11-25T16:00:00+09:00")
+    sink.submit(waiting)  # 통화 뒤 확인 요청: 결정 전에 서버가 꺼졌다
+    sink.flush()
+    sink.close()
+
+    assert phone_order_archive(VoiceSettings(env={})) is None  # DB 없으면 허브만
+    settings = VoiceSettings(log_dir=tmp_path / "logs", web_dist=tmp_path / "dist",
+                             now=datetime.fromisoformat("2026-11-25T16:10:00+09:00"))
+    with TestClient(create_app(settings, order_archive=OrdersFromDb(seeded))) as client:
+        moved = client.get("/api/phone/orders/call-s1").json()
+        expired = client.get("/api/phone/orders/call-s2").json()
+        missing = client.get("/api/phone/orders/call-nope")
+
+    assert (moved["stage"], moved["outcome"], moved["can_cancel"]) == ("confirmed", "delayed",
+                                                                       False)
+    assert (moved["pickup"]["label"], moved["pickup"]["original_label"]) == ("18:45", "18:30")
+    assert moved["lines"] == [{"menu_id": "m01", "name": "메도빅", "quantity": 2, "options": [],
+                               "request": "", "subtotal": 15000}]
+    assert moved["amount"] == {"subtotal": 15000, "total": 15000}
+    assert (expired["stage"], expired["outcome"]) == ("cancelled", "expired")
+    assert missing.status_code == 404
+
+
+@needs_db
 def test_dummy_store_mirrors_to_db_and_restores(db_env, tmp_path) -> None:
     from agenthan.tools.dummy_store import DummyStore
 

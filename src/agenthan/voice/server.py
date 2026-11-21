@@ -51,6 +51,7 @@ from agenthan.voice.owner.http import (
     owner_router,
 )
 from agenthan.voice.owner.hub import OwnerHub
+from agenthan.voice.owner.order_archive import OrderArchive
 from agenthan.voice.owner.papago import papago_from_env
 from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
@@ -72,6 +73,7 @@ def create_app(
     stores: StoreProvider | None = None,
     order_sinks: Sequence[OrderSink] = (),
     decision_sink: DecisionSink | None = None,
+    order_archive: OrderArchive | None = None,
 ) -> FastAPI:
     """`clova`를 골랐는데 어댑터가 없으면 `AdapterMissing`으로 뜨기 전에 멈춘다.
 
@@ -79,6 +81,8 @@ def create_app(
         사장님 허브는 메뉴를 읽을 때마다 부른다. 없으면 `PHONE_STORE_FIXTURE` 파일의 고정 가게.
     order_sinks: 확정·넘김 주문을 사장님 화면과 함께 받을 곳(DB 기록 등). 실패해도 통화는 계속.
     decision_sink: 사장님 결정(수락·거절·자동 취소 …)을 받을 곳(DB 기록). 없으면 메모리만.
+    order_archive: 허브에 카드가 없는 주문의 손님 주문 현황을 읽을 곳(DB 기록, 티켓 06). 없으면
+        허브만(서버가 다시 뜨면 지난 주문은 404).
     """
     settings = settings or VoiceSettings.from_env()
     if stores is None:
@@ -94,7 +98,7 @@ def create_app(
                    question_wait_s=settings.owner_wait_s,
                    approval_wait_s=settings.approval_wait_s,
                    approval_expire_s=settings.approval_expire_s, limits=settings.hub_limits(),
-                   decision_sink=decision_sink)
+                   decision_sink=decision_sink, archive=order_archive)
     # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
     gate = make_gate(settings)
     hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None

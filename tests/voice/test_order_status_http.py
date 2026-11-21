@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from test_owner_http import KEY, NOW, STREAM, _sse
 from test_phone_ws import ORDER_SCRIPT, Phone
 
+from agenthan.core.contracts import Order, OrderLine
+from agenthan.voice.owner.order_archive import ArchivedOrder
 from agenthan.voice.server import create_app
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.ws import WS_PATH
@@ -95,3 +97,59 @@ def test_a_call_that_ended_without_an_order_has_no_order_status(tmp_path) -> Non
         missing = client.get(f"/api/phone/orders/{call_id}")
 
     assert missing.status_code == 404
+
+
+class _Archive:
+    """전화 주문 기록(운영은 DB `phone_orders`) 가짜 (티켓 06)."""
+
+    def __init__(self, *records: ArchivedOrder) -> None:
+        self.records = {r.order.id: r for r in records}
+
+    def load(self, order_id: str) -> ArchivedOrder | None:
+        return self.records.get(order_id)
+
+
+def _recorded(order_id: str, **kw) -> ArchivedOrder:
+    order = Order(id=order_id, lines=[OrderLine("m01", 1, name="메도빅", unit_price=7500)],
+                  pickup_time="2026-11-08T18:30:00+09:00", status="confirmed",
+                  created_at=NOW.isoformat())
+    return ArchivedOrder(order=order, **kw)
+
+
+def test_after_a_restart_an_order_reads_back_from_the_record(tmp_path) -> None:
+    """허브(메모리)에 카드가 없으면 기록의 마지막 상태. 결정 전 기록은 5분이 지났으면 자동 취소."""
+    archive = _Archive(_recorded("call-old", owner_status="rejected", reject_reason="out_of_stock",
+                                 reject_menu_ids=("m01",)),
+                       _recorded("call-late"))
+    settings = VoiceSettings(log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
+                             fake_replies=ORDER_SCRIPT, turn_model="off", owner_key=KEY)
+    with TestClient(create_app(settings, order_archive=archive)) as client:
+        old = client.get("/api/phone/orders/call-old")
+        late = client.get("/api/phone/orders/call-late")
+        missing = client.get("/api/phone/orders/call-nope")
+
+    assert old.status_code == 200
+    body = old.json()
+    assert (body["order_id"], body["stage"], body["outcome"]) == ("call-old", "cancelled",
+                                                                  "out_of_stock")
+    assert body["reason"] == {"code": "out_of_stock", "text": "재료가 떨어졌어요."}
+    assert body["sold_out"] == ["메도빅"]
+    assert body["lines"][0]["name"] == "메도빅" and body["amount"]["total"] == 7500
+    assert body["can_cancel"] is False
+    # 서버 시계(PHONE_NOW)가 요청 때와 같아 아직 확인 중이다
+    assert (late.json()["stage"], late.json()["outcome"]) == ("checking", None)
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "주문을 찾을 수 없어요"
+
+
+def test_an_order_status_address_opens_the_app_in_a_new_tab(tmp_path) -> None:
+    """`/phone/orders/<주문 번호>`를 새 탭에서 열어도 화면(index.html)이 뜬다(API와 다른 길)."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><div id=root></div>", encoding="utf-8")
+    with _client(tmp_path) as client:
+        page = client.get("/phone/orders/call-abc", headers={"accept": "text/html"})
+        api = client.get("/api/phone/orders/call-abc")
+
+    assert page.status_code == 200 and "root" in page.text
+    assert api.status_code == 404
