@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -55,6 +56,18 @@ class OwnerDecision:
     delay_min: int = 0  # 늦춘 수락(delay)의 분 15·30 (티켓 04). 그 밖의 결정은 0
     reason: RejectReason | Literal[""] = ""  # 거절 사유 (kind reject만, 티켓 05)
     menu_ids: tuple[str, ...] = ()  # 재료 소진 거절의 떨어진 메뉴 id들 (티켓 06)
+
+
+def only_the_rest(asked: Iterable[str], sold_out: Iterable[str],
+                  confirmed: Iterable[str]) -> bool:
+    """재료 소진 거절 뒤 확정된 주문이 떨어진 메뉴만 뺀 나머지다(새 메뉴 없음, 티켓 06). 그러면
+    재승인 없이 그 요청의 수락이다. 메뉴 id로 본다: 요청한 메뉴 − 떨어진 메뉴 안에서만 골랐다.
+
+    허브(사장님 카드 accepted)와 세션(손님 화면 accepted)이 같은 규칙을 쓴다(리뷰 3번).
+    """
+    rest = set(asked) - set(sold_out)
+    kept = list(confirmed)
+    return bool(kept) and all(menu_id in rest for menu_id in kept)
 
 
 @dataclass(frozen=True)

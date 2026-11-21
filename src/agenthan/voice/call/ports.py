@@ -276,7 +276,19 @@ class OwnerChannel(Protocol):
         """
 
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
-        """기다리는 중에 손님이 주문을 고치거나(changed) 취소해(cancelled) 확인 요청을 거뒀다."""
+        """기다리는 중에 손님이 주문을 고치거나(changed) 취소해(cancelled) 확인 요청을 거뒀다.
+
+        사장님이 이미 결정했어도 통화가 아직 그 결정을 말하지 않았으면(`approval_said` 전) 거둔
+        쪽이 이긴다. 허브는 그 결정을 없던 일로 한다(확정 문자·결정 기록 없음).
+        """
+
+    def approval_said(self, call_id: str, number: int) -> None:
+        """그 요청의 사장님 결정(시간 초과 말고)을 손님에게 말하는 봇 턴을 열었다(질문 카드의
+        `answer_said`와 같은 모양, 주문 승인 리뷰).
+
+        통화 중 결정은 이것으로 굳는다(손님 문자·결정 기록). 이 알림 없이 통화가 끝나면 허브는 그
+        결정을 통화 뒤 결정처럼 문자로 알린다.
+        """
 
     def sold_out_today(self) -> frozenset[str]:
         """사장님이 오늘 품절로 건 메뉴 id들(주문 승인 티켓 06, 재료 소진 거절). 바로 돌아온다.
@@ -340,6 +352,9 @@ class NullOwnerChannel:
         pass
 
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
+        pass
+
+    def approval_said(self, call_id: str, number: int) -> None:
         pass
 
     def sold_out_today(self) -> frozenset[str]:

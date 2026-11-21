@@ -35,7 +35,7 @@ def test_the_owner_accepts_fifteen_minutes_later_and_the_customer_agrees(tmp_pat
                 assert accepted.status_code == 200
                 body = accepted.json()
                 assert (body["status"], body["delay_min"], body["owner_pickup_label"],
-                        body["delay_reply"]) == ("accepted", 15, "18:45", "asking")
+                        body["delay_reply"]) == ("accepted", 15, "18:45", "")  # 묻기 전
                 assert client.post(url).status_code == 409  # 결정은 한 번
                 reject = f"/api/owner/orders/{card['id']}/reject?key={KEY}"
                 # 손님이 "괜찮으세요?"에 답하는 중에도 거절은 받지 않는다 (티켓 05와 같은 409)

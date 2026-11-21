@@ -91,17 +91,20 @@ def test_accepting_texts_the_customer_and_tells_the_call_once() -> None:
         (update,) = await screen.take()
         with pytest.raises(AlreadyDecided):
             hub.accept("call-1")  # 두 번째 결정 (두 화면에서 같이 눌러도)
+        hub.approval_said("call-1", 1)  # 통화가 수락을 손님에게 말했다 → 확정 문자
+        (texted,) = await screen.take()
         hub.submit(_order())  # 통화 끝 주문서: 확인 카드를 그대로 둔다
         hub.call_ended("call-1", "confirmed")
         await screen.nothing_more()
         await screen.close()
-        return hub, returned, update
+        return hub, returned, update, texted
 
-    hub, returned, update = asyncio.run(scenario())
+    hub, returned, update, texted = asyncio.run(scenario())
     assert returned == update.data
     assert (update.data["status"], update.data["decided_at"]) == (
         "accepted", "2026-11-08T16:02:00+09:00")
-    assert [t["text"] for t in update.data["sms"]] == [ORDER_TEXT]
+    assert update.data["sms"] == []  # 말하기 전에는 문자 없음 (리뷰 경합)
+    assert [t["text"] for t in texted.data["sms"]] == [ORDER_TEXT]
     assert decisions == [OwnerDecision(1, "accept")]
     assert [t["kind"] for t in hub.customer_texts("call-1")] == ["order"]  # 문자는 한 번
 
@@ -222,3 +225,76 @@ def test_accept_refuses_unknown_cards_and_delays_other_than_15_or_30() -> None:
     with pytest.raises(ValueError):
         hub.accept("call-1", delay_min=20)  # 늦춘 분은 [+15분] [+30분]뿐 (티켓 04)
 
+
+
+# --- 통화 중 결정은 통화가 말해야 굳는다 (주문 승인 리뷰 경합) ------------------------------------
+
+
+class Recorded:
+    def __init__(self) -> None:
+        self.statuses: list[str] = []
+
+    def record(self, decision) -> None:
+        self.statuses.append(decision.owner_status)
+
+
+def test_an_in_call_decision_is_texted_and_recorded_only_once_the_call_says_it() -> None:
+    sink = Recorded()
+    hub = OwnerHub(store=FakeStoreKnowledge.from_fixture(), clock=FakeClock(NOW),
+                   decision_sink=sink)
+    hub.open_approval("call-1", ApprovalRequest(1, _order()), lambda d: None)
+    hub.accept("call-1")
+    assert (hub.customer_texts("call-1"), sink.statuses) == ([], [])
+    hub.approval_said("call-1", 2)  # 다른 번호: 그대로
+    assert hub.customer_texts("call-1") == []
+
+    hub.approval_said("call-1", 1)
+    hub.approval_said("call-1", 1)  # 두 번 알려도 문자는 한 번
+
+    assert [t["kind"] for t in hub.customer_texts("call-1")] == ["order"]
+    assert sink.statuses == ["accepted"]
+
+
+def test_a_withdraw_before_the_decision_is_said_undoes_it() -> None:
+    sink = Recorded()
+    hub = OwnerHub(store=FakeStoreKnowledge.from_fixture(), clock=FakeClock(NOW),
+                   decision_sink=sink)
+    hub.open_approval("call-1", ApprovalRequest(1, _order()), lambda d: None)
+    hub.reject("call-1", "busy")
+    hub.withdraw_approval("call-1", 1, "changed")  # 말하기 전에 손님이 고쳤다
+    hub.approval_said("call-1", 1)  # 늦게 온 알림: 거둔 결정은 굳지 않는다
+    hub.call_ended("call-1", "hangup")
+
+    (card,) = asyncio.run(_snapshot(hub))["orders"]
+    assert (card["status"], card["withdrawn"], card["reject_reason"], card["decided_at"]) == (
+        "new", "cancelled", "", "")
+    assert hub.customer_texts("call-1") == []
+    assert sink.statuses == []
+
+
+def test_a_decision_the_call_never_said_is_texted_when_the_call_ends() -> None:
+    hub = _hub()
+    hub.call_started("call-1")
+    hub.open_approval("call-1", ApprovalRequest(1, _order()), lambda d: None)
+    hub.accept("call-1")
+    hub.submit(_order())  # 세션이 시간 초과 문자 약속으로 끝냈다
+    hub.call_ended("call-1", "confirmed")
+
+    assert [t["kind"] for t in hub.customer_texts("call-1")] == ["order"]
+
+
+def test_a_late_reject_on_a_decided_card_is_409_even_with_a_bad_payload() -> None:
+    hub = _hub()
+    hub.open_approval("call-1", ApprovalRequest(1, _order()), lambda d: None)
+    hub.accept("call-1")
+    with pytest.raises(AlreadyDecided):
+        hub.reject("call-1", "free", text=" ")  # 다른 화면의 낡은 시트: 글 검사보다 409가 먼저
+    with pytest.raises(AlreadyDecided):
+        hub.reject("call-1", "out_of_stock", menu_ids=["m99"])
+
+
+async def _snapshot(hub: OwnerHub) -> dict:
+    stream = hub.events()
+    snapshot = await asyncio.wait_for(anext(stream), WAIT)
+    await stream.aclose()
+    return snapshot.data

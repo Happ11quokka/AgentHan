@@ -216,7 +216,7 @@ class RecordingOwnerChannel:
     `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)` ·
     `("timeout", id, 질문 번호)` · `("said", id, 질문 번호)` ·
     `("knowledge", id, KnowledgeRequest)` · `("approval", id, ApprovalRequest)` ·
-    `("withdrawn", id, (요청 번호, 이유))`
+    `("withdrawn", id, (요청 번호, 이유))` · `("approval_said", id, 요청 번호)`
 
     `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다
     (시간 초과·늦은 답 시험은 나중에 `answer`·`see`를 부른다).
@@ -235,7 +235,8 @@ class RecordingOwnerChannel:
         # 오늘 품절 메뉴 id들(주문 승인 티켓 06). 시험이 바꾸면 다음 읽기부터 보인다
         self.sold_out: set[str] = set(sold_out)
         self._answer = answer
-        self._approval = approval
+        # 가짜 사장님 화면(아래). 시험이 바꾸면 다음 손님 턴부터 보인다(통화 중에 화면이 꺼짐 등)
+        self.approval = approval
         self.texts = list(texts or [])  # `customer_texts`가 돌려줄 손님 문자 (티켓 07)
         self._replies: dict[int, Callable[[OwnerNote], None]] = {}  # 질문 번호 → 세션의 받는 곳
         self._decide: Callable[[OwnerDecision], None] | None = None  # 마지막 확인 요청의 받는 곳
@@ -294,18 +295,21 @@ class RecordingOwnerChannel:
         self.notes.append(("knowledge", call_id, request))
 
     def approval_ready(self) -> bool:
-        return self._approval != "off"
+        return self.approval != "off"
 
     def open_approval(
         self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
     ) -> None:
         self.notes.append(("approval", call_id, request))
         self._decide = reply
-        if self._approval == "accept":
+        if self.approval == "accept":
             reply(OwnerDecision(request.number, "accept"))
 
     def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         self.notes.append(("withdrawn", call_id, (number, reason)))
+
+    def approval_said(self, call_id: str, number: int) -> None:
+        self.notes.append(("approval_said", call_id, number))
 
     def sold_out_today(self) -> frozenset[str]:
         return frozenset(self.sold_out)
