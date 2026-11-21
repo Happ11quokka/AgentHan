@@ -49,6 +49,7 @@ const order = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
   pickup: { time: '2099-11-21T18:30:00+09:00', label: '18:30', original_time: '', original_label: '' },
   outcome: null,
   reason: null,
+  detail: null,
   sold_out: [],
   can_cancel: false,
   ...extra,
@@ -223,7 +224,13 @@ describe('/phone 다시 열기', () => {
 describe('손님 취소 (티켓 07 × 06)', () => {
   it('주소로 연 주문 현황에서도 [취소하기]가 되고, 취소한 주문으로는 /phone이 다시 가지 않는다', async () => {
     // 쿠폰 주문(티켓 09): 취소한 뒤에도 할인 줄이 같은 금액으로 남는다
-    const amount = { subtotal: 7500, discount: 1000, coupon_name: '전화 주문 1,000원 할인', total: 6500 }
+    const amount = {
+      subtotal: 7500,
+      discount: 1000,
+      coupon_name: '전화 주문 1,000원 할인',
+      coupon_label: '전화 주문 1,000원 할인 쿠폰',
+      total: 6500,
+    }
     let current = order({ amount, can_cancel: true })
     vi.stubGlobal(
       'fetch',

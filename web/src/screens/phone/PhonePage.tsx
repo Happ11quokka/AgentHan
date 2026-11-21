@@ -9,7 +9,6 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { BrandLogo } from '../../components/BrandMark.tsx'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
-import { DiscountRows } from './DiscountRows.tsx'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
 import {
@@ -21,6 +20,7 @@ import {
   resumedView,
 } from './orderRoute.ts'
 import { callOrderId, fetchOrderStatus } from './orderStatus.ts'
+import { OrderLines } from './OrderLines.tsx'
 import OrderStatusPanel from './OrderStatusPanel.tsx'
 import { PhoneCall, phoneOptions } from './phoneCall.ts'
 import './phone.css'
@@ -52,7 +52,6 @@ function statusLabel(s: CallState): string {
   }
 }
 
-const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
 
 const memory = browserOrderMemory()
 
@@ -231,23 +230,7 @@ export default function PhonePage() {
                 : '사장님께 넘김'
               : '담은 메뉴'}
           </h2>
-          <ul>
-            {cart.map((line) => (
-              <li key={line.menu_id + line.options.join(',')}>
-                <span>
-                  {line.name} × {line.qty}
-                  {line.options.length > 0 && <small> ({line.options.join(', ')})</small>}
-                  {line.request && <small> · {line.request}</small>}
-                </span>
-                <span>{won(line.subtotal)}</span>
-              </li>
-            ))}
-          </ul>
-          <DiscountRows discount={discount} />
-          <p className="phone-total">
-            <span>합계</span>
-            <strong>{won(total)}</strong>
-          </p>
+          <OrderLines lines={cart.map((line) => ({ ...line, quantity: line.qty }))} discount={discount} total={total} />
           {state.order?.order.pickup_time && (
             <p className="phone-pickup">
               픽업 {pickupLabel(state.order.order.pickup_time)}

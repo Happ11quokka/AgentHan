@@ -72,11 +72,12 @@ export type ServerEvent =
       interruptible: boolean
       dialog: string | null
       cart: CartLine[]
-      /** 낼 금액. 쿠폰이 붙으면 subtotal·discount·coupon_name도 온다 (쿠폰 티켓 09) */
+      /** 낼 금액. 쿠폰이 붙으면 subtotal·discount·coupon_name·coupon_label도 온다 (쿠폰 티켓 09) */
       total: number
       subtotal?: number
       discount?: number
       coupon_name?: string
+      coupon_label?: string
       /** 사장님 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null. 낡은 서버는 이 칸이 없다 */
       approval?: ApprovalJson | null
     }

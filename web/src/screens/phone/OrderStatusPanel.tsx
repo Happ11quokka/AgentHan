@@ -5,7 +5,6 @@
 // 손님 취소(티켓 07): 취소할 수 있는 주문에는 [취소하기]. 누르면 화면 안에서 한 번 묻고(브라우저 대화상자 없음)
 // 취소 API를 부른다. 거부되면 응답의 지금 현황(이긴 결과)과 한 줄을 보인다. 제시간 수락은 "가게로 전화" 안내만.
 import { useEffect, useReducer, useState } from 'react'
-import { DiscountRows } from './DiscountRows.tsx'
 import { discountOf } from './discount.ts'
 import { CANCEL_FAILED, cancelHint, cancelOrder } from './orderCancel.ts'
 import {
@@ -18,9 +17,9 @@ import {
   orderSteps,
   pickupMoved,
 } from './orderStatus.ts'
+import { OrderLines } from './OrderLines.tsx'
 import { type OrderSource, openOrderStream } from './orderStream.ts'
 
-const won = (n: number) => `${n.toLocaleString('ko-KR')}원`
 
 interface Props {
   orderId: string
@@ -139,24 +138,12 @@ export default function OrderStatusPanel({ orderId, onReorder, get, openSource, 
           픽업 <s>{moved.from}</s> → <strong>{moved.to}</strong>
         </p>
       )}
-      <ul className="phone-status-lines">
-        {order.lines.map((line) => (
-          <li key={line.menu_id + line.options.join(',')}>
-            <span>
-              {line.name} × {line.quantity}
-              {line.options.length > 0 && <small> ({line.options.join(', ')})</small>}
-              {line.request && <small> · {line.request}</small>}
-              {soldOut.has(line.name) && <small className="phone-sold-out"> · 재료 소진</small>}
-            </span>
-            <span>{won(line.subtotal)}</span>
-          </li>
-        ))}
-      </ul>
-      <DiscountRows discount={discountOf(order.amount)} />
-      <p className="phone-total">
-        <span>합계</span>
-        <strong>{won(order.amount.total)}</strong>
-      </p>
+      <OrderLines
+        className="phone-status-lines"
+        lines={order.lines.map((line) => ({ ...line, soldOut: soldOut.has(line.name) }))}
+        discount={discountOf(order.amount)}
+        total={order.amount.total}
+      />
       {cancelNotice && (
         <p className="phone-cancel-notice" role="alert">
           {cancelNotice}

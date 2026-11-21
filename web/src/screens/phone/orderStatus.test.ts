@@ -38,6 +38,7 @@ const status = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
     original_label: '',
   },
   outcome: null,
+  detail: null,
   reason: null,
   sold_out: [],
   can_cancel: false,
@@ -104,7 +105,7 @@ describe('order status steps and wording', () => {
   })
 
   it('after the owner accepts: "확정" with the pickup time', () => {
-    const order = status({ stage: 'confirmed', outcome: 'accepted' })
+    const order = status({ stage: 'confirmed', outcome: 'accepted', detail: '18:30에 준비해 둘게요.' })
     expect(orderSteps(order).map((s) => [s.label, s.state])).toEqual([
       ['주문 넣음', 'done'],
       ['가게 확인', 'done'],
@@ -114,7 +115,7 @@ describe('order status steps and wording', () => {
     expect(orderHeadline(order)).toEqual({
       tone: 'ok',
       title: '주문이 확정됐어요',
-      detail: '18:30에 준비해 둘게요.', // 확정 문자와 같은 말
+      detail: '18:30에 준비해 둘게요.', // 서버가 확정 문자와 같은 말로 준다
       quote: null,
     })
     expect(pickupMoved(order)).toBeNull()
@@ -131,6 +132,8 @@ describe('order status steps and wording', () => {
 })
 
 const BUSY = '죄송해요, 가게가 바빠서 주문을 받기 어려워 주문이 취소됐어요. 다음에 다시 주문해 주세요.'
+const REJECTED_FREE = '죄송해요, 가게 사정으로 주문이 취소됐어요.' // 서버 sms.REJECTED_FREE
+const EXPIRED = '가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요.' // 서버 sms.expired_text
 const STOCK_OUT = '죄송해요, 메도빅은 지금 재료가 떨어져 주문이 취소됐어요. 다른 메뉴로 다시 주문해 주세요.'
 
 describe('what the order status says after each owner decision (티켓 05)', () => {
@@ -138,6 +141,7 @@ describe('what the order status says after each owner decision (티켓 05)', () 
     const order = status({
       stage: 'confirmed',
       outcome: 'delayed',
+      detail: '픽업 시각이 18:30에서 18:45로 바뀌었어요. 18:45에 준비돼요. 어려우시면 전화 주세요.',
       pickup: {
         time: '2026-11-21T18:45:00+09:00',
         label: '18:45',
@@ -161,13 +165,18 @@ describe('what the order status says after each owner decision (티켓 05)', () 
   })
 
   it('a reject shows the one-line reason the store gave', () => {
-    const order = status({ stage: 'cancelled', outcome: 'rejected', reason: { code: 'busy', text: BUSY } })
+    const order = status({ stage: 'cancelled', outcome: 'rejected', reason: { code: 'busy', text: BUSY }, detail: BUSY })
     expect(orderHeadline(order)).toEqual({ tone: 'stop', title: '주문이 취소됐어요', detail: BUSY, quote: null })
     expect(canReorder(order)).toBe(true)
   })
 
   it("a written reject shows the owner's words in Korean once translated", () => {
-    const translating = status({ stage: 'cancelled', outcome: 'rejected', reason: { code: 'free', text: '' } })
+    const translating = status({
+      stage: 'cancelled',
+      outcome: 'rejected',
+      reason: { code: 'free', text: '' },
+      detail: REJECTED_FREE,
+    })
     expect(orderHeadline(translating)).toMatchObject({
       detail: '죄송해요, 가게 사정으로 주문이 취소됐어요.',
       quote: null,
@@ -176,6 +185,7 @@ describe('what the order status says after each owner decision (티켓 05)', () 
       stage: 'cancelled',
       outcome: 'rejected',
       reason: { code: 'free', text: '오늘은 일찍 닫아요' },
+      detail: REJECTED_FREE,
     })
     expect(orderHeadline(translated).quote).toBe('오늘은 일찍 닫아요')
   })
@@ -185,6 +195,7 @@ describe('what the order status says after each owner decision (티켓 05)', () 
       stage: 'cancelled',
       outcome: 'out_of_stock',
       reason: { code: 'out_of_stock', text: STOCK_OUT },
+      detail: STOCK_OUT,
       sold_out: ['메도빅'],
     })
     expect(orderHeadline(order)).toMatchObject({ tone: 'stop', title: '주문이 취소됐어요', detail: STOCK_OUT })
@@ -192,7 +203,7 @@ describe('what the order status says after each owner decision (티켓 05)', () 
   })
 
   it('five silent minutes say the store could not check it', () => {
-    const order = status({ stage: 'cancelled', outcome: 'expired' })
+    const order = status({ stage: 'cancelled', outcome: 'expired', detail: EXPIRED })
     expect(orderHeadline(order).detail).toContain('가게에서 확인하지 못해 주문이 취소됐어요')
     expect(JSON.stringify(orderHeadline(order))).not.toMatch(/5분|접수/)
     expect(canReorder(order)).toBe(true)

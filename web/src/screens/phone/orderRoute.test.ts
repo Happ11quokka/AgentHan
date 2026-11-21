@@ -23,6 +23,7 @@ const order = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
   pickup: { time: '2026-11-21T18:30:00+09:00', label: '18:30', original_time: '', original_label: '' },
   outcome: null,
   reason: null,
+  detail: null,
   sold_out: [],
   can_cancel: false,
   ...extra,

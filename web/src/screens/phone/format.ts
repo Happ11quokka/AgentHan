@@ -23,3 +23,8 @@ export function pickupLabel(iso: string): string {
     timeZone: STORE_TIME_ZONE,
   })
 }
+
+/** 원 금액 → "12,000원" (손님 화면의 줄·합계·할인 줄) */
+export function won(amount: number): string {
+  return `${amount.toLocaleString('ko-KR')}원`
+}

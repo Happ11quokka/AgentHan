@@ -13,6 +13,7 @@ const cart = [
   { menu_id: 'm03', name: '아메리카노', qty: 1, options: [], request: '', subtotal: 4500 },
 ]
 const COUPON = '전화 주문 1,000원 할인'
+const LABEL = '전화 주문 1,000원 할인 쿠폰'
 
 function state(extra: Partial<Extract<ServerEvent, { type: 'state' }>>): CallAction {
   return {
@@ -23,9 +24,9 @@ function state(extra: Partial<Extract<ServerEvent, { type: 'state' }>>): CallAct
 
 describe('coupon amounts on the call screen (coupon ticket 09)', () => {
   it('shows the payable total and the discount from the state event', () => {
-    const s = run(dial, ready, state({ total: 11000, subtotal: 12000, discount: 1000, coupon_name: COUPON }))
+    const s = run(dial, ready, state({ total: 11000, subtotal: 12000, discount: 1000, coupon_name: COUPON, coupon_label: LABEL }))
     expect(s.total).toBe(11000)
-    expect(s.discount).toEqual({ subtotal: 12000, discount: 1000, coupon_name: COUPON })
+    expect(s.discount).toEqual({ subtotal: 12000, discount: 1000, coupon_label: LABEL })
   })
 
   it('drops the discount when a later turn has no coupon (the order was changed)', () => {
@@ -44,9 +45,10 @@ describe('coupon amounts on the call screen (coupon ticket 09)', () => {
       subtotal: 12000,
       discount: 1000,
       coupon_name: COUPON,
+      coupon_label: LABEL,
     }
     const s = run(dial, ready, { type: 'server', event: order }, { type: 'socket.closed' })
     expect(s.order?.total).toBe(11000)
-    expect(s.order?.discount).toEqual({ subtotal: 12000, discount: 1000, coupon_name: COUPON })
+    expect(s.order?.discount).toEqual({ subtotal: 12000, discount: 1000, coupon_label: LABEL })
   })
 })

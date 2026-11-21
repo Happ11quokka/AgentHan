@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { OrderStatusJson } from './orderStatus.ts'
 import OrderStatusPanel from './OrderStatusPanel.tsx'
+import { ORDER_STREAM_RETRY_MS } from './orderStream.ts'
 
 class FakeSource {
   readyState = 1
@@ -32,10 +33,14 @@ const status = (extra: Partial<OrderStatusJson> = {}): OrderStatusJson => ({
   pickup: { time: '2026-11-21T18:30:00+09:00', label: '18:30', original_time: '', original_label: '' },
   outcome: null,
   reason: null,
+  detail: null,
   sold_out: [],
   can_cancel: false,
   ...extra,
 })
+
+const STOCK_OUT = '죄송해요, 메도빅은 지금 재료가 떨어져 주문이 취소됐어요. 다른 메뉴로 다시 주문해 주세요.'
+const EXPIRED = '가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요.'
 
 function show(first: OrderStatusJson, ...later: OrderStatusJson[]) {
   return showWith({}, first, ...later)
@@ -73,6 +78,7 @@ describe('order status screen', () => {
       status({
         stage: 'confirmed',
         outcome: 'delayed',
+        detail: '픽업 시각이 18:30에서 18:45로 바뀌었어요. 18:45에 준비돼요. 어려우시면 전화 주세요.',
         pickup: {
           time: '2026-11-21T18:45:00+09:00',
           label: '18:45',
@@ -96,10 +102,8 @@ describe('order status screen', () => {
       status({
         stage: 'cancelled',
         outcome: 'out_of_stock',
-        reason: {
-          code: 'out_of_stock',
-          text: '죄송해요, 메도빅은 지금 재료가 떨어져 주문이 취소됐어요. 다른 메뉴로 다시 주문해 주세요.',
-        },
+        reason: { code: 'out_of_stock', text: STOCK_OUT },
+        detail: STOCK_OUT,
         sold_out: ['메도빅'],
       }),
     )
@@ -112,7 +116,7 @@ describe('order status screen', () => {
   })
 
   it('reads the order again when the stream drops, so a decision made meanwhile shows', async () => {
-    const { get, sources } = show(status(), status({ stage: 'cancelled', outcome: 'expired' }))
+    const { get, sources } = show(status(), status({ stage: 'cancelled', outcome: 'expired', detail: EXPIRED }))
     await screen.findByText('가게에서 주문을 확인하고 있어요')
     expect(get).toHaveBeenCalledTimes(1)
 
@@ -121,6 +125,51 @@ describe('order status screen', () => {
     expect(await screen.findByText(/가게에서 확인하지 못해 주문이 취소됐어요/)).toBeInTheDocument()
     expect(get).toHaveBeenCalledTimes(2)
     await waitFor(() => expect(sources[0].closed).toBe(true))
+  })
+})
+
+describe('order lines and refused streams (PR #44 리뷰)', () => {
+  it('shows the same menu twice when the requests differ, without duplicate keys', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const americano = { menu_id: 'm03', name: '아메리카노', quantity: 1, options: [], subtotal: 4500 }
+      show(
+        status({
+          lines: [
+            { ...americano, request: '아이스' },
+            { ...americano, request: '따뜻하게' },
+          ],
+          amount: { subtotal: 9000, total: 9000 },
+        }),
+      )
+      expect(await screen.findByText(/· 아이스/)).toBeInTheDocument()
+      expect(screen.getByText(/· 따뜻하게/)).toBeInTheDocument()
+      expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/)
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('an order only in the record (stream refused, 404) still reads itself again until it is decided', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { get, sources } = show(status(), status(), status({ stage: 'cancelled', outcome: 'expired', detail: EXPIRED }))
+      await screen.findByText('가게에서 주문을 확인하고 있어요')
+      const refuse = (source: FakeSource) =>
+        act(() => {
+          source.readyState = 2 // 허브에 카드가 없다: 브라우저가 다시 붙지 않는다
+          source.onerror?.()
+        })
+      refuse(sources[0])
+      await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+      act(() => vi.advanceTimersByTime(ORDER_STREAM_RETRY_MS))
+      expect(sources).toHaveLength(2)
+      refuse(sources[1])
+      expect(await screen.findByText(/가게에서 확인하지 못해 주문이 취소됐어요/)).toBeInTheDocument()
+      expect(get).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
