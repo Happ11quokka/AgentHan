@@ -68,6 +68,11 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
         "keywords": list(data.get("shop", {}).get("keywords", [])),
         # 가게 기본 정보: 입력 블록의 처음 값이자, 승인 카드가 바뀌기 전·후를 비교하는 값
         "business_info": {k: data.get("shop", {}).get(k) for k in BUSINESS_FIELDS},
+        # 새로 오픈 소식 날짜·매장 QR결제: 확인 카드가 무엇을 저장하는지 보이게 하는 값
+        "shop_status": {
+            "new_opening": (data.get("shop", {}).get("new_opening") or {}).get("opening_date"),
+            "onsite_payment": bool(data.get("shop", {}).get("onsite_payment", False)),
+        },
         **records,
     }
 

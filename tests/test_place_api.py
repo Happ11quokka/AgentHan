@@ -33,8 +33,10 @@ def test_snapshot_has_the_place_and_record_sections():
         "coupon",
         "keywords",
         "business_info",
+        "shop_status",
         *owner.RECORD_TARGETS,
     }
+    assert view["shop_status"] == {"new_opening": None, "onsite_payment": False}
     assert view["business_info"] == {k: SEED["shop"].get(k) for k in place.BUSINESS_FIELDS}
     assert view["keywords"] == SEED["shop"].get("keywords", [])
     assert view["menu"][0] == {
@@ -232,3 +234,20 @@ def test_unknown_session_and_empty_text(tmp_path, mock_index):
     assert api.post("/assistant/sessions/nope/messages", json={"text": "네"}).status_code == 404
     sid = api.post("/assistant/sessions").json()["session_id"]
     assert api.post(f"/assistant/sessions/{sid}/messages", json={"text": "  "}).status_code == 422
+
+
+def test_preview_of_opening_and_onsite_payment_shows_the_values():
+    """확인 카드가 '가게 정보 정보를 바꿔요' 대신 오픈 날짜·QR결제 켜짐을 보이게 하는 값."""
+    opening = place.preview(
+        SEED,
+        "new_opening",
+        [{"name": "register_new_opening", "arguments": {"opening_date": "2026-12-01"}}],
+    )
+    assert opening["after"]["shop_status"]["new_opening"] == "2026-12-01"
+    assert opening["changes"] == {
+        "shop_status": {"added": [], "updated": ["new_opening"], "removed": []}
+    }
+    pay = place.preview(
+        SEED, "onsite_payment", [{"name": "set_onsite_payment", "arguments": {"enabled": True}}]
+    )
+    assert pay["after"]["shop_status"]["onsite_payment"] is True

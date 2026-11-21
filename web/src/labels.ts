@@ -164,6 +164,20 @@ function businessLines(before: BusinessInfo | undefined, after: BusinessInfo | u
   return lines;
 }
 
+/** 새로 오픈 소식·매장 QR결제 줄: "오픈 날짜: 12월 1일", "매장 QR결제: 꺼짐 → 켜짐". */
+function statusLines(before: Place["shop_status"], after: Place["shop_status"]): string[] {
+  if (!before || !after) return [];
+  const lines: string[] = [];
+  const day = (iso: string) => `${Number(iso.slice(5, 7))}월 ${Number(iso.slice(8, 10))}일`;
+  if (after.new_opening && after.new_opening !== before.new_opening)
+    lines.push(before.new_opening ? `오픈 날짜: ${day(before.new_opening)} → ${day(after.new_opening)}` : `오픈 날짜: ${day(after.new_opening)}`);
+  if (after.onsite_payment !== before.onsite_payment) {
+    const onOff = (v: boolean) => (v ? "켜짐" : "꺼짐");
+    lines.push(`매장 QR결제: ${onOff(before.onsite_payment)} → ${onOff(after.onsite_payment)}`);
+  }
+  return lines;
+}
+
 /** [미리 보기]를 막는 이유 한 줄. 막을 게 없으면 null. */
 export function couponProblem(c: CouponInput): string | null {
   if (!c.title.trim()) return "쿠폰 이름을 적어 주세요.";
@@ -203,6 +217,8 @@ const FEATURE_NAMES: Record<string, string> = {
   talktalk: "톡톡 답장",
   order: "주문 상태",
   reservation: "예약 상태",
+  new_opening: "새로 오픈 소식",
+  onsite_payment: "매장 QR결제",
 };
 export const featureName = (feature: string) => FEATURE_NAMES[feature] ?? "가게 정보";
 
@@ -442,6 +458,7 @@ export function describeChanges(before: Place, after: Place): string[] {
   for (const k of newWords) if (!oldWords.includes(k)) lines.push(`대표키워드 추가 ${k}`);
   for (const k of oldWords) if (!newWords.includes(k)) lines.push(`대표키워드 뺌 ${k}`);
   lines.push(...businessLines(before.business_info, after.business_info));
+  lines.push(...statusLines(before.shop_status, after.shop_status));
   lines.push(...recordChanges(before, after));
   return lines;
 }

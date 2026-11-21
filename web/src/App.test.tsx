@@ -1481,3 +1481,20 @@ describe("영업시간 시간표 블록", () => {
     expect(again.getByLabelText("금요일 닫는 시간")).toHaveValue("23:00");
   });
 });
+
+describe("새로 오픈 소식·매장 QR결제 확인 카드", () => {
+  test.each([
+    ["new_opening", "새로 오픈 소식 바꾸기", { new_opening: "2026-12-01", onsite_payment: false }, "오픈 날짜: 12월 1일"],
+    ["onsite_payment", "매장 QR결제 바꾸기", { new_opening: null, onsite_payment: true }, "매장 QR결제: 꺼짐 → 켜짐"],
+  ])("%s 카드는 저장할 값을 보인다", async (feature, title, status, line) => {
+    const before = { ...SEED, shop_status: { new_opening: null, onsite_payment: false } };
+    const pending = { task_id: "t5", version: 1, feature, after: { ...before, shop_status: status }, changes: {} };
+    const api = fakeApi([], { place: before, pending: [pending] });
+    api.start.mockResolvedValue({ session_id: "s1", place: before, pending: [pending] as never[] });
+    await open(api);
+    const card = within(await screen.findByRole("region", { name: "저장 전 확인" }));
+    expect(card.getByText(title)).toBeInTheDocument();
+    expect(card.getByText(line)).toBeInTheDocument();
+    expect(card.queryByText(/정보를 바꿔요/)).not.toBeInTheDocument();
+  });
+});
