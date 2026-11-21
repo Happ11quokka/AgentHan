@@ -113,7 +113,8 @@ def test_a_confirmed_call_turns_into_a_new_order_card_with_the_same_id() -> None
     snapshot, events, again = asyncio.run(scenario())
     assert [c["status"] for c in snapshot.data["calls"]] == ["live"]
     assert snapshot.data["orders"] == []
-    assert _names(events) == [("order.update", "new"), ("call.update", "ordered")]
+    # 확인 요청 없이 온 확정 주문은 자동 확정 카드다 (주문 승인 티켓 02, `test_owner_approval.py`)
+    assert _names(events) == [("order.update", "accepted"), ("call.update", "ordered")]
     assert {e.data["id"] for e in events} == {"call-1"}
     assert again.data["calls"] == []  # 주문이 된 통화 카드는 snapshot에 없다
     assert [o["id"] for o in again.data["orders"]] == ["call-1"]

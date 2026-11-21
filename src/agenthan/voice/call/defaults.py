@@ -31,6 +31,12 @@ NO_INPUT_SPEECH_MAX_S = 8.0
 # (4단계 spec "ASK_OWNER: 세션", 리허설에서 맞춘다. 넘으면 세션이 시간 초과 답을 넣는다(티켓 06),
 # `PHONE_OWNER_WAIT_S`)
 OWNER_WAIT_S = 20.0
+# 주문 확인 요청의 통화 중 대기(초). 확인 요청 카드를 보낸 때부터 센다. 화면 카운트다운과 같은
+# 시계다 (주문 승인 spec "세션", 리허설에서 맞춘다, `PHONE_APPROVAL_WAIT_S`)
+APPROVAL_WAIT_S = 20.0
+# 확인 요청의 자동 취소(초). 확인 요청을 연 시각부터 센다. 통화가 끝난 뒤에도 이 마감까지 사장님이
+# 결정할 수 있다 (주문 승인 spec "사장님 허브", 5분. 자동 취소 타이머와 설정값은 티켓 03)
+APPROVAL_EXPIRE_S = 300.0
 # Papago 요청 하나의 시간 제한(초). 넘으면 카드는 원문만 (4단계 티켓 03,
 # `PHONE_TRANSLATE_TIMEOUT_S`)
 TRANSLATE_TIMEOUT_S = 3.0

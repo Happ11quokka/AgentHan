@@ -23,11 +23,17 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from agenthan.core.contracts import OrderLine
 from agenthan.voice.call.frames import BYTES_PER_MS, CHUNK_BYTES
 from agenthan.voice.call.ports import SttResult
+from agenthan.voice.dialog.approval import (
+    ApprovalRequest,
+    DecisionKind,
+    OwnerDecision,
+    WithdrawReason,
+)
 from agenthan.voice.dialog.knowledge import KnowledgeRequest
 from agenthan.voice.dialog.owner_question import (
     OwnerAnswer,
@@ -207,19 +213,29 @@ class RecordingOwnerChannel:
 
     알림 모양: `("started", id)` · `("cart", id, 줄 튜플)` · `("customer", id, 글)` ·
     `("bot", id, 글)` · `("ended", id, 이유)` · `("question", id, OwnerQuestion)` ·
-    `("timeout", id, 질문 번호)` · `("said", id, 질문 번호)` · `("knowledge", id, KnowledgeRequest)`
+    `("timeout", id, 질문 번호)` · `("said", id, 질문 번호)` ·
+    `("knowledge", id, KnowledgeRequest)` · `("approval", id, ApprovalRequest)` ·
+    `("withdrawn", id, (요청 번호, 이유))`
 
     `answer`가 있으면 질문을 받은 자리에서 그 답을 `reply`로 돌려준다. 없으면 답하지 않는다
     (시간 초과·늦은 답 시험은 나중에 `answer`·`see`를 부른다).
+
+    `approval`(주문 승인 티켓 02)은 가짜 사장님 화면이다. off: 화면 없음(`approval_ready` 거짓,
+    승인을 건너뛰어 예전처럼 바로 확정. 기본이라 승인 전 테스트가 그대로다) · accept: 화면이 있고
+    확인 요청을 받은 자리에서 수락(즉시 수락하는 가짜 사장님) · hold: 화면이 있고 결정하지 않는다
+    (무응답·늦은 결정 시험은 나중에 `decide`를 부른다).
     """
 
     def __init__(
-        self, *, answer: OwnerAnswer | None = None, texts: list[dict[str, Any]] | None = None
+        self, *, answer: OwnerAnswer | None = None, texts: list[dict[str, Any]] | None = None,
+        approval: Literal["off", "accept", "hold"] = "off",
     ) -> None:
         self.notes: list[tuple[Any, ...]] = []
         self._answer = answer
+        self._approval = approval
         self.texts = list(texts or [])  # `customer_texts`가 돌려줄 손님 문자 (티켓 07)
         self._replies: dict[int, Callable[[OwnerNote], None]] = {}  # 질문 번호 → 세션의 받는 곳
+        self._decide: Callable[[OwnerDecision], None] | None = None  # 마지막 확인 요청의 받는 곳
 
     def answer(self, number: int, answer: OwnerAnswer) -> None:
         """사장님이 그 질문에 답했다(버튼·자유 입력 free, 늦은 답·낡은 답 흉내도 그대로 넘긴다)."""
@@ -228,6 +244,11 @@ class RecordingOwnerChannel:
     def see(self, number: int) -> None:
         """사장님이 그 질문 카드를 봤다."""
         self._replies[number](OwnerSeen(number))
+
+    def decide(self, number: int, kind: DecisionKind = "accept", *, delay_min: int = 0) -> None:
+        """사장님이 그 확인 요청에 결정했다(낡은 번호 흉내도 그대로 넘긴다)."""
+        assert self._decide is not None, "열린 확인 요청이 없어요"
+        self._decide(OwnerDecision(number, kind, delay_min))
 
     def call_started(self, call_id: str) -> None:
         self.notes.append(("started", call_id))
@@ -260,6 +281,20 @@ class RecordingOwnerChannel:
 
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         self.notes.append(("knowledge", call_id, request))
+
+    def approval_ready(self) -> bool:
+        return self._approval != "off"
+
+    def open_approval(
+        self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
+    ) -> None:
+        self.notes.append(("approval", call_id, request))
+        self._decide = reply
+        if self._approval == "accept":
+            reply(OwnerDecision(request.number, "accept"))
+
+    def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
+        self.notes.append(("withdrawn", call_id, (number, reason)))
 
     def customer_texts(self, call_id: str) -> list[dict[str, Any]]:
         return list(self.texts)
@@ -298,6 +333,16 @@ class RecordingOwnerChannel:
     def said(self) -> list[int]:
         """손님에게 답을 말한 질문 번호들 (리뷰 C1)."""
         return self._of("said")
+
+    @property
+    def approvals(self) -> list[ApprovalRequest]:
+        """연 확인 요청들 (주문 승인 티켓 02)."""
+        return self._of("approval")
+
+    @property
+    def withdrawn(self) -> list[tuple[int, str]]:
+        """거둔 확인 요청들 (요청 번호, 이유)."""
+        return self._of("withdrawn")
 
     @property
     def ended(self) -> list[str]:

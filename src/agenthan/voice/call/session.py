@@ -94,6 +94,7 @@ from agenthan.voice.call.barge import (
 )
 from agenthan.voice.call.debuglog import CallDebugLog
 from agenthan.voice.call.defaults import (
+    APPROVAL_WAIT_S,
     CONT_WAIT_S,
     MODEL_HIGH,
     MODEL_LOW,
@@ -114,7 +115,7 @@ from agenthan.voice.call.frames import (
     pack_audio_frame,
 )
 from agenthan.voice.call.latency import LatencyLog, TurnRecord
-from agenthan.voice.call.owner_wait import OwnerWait, WaitKind, closes_wait, note_key
+from agenthan.voice.call.owner_wait import OwnerWait, WaitKind, WaitNote, closes_wait, note_key
 from agenthan.voice.call.ports import (
     CUSTOMER_FATAL,
     CUSTOMER_RETRY,
@@ -145,10 +146,11 @@ from agenthan.voice.call.turn_end import (
 from agenthan.voice.call.vad import SilenceDetector, VadSettings
 from agenthan.voice.dialog import templates
 from agenthan.voice.dialog.answerer import Answerer
+from agenthan.voice.dialog.approval import ApprovalRequest, ApprovalWithdrawn, OwnerDecision
 from agenthan.voice.dialog.cart import Cart
 from agenthan.voice.dialog.engine import DialogEngine, EngineSnapshot, TurnResult
 from agenthan.voice.dialog.knowledge import KnowledgeReader, KnowledgeRequest
-from agenthan.voice.dialog.owner_question import OwnerNote, OwnerQuestion, OwnerReply
+from agenthan.voice.dialog.owner_question import OwnerQuestion, OwnerReply
 from agenthan.voice.dialog.rules import apply_rules
 from agenthan.voice.dialog.states import TERMINAL, State
 from agenthan.voice.nlu.base import Nlu
@@ -242,6 +244,13 @@ class SessionSettings:
     # 사장님은 바빠서 바로 답하기 어렵다. 끄면 "죄송해요, 그건 제가 정확히 모르겠어요. 사장님께
     # 전해 둘게요." + 사장님 화면 "손님이 궁금해한 것" 카드(나중에 보충, 티켓 13)
     ask_owner: bool = False
+    # 주문 승인 (주문 승인 티켓 02, `PHONE_OWNER_APPROVAL`). 켜면 복창에 "네"가 온 주문을 사장님께
+    # 확인 요청으로 보내고 결정을 기다린다. 켜져 있어도 사장님 화면이 하나도 없으면
+    # (`OwnerChannel.approval_ready`) 건너뛰고 예전처럼 바로 확정한다
+    owner_approval: bool = True
+    # 확인 요청의 통화 중 대기. 카드를 보낸 때부터 센다(`PHONE_APPROVAL_WAIT_S`, 허브 카드 마감과
+    # 같은 값). 넘으면 "확인되는 대로 문자로 알려 드릴게요"로 통화를 끝낸다
+    approval_wait_s: float = APPROVAL_WAIT_S
     # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11). NLU를 "hcx"로 골랐을 때만 만든다
     answer: bool = True
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
@@ -420,6 +429,8 @@ class CallSession:
         # 사장님 쪽이 붙은 통화만 근거 없는 메뉴 질문을 사장님께 묻는다 (4단계 티켓 05)
         self._answerer = answerer
         self._asks_owner = owner is not None and (settings or SessionSettings()).ask_owner
+        # 주문 승인(주문 승인 티켓 02): 사장님 쪽이 붙은 통화만. 턴마다 사장님 화면이 있는지 본다
+        self._approval_on = owner is not None and (settings or SessionSettings()).owner_approval
         # 사장님 보충 지식 읽기 포트 (티켓 13). 사장님 쪽이 붙은 통화만 엔진에 넣는다(보충 요청을
         # 받을 곳이 있어야 "사장님께 전해 둘게요"라고 한다)
         self._knowledge = knowledge if owner is not None else None
@@ -522,7 +533,7 @@ class CallSession:
         # 넣는다)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._owner_wait: OwnerWait | None = None
-        self._owner_inbox: list[tuple[OwnerNote, float]] = []
+        self._owner_inbox: list[tuple[WaitNote, float]] = []
         self._owner_timer = OneShot(self._on_owner_timeout)  # 답 대기 시간 초과
         self._owner_retry = OneShot(self._say_owner_reply)  # 손님이 말하는 중이라 미룬 답 다시 보기
 
@@ -694,6 +705,7 @@ class CallSession:
         self.smoke = True
         self._owner = NullOwnerChannel()
         self._asks_owner = False
+        self._approval_on = False
         self._knowledge = None
 
     async def close(self) -> None:
@@ -1357,9 +1369,11 @@ class CallSession:
             result = await self._call_engine(lambda: act(engine, now))
         else:
             text, wait = u.text, u.wait_request
+            approval = self._approval_ready()  # 이 턴에 복창 "네"가 오면 사장님께 확인을 요청한다
             # 되감을 수 있게 턴 전 상태를 떠 둔다 (엔진은 지금 쉬고 있다)
             before = self._before_turn(turn, engine, u)
-            result = await self._call_engine(lambda: engine.handle(text, now, wait_request=wait))
+            result = await self._call_engine(
+                lambda: engine.handle(text, now, wait_request=wait, approval=approval))
         self._log.mark(turn, "engine_end")
         stats = self._prefetch.take_stats() if self._prefetch is not None else None
         record = self._log.get(turn)
@@ -1386,6 +1400,10 @@ class CallSession:
             self._note_owner(lambda owner: owner.bot_said(self.call_id, said))
         if result.owner_question is not None:
             self._open_owner_question(turn, result.owner_question)
+        if result.approval_withdrawn is not None:
+            self._withdraw_approval(turn, result.approval_withdrawn)
+        if result.approval_request is not None:
+            self._open_approval(turn, result.approval_request)
         if result.answer is not None and (record := self._log.get(turn)) is not None:
             # 답변기 결과(5단계 티켓 11): 종류, 근거, 검사에서 낮춘 까닭
             record.fields["answer"] = {"kind": result.answer.kind, "menu": result.answer.menu,
@@ -2184,8 +2202,10 @@ class CallSession:
     # 봇이 먼저 말하는 턴으로 엔진에 넣는다. 안 되면 미뤘다가 재생 끝(`_after_playback`)·짧은
     # 재시도(`_owner_retry`)에서 다시 본다. 기다리는 동안 무응답 타이머는 멈춘다(`_start_quiet`).
     # 통화가 끝나면(`_end`) 항목·큐·타이머를 비운다. 종류마다 다른 일(카드 열기, 시간 초과 답,
-    # 엔진 행동, 턴 기록)은 `_open_owner_question`·`_on_owner_timeout`·`_owner_turn`·
-    # `_owner_said`에 둔다. 지금 종류는 질문 카드 하나다
+    # 엔진 행동, 턴 기록)은 `_open_owner_question`·`_open_approval`·`_on_owner_timeout`·
+    # `_owner_turn`·`_owner_said`에 둔다. 종류는 질문 카드와 확인 요청(주문 승인 티켓 02)이다.
+    # 확인 요청은 손님 턴마다 `_approval_ready`(설정 켬 + 사장님 화면 있음)를 엔진에 알려 열고,
+    # 엔진이 거두면(손님이 고침·취소) `_withdraw_approval`이 닫는다
 
     def _open_owner_question(self, turn: int, question: OwnerQuestion) -> None:
         self._open_owner_wait("question", question.number, self._settings.owner_wait_s)
@@ -2196,6 +2216,39 @@ class CallSession:
                                                "opened_at": self._clock.now().isoformat()}
         self._tell_owner(lambda owner: owner.open_question(self.call_id, question,
                                                            self._owner_replied))
+
+    def _approval_ready(self) -> bool:
+        """이 손님 턴에 확인 요청을 열 수 있나: 설정이 켜져 있고 사장님 화면이 붙어 있다."""
+        if not self._approval_on:
+            return False
+        try:
+            return bool(self._owner.approval_ready())
+        except Exception:
+            log.exception("사장님 화면 확인 실패, 승인을 건너뜀 (%s)", self.call_id)
+            return False
+
+    def _open_approval(self, turn: int, request: ApprovalRequest) -> None:
+        """확인 요청을 연다(주문 승인 티켓 02). 질문 카드와 같은 대기 장치를 쓴다."""
+        self._open_owner_wait("approval", request.number, self._settings.approval_wait_s)
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["approval_request"] = {"number": request.number,
+                                                 "opened_at": self._clock.now().isoformat()}
+        self._tell_owner(lambda owner: owner.open_approval(self.call_id, request,
+                                                           self._owner_replied))
+
+    def _withdraw_approval(self, turn: int, withdrawn: ApprovalWithdrawn) -> None:
+        """엔진이 확인 요청을 거뒀다(손님이 고침·취소). 대기를 닫고 사장님 쪽에 알린다."""
+        wait = self._owner_wait
+        if wait is not None and wait.key == ("approval", withdrawn.number):
+            self._owner_wait = None
+            self._owner_timer.cancel()
+        record = self._log.get(turn)
+        if record is not None:
+            record.fields["approval_withdrawn"] = {"number": withdrawn.number,
+                                                   "reason": withdrawn.reason}
+        self._tell_owner(lambda owner: owner.withdraw_approval(
+            self.call_id, withdrawn.number, withdrawn.reason))
 
     def _open_owner_wait(self, kind: WaitKind, number: int, wait_s: float) -> None:
         """대기 항목을 열고 시간 초과 타이머를 건다. 열려 있던 항목은 이것으로 바뀐다(하나뿐)."""
@@ -2212,8 +2265,9 @@ class CallSession:
         for request in requests:
             self._tell_owner(lambda owner, r=request: owner.knowledge_wanted(self.call_id, r))
 
-    def _owner_replied(self, note: OwnerNote) -> None:
-        """사장님 쪽 알림(답·열람)을 받는 곳. 바로 돌아온다. 어느 스레드에서 불려도 된다.
+    def _owner_replied(self, note: WaitNote) -> None:
+        """사장님 쪽 알림(질문 답·열람, 확인 요청 결정)을 받는 곳. 바로 돌아온다. 어느 스레드에서
+        불려도 된다.
 
         처리는 루프의 다음 차례에 한다(부른 쪽 안에서 턴을 열지 않게).
         """
@@ -2222,7 +2276,7 @@ class CallSession:
             return
         loop.call_soon_threadsafe(self._owner_got, note, self._clock.monotonic())
 
-    def _owner_got(self, note: OwnerNote, at: float) -> None:
+    def _owner_got(self, note: WaitNote, at: float) -> None:
         if self.done:
             return
         wait = self._owner_wait
@@ -2236,6 +2290,11 @@ class CallSession:
         """대기 항목을 연 뒤 대기 시간이 지났다. 허브에 알리고 시간 초과 답을 큐에 넣는다."""
         wait = self._owner_wait
         if self.done or wait is None or wait.key != (kind, number):
+            return
+        if kind == "approval":
+            # 확인 요청: 카드를 보낸 뒤 `approval_wait_s`. 문자로 알린다는 대사로 통화를 끝낸다
+            # (주문 승인 spec "세션"). 카드의 통화 뒤 대기는 통화 끝 알림으로 허브가 안다
+            self._owner_got(OwnerDecision(number, "timeout"), self._clock.monotonic())
             return
         # 질문 카드: 질문 카드를 보낸 뒤 `owner_wait_s` (티켓 06)
         self._tell_owner(lambda owner: owner.question_timed_out(self.call_id, number))
@@ -2301,8 +2360,11 @@ class CallSession:
             wait.seen_said = True
         self._owner_said(opened, wait, note, timing)
 
-    def _owner_turn(self, note: OwnerNote) -> int | None:
+    def _owner_turn(self, note: WaitNote) -> int | None:
         """사장님 알림을 말하는 봇 턴을 연다(`bot_turn`). 알림 종류마다 엔진 행동이 다르다."""
+        if isinstance(note, OwnerDecision):  # 확인 요청 결정 (주문 승인 티켓 02)
+            return self.bot_turn("owner_decision",
+                                 lambda engine, when: engine.owner_decided(note, when))
         if isinstance(note, OwnerReply):  # 질문 카드 답
             number, answer = note.question, note.answer
             return self.bot_turn(
@@ -2311,11 +2373,15 @@ class CallSession:
         number = note.question  # 질문 카드 열람
         return self.bot_turn("owner_seen", lambda engine, when: engine.owner_seen(number, when))
 
-    def _owner_said(self, turn: int, wait: OwnerWait, note: OwnerNote,
+    def _owner_said(self, turn: int, wait: OwnerWait, note: WaitNote,
                     timing: dict[str, Any]) -> None:
         """사장님 알림을 말하는 턴을 열었다. 허브에 알리고 턴 기록에 남긴다(알림 종류마다)."""
         record = self._log.get(turn)
-        if isinstance(note, OwnerReply):
+        if isinstance(note, OwnerDecision):
+            if record is not None:  # 결정 종류(시간 초과 포함)와 기다린·미룬 시간
+                record.fields["approval_decision"] = {"request": note.request, "kind": note.kind,
+                                                      "delay_min": note.delay_min, **timing}
+        elif isinstance(note, OwnerReply):
             number = note.question
             # 허브는 이 알림이 없는 제시간 답을 통화 끝에 문자로 돌린다 (리뷰 C1)
             self._tell_owner(lambda owner: owner.answer_said(self.call_id, number))
@@ -2349,12 +2415,14 @@ class _TurnStart:
 def _rewindable(result: TurnResult) -> bool:
     """이 턴을 되감아도 되나 (6단계 티켓 02).
 
-    밖으로 나간 것이 있으면 안 된다: 주문(`order`), 통화 끝(TERMINAL), 사장님 질문 카드, 보충 요청.
+    밖으로 나간 것이 있으면 안 된다: 주문(`order`), 통화 끝(TERMINAL), 사장님 질문 카드, 보충 요청,
+    확인 요청을 열거나 거둔 턴(주문 승인).
     최종 복창 턴도 뺀다. 복창은 그 턴의 말이 확정 기준이라, 합성 중에 한 말은 전처럼 복창을 다
     들려준 뒤 다음 턴으로 본다(금액 전 "네" 거르기·정정 받기, 3단계 리뷰 P1)
     """
     return (result.order is None and result.state not in TERMINAL
             and result.owner_question is None and not result.knowledge_requests
+            and result.approval_request is None and result.approval_withdrawn is None
             and not result.readback)
 
 
@@ -2365,6 +2433,8 @@ def _end_reason(result: TurnResult, u: _Utterance | _BotTurn | None) -> str:
     되묻기 상한에 닿음)."""
     if result.state is State.FALLBACK:
         return "handoff"
+    if result.state is State.CLOSING:
+        return "confirmed"  # 사장님 결정을 말한 봇 턴도 확정이다 (주문 승인)
     if isinstance(u, _BotTurn):
         return u.reason
     if result.state is State.CLOSING:

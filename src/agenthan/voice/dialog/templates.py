@@ -265,6 +265,17 @@ def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
     return f"네, {spoken_time(pickup)}까지 준비해 둘게요.{later} 감사합니다."
 
 
+def approval_hold() -> str:
+    """복창에 "네": 사장님께 주문 확인을 요청했다 (주문 승인 티켓 02). 이 턴의 마지막 말이다."""
+    return "사장님께 주문 확인 중이에요. 잠시만요."
+
+
+def approval_timeout() -> str:
+    """통화 중 대기 시간 안에 사장님 결정이 없었다 (주문 승인 spec "엔진"). 통화를 끝낸다."""
+    return ("가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요. "
+            "확정 문자를 받으시면 주문 완료예요. 감사합니다.")
+
+
 def not_understood() -> str:
     return "죄송해요, 제가 잘 못 알아들었어요."
 

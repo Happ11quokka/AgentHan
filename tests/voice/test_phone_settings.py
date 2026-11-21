@@ -136,6 +136,19 @@ def test_the_owner_answer_wait_defaults_to_twenty_seconds_and_reaches_the_sessio
         VoiceSettings.from_env({"PHONE_OWNER_WAIT_S": "0"}, env_file=None)
 
 
+def test_owner_approval_is_on_by_default_and_its_wait_reaches_the_session() -> None:
+    # 주문 승인 티켓 02: 확정 전 사장님 수락(화면이 없으면 건너뜀). 대기 초는 허브 카드 마감과 같다
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert (default.owner_approval, default.approval_wait_s) == (True, 20.0)
+    s = VoiceSettings.from_env({"PHONE_OWNER_APPROVAL": "off", "PHONE_APPROVAL_WAIT_S": "12"},
+                               env_file=None)
+    session = s.session_settings()
+    assert (session.owner_approval, session.approval_wait_s) == (False, 12.0)
+    for name, wrong in (("PHONE_OWNER_APPROVAL", "true"), ("PHONE_APPROVAL_WAIT_S", "0")):
+        with pytest.raises(SettingsError):
+            VoiceSettings.from_env({name: wrong}, env_file=None)
+
+
 def test_voice_barge_in_is_off_by_default_and_takes_its_thresholds_from_the_env() -> None:
     # 3단계 티켓 06: 기본 꺼짐. shadow는 판정만 기록, on은 실제로 줄이고 멈춘다
     assert VoiceSettings.from_env({}, env_file=None).barge is None

@@ -6,8 +6,10 @@
   "questions": [...], "captions": [...], "knowledge": [...], "now": 허브 시각}`), 그 뒤
   `order.update`·`call.update`·`call.caption`·`owner.question`·`owner.question.update`·
   `knowledge.update`(카드 전체)
-- `POST /api/owner/orders/{id}/accept?key=…`: 접수(new → accepted). 바뀐 카드를 돌려준다.
-  없는 주문은 404
+- `POST /api/owner/orders/{id}/accept?key=…` 본문(선택) `{"delay_min": 0}`: 확인 대기 주문 수락
+  (new → accepted, 주문 승인 티켓 02). 확정 문자를 보내고 통화 중이면 손님이 마무리를 듣는다.
+  바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나 손님이 고치는 중·취소한 요청은 409,
+  0이 아닌 늦춘 분은 422(티켓 04)
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 - `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}` 또는
@@ -40,7 +42,7 @@ import asyncio
 import secrets
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import aclosing, contextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
@@ -49,6 +51,7 @@ from pydantic import BaseModel, Field
 from agenthan.voice.dialog.owner_question import OwnerPost
 from agenthan.voice.owner.hub import (
     AlreadyAnswered,
+    AlreadyDecided,
     CardBusy,
     OwnerEvent,
     OwnerHub,
@@ -68,6 +71,7 @@ _STATUS: tuple[tuple[type[Exception], int], ...] = (
     (UnknownCard, 404),  # 그런 카드가 없다
     (CardBusy, 409),  # 지금 닫을 수 없다(통화 중·주문됨)
     (AlreadyAnswered, 409),  # 답은 한 번만
+    (AlreadyDecided, 409),  # 주문 결정은 한 번만 (주문 승인 티켓 02)
     (ValueError, 422),  # 모르는 답·빈 글
 )
 
@@ -98,6 +102,12 @@ class KnowledgeSave(BaseModel):
     text: str = Field("", max_length=FREE_TEXT_MAX)
 
 
+class AcceptBody(BaseModel):
+    """수락 버튼(주문 승인 티켓 02). 늦춘 분은 지금 0만 받는다(티켓 04가 15·30을 연다)."""
+
+    delay_min: Literal[0] = 0
+
+
 class AnswerBody(BaseModel):
     """질문 카드 답: 버튼(yes·no·unsure) 또는 자유 입력(free + `text`, 티켓 07)."""
 
@@ -122,9 +132,12 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
                 yield ServerSentEvent(event=event.name, data=event.data, id=str(event.id))
 
     @router.post("/orders/{order_id}/accept")
-    async def accept(order_id: str) -> dict[str, Any]:
-        with _hub_errors({404: "그런 주문이 없어요"}):
-            return hub.accept(order_id)
+    async def accept(order_id: str, body: AcceptBody | None = None) -> dict[str, Any]:
+        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(예전 접수 경로와 같은 주소)."""
+        delay_min = body.delay_min if body is not None else 0
+        with _hub_errors({404: "그런 주문이 없어요",
+                          409: "이미 결정했거나 손님이 주문을 고치는 중이에요"}):
+            return hub.accept(order_id, delay_min)
 
     @router.post("/calls/{call_id}/dismiss")
     async def dismiss(call_id: str) -> dict[str, Any]:

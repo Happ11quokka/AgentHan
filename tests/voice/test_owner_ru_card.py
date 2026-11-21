@@ -320,7 +320,7 @@ def test_the_same_sentence_is_translated_once_per_call() -> None:
 
     assert [(e.name, e.data["status"]) for e in before] == [
         ("call.update", "live"), ("call.update", "live"), ("call.update", "live"),
-        ("order.update", "new"), ("call.update", "ordered"),
+        ("order.update", "accepted"), ("call.update", "ordered"),  # 자동 확정 (주문 승인 02)
     ]
     assert [(e.name, e.data["lines"][0]["request_owner"]) for e in after] == [
         ("order.update", "кинза Уберите, пожалуйста."),

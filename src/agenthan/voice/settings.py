@@ -45,6 +45,8 @@
 | `PHONE_ANSWER` | `on`이면 손님 질문에 가게 자료로 답하는 답변기(HCX). NLU가 `hcx`일 때만 | `on` |
 | `PHONE_ANSWER_MODEL` | 답변기 모델 (`nlu/hcx_answer.py`가 읽는다) | `HCX-005` |
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
+| `PHONE_OWNER_APPROVAL` | `on`이면 확정 전 사장님 수락을 받는다(화면이 없으면 건너뜀) | `on` |
+| `PHONE_APPROVAL_WAIT_S` | 확인 요청 통화 중 대기(초, 카드 보낸 때부터). 넘으면 문자로 | `20.0` |
 
 6단계 운영 보강 (문지기 `gate.py`). 숫자 상한은 `0`이면 끈다.
 
@@ -91,6 +93,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agenthan.voice.call.barge import BargeSettings
 from agenthan.voice.call.defaults import (
+    APPROVAL_WAIT_S,
     CONT_WAIT_S,
     MODEL_HIGH,
     MODEL_LOW,
@@ -174,6 +177,10 @@ class VoiceSettings:
     # 사장님 질문 답 대기 (4단계 티켓 06). 허브 카드 마감과 세션 시간 초과가 같이 쓴다
     owner_wait_s: float = OWNER_WAIT_S
     ask_owner: bool = False  # 통화 중 사장님께 바로 묻기 (5단계 티켓 09). 기본 끔
+    # 주문 승인 (주문 승인 티켓 02). 확정 전 사장님 수락. 사장님 화면이 없으면 건너뛴다
+    owner_approval: bool = True
+    # 확인 요청의 통화 중 대기. 허브 카드 마감과 세션 시간 초과가 같이 쓴다
+    approval_wait_s: float = APPROVAL_WAIT_S
     answer: bool = True  # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11)
     # ---- 6단계 운영 보강: 문지기 (`gate.py`). 숫자 상한은 0이면 끈다
     allowed_origins: tuple[str, ...] = ()  # 비면 Origin을 검사하지 않는다
@@ -338,6 +345,9 @@ class VoiceSettings:
             owner_wait_s=_number("PHONE_OWNER_WAIT_S", get("PHONE_OWNER_WAIT_S", ""),
                                  OWNER_WAIT_S),
             ask_owner=get("PHONE_ASK_OWNER", "off") == "on",
+            owner_approval=_switch("PHONE_OWNER_APPROVAL", get("PHONE_OWNER_APPROVAL", "on")),
+            approval_wait_s=_number("PHONE_APPROVAL_WAIT_S", get("PHONE_APPROVAL_WAIT_S", ""),
+                                    APPROVAL_WAIT_S),
             answer=get("PHONE_ANSWER", "on") == "on",
             # `*`는 "검사 안 함": compose가 기본값(배포 도메인)을 넣어서 빈 값으로는 못 끈다
             allowed_origins=tuple(o for o in _names(get("PHONE_ALLOWED_ORIGINS", ""))
@@ -384,7 +394,7 @@ _SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "more_no_wait_s", "mic_cl
                    "turn_rewind", "gate_max_s", "ack_first", "smoke_key",
                    "no_input_s", "wait_request_s",
                    "turn_model_low", "turn_model_high", "barge", "owner_wait_s", "ask_owner",
-                   "answer")
+                   "answer", "owner_approval", "approval_wait_s")
 
 
 def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:

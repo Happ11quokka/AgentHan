@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, tzinfo
 from typing import Any, Protocol
 
 from agenthan.core.contracts import OrderLine, OrderSink
+from agenthan.voice.dialog.approval import ApprovalRequest, OwnerDecision, WithdrawReason
 from agenthan.voice.dialog.knowledge import KnowledgeRequest
 from agenthan.voice.dialog.owner_question import OwnerNote, OwnerQuestion
 from agenthan.voice.store_config import KST
@@ -256,6 +257,27 @@ class OwnerChannel(Protocol):
         닫지 않는다(늦은 답을 받는다).
         """
 
+    def approval_ready(self) -> bool:
+        """지금 확인 요청(주문 승인 티켓 02)을 받을 사장님 화면이 있나. 바로 돌아온다.
+
+        세션은 설정(`owner_approval`)이 켜져 있을 때 손님 턴마다 묻는다. 거짓이면 승인을 건너뛰고
+        예전처럼 바로 확정한다(사장님 화면이 꺼진 가게에 주문이 공중에 뜨지 않게).
+        """
+        ...
+
+    def open_approval(
+        self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
+    ) -> None:
+        """복창에 "네"가 온 주문의 확인 요청을 연다(주문 승인 티켓 02). 바로 돌아온다.
+
+        사장님 결정은 나중에 `reply`로 넘긴다(요청당 한 번). `reply`는 세션의 받는 곳이라 바로
+        돌아오고, 이 호출 안에서 불러도 되고 다른 스레드에서 불러도 된다. 거둔 요청·통화 끝 뒤의
+        결정은 세션이 버린다. 같은 통화에 새 번호로 다시 열면 앞 요청을 대신한다.
+        """
+
+    def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
+        """기다리는 중에 손님이 주문을 고치거나(changed) 취소해(cancelled) 확인 요청을 거뒀다."""
+
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:
         """AI가 답하지 못하고 손님에게 "사장님께 전해 둘게요"라고 한 메뉴 질문(티켓 13, 보충 요청).
 
@@ -299,6 +321,17 @@ class NullOwnerChannel:
         pass
 
     def question_timed_out(self, call_id: str, number: int) -> None:
+        pass
+
+    def approval_ready(self) -> bool:
+        return False  # 사장님 화면이 없다. 승인을 건너뛴다
+
+    def open_approval(
+        self, call_id: str, request: ApprovalRequest, reply: Callable[[OwnerDecision], None]
+    ) -> None:
+        pass
+
+    def withdraw_approval(self, call_id: str, number: int, reason: WithdrawReason) -> None:
         pass
 
     def knowledge_wanted(self, call_id: str, request: KnowledgeRequest) -> None:

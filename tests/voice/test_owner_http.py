@@ -79,9 +79,10 @@ def _call_and_confirm(client: TestClient) -> None:
         assert phone.closed_by_server()
 
 
-def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
+def test_a_confirmed_call_waits_for_the_owner_who_accepts_it_and_the_customer_hears_it(
     tmp_path,
 ) -> None:
+    """끝에서 끝 (주문 승인 02): 통화 → 확인 요청 카드 → 수락 POST → 손님 마무리 → 확정 문자."""
     with _client(tmp_path) as client:
         with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
             assert stream.status_code == 200
@@ -93,30 +94,87 @@ def test_a_confirmed_call_shows_up_on_the_owner_screen_and_the_owner_accepts_it(
             assert snapshot["data"] == {
                 "orders": [], "calls": [], "questions": [], "captions": [], "knowledge": []}
 
-            _call_and_confirm(client)
+            with client.websocket_connect(WS_PATH) as ws:
+                phone = Phone(ws)
+                phone.send(type="call.start", turn=0)
+                phone.until("call.ready", 0)
+                phone.played(0)
+                for turn in (1, 2, 3, 4):
+                    phone.say(turn)
+                    phone.played(turn)  # 4: "네" → "사장님께 주문 확인 중이에요. 잠시만요."
+                assert phone.of("order") == []  # 아직 확정이 아니다
 
-            live = _until(events, "call.update")["data"]
-            assert (live["status"], live["lines"]) == ("live", [])
-            caption = _until(events, "call.caption")["data"]  # 통화 자막 (티켓 10)
-            assert caption["call_id"] == live["id"]
-            assert caption["lines"][0]["n"] == 1
-            card = _until(events, "order.update")["data"]
-            assert card["id"] == live["id"]  # 같은 통화 id로 통화 카드가 주문 카드가 된다
+                live = _until(events, "call.update")["data"]
+                assert (live["status"], live["lines"]) == ("live", [])
+                caption = _until(events, "call.caption")["data"]  # 통화 자막 (티켓 10)
+                assert caption["call_id"] == live["id"]
+                assert caption["lines"][0]["n"] == 1
+                card = _until(events, "order.update")["data"]
+                assert card["id"] == live["id"]  # 같은 통화 id로 확인 요청 카드가 생긴다
+                assert (card["status"], card["stage"], card["request"]) == ("new", "in_call", 1)
+                assert card["deadline_at"] > card["requested_at"]  # 통화 중 카운트다운
+                assert [(line["name_ko"], line["quantity"]) for line in card["lines"]] == [
+                    ("메도빅", 1)
+                ]
+                assert (card["pickup_label"], card["total_label"]) == ("18:30", "7,500₩")
+                assert card["sms"] == []  # 확정 문자는 수락 때 간다
+
+                url = f"/api/owner/orders/{card['id']}/accept?key={KEY}"
+                accepted = client.post(url)
+                assert accepted.status_code == 200
+                assert accepted.json()["status"] == "accepted"
+                assert client.post(url).status_code == 409  # 결정은 한 번만
+                update = _until(events, "order.update")["data"]
+                assert (update["id"], update["status"]) == (card["id"], "accepted")
+                assert [t["kind"] for t in update["sms"]] == ["order"]
+
+                order = phone.until("order", 5)  # 봇이 먼저 말하는 턴: 마무리
+                phone.played(5)
+                assert phone.closed_by_server()
+
             ordered = _until(events, "call.update")["data"]
+            while ordered["status"] == "live":
+                ordered = _until(events, "call.update")["data"]
             assert (ordered["id"], ordered["status"]) == (live["id"], "ordered")
-            assert ordered["lines"] == card["lines"]
-            assert card["status"] == "new"
-            assert [(line["name_ko"], line["quantity"]) for line in card["lines"]] == [
-                ("메도빅", 1)
-            ]
-            assert card["pickup_label"] == "18:30"
-            assert card["total_label"] == "7,500₩"
 
-            accepted = client.post(f"/api/owner/orders/{card['id']}/accept?key={KEY}")
-            assert accepted.status_code == 200
-            assert accepted.json()["status"] == "accepted"
-            update = _until(events, "order.update")["data"]
-            assert (update["id"], update["status"]) == (card["id"], "accepted")
+    held = " ".join(e["text"] for e in phone.of("bot.say", 4))
+    closing = " ".join(e["text"] for e in phone.of("bot.say", 5))
+    assert held == "사장님께 주문 확인 중이에요. 잠시만요."
+    assert closing == "네, 6시 반까지 준비해 둘게요. 감사합니다."
+    assert order["order"]["status"] == "confirmed"
+    (ended,) = phone.of("call.ended")
+    assert ended["reason"] == "confirmed"
+    assert [t["text"] for t in ended["sms"]] == [
+        "주문이 확정됐어요. 메도빅 1개, 합계 7,500원. 18:30에 준비해 둘게요."]
+
+
+def test_without_an_owner_screen_the_call_confirms_at_once_and_the_card_says_so(
+    tmp_path,
+) -> None:
+    """사장님 화면 연결이 없으면 승인을 건너뛰고 예전처럼 바로 확정한다. 카드는 자동 확정."""
+    with _client(tmp_path) as client:
+        _call_and_confirm(client)
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            snapshot = next(_sse(stream.iter_lines()))
+    (card,) = snapshot["data"]["orders"]
+    assert (card["status"], card["auto_accepted"]) == ("accepted", True)
+    assert [t["kind"] for t in card["sms"]] == ["order"]
+
+
+def test_with_approval_switched_off_an_open_owner_screen_does_not_hold_the_call(
+    tmp_path,
+) -> None:
+    settings = VoiceSettings(
+        log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
+        fake_replies=ORDER_SCRIPT, turn_model="off", owner_key=KEY, owner_approval=False,
+    )
+    with TestClient(create_app(settings)) as client:
+        with client.stream("GET", f"{STREAM}?key={KEY}") as stream:
+            events = _sse(stream.iter_lines())
+            next(events)  # snapshot
+            _call_and_confirm(client)
+            card = _until(events, "order.update")["data"]
+    assert (card["status"], card["auto_accepted"]) == ("accepted", True)
 
 
 def test_owner_paths_need_the_secret_key(tmp_path) -> None:
@@ -211,10 +269,12 @@ def test_the_owner_answers_a_question_card_and_the_customer_hears_it(tmp_path) -
                 phone.played(3)  # 봇이 먼저 말하는 턴: 사장님 답 + 하던 질문
                 for turn in (4, 5, 6):
                     phone.say(turn)
-                    if turn < 6:
-                        phone.played(turn)
-                phone.until("order", 6)
-                phone.played(6)
+                    phone.played(turn)  # 6: "네" → 사장님 화면이 열려 있어 확인 요청 (주문 승인)
+                order = _until(events, "order.update")["data"]
+                accept = f"/api/owner/orders/{order['id']}/accept?key={KEY}"
+                assert client.post(accept).status_code == 200
+                phone.until("order", 7)
+                phone.played(7)
                 assert phone.closed_by_server()
 
     held = " ".join(e["text"] for e in phone.of("bot.say", 2))

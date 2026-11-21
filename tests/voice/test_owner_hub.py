@@ -1,6 +1,7 @@
 """사장님 허브: HTTP 없이 공개 인터페이스(`submit`·`accept`·`events`)만 본다 (spec 이음매 3).
 
-허브가 내보내는 이벤트(이름·카드 내용)와 접수 결과를 본다. 허브 안 자료 구조는 보지 않는다.
+허브가 내보내는 이벤트(이름·카드 내용)와 수락 결과를 본다. 허브 안 자료 구조는 보지 않는다.
+확인 요청(주문 승인 티켓 02)의 자세한 동작은 `test_owner_approval.py`.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import pytest
 from agenthan.core.contracts import Order, OrderLine
 from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
+from agenthan.voice.dialog.approval import ApprovalRequest
 from agenthan.voice.owner.hub import OwnerHub, UnknownCard
 
 NOW = datetime.fromisoformat("2026-11-08T16:02:00+09:00")
@@ -41,7 +43,12 @@ async def _next(stream):
     return await asyncio.wait_for(anext(stream), WAIT)
 
 
-def test_a_confirmed_order_becomes_a_new_order_card_for_the_owner() -> None:
+def _request(hub: OwnerHub, call_id: str = "call-1") -> None:
+    """복창에 "네"가 온 주문의 확인 요청 (통화 세션이 여는 것과 같다)."""
+    hub.open_approval(call_id, ApprovalRequest(1, _order(call_id)), lambda decision: None)
+
+
+def test_a_confirmed_order_becomes_an_order_card_for_the_owner() -> None:
     async def scenario():
         hub = _hub()
         stream = hub.events()
@@ -60,7 +67,8 @@ def test_a_confirmed_order_becomes_a_new_order_card_for_the_owner() -> None:
     assert second.name == "order.update"
     card = second.data
     assert card["id"] == "call-1"
-    assert card["status"] == "new"
+    # 확인 요청 없이 온 확정 주문: 자동 확정 (주문 승인 티켓 02)
+    assert (card["status"], card["auto_accepted"]) == ("accepted", True)
     assert card["received_at"] == "2026-11-08T16:02:00+09:00"
     assert card["received_label"] == "16:02"  # 리뷰 P1: 주문 시각을 카드에 (이야기 25)
     assert card["customer_name"] == ""  # 엔진이 이름을 받지 않는다. 있으면 그대로
@@ -84,7 +92,7 @@ def test_the_owner_accepts_a_new_order_and_every_screen_sees_it() -> None:
         hub = _hub()
         stream = hub.events()
         await _next(stream)
-        hub.submit(_order())
+        _request(hub)
         await _next(stream)
         returned = hub.accept("call-1")
         update = await _next(stream)
@@ -102,8 +110,8 @@ def test_the_owner_accepts_a_new_order_and_every_screen_sees_it() -> None:
 def test_a_screen_that_connects_later_starts_from_a_snapshot_of_every_card() -> None:
     async def scenario():
         hub = _hub()
-        hub.submit(_order("call-1"))
-        hub.submit(_order("call-2"))
+        _request(hub, "call-1")
+        _request(hub, "call-2")
         hub.accept("call-1")
         stream = hub.events()
         first = await _next(stream)
