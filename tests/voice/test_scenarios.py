@@ -39,6 +39,10 @@ APPROVAL = [  # 주문 승인 티켓 11: 가게 승인 시나리오 4개 (엔진
     "s33-no-wait-reject-after-call",
     "s34-no-wait-out-of-stock-after-call",
     "s35-no-wait-auto-cancel",
+    # 티켓 07: 손님 취소(확인 중·늦춘 수락 뒤)와 제시간 수락 뒤 거부, 한 주문에 결정 한 번
+    "s40-customer-cancel-while-checking",
+    "s41-customer-cancel-after-delay",
+    "s42-customer-cancel-refused-after-accept",
 ]
 # 통화 중 대기를 켠 승인 시나리오 (통화 중 결정 경로가 깨지지 않았는지, 티켓 04)
 IN_CALL = APPROVAL[:4]

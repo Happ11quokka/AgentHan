@@ -60,6 +60,15 @@
                         # 티켓 05: outcome · reason(사유 코드, 없으면 null) · reason_text ·
                         # sold_out(떨어진 메뉴 이름들) · original_pickup_label · can_cancel
 
+손님 취소 (티켓 07). `after_call`에 손님 화면 [취소하기]도 넣는다(허브 `cancel_by_customer`, 취소
+API가 부르는 것). 거부를 기대하면 `refused`에 거부 사유 코드를 적는다. 사장님 결정이 늦게 와
+거부돼야 하면(한 주문에 결정 한 번) 그 결정에 `"refused": true`:
+
+      "after_call": [{"owner": "accept", "delay_min": 15},
+                     {"customer": "cancel"},                       # 받아야 한다
+                     {"customer": "cancel", "refused": "customer_cancelled"},
+                     {"owner": "reject", "reason": "busy", "refused": true}],
+
 금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
 150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴. 무응답 되묻기 앞의 "여보세요?"는 질문으로
 세지 않는다(부르는 말이다).
@@ -84,7 +93,7 @@ from agenthan.voice.dialog.states import State
 from agenthan.voice.nlu.base import Act
 from agenthan.voice.nlu.fake import FakeNlu
 from agenthan.voice.owner.decisions import DecisionRecord
-from agenthan.voice.owner.hub import OwnerHub, UnknownCard
+from agenthan.voice.owner.hub import AlreadyDecided, NotCancellable, OwnerHub, UnknownCard
 from agenthan.voice.store_config import StoreConfig
 
 SCENARIO_DIR = Path(__file__).parent / "scenarios"
@@ -291,6 +300,7 @@ class _Owner:
         self.open: int | None = None  # 열린 확인 요청 번호
         self.requested: list[dict[str, Any]] = []  # 그 요청의 장바구니
         self.approved: list[dict[str, Any]] | None = None
+        self.problems: list[str] = []  # 통화 뒤 결정·손님 취소가 기대와 다르게 받거나 거부됨
         self.hub.call_started(self.call_id)
 
     def record(self, decision: DecisionRecord) -> None:  # DecisionSink
@@ -342,14 +352,25 @@ class _Owner:
         """통화 끝 → 통화 뒤 사장님 결정 → (허브 시계를 옮기고 자동 취소 검사) → 사장님 쪽과 손님
         주문 현황에서 보이는 것."""
         self.hub.call_ended(self.call_id, order.status if order is not None else "cancelled")
-        for turn in after_call:  # 사장님 화면 버튼 (결정은 통화로 가지 않는다)
-            if turn["owner"] == "accept":
-                self.hub.accept(self.call_id, turn.get("delay_min", 0))
-            elif turn["owner"] == "reject":
-                self.hub.reject(self.call_id, turn["reason"], menu_ids=turn.get("menu_ids", ()),
-                                text=turn.get("text", ""))
+        for turn in after_call:  # 사장님·손님 화면 버튼 (결정은 통화로 가지 않는다)
+            if "customer" in turn:
+                self._customer_after_call(turn)
+                continue
+            try:
+                if turn["owner"] == "accept":
+                    self.hub.accept(self.call_id, turn.get("delay_min", 0))
+                elif turn["owner"] == "reject":
+                    self.hub.reject(self.call_id, turn["reason"],
+                                    menu_ids=turn.get("menu_ids", ()), text=turn.get("text", ""))
+                else:
+                    raise ValueError(f"모르는 통화 뒤 결정: {turn['owner']!r}")
+            except AlreadyDecided:
+                if not turn.get("refused"):
+                    raise
             else:
-                raise ValueError(f"모르는 통화 뒤 결정: {turn['owner']!r}")
+                if turn.get("refused"):
+                    self.problems.append(
+                        f"통화 뒤 사장님 {_owner_label(turn)}: 거부돼야 하는데 받음")
         assert self.inbox == [], f"통화 뒤 결정이 통화로 갔다 {self.inbox}"
         if after_s:
             self.clock.set(self.clock.now() + timedelta(seconds=after_s))
@@ -362,6 +383,18 @@ class _Owner:
             "sms": [t["kind"] for t in self.hub.customer_texts(self.call_id)],
             "sold_out_today": sorted(self.hub.sold_out_today()),
         }
+
+    def _customer_after_call(self, turn: dict[str, Any]) -> None:
+        """손님 화면 [취소하기] (티켓 07). `refused`가 있으면 그 사유로 거부돼야 한다."""
+        if turn["customer"] != "cancel":
+            raise ValueError(f"모르는 손님 동작: {turn['customer']!r}")
+        try:
+            self.hub.cancel_by_customer(self.call_id)
+            got = None
+        except NotCancellable as refused:
+            got = refused.code
+        if got != turn.get("refused"):
+            self.problems.append(f"손님 취소: 거부 사유 {got!r} ≠ {turn.get('refused')!r}")
 
     def status(self) -> dict[str, Any] | None:
         """손님 주문 현황(허브 `order_status`)에서 시나리오가 보는 칸. 주문 카드가 없으면 None."""
@@ -456,6 +489,7 @@ def run(scenario: Scenario) -> Run:
         out.failures.append("Order.transcript가 실제 대화와 다르다")
     if owner is not None:
         seen = owner.ended(out.order, scenario.after_call_s, scenario.after_call)
+        out.failures += owner.problems
         for key, value in (scenario.expect_owner or {}).items():
             if seen[key] != value:
                 out.failures.append(f"사장님 쪽 {key}: {seen[key]!r} ≠ {value!r}")
