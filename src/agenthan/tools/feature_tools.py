@@ -242,6 +242,7 @@ def _menu(store, args):
         }
         if args.get("description"):
             record["description"] = " ".join(args["description"].split())
+        store.illustrate(record)
         data["menus"].append(record)
         store.write(data)
         return _saved(store, "menus", record["id"], "created")
@@ -258,7 +259,9 @@ def _menu(store, args):
                 "message": "같은 이름의 메뉴가 이미 있습니다.",
                 "candidates": [{"id": clash["id"], "name": clash["name"]}],
             }
-        record["name"] = " ".join(args["new_name"].split())
+        if " ".join(args["new_name"].split()) != record["name"]:
+            record["name"] = " ".join(args["new_name"].split())
+            store.illustrate(record)
     if args.get("price") is not None:
         record["price"] = args["price"]
     if args.get("description"):

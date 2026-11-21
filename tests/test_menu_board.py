@@ -13,6 +13,7 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.app.server import create_app
 from agenthan.core.contracts import MenuItem
 from agenthan.core.fakes import FakeStoreKnowledge
+from agenthan.illustration import pick_illustration
 from agenthan.tools.dummy_store import DummyStore, DummyStoreError
 from agenthan.tools.image_cutout import CutoutResult
 
@@ -23,7 +24,13 @@ NAMES = {
     "Ватрушка": {"name_ko": "바트루시카", "description_ko": "치즈를 올려 구운 동그란 빵."},
     "Пельмени": {"name_ko": "펠메니", "description_ko": "러시아식 만두."},
     "김밥": {"name_ko": "김밥", "description_ko": "밥과 채소를 김에 만 음식."},
+    "Блюдо дня": {"name_ko": "오늘의 수프", "description_ko": "날마다 바뀌는 수프."},
 }
+
+
+def broken_embed(_text):
+    """대표 그림 고르기의 임베딩 단계는 테스트에서 늘 실패시킨다(진짜 임베딩을 부르지 않음)."""
+    raise RuntimeError("임베딩 서버가 응답하지 않음")
 
 
 def board_image():
@@ -155,7 +162,7 @@ def test_photo_regions_find_the_picture_cells_and_snap_a_loose_box():
 
 
 def run_board(tmp_path, answer=ITEMS):
-    store = DummyStore(tmp_path / "store.json")
+    store = DummyStore(tmp_path / "store.json", embed=broken_embed)
     store.write({"shop": {"name": "베이커리"}, "menus": [], "reviews": []})
     store.upsert_menu("메도빅", 7500, name_native="Медовик", description="꿀 케이크")
     fake = FakeV3(answer)
@@ -214,6 +221,68 @@ def test_a_failing_menu_does_not_stop_the_others_and_clears_filling(tmp_path):
     saved = menus(store)
     assert saved["바트루시카"]["description"] and not saved["바트루시카"].get("photo")
     assert all(m["filling"] == [] for m in saved.values())
+
+
+# ---------------------------------------------------------------- 대표 그림
+
+
+def picked(name):
+    return pick_illustration(name, None, broken_embed)
+
+
+def test_board_menus_get_the_illustration_of_their_final_localized_name(tmp_path):
+    answer = {"kind": "menu_board", "items": [{"name": "Блюдо дня", "price": 6000}]}
+    store, fake, result = run_board(tmp_path, answer)
+    first = next(m for m in store.read()["menus"] if m["name"] == "Блюдо дня")
+    assert first["illustration"] == picked("Блюдо дня")  # 등록하자마자 하나는 있다
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    soup = menus(store)["오늘의 수프"]
+    assert soup["illustration"] == picked("오늘의 수프") != picked("Блюдо дня")
+    assert "illustration" not in soup["ai"] + soup["filling"]  # AI 표시 대상이 아니다
+
+
+def test_every_board_menu_has_an_illustration_even_with_a_cut_photo(tmp_path):
+    store, fake, result = run_board(tmp_path)
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    saved = menus(store)
+    assert saved["바트루시카"]["photo"] and saved["메도빅"]["photo"]
+    for name, record in saved.items():
+        assert record["illustration"] == picked(name)
+
+
+def test_an_owner_rename_before_the_fill_keeps_the_owner_name_illustration(tmp_path):
+    answer = {"kind": "menu_board", "items": [{"name": "Блюдо дня", "price": 6000}]}
+    store, fake, result = run_board(tmp_path, answer)
+    store.patch_menu(result.jobs[0].menu_id, {"name": "가나다 에이드"}, by_owner=True)
+    menu_board.fill_all(store, result.jobs, BOARD, "", call=fake, cutout=fake_cutout)()
+    assert menus(store)["가나다 에이드"]["illustration"] == picked("가나다 에이드")
+
+
+def test_menus_added_or_renamed_in_chat_get_an_illustration(tmp_path):
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    store, _, _ = run_board(tmp_path)
+    execute_feature_tool(store, "upsert_menu", {"name": "가나다 에이드", "price": 5000})
+    assert menus(store)["가나다 에이드"]["illustration"] == picked("가나다 에이드")
+    execute_feature_tool(
+        store, "upsert_menu", {"name": "가나다 에이드", "new_name": "가나다 수프"}
+    )
+    assert menus(store)["가나다 수프"]["illustration"] == picked("가나다 수프")
+    store.upsert_menu("가나다 라떼", 6000)  # 사진 초안 승인으로 들어온 메뉴
+    assert menus(store)["가나다 라떼"]["illustration"] == picked("가나다 라떼")
+
+
+def test_a_price_change_keeps_the_illustration(tmp_path):
+    from agenthan.tools.feature_tools import execute_feature_tool
+
+    store, _, _ = run_board(tmp_path)
+    data = store.read()
+    record = next(m for m in data["menus"] if m["name"] == "김밥")
+    record["illustration"] = "default_tea"  # 무엇이든 이름이 그대로면 다시 고르지 않는다
+    store.write(data)
+    execute_feature_tool(store, "upsert_menu", {"name": "김밥", "price": 4500})
+    store.patch_menu(record["id"], {"name": "김밥", "price": 4800}, by_owner=True)
+    assert menus(store)["김밥"]["illustration"] == "default_tea"
 
 
 # ---------------------------------------------------------------- 저장소
@@ -327,9 +396,14 @@ def test_empty_menu_start_then_board_photo_fills_the_menu_tab(api):
         f"/assistant/sessions/{sid}/photos", files={"image": ("m.jpg", BOARD, "image/jpeg")}
     ).json()
     assert body["pending"] == [] and len(body["place"]["menu"]) == 3
+    # 올린 답에 이미 대표 그림 주소가 있다(사진 없는 메뉴는 새로고침 없이 그림이 뜬다)
+    assert all(m["illustration_url"] for m in body["place"]["menu"])
     place = wait_filled(api, sid)
     rows = {m["name"]: m for m in place["menu"]}
     assert rows["바트루시카"]["photo_url"].endswith("?v=1")
+    # 사진이 있어도 그림 주소는 온다(무엇을 보일지는 화면이 정한다)
+    assert rows["바트루시카"]["illustration_url"]
+    assert rows["김밥"]["photo_url"] is None and rows["김밥"]["illustration_url"]
     assert api.get(rows["바트루시카"]["photo_url"]).content == b"\xff\xd8\xffwhite"
 
 

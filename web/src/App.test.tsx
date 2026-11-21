@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import App from "./App";
 import { TOOLBOX } from "./components/LeftNav";
-import type { ReviewsView, Turn } from "./types";
+import type { Place, ReviewsView, Turn } from "./types";
 import {
   INBOX,
   inboxWith,
@@ -209,6 +209,24 @@ describe("액션", () => {
 });
 
 describe("사진과 승인 카드", () => {
+  test("메뉴판을 올리면 사진 없는 메뉴에 새로고침 없이 대표 그림이 뜨고, 이름이 채워지면 그림도 바뀐다", async () => {
+    const row = { id: "m09", name: "Блюдо дня", price: 6000, description: null, photo_url: null, ai: [], filling: ["name" as const, "description" as const] };
+    const reading: Place = { ...SEED, menu: [{ ...row, illustration_url: "/illustrations/default_other.svg" }] };
+    const filled: Place = {
+      ...SEED,
+      menu: [{ ...row, name: "오늘의 수프", description: "날마다 바뀌는 수프.", illustration_url: "/illustrations/default_soup.svg", ai: ["name", "description"], filling: [] }],
+    };
+    const api = fakeApi([{ reply: "메뉴 1개를 메뉴 탭에 올렸어요.", place: reading, pending: [] }], { place: filled, pending: [] });
+    const { user } = await open(api);
+    await user.upload(screen.getByLabelText("사진 올리기"), CAKE);
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+    const menu = within(await screen.findByRole("tabpanel", { name: "메뉴" }));
+    expect(await menu.findByRole("img", { name: "대표 그림" })).toHaveAttribute("src", "/illustrations/default_other.svg");
+    expect(api.view).not.toHaveBeenCalled(); // 올린 답이 가져온 가게 화면 그대로
+    await waitFor(() => expect(menu.getByRole("img", { name: "대표 그림" })).toHaveAttribute("src", "/illustrations/default_soup.svg"), { timeout: 3000 });
+    expect(menu.getByText("오늘의 수프")).toBeInTheDocument();
+  });
+
   test("사진을 올리면 글과 함께 보내고 내 말풍선에 사진이 보인다", async () => {
     const api = fakeApi([
       { reply: "1. 밀푀유 케이크\n가격은 얼마로 올릴까요?", place: SEED, pending: [photoPending([draft()])] },

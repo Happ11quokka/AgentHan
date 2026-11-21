@@ -6,6 +6,10 @@
 """
 
 from agenthan.illustration.library import illustration_url
-from agenthan.illustration.matcher import assign_missing, pick_illustration
+from agenthan.illustration.matcher import (
+    assign_illustration,
+    assign_missing,
+    pick_illustration,
+)
 
-__all__ = ["assign_missing", "illustration_url", "pick_illustration"]
+__all__ = ["assign_illustration", "assign_missing", "illustration_url", "pick_illustration"]

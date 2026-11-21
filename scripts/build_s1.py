@@ -142,7 +142,8 @@ def final_of(before: dict, after: dict) -> tuple[dict, list[str]]:
     """Assertions on every changed value and the record-level write prefixes."""
     final: dict = {}
     writes: set[str] = set()
-    paths = changes(before, after)
+    # 메뉴 대표 그림(illustration)은 이름에서 저절로 정해지는 값이라 사장님 요청이 아니다
+    paths = [p for p in changes(before, after) if not p.endswith(".illustration")]
     for path in paths:
         new = _new_record(before, after, path)
         if new:
@@ -150,7 +151,8 @@ def final_of(before: dict, after: dict) -> tuple[dict, list[str]]:
             writes.add(name)
             final[f"{name}.#"] = len(resolve(after, name))
             for key, item in resolve(after, position).items():
-                if key != "id":  # ids of new records are not part of the owner's request
+                # ids and illustrations of new records are not part of the owner's request
+                if key not in ("id", "illustration"):
                     final[f"{position}.{key}"] = item
             continue
         writes.add(write_prefix(path))
