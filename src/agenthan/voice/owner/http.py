@@ -27,7 +27,8 @@
   빈 한국어·500자 넘는 글 422. 다음 통화부터 엔진이 "사장님 말씀으로는 …"으로 답한다
 
 손님 쪽 (`customer_texts_router`, 티켓 07):
-- `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE(최대 2분).
+- `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE
+  (최대 6분, 주문 승인 티켓 03).
   토큰 없음(통화 id는 추측할 수 없는 값). 모르는 통화는 404
 
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
@@ -60,8 +61,9 @@ from agenthan.voice.owner.hub import (
 
 OWNER_PREFIX = "/api/owner"
 CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
-# 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 시간 (spec "최대 2분")
-TEXTS_WINDOW_S = 120.0
+# 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 시간. 4단계 spec "최대 2분"에서 주문 승인
+# 티켓 03이 늘렸다: 통화 뒤 확인 대기(기본 5분, 요청 연 때부터)의 수락·자동 취소 문자까지 받는다
+TEXTS_WINDOW_S = 360.0
 # 사장님 자유 입력 글 최대 길이 (문자 한 통 분량)
 FREE_TEXT_MAX = 500
 

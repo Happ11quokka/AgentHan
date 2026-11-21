@@ -536,6 +536,9 @@ class CallSession:
         self._owner_inbox: list[tuple[WaitNote, float]] = []
         self._owner_timer = OneShot(self._on_owner_timeout)  # 답 대기 시간 초과
         self._owner_retry = OneShot(self._say_owner_reply)  # 손님이 말하는 중이라 미룬 답 다시 보기
+        # 마지막으로 연 확인 요청 (주문 승인 티켓 03). 결정을 기다리는 채 통화가 끝나면 그 주문서를
+        # 넘긴다(`_hand_over_waiting_order`)
+        self._approval_sent: ApprovalRequest | None = None
 
     # ------------------------------------------------------------ 바깥 진입점
 
@@ -2184,6 +2187,7 @@ class CallSession:
                 self._tell_owner(note)
         self._owner_timer.cancel()
         self._owner_retry.cancel()
+        self._hand_over_waiting_order()
         # 통화 뒤 사장님 답은 버린다. 늦은 답·말하지 못한 답의 문자는 허브 몫 (티켓 07, 리뷰 C1)
         self._owner_wait = None
         self._owner_inbox.clear()
@@ -2230,6 +2234,7 @@ class CallSession:
     def _open_approval(self, turn: int, request: ApprovalRequest) -> None:
         """확인 요청을 연다(주문 승인 티켓 02). 질문 카드와 같은 대기 장치를 쓴다."""
         self._open_owner_wait("approval", request.number, self._settings.approval_wait_s)
+        self._approval_sent = request
         record = self._log.get(turn)
         if record is not None:
             record.fields["approval_request"] = {"number": request.number,
@@ -2249,6 +2254,25 @@ class CallSession:
                                                    "reason": withdrawn.reason}
         self._tell_owner(lambda owner: owner.withdraw_approval(
             self.call_id, withdrawn.number, withdrawn.reason))
+
+    def _hand_over_waiting_order(self) -> None:
+        """확인 요청의 결정을 기다리는 채 통화가 끝났다(손님 끊음·오류·통화 길이 초과, 주문 승인
+        티켓 03). 그 요청의 주문서를 `OrderSink`에 넘긴다.
+
+        시간 초과 문자 약속(엔진이 `confirmed`로 끝냄)과 같다: 주문서는 넘어가고 사장님 처리
+        상태는 확인 대기로 남는다. 허브는 같은 id의 확인 카드를 그대로 두고, 통화 끝 알림으로
+        통화 뒤 대기(요청 연 때부터 5분)로 넘긴다. 손님이 대기 중에 고치거나 취소한 요청은 이미
+        닫혀 넘기지 않는다. `_end`가 대기를 비우기 전에 한 번 부른다.
+        """
+        wait, request = self._owner_wait, self._approval_sent
+        self._approval_sent = None
+        if (wait is None or request is None or wait.key != ("approval", request.number)
+                or self.smoke):
+            return
+        try:
+            self._sink.submit(request.order)
+        except Exception:
+            log.exception("기다리던 주문서 넘기기 실패 (%s)", self.call_id)
 
     def _open_owner_wait(self, kind: WaitKind, number: int, wait_s: float) -> None:
         """대기 항목을 열고 시간 초과 타이머를 건다. 열려 있던 항목은 이것으로 바뀐다(하나뿐)."""
