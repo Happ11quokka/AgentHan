@@ -54,6 +54,10 @@ export type DraftRow = {
   menu_name: string | null;
   notes: string[];
   photo_url: string | null;
+  /** 음식 사진 초안. 이름은 사장님이 카드에 입력한다(#93). 예전 서버 응답에는 없을 수 있다. */
+  is_food?: boolean;
+  /** 음식 사진에서 AI가 추측한 이름. 확정값이 아니라 입력칸 자리표시자로만 쓴다. */
+  name_guess?: string | null;
 };
 
 export type Pending = {

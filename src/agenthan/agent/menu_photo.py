@@ -79,6 +79,8 @@ class MenuDraft:
     is_food: bool = False
     possible_menu_id: str | None = None
     possible_menu_name: str | None = None
+    # 음식 사진: 사장님이 맞는 기존 메뉴 대신 새 메뉴로 올리기로 골랐다(#93).
+    as_new: bool = False
 
     @property
     def complete(self) -> bool:
