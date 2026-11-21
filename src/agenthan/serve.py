@@ -74,12 +74,21 @@ def phone_store_doc(data: Mapping) -> dict:
     메뉴는 id·이름·가격·설명·품절과 손님이 부르는 다른 이름(별칭·원어명)만 옮긴다. 사진·AI 표시
     같은 화면 값은 빼서, 사진을 채우는 저장으로는 게시 값이 바뀌지 않는다. 비서 메뉴에는 옵션이
     없다(전화는 옵션 말을 그 줄 요청 사항으로 적는다).
+
+    쿠폰(쿠폰 티켓 09)은 저장한 순서 그대로 계산에 쓰는 칸만 옮긴다(게시 상태는 보지 않는다).
+    조건 없는 쿠폰은 `min_order` 키 없이 저장돼 있어 0으로 적는다(티켓 08).
     """
     return {"menus": [
         {"id": str(m["id"]), "name": m["name"], "price": m["price"],
          "description": m.get("description") or "", "aliases": list(m.get("aliases") or ()),
          "name_native": m.get("name_native") or "", "sold_out": bool(m.get("sold_out"))}
         for m in data.get("menus") or ()
+    ], "coupons": [
+        {"id": str(c.get("id") or ""), "title": c.get("title") or "",
+         "discount_type": c.get("discount_type"), "discount_value": c.get("discount_value"),
+         "min_order": c.get("min_order") or 0, "start_date": c.get("start_date"),
+         "end_date": c.get("end_date")}
+        for c in data.get("coupons") or ()
     ]}
 
 
@@ -142,11 +151,30 @@ class PhoneStores:
         from agenthan.rag import RagStoreKnowledge
         from agenthan.rag.vector import PgEmbeddingCache
 
+        coupons = _coupons(doc)
+        if self._doc is not None and self._doc.get("menus") == doc["menus"]:
+            # 쿠폰만 바뀐 게시: 검색 색인은 그대로 쓴다 (쿠폰 티켓 09)
+            return replace(self._current, coupons=coupons)
         knowledge = RagStoreKnowledge(_PublishedMenus(doc, self._reviews))
         if knowledge.vector.enabled and self._db_url:
             knowledge.vector.cache = PgEmbeddingCache(self._db_url)
         ensure_usable(knowledge.list_menu(), self._config, log)  # 경고는 로그에
-        return StoreSnapshot.of(knowledge, self._config)
+        return StoreSnapshot.of(knowledge, self._config, coupons)
+
+
+def _coupons(doc: dict) -> tuple:
+    """게시 값의 쿠폰 → 전화 쿠폰(`Coupon`, 쿠폰 티켓 09). 읽을 수 없는 쿠폰은 로그를 남기고
+    뺀다. 쿠폰 전에 저장된 게시 값(키 없음)은 쿠폰 없음."""
+    from agenthan.voice.dialog.coupons import Coupon
+
+    coupons = []
+    for raw in doc.get("coupons") or ():
+        coupon = Coupon.from_json(raw)
+        if coupon is None:
+            log.warning("전화용 가게: 읽을 수 없는 쿠폰은 뺌 %s", raw)
+        else:
+            coupons.append(coupon)
+    return tuple(coupons)
 
 
 class _PublishedMenus:
