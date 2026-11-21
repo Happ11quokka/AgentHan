@@ -212,7 +212,11 @@ def run_report(
         **window,
     )
     unanswered = get_unanswered_reviews(
-        store_id=store_id, today=today, repo=repo, sentiment=sentiment or RuleSentiment()
+        store_id=store_id,
+        today=today,
+        repo=repo,
+        sentiment=sentiment or RuleSentiment(),
+        priority="negative_first",
     )
     return {
         "frequency": freq,
@@ -220,9 +224,56 @@ def run_report(
         "unanswered": {
             "total": unanswered["total"],
             "negative_count": unanswered["negative_count"],
+            # 급한 순서의 답글 안 단 불만 리뷰 (보고 메시지의 [불만 리뷰 답글 초안] 칩 대상)
+            "negative_ids": [
+                r["review_id"]
+                for r in unanswered["reviews"]
+                if r["sentiment"] in ("negative", "mixed")
+            ],
         },
         "suggest_increase_reviews": bool(analysis.get("low_review")),
     }
+
+
+FREQ_KO = {"daily": "매일", "weekly": "매주", "biweekly": "격주", "monthly": "매달 1일"}
+WEEKDAY_KO = dict(zip(WEEKDAYS, "월화수목금토일", strict=True))
+
+
+def schedule_text(settings: dict) -> str | None:
+    """'매일 09:00', '매주 월요일 09:00'. 꺼져 있거나 주기가 없으면 None."""
+    freq = settings.get("frequency")
+    if not settings.get("enabled") or freq not in FREQ_KO:
+        return None
+    day = f" {WEEKDAY_KO.get(settings.get('weekday'), '월')}요일" if "weekly" in freq else ""
+    return f"{FREQ_KO[freq]}{day} {settings.get('time') or DEFAULTS['time']}"
+
+
+def report_digest(result: dict, title: str = "리뷰 정기 보고") -> str:
+    """정기 보고 한 회분(run_report 결과) → 대화에 넣을 짧은 요약. 숫자는 결과 그대로 쓴다."""
+    a = result.get("analysis") or {}
+    p = a.get("period") or {}
+    head = title + (f" ({p.get('start') or '…'} ~ {p.get('end')})" if p.get("end") else "")
+    names = {"positive": "긍정", "negative": "부정", "mixed": "혼합", "neutral": "중립"}
+    count = f"리뷰 {a.get('review_count', 0)}건"
+    mood = [f"{names.get(k, k)} {v}" for k, v in (a.get("sentiment") or {}).items() if v]
+    ideas = a.get("report_ideas") or {}
+    top = [x["display"] for x in ideas.get("complaints_top", [])][:2] or [
+        x["display"]
+        for x in sorted(a.get("aspects", []), key=lambda x: -x.get("negative", 0))
+        if x.get("negative")
+    ][:2]
+    if a.get("review_count"):
+        body = " · ".join([count, *mood]) + (f". 많이 나온 불만: {', '.join(top)}" if top else "")
+    else:  # '리뷰 0건' 옆에 불만 N건이 나오면 숫자가 어긋나 보인다
+        body = "이번 기간에는 새 리뷰가 없어요."
+    # 답글 안 단 불만은 보고 기간이 아니라 전체 기간 기준이다
+    n = (result.get("unanswered") or {}).get("negative_count", 0)
+    todo = (
+        f"아직 답글을 안 단 불만 리뷰가 모두 {n}건 있어요."
+        if n
+        else "아직 답글을 안 단 불만 리뷰는 없어요."
+    )
+    return "\n".join([head, body, todo])
 
 
 def check_alerts(

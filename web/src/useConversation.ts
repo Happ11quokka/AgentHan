@@ -4,10 +4,12 @@ import { ApiError, type AssistantApi } from "./api";
 import { couponActionLabel, describeChanges, pendingLines, REVIEW_POSTED_TEXT, type CouponInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
-import type { Action, LogEntry, Message, OnboardingInput, Pending, Place, ReviewRow, ShopInfo, Turn, View } from "./types";
+import type { Action, LogEntry, Message, OnboardingInput, Pending, Place, ReviewReport, ReviewRow, ServerMessage, ShopInfo, Turn, View } from "./types";
 
 const COUPON_ACTION = "coupon.create";
 const SAY_ACTION = "chat.say";
+/** 정해진 때의 리뷰 보고(#98)를 받으려고 세션 조회(/place)를 다시 읽는 간격. */
+export const REPORT_POLL_MS = 60_000;
 
 /** 오늘부터 14일 동안. 날짜는 사장님 기기의 날짜(YYYY-MM-DD). */
 const isoDay = (d: Date) =>
@@ -50,18 +52,26 @@ export type Conversation = {
   notify: (text: string, reviewId: string) => void;
   /** 온보딩 값을 저장한다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   onboard: (values: OnboardingInput) => Promise<string | null>;
+  /** 리뷰 정기 보고 설정 한 줄(#98). 예전 서버라 모르면 null. */
+  reviewReport: ReviewReport | null;
+  /** 리뷰 탭 [지금 받아 보기]: 보고 한 회분을 대화에 넣는다. 성공하면 null, 실패하면 사장님께 보일 문장. */
+  runReport: () => Promise<string | null>;
 };
 
 let nextId = 1;
 const newId = () => nextId++;
 
 const ONBOARD_FAILED = "저장하지 못했어요. 다시 시도해 주세요.";
+const REPORT_FAILED = "리뷰 보고를 받지 못했어요. 다시 시도해 주세요.";
+
+/** 서버가 먼저 보낸 메시지 → 대화창의 비서 말풍선(칩은 그대로 누를 수 있다). */
+const fromServer = (m: ServerMessage): Message => ({ id: newId(), role: "agent", text: m.text, nextActions: m.next_actions });
 
 const isOffline = (e: unknown) => e instanceof ApiError && e.status === 0;
 const friendly = (e: unknown) =>
   isOffline(e) ? "서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요." : "비서가 답하지 못했어요. 다시 시도해 주세요.";
 
-export function useConversation(api: AssistantApi): Conversation {
+export function useConversation(api: AssistantApi, reportPollMs: number = REPORT_POLL_MS): Conversation {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [place, setPlace] = useState<Place | null>(null);
@@ -74,6 +84,7 @@ export function useConversation(api: AssistantApi): Conversation {
   const [error, setError] = useState<string | null>(null);
   const [couponForm, setCouponForm] = useState<CouponInput | null>(null);
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
+  const [reviewReport, setReviewReport] = useState<ReviewReport | null>(null);
   const toRetry = useRef<Retryable | null>(null);
   const sentCoupon = useRef<CouponInput | null>(null); // 거절되면 블록을 다시 열 값
   const inFlight = useRef(false); // 렌더 전에 들어온 두 번째 클릭도 막는다
@@ -122,10 +133,18 @@ export function useConversation(api: AssistantApi): Conversation {
     }
   }, []);
 
+  /** 대화 턴 밖에서 받은 조회 결과: 서버가 먼저 보낸 메시지와 리뷰 보고 설정만 반영한다. */
+  const absorb = useCallback((view: View) => {
+    const added = (view.messages ?? []).map(fromServer);
+    if (added.length) setMessages((m) => [...m, ...added]);
+    if (view.review_report) setReviewReport(view.review_report);
+  }, []);
+
   const show = useCallback((id: string, view: View, saved: storage.SavedChat) => {
     for (const m of latest.current.messages) if (m.role === "owner") forgetPhotoUrl(m.image);
     setSessionId(id);
-    setMessages(saved.messages);
+    setMessages([...saved.messages, ...(view.messages ?? []).map(fromServer)]);
+    setReviewReport(view.review_report ?? null);
     setLog(saved.log);
     setPlace(view.place);
     setShop(view.shop ?? null);
@@ -184,7 +203,9 @@ export function useConversation(api: AssistantApi): Conversation {
     if (resolved && (answeredReview || before.pending.some((p) => p.kind !== "review")))
       added.push({ id: newId(), role: "result", saved: lines.length > 0, lines });
     if (lines.length) setLog((l) => [...l, { at: Date.now(), lines }]);
+    added.push(...(turn.messages ?? []).map(fromServer));
     setMessages((m) => [...m, ...added]);
+    if (turn.review_report) setReviewReport(turn.review_report);
     setPlace(turn.place);
     if (turn.shop) setShop(turn.shop);
     setPending(turn.pending);
@@ -241,6 +262,7 @@ export function useConversation(api: AssistantApi): Conversation {
         setPlace(view.place);
         setPending(view.pending);
         setShop(view.shop ?? { name: values.name, category: values.category });
+        absorb(view);
         setOnline(true);
         return null;
       } catch (e) {
@@ -248,8 +270,35 @@ export function useConversation(api: AssistantApi): Conversation {
         return isOffline(e) ? friendly(e) : ONBOARD_FAILED;
       }
     },
-    [api, sessionId],
+    [api, sessionId, absorb],
   );
+
+  /** [지금 받아 보기]: 대화 턴이 아니다. 비서가 먼저 보낸 것처럼 보고 말풍선 하나만 더한다. */
+  const runReport = useCallback(async () => {
+    if (!sessionId) return REPORT_FAILED;
+    try {
+      absorb(await api.runReviewReport(sessionId));
+      setOnline(true);
+      return null;
+    } catch (e) {
+      if (isOffline(e)) setOnline(false);
+      return isOffline(e) ? friendly(e) : REPORT_FAILED;
+    }
+  }, [api, sessionId, absorb]);
+
+  // 정해진 때의 리뷰 보고: 서버는 세션을 조회할 때 기한 지난 보고를 메시지로 쌓아 한 번만 건넨다.
+  // 대화가 열려 있는 동안 조회(/place)를 가끔 다시 읽어 그 메시지를 받는다. 실패는 조용히 넘긴다.
+  useEffect(() => {
+    if (!sessionId || reportPollMs <= 0) return;
+    const timer = setInterval(() => {
+      if (inFlight.current) return; // 비서 답을 기다리는 중이면 그 답이 함께 가져온다
+      api
+        .view(sessionId)
+        .then(absorb)
+        .catch(() => undefined);
+    }, reportPollMs);
+    return () => clearInterval(timer);
+  }, [api, sessionId, reportPollMs, absorb]);
 
   const openCoupon = useCallback((initial?: CouponInput) => setCouponForm(initial ?? blankCoupon()), []);
   const closeCoupon = useCallback(() => setCouponForm(null), []);
@@ -313,6 +362,6 @@ export function useConversation(api: AssistantApi): Conversation {
   return {
     sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
-    send, act, retry, newChat, open, addLog, notify, onboard,
+    send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
   };
 }

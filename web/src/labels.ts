@@ -138,6 +138,14 @@ export const INBOX_TEXT = {
   empty: "답글 기다리는 리뷰가 없어요.",
   simulate: "새 리뷰 도착 (데모)",
 } as const;
+/** 리뷰 탭의 정기 보고 줄(#98). 켜고 끄기는 대화에서 미리보기·승인으로만 한다. */
+export const REPORT_TEXT = {
+  section: "리뷰 정기 보고",
+  off: "정기 보고 꺼짐",
+  howTo: "대화에서 \"매일 리뷰 요약해서 보내 줘\"라고 하면 켤 수 있어요.",
+  runNow: "지금 받아 보기",
+  running: "보고 만드는 중…",
+} as const;
 export const waitingText = (n: number) => `답글 기다리는 리뷰 ${n}개`;
 /** 왼쪽 자주 쓰는 일 배지를 읽어 줄 말. */
 export const quickBadgeText = (key: string, n: number) => (key === "reviews" ? waitingText(n) : `${n}개`);

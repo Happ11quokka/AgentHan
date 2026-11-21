@@ -23,6 +23,7 @@ from agenthan.agent.clova_chat import ClovaChatError, ClovaRequestRejected, pars
 from agenthan.agent.loop_budget import BudgetExhausted, LoopBudget
 from agenthan.agent.place_matcher import get_feature
 from agenthan.agent.review.clova import ClovaError
+from agenthan.agent.review.report import FREQ_KO, next_run, schedule_text, suggest_frequency
 from agenthan.core import llm
 from agenthan.tools import menu_index
 from agenthan.tools.feature_tools import (
@@ -34,6 +35,13 @@ from agenthan.tools.feature_tools import (
 )
 from agenthan.tools.place_report import load_report, report_facts
 from agenthan.tools.report_insights import build_insights, reply_insight
+
+# 주기 없이도 보고 설정이 분명한 말 ('리뷰 정기 보고 켜 줘', #98). '보고'만으로는 '보다'와 헷갈린다
+CLEAR_REPORT_WORD = re.compile(
+    r"정기|(보고|리포트)\s?(를\s?)?(켜|꺼|끄)|turn (on|off) .{0,12}report", re.I
+)
+# 답글 이야기면 '매일 리뷰 보고 답글 써 줘'처럼 '보고'가 보다라 보고 설정으로 강제하지 않는다
+REPLY_WORD = re.compile(r"답글|댓글|답장|reply|ответ", re.I)
 
 
 class Turn(TypedDict):
@@ -753,6 +761,7 @@ class PlannerLoop:
         result = self.pending_draft_steps(state["text"], result, pending)
         result = self.requested_steps(result)
         result = self.dependency_steps(result)
+        result = self.report_steps(result)
         self.a.trace["planner"] = result.as_trace()
         if result.scope == "history":
             self.begin_loop(state["text"])
@@ -833,6 +842,73 @@ class PlannerLoop:
             if result.scope == "out" or self.question or not self.batch.remaining
             else "act"
         }
+
+    def report_steps(self, result):
+        """리뷰 정기 보고를 켜고 끄는 말(#98)은 리뷰 에이전트의 보고 규칙으로 설정 단계로 고친다.
+
+        계획기는 '매일 리뷰 요약해서 보내 줘'를 조회(read)로 잡거나 goal을 '리뷰 요약'처럼 바꿔
+        적는다. 리뷰 에이전트는 goal만 받으므로 요약만 보여 주고 끝났다. 사장님 원문을 규칙
+        (ReviewToolbox.route → parse_report_request)으로 읽어 보고 설정이면 settings 단계로 바꾸고,
+        모델이 빠뜨린 값만 원문을 근거로 채운다. 저장은 기존 설정 미리보기·승인을 거친다.
+
+        실제 HCX는 '매일 리뷰 요약해서 보내 줘'를 advice+답글 초안(draft)으로, '리뷰 보고 꺼 줘'를
+        빈 steps+clarify로 낸다. 원문이 분명한 보고 설정(주기·요일·시각, 끄기, '정기 보고 켜')이면
+        계획 모양과 상관없이 리뷰 단계를 설정 하나로 바꾸거나 더한다. 다른 기능 단계는 그대로 둔다.
+        """
+        if result.scope == "history" or any(s.kind != "new" for s in result.steps):
+            return result  # 열린 작업에 대한 승인·수정·취소는 원장 흐름이 처리한다
+        routed = self.session().toolbox.route(self.batch.text)
+        if not routed or routed[0] != "set_review_report":
+            return result
+        args = dict(routed[1])
+        kind = args.pop("action", "set")
+        reviews = [
+            i
+            for i, s in enumerate(result.steps)
+            if s.feature == "review" and s.target_metric is None
+        ]
+        clear = not REPLY_WORD.search(self.batch.text) and (
+            kind == "off"
+            or (kind == "set" and any(args.get(k) for k in ("frequency", "weekday", "time")))
+            or (kind == "suggest" and CLEAR_REPORT_WORD.search(self.batch.text))
+        )
+        if not clear:
+            index = next(
+                (i for i in reviews if result.steps[i].review_action in ("read", "settings")),
+                None,
+            )
+            if index is None or result.scope == "advice":
+                return result
+            if kind == "suggest" and result.steps[index].review_action != "settings":
+                # 주기 제안 규칙은 '보고(보다)'·'추천'에도 걸린다('불만 리뷰를 보고 뭘 할지
+                # 추천해 줘'). 계획기도 설정이라고 했을 때만 켜기 미리보기로 바꾼다
+                return result
+            reviews = [index]
+        if kind == "off":
+            values = {"enabled": "false"}
+        elif kind == "suggest" or args.get("frequency"):
+            values = {"enabled": "true", **args}  # 주기가 없으면 review_settings가 제안한다
+        else:
+            values = args  # 알림·시각만 말함: 말한 값만 바꾸고 보고를 켜지 않는다
+        if reviews:
+            index = reviews[0]
+            step = result.steps[index]
+            if step.review_action != "settings":
+                # 조회·초안 단계의 ref·근거 표시는 설정과 무관하다(ref면 답글 초안으로 간다)
+                step = replace(step, ref=None, basis="requested")
+        else:
+            index = len(result.steps)
+            step = planner.Step("review", self.batch.text)
+        given = {k for k, _, _ in step.owner_values}
+        extra = tuple((k, str(v), self.batch.text) for k, v in values.items() if k not in given)
+        step = replace(step, review_action="settings", owner_values=(*step.owner_values, *extra))
+        steps = [s for i, s in enumerate(result.steps) if i not in reviews]
+        steps.insert(min(index, len(steps)), step)
+        self.a.trace["report_rule"] = kind
+        if not clear:
+            return replace(result, steps=tuple(steps))
+        # 설정은 실행이라 조언(advice)도 '할 일 없음' 되묻기도 아니다
+        return replace(result, scope="store", steps=tuple(steps), clarify=None)
 
     @staticmethod
     def is_read(step):
@@ -1516,9 +1592,7 @@ class PlannerLoop:
         targets = self.step_targets(step)
         said = "\n".join(filter(None, [step.goal, self.step_said(step)]))
         views = (targets or {}).get("views")
-        values = knowledge_slice(
-            step.feature, store, store_slice(step.feature, store), said, views
-        )
+        values = knowledge_slice(step.feature, store, store_slice(step.feature, store), said, views)
         candidates = ("\n" + targets_line(targets)) if targets is not None else ""
         return [
             {"role": "system", "content": SYSTEM},
@@ -2089,6 +2163,11 @@ class PlannerLoop:
                         preview["after"],
                         "\n".join(task.said),
                         preview.get("owner_values", {}),
+                        lookup=(
+                            {"frequency": preview["suggested"]["frequency"]}
+                            if preview.get("suggested")
+                            else None
+                        ),
                     )
                     if current != preview["before"] or missing:
                         self.question = (
@@ -2438,13 +2517,36 @@ class PlannerLoop:
             {k: ((v == "true") if k == "enabled" else v, q) for k, v, q in step.owner_values}
         )
         after = {**current, **{k: v for k, (v, _) in extracted.items()}}
+        suggested = held.preview.get("suggested") if held else None
+        if after.get("enabled") and not after.get("frequency"):
+            # 주기를 말하지 않고 켜 달라고 함: 가게 리뷰 양에 맞춘 주기를 제안한다 (#98).
+            # 값의 출처는 사장님 말이 아니라 조회(lookup)로 남고 승인 전에 미리보기로 보인다
+            suggested = suggest_frequency(box.ctx["repo"], sid, self.a.today)
+            after["frequency"] = suggested["frequency"]
+        if suggested and after.get("frequency") != suggested["frequency"]:
+            suggested = None  # 사장님이 다른 주기를 말했다
+        if all(after.get(k) == before.get(k) for k in planner.SETTING_VALUES) and held is None:
+            return {
+                "ok": True,
+                "action": "read",
+                "text": (
+                    f"리뷰 정기 보고는 이미 {schedule_text(before)}로 켜져 있어요."
+                    if schedule_text(before)
+                    else "리뷰 정기 보고는 이미 꺼져 있어요."
+                ),
+                "blocks": "",
+                "read_evidence": False,
+            }
         after["updated_at"] = box.now.isoformat(timespec="minutes")
         if after.get("frequency") == "biweekly" and (
             current.get("frequency") != "biweekly" or not after.get("anchor")
         ):
             after["anchor"] = self.a.today.isoformat()
         said = [*(held.said if held else []), self.batch.text]
-        sources, missing = self.settings_sources(before, after, "\n".join(said), extracted)
+        lookup = {"frequency": suggested["frequency"]} if suggested else None
+        sources, missing = self.settings_sources(
+            before, after, "\n".join(said), extracted, lookup=lookup
+        )
         task = held or self.a._task_for("review", "review")
         self.a._turn_task = task.id
         self.batches[task.id] = self.batch
@@ -2465,6 +2567,7 @@ class PlannerLoop:
                 "before": before,
                 "after": after,
                 "owner_values": extracted,
+                **({"suggested": suggested} if suggested else {}),
             },
         )
         self.register(task)
@@ -2477,6 +2580,35 @@ class PlannerLoop:
             "read_evidence": False,
         }
 
+    def report_preview(self, preview):
+        """리뷰 보고 설정 미리보기 첫 줄들: 무엇을 언제 보내는지와 다음 보고 시각 (#98)."""
+        before, after = preview["before"], preview["after"]
+        when = schedule_text(after)
+        if not after.get("enabled") and before.get("enabled"):
+            return ["리뷰 정기 보고를 끌까요? 정해진 때 오던 리뷰 요약이 더는 오지 않아요."]
+        if not when:
+            day = dict(zip(value_source.WEEKDAYS, "월화수목금토일", strict=True))
+            return [
+                "리뷰 보고 설정을 바꿀까요? 정기 보고는 꺼진 채로 둬요 · "
+                f"{FREQ_KO.get(after.get('frequency'), '주기 미정')} · "
+                f"{day.get(after.get('weekday'), '미정')}요일 · {after.get('time', '미정')}"
+            ]
+        lines = [
+            f"리뷰 정기 보고를 {'바꿀' if before.get('enabled') else '켤'}까요? "
+            f"{when}에 리뷰 요약을 이 대화로 보내 드려요."
+        ]
+        suggested = preview.get("suggested")
+        if suggested:
+            lines.append(
+                f"주기는 말씀이 없어 최근 4주 리뷰 {suggested['reviews_28d']}건(주 평균 "
+                f"{suggested['weekly_avg']}건)에 맞춰 "
+                f"{FREQ_KO[suggested['frequency']].removesuffix(' 1일')} 보고를 제안했어요."
+            )
+        upcoming = next_run(after, self.a.clock())
+        if upcoming:
+            lines.append(f"다음 보고: {upcoming.strftime('%Y-%m-%d %H:%M')}")
+        return lines
+
     @staticmethod
     def settings_params():
         return [
@@ -2488,7 +2620,8 @@ class PlannerLoop:
             ("alert", "string", tuple(planner.SETTING_VALUES["alert"]), "리뷰 알림 대상"),
         ]
 
-    def settings_sources(self, before, after, said, extracted=None):
+    def settings_sources(self, before, after, said, extracted=None, lookup=None):
+        """lookup: 사장님이 말하지 않아 가게 데이터로 제안한 값 ({"frequency": ...}, #98)."""
         changed = {k: v for k, v in after.items() if before.get(k) != v}
         checked = {**changed, **{k: after[k] for k in extracted or {} if k in after}}
         sources, missing = value_source.check(
@@ -2497,6 +2630,7 @@ class PlannerLoop:
             said,
             self.a.store.read(),
             today=self.a.today,
+            lookup=lookup,
             extracted=extracted,
         )
         missing.extend(
@@ -2639,21 +2773,8 @@ class PlannerLoop:
                 task = self.a.ledger.get(tid)
                 if task and task.preview:
                     if task.preview.get("report_settings"):
+                        lines.extend(self.report_preview(task.preview))
                         settings = task.preview["after"]
-                        frequency = {
-                            "daily": "매일",
-                            "weekly": "매주",
-                            "biweekly": "격주",
-                            "monthly": "매월",
-                        }.get(settings.get("frequency"), "미정")
-                        day = dict(zip(value_source.WEEKDAYS, "월화수목금토일", strict=True)).get(
-                            settings.get("weekday"), "미정"
-                        )
-                        enabled = "사용" if settings.get("enabled") else "사용 안 함"
-                        lines.append(
-                            f"리뷰 보고 설정을 바꿀까요? {enabled} · {frequency} · "
-                            f"{day}요일 · {settings.get('time', '미정')}"
-                        )
                         focus = {"all": "전체 리뷰", "complaint": "불만 리뷰"}.get(
                             settings.get("focus"), "전체 리뷰"
                         )

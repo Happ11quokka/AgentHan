@@ -196,6 +196,7 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
       return { review, summary: INBOX.summary };
     }),
     report: vi.fn(async (_id: string, period: Period) => report(period)),
+    runReviewReport: vi.fn(async (_id: string): Promise<View> => ({ place: SEED, pending: [], messages: [] })),
   } satisfies AssistantApi;
   return api;
 }

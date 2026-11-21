@@ -15,6 +15,8 @@ export interface AssistantApi {
   /** 답글 대기함 카드 버튼: 대화 턴이 아니라 그 리뷰만 바꾼다(대화 기록에 남지 않음). */
   replyToReview(sessionId: string, reviewId: string, op: ReplyOp): Promise<ReplyResult>;
   report(sessionId: string, period: Period): Promise<ReportView>;
+  /** 리뷰 탭 [지금 받아 보기]: 리뷰 보고 한 회분을 대화 메시지(View.messages)로 받는다. 설정은 그대로. */
+  runReviewReport(sessionId: string): Promise<View>;
 }
 
 export class ApiError extends Error {
@@ -75,4 +77,5 @@ export const httpApi: AssistantApi = {
       body: JSON.stringify(op),
     }),
   report: (id, period) => call(`${base(id)}/report?period=${period}`),
+  runReviewReport: (id) => call(`${base(id)}/reviews/report`, { method: "POST" }),
 };

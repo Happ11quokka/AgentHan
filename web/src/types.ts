@@ -76,7 +76,14 @@ export type Pending = {
 /** 가게 이름·업종. 둘 중 하나라도 비면 처음 쓰는 가게라 온보딩을 띄운다(#94). 예전 서버 응답에는 없다. */
 export type ShopInfo = { name: string; category: string };
 
-export type View = { place: Place; pending: Pending[]; shop?: ShopInfo };
+/** 리뷰 정기 보고 설정 한 줄(#98). text: "매일 09:00 리뷰 요약 받는 중" / "정기 보고 꺼짐". */
+export type ReviewReport = { enabled: boolean; schedule: string | null; next_run: string | null; text: string };
+
+/** 사장님 말 없이 비서가 먼저 보낸 메시지(정해진 때의 리뷰 보고 등). 서버는 한 번만 건넨다. */
+export type ServerMessage = { id: string; role: "agent"; text: string; next_actions?: Action[] };
+
+/** review_report·messages: 예전 서버 응답에는 없다. */
+export type View = { place: Place; pending: Pending[]; shop?: ShopInfo; review_report?: ReviewReport; messages?: ServerMessage[] };
 
 /** 온보딩에서 사장님이 직접 넣은 값만 (POST /onboarding). 메뉴는 0~3개. */
 export type OnboardingInput = ShopInfo & { menus: Array<{ name: string; price: number }> };
