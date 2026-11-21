@@ -100,7 +100,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
   );
   // 메뉴판 사진을 올려 메뉴가 채워지기 시작하면 메뉴 탭을 열어 채워지는 모습을 보인다.
   // (이전 렌더의 값과 비교해 렌더 중에 바꾼다: 효과 안 setState를 피한다)
-  const filling = Boolean(chat.place?.menu.some((m) => m.filling?.length));
+  const filling = Boolean(chat.place?.menu.some((m) => m.filling?.length)) || chat.readingSince !== null;
   const [wasFilling, setWasFilling] = useState(false);
   if (filling !== wasFilling) {
     setWasFilling(filling);
@@ -255,6 +255,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onEditMenu={chat.editMenu}
         onDeleteMenu={chat.deleteMenu}
         onPolishMenu={chat.polishMenu}
+        readingSince={chat.readingSince}
         onClose={() => setSideOpen(false)}
       />
       <button

@@ -23,7 +23,7 @@ import re
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from agenthan.agent import dish_glossary, menu_photo
@@ -62,6 +62,21 @@ class BoardItem:
     name: str
     price: int | None
     box: Box | None
+    # 이름 옆 괄호 안 풀이("메도빅 (꿀 케이크)"의 "꿀 케이크"). 설명을 쓸 때 참고한다.
+    subtitle: str = ""
+    # 이 메뉴에 붙은 음식 사진의 이름표(사진 위치를 다시 물을 때 쓴다)
+    photo_label: str = ""
+
+
+SUBTITLE = re.compile(r"^(?P<name>.+?)\s*[(\[（]\s*(?P<sub>[^()\[\]（）]+?)\s*[)\]）]\s*$")
+
+
+def split_subtitle(name: str) -> tuple[str, str]:
+    """'메도빅 (꿀 케이크)' → ('메도빅', '꿀 케이크'). 괄호가 없으면 (이름, '')."""
+    match = SUBTITLE.match(name)
+    if not match or not match["name"].strip():
+        return name, ""
+    return " ".join(match["name"].split()), " ".join(match["sub"].split())
 
 
 def _box(value: object) -> Box | None:
@@ -120,14 +135,13 @@ def read_board(data: bytes, *, call: Call = chat_v3) -> tuple[Kind, list[BoardIt
     for row in raw.get("items") or [] if kind == "menu_board" else []:
         if not isinstance(row, dict) or not isinstance(row.get("name"), str):
             continue
-        name = " ".join(row["name"].split())
+        name, subtitle = split_subtitle(" ".join(row["name"].split()))
         key = menu_photo._norm(name)
         if not key or key in seen:
             continue
         seen.add(key)
-        items.append(
-            BoardItem(name, menu_photo.parse_price(row.get("price")), _box(row.get("box")))
-        )
+        price = menu_photo.parse_price(row.get("price"))
+        items.append(BoardItem(name, price, _box(row.get("box")), subtitle))
     if kind == "menu_board" and not items:
         kind = "other"
     items = items[: menu_photo.MAX_ITEMS]
@@ -136,6 +150,17 @@ def read_board(data: bytes, *, call: Call = chat_v3) -> tuple[Kind, list[BoardIt
 
 
 LABEL_MIN = 0.6  # 사진 이름표 ↔ 메뉴 이름 글자 유사도 (Медовник↔Медовик 0.93)
+
+
+def _label_score(label: str, name: str) -> float:
+    """이름표와 메뉴 이름의 닮은 정도. 한쪽이 다른 쪽에 통째로 들어 있으면 1
+    (메도빅 ↔ 메도빅 케이크)."""
+    key = menu_photo._norm(name)
+    if not key:
+        return 0.0
+    if label in key or key in label:
+        return 1.0
+    return difflib.SequenceMatcher(None, label, key).ratio()
 
 
 def attach_photos(items: list[BoardItem], photos: object) -> None:
@@ -151,17 +176,16 @@ def attach_photos(items: list[BoardItem], photos: object) -> None:
         if not isinstance(photo, dict) or not isinstance(photo.get("label"), str):
             continue
         box = _box(photo.get("box"))
-        label = menu_photo._norm(photo["label"])
+        label = menu_photo._norm(split_subtitle(photo["label"])[0])
         if box is None or not label:
             continue
         scores = [
-            (difflib.SequenceMatcher(None, label, menu_photo._norm(item.name)).ratio(), i)
-            for i, item in enumerate(items)
-            if i not in taken
+            (_label_score(label, item.name), i) for i, item in enumerate(items) if i not in taken
         ]
         score, best = max(scores, default=(0.0, -1))
         if score >= LABEL_MIN:
             items[best].box = box
+            items[best].photo_label = photo["label"].strip()
             taken.add(best)
 
 
@@ -264,6 +288,119 @@ def white_photo(board: bytes, box: Box, regions: list[Box], cutout=None) -> tupl
     return (cutout or cutout_on_white)(piece, work_side=512, iterations=5).image, piece
 
 
+PHOTOS_PROMPT = (
+    "메뉴판 사진이다. 메뉴판 안의 음식 사진마다 하나씩 JSON 배열로만 답하라: "
+    '[{"box": [x0, y0, x1, y1] (사진 전체 대비 0~1 비율), "label": 사진 바로 아래나 옆 이름표 글자 '
+    "그대로}]. 음식 사진이 없으면 []."
+)
+REFINE_PROMPT = (
+    '메뉴판 일부를 잘라 낸 그림이다. 이름표 "{label}" 바로 위(또는 옆)에 있는 음식 사진 칸 하나의 '
+    "위치를 이 그림 기준 0~1 비율로 답하라. 사진 칸 테두리에 딱 맞게, 이름표 글자는 빼고. "
+    'JSON 하나만: {{"box": [x0, y0, x1, y1]}}'
+)
+
+
+def _vision_json(data: bytes, prompt: str, opener: str, call: Call, max_tokens: int) -> object:
+    body = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    image_content(data, menu_photo.detect_mime(data)),
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+        "maxTokens": max_tokens,
+        "temperature": 0.1,
+    }
+    return menu_photo._json_block(menu_photo._content(call(menu_photo.VISION_MODEL, body)), opener)
+
+
+def refine_box(board: bytes, box: Box, label: str, *, call: Call = chat_v3) -> Box:
+    """첫 읽기의 사진 위치는 어긋난다(이름표 아래 칸이나 장식까지 잡음, 실측 2026-11-21).
+    그 둘레를 넉넉히 잘라 이름표 바로 위 사진 칸을 다시 묻는다(약 2.7초). 실패하면 원래 위치."""
+    import cv2
+    import numpy as np
+
+    image = cv2.imdecode(np.frombuffer(board, np.uint8), cv2.IMREAD_COLOR)
+    if image is None or not label:
+        return box
+    height, width = image.shape[:2]
+    x0, y0, x1, y1 = box
+    bw, bh = x1 - x0, y1 - y0
+    wx0, wy0 = max(0.0, x0 - 0.6 * bw), max(0.0, y0 - 0.6 * bh)
+    wx1, wy1 = min(1.0, x1 + 0.6 * bw), min(1.0, y1 + 0.6 * bh)
+    piece = image[int(wy0 * height) : int(wy1 * height), int(wx0 * width) : int(wx1 * width)]
+    ok, encoded = cv2.imencode(".jpg", piece, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ok:
+        return box
+    try:
+        raw = _vision_json(encoded.tobytes(), REFINE_PROMPT.format(label=label), "{", call, 120)
+    except (ClovaV3Error, menu_photo.MenuPhotoError, ValueError):
+        return box
+    inner = _box(raw.get("box")) if isinstance(raw, dict) else None
+    if inner is None:
+        return box
+    a, b, c, d = inner
+    return (
+        wx0 + a * (wx1 - wx0),
+        wy0 + b * (wy1 - wy0),
+        wx0 + c * (wx1 - wx0),
+        wy0 + d * (wy1 - wy0),
+    )
+
+
+def photo_column(boxes: list[Box]) -> tuple[float, float] | None:
+    """첫 읽기 사진 위치들로 본 사진 열(가로 범위). 사진이 가로로 퍼져 있으면 None(전체)."""
+    if not boxes:
+        return None
+    x0 = max(0.0, min(b[0] for b in boxes) - 0.12)
+    x1 = min(1.0, max(b[2] for b in boxes) + 0.02)
+    return (x0, x1) if x1 - x0 <= 0.7 else None
+
+
+def read_photos(
+    board: bytes, *, call: Call = chat_v3, column: tuple[float, float] | None = None
+) -> list[tuple[str, Box]]:
+    """음식 사진만 다시 읽는다 → [(이름표, 위치)]. column이 있으면 그 세로 띠만 잘라 크게 읽는다.
+
+    첫 읽기는 사진을 자주 빠뜨리고(4장 중 1장, 3번 중 2번) 위치도 어긋났다. 전체를 다시 읽어도
+    같은 사진을 빠뜨렸지만, 사진 열만 잘라 읽으면 4장을 모두 찾고 위치도 맞았다(3번 모두, 실측
+    2026-11-21)."""
+    import cv2
+    import numpy as np
+
+    data, x0, x1 = board, 0.0, 1.0
+    if column is not None:
+        image = cv2.imdecode(np.frombuffer(board, np.uint8), cv2.IMREAD_COLOR)
+        if image is not None:
+            width = image.shape[1]
+            x0, x1 = column
+            ok, encoded = cv2.imencode(
+                ".jpg",
+                image[:, int(x0 * width) : int(x1 * width)],
+                [cv2.IMWRITE_JPEG_QUALITY, 92],
+            )
+            if ok:
+                data = encoded.tobytes()
+            else:
+                x0, x1 = 0.0, 1.0
+    try:
+        raw = _vision_json(shrink(data, READ_SIDE), PHOTOS_PROMPT, "[", call, 600)
+    except (ClovaV3Error, menu_photo.MenuPhotoError, ValueError):
+        return []
+    out = []
+    for photo in raw if isinstance(raw, list) else []:
+        if not isinstance(photo, dict) or not isinstance(photo.get("label"), str):
+            continue
+        box = _box(photo.get("box"))
+        if box is not None and photo["label"].strip():
+            a, b, c, d = box
+            out.append((photo["label"].strip(), (x0 + a * (x1 - x0), b, x0 + c * (x1 - x0), d)))
+    return out
+
+
 # ---------------------------------------------------------------- 등록과 채우기
 
 
@@ -281,6 +418,8 @@ class BoardResult:
     unchanged: list[str]
     no_price: list[str]  # 가격이 안 보여 올리지 않은 줄
     jobs: list[Registered]
+    # 사진이 안 붙은 메뉴. 사진만 다시 읽어 빠진 사진을 찾을 때 쓴다(fill_all).
+    no_photo: list[Registered] = field(default_factory=list)
 
 
 def register(store: DummyStore, items: list[BoardItem], knowledge: StoreKnowledge) -> BoardResult:
@@ -298,12 +437,15 @@ def register(store: DummyStore, items: list[BoardItem], knowledge: StoreKnowledg
             continue
         dish = dish_glossary.lookup(item.name)
         if dish is not None:
-            # 외국 음식 사전: 모델 없이 한국어 이름·원어 이름·설명을 바로 쓴다
-            renamed = dish.ko != item.name
+            # 외국 음식 사전: 모델 없이 한국어 이름·원어 이름·설명을 바로 쓴다. 한글로 적힌
+            # 이름은 사장님 표기를 그대로 둔다(블리니를 사전 표기 블린으로 바꾸지 않음).
+            korean = bool(re.search(r"[가-힣]", item.name))
+            name = item.name if korean else dish.ko
+            renamed = name != item.name
             rows.append(
                 (
                     {
-                        "name": dish.ko,
+                        "name": name,
                         "price": item.price,
                         "name_native": dish.native,
                         "description": dish.description,
@@ -334,6 +476,8 @@ def register(store: DummyStore, items: list[BoardItem], knowledge: StoreKnowledg
         getattr(result, row["action"]).append(record["name"])
         if record.get("filling"):
             result.jobs.append(Registered(record["id"], item, list(record["filling"])))
+        if not item.box and not record.get("photo"):
+            result.no_photo.append(Registered(record["id"], item, []))
     return result
 
 
@@ -347,15 +491,18 @@ def fill_one(
     call: Call = chat_v3,
     cutout=None,
     menu_list: str = "",
+    refine: bool = True,
 ) -> None:
-    """메뉴 한 줄의 남은 칸(이름·설명·사진)을 채워 저장소에 쓴다. 실패한 칸은 비운 채 끝낸다."""
+    """메뉴 한 줄의 남은 칸(이름·설명·사진)을 채워 저장소에 쓴다. 실패한 칸은 비운 채 끝낸다.
+    refine: 사진 위치를 잘라 다시 물어 바로잡는다(테스트는 끈다)."""
     tasks: list[Callable[[], None]] = []
     if {"name", "description"} & set(job.filling):
 
         def text() -> None:
             started = time.monotonic()
+            read = f"{job.item.name} ({job.item.subtitle})" if job.item.subtitle else job.item.name
             name_ko, description = menu_photo.localize(
-                job.item.name, store_context, call=call, menu_list=menu_list
+                read, store_context, call=call, menu_list=menu_list
             )
             log.info("menu localize %.2fs %s", time.monotonic() - started, job.item.name)
             fields = {}
@@ -371,7 +518,10 @@ def fill_one(
         def photo() -> None:
             started = time.monotonic()
             try:
-                image, piece = white_photo(board, job.item.box, regions, cutout)
+                box = job.item.box
+                if refine:
+                    box = refine_box(board, box, job.item.photo_label or job.item.name, call=call)
+                image, piece = white_photo(board, box, regions, cutout)
             except (ImageCutoutError, ValueError):
                 store.patch_menu(job.menu_id, {}, by_owner=False, done=("photo",))
                 return
@@ -404,6 +554,8 @@ def fill_all(
     cutout=None,
     workers: int = WORKERS,
     menu_list: str = "",
+    refine: bool = True,
+    no_photo: list[Registered] | None = None,
 ) -> Callable[[], None]:
     """백그라운드에서 돌릴 함수: 메뉴마다 동시에 채운다. 이름·설명과 사진도 서로 기다리지 않는다."""
 
@@ -413,28 +565,40 @@ def fill_all(
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = []
             for job in jobs:
-                # 이름·설명과 사진을 따로 던져야 사진(CPU)과 HCX 대기가 겹친다.
-                for part in ("text", "photo"):
-                    keep = (
-                        [f for f in job.filling if f in ("name", "description")]
-                        if part == "text"
-                        else [f for f in job.filling if f == "photo"]
-                    )
-                    if keep:
-                        piece = Registered(job.menu_id, job.item, keep)
-                        futures.append(
-                            pool.submit(
-                                fill_one,
-                                store,
-                                piece,
-                                board,
-                                regions,
-                                store_context,
-                                call=call,
-                                cutout=cutout,
-                                menu_list=menu_list,
-                            )
+                text = [f for f in job.filling if f in ("name", "description")]
+                if text:
+                    futures.append(
+                        pool.submit(
+                            fill_one,
+                            store,
+                            Registered(job.menu_id, job.item, text),
+                            board,
+                            regions,
+                            store_context,
+                            call=call,
+                            cutout=cutout,
+                            menu_list=menu_list,
+                            refine=refine,
                         )
+                    )
+            # 사진은 한 묶음으로: 사진 열을 다시 읽은 뒤 메뉴마다 자른다(이름·설명과 동시에).
+            with_photo = [
+                Registered(j.menu_id, j.item, ["photo"]) for j in jobs if "photo" in j.filling
+            ]
+            if with_photo or no_photo:
+                futures.append(
+                    pool.submit(
+                        place_photos,
+                        store,
+                        with_photo,
+                        list(no_photo or []),
+                        board,
+                        regions,
+                        call,
+                        cutout,
+                        refine,
+                    )
+                )
             for future in futures:
                 try:
                     future.result()
@@ -451,6 +615,183 @@ def fill_all(
                 pass
 
     return run
+
+
+def photo_runs(board: bytes, column: tuple[float, float]) -> list[Box]:
+    """사진 열 안의 음식 사진 칸을 영상으로 찾는다(위에서부터).
+
+    HCX-005가 주는 사진 위치는 돌릴 때마다 달라지고 한 칸씩 밀렸다(2026-11-21 실측).
+    그래서 모델에게서는 사진 열(가로 범위)과 위아래 순서만 받고, 정확한 위치는 여기서 잰다:
+    열의 가운데 60%에서 줄마다 '종이 바탕색이 아닌 점'의 비율을 보고, 그 비율이 높은 세로
+    구간이 사진이다(글자·이름표 줄은 낮다). 틈이 2% 미만인 구간은 하나로 합치고(흰 만두·크림이
+    많은 사진), 가로 폭은 같은 열 사진끼리 맞춘다."""
+    import cv2
+    import numpy as np
+
+    image = cv2.imdecode(np.frombuffer(board, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return []
+    height, width = image.shape[:2]
+    scale = min(1.0, 900 / max(height, width))
+    image = cv2.resize(
+        image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA
+    )
+    h, w = image.shape[:2]
+    lab = cv2.cvtColor(cv2.GaussianBlur(image, (5, 5), 0), cv2.COLOR_BGR2LAB).astype(np.float32)
+    middle = lab[h // 4 : 3 * h // 4, w // 4 : 3 * w // 4].reshape(-1, 3)
+    keys, counts = np.unique((middle // 8).astype(np.int32), axis=0, return_counts=True)
+    paper = keys[counts.argmax()] * 8 + 4  # 가장 흔한 색 = 종이 바탕
+    far = np.linalg.norm(lab - paper, axis=2) > 30
+    x0, x1 = int(column[0] * w), int(column[1] * w)
+    strip = far[:, x0:x1]
+    span = x1 - x0
+    if span < 10:
+        return []
+    rows = strip[:, int(span * 0.2) : int(span * 0.8)].mean(axis=1)
+    rows = np.convolve(rows, np.ones(5) / 5, mode="same")
+    on = rows > 0.5
+    runs: list[list[int]] = []
+    y = 0
+    while y < h:
+        if not on[y]:
+            y += 1
+            continue
+        end = y
+        while end < h and on[end]:
+            end += 1
+        if runs and (y - runs[-1][1]) / h < 0.02:
+            runs[-1][1] = end
+        else:
+            runs.append([y, end])
+        y = end
+    runs = [r for r in runs if (r[1] - r[0]) / h >= 0.06]
+    cells = []
+    for top, bottom in runs:
+        dense = strip[top:bottom].mean(axis=0) > 0.6
+        # 가장 긴 연속 가로 구간(사진은 한 덩어리, 장식은 듬성듬성)
+        best, start = (0, 0), None
+        for x, on_x in enumerate([*dense, False]):
+            if on_x and start is None:
+                start = x
+            elif not on_x and start is not None:
+                if x - start > best[1] - best[0]:
+                    best = (start, x)
+                start = None
+        a, b = best
+        if b - a < span * 0.3:
+            continue
+        if strip[top:bottom, a:b].mean() < 0.7:  # 장식·글자 덩어리: 꽉 차 있지 않다
+            continue
+        cells.append((top, bottom, a, b))
+    if len(cells) >= 2:  # 같은 열 사진은 폭이 같다
+        left = int(np.median([c[2] for c in cells]))
+        right = int(np.median([c[3] for c in cells]))
+        cells = [(t, btm, left, right) for t, btm, _, _ in cells]
+    return [((x0 + a) / w, top / h, (x0 + b) / w, bottom / h) for top, bottom, a, b in cells]
+
+
+LABEL_PROMPT = (
+    '음식 사진 바로 아래 이름표를 잘라 낸 그림이다. 적힌 글자 그대로. JSON 하나만: {"label": "..."}'
+)
+
+
+def read_label(board: bytes, box: Box, *, call: Call = chat_v3) -> str:
+    """사진 칸 바로 아래(이름표 자리)를 잘라 글자를 읽는다. 못 읽으면 빈 문자열."""
+    import cv2
+    import numpy as np
+
+    image = cv2.imdecode(np.frombuffer(board, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return ""
+    height, width = image.shape[:2]
+    x0, y0, x1, y1 = box
+    top, bottom = int(y1 * height), int(min(1.0, y1 + 0.08) * height)
+    piece = image[top:bottom, int(x0 * width) : int(x1 * width)]
+    if piece.size == 0:
+        return ""
+    pad = max(0, piece.shape[1] // 3 - piece.shape[0])  # 너무 납작하면 400: 위아래 흰 여백
+    piece = cv2.copyMakeBorder(piece, pad // 2, pad - pad // 2, 0, 0, cv2.BORDER_REPLICATE)
+    ok, encoded = cv2.imencode(".jpg", piece, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ok:
+        return ""
+    try:
+        raw = _vision_json(encoded.tobytes(), LABEL_PROMPT, "{", call, 60)
+    except (ClovaV3Error, menu_photo.MenuPhotoError, ValueError):
+        return ""
+    label = raw.get("label") if isinstance(raw, dict) else None
+    return label.strip() if isinstance(label, str) else ""
+
+
+def match_runs(
+    targets: list[Registered], runs: list[Box], board: bytes, call: Call
+) -> dict[int, Box]:
+    """찾은 사진 칸을 메뉴에 맞춘다 → {targets 번호: 칸}. 칸마다 아래 이름표를 읽어(동시에)
+    이름으로 맞춘다. 첫 읽기의 사진 위치로는 맞추지 않는다: 한 칸씩 밀려 펠메니 이름에 보르시
+    칸이 붙었다(2026-11-21 실측)."""
+    out: dict[int, Box] = {}
+    if not runs:
+        return out
+    with ThreadPoolExecutor(max_workers=len(runs)) as pool:
+        labels = list(pool.map(lambda box: read_label(board, box, call=call), runs))
+    rest = list(range(len(targets)))
+    for box, label in zip(runs, labels, strict=True):
+        if not label or not rest:
+            continue
+        key = menu_photo._norm(split_subtitle(label)[0])
+        score, best = max((_label_score(key, targets[i].item.name), i) for i in rest)
+        if score >= LABEL_MIN:
+            out[best] = box
+            targets[best].item.photo_label = label
+            rest.remove(best)
+    return out
+
+
+def place_photos(
+    store: DummyStore,
+    with_photo: list[Registered],
+    no_photo: list[Registered],
+    board: bytes,
+    regions: list[Box],
+    call: Call = chat_v3,
+    cutout=None,
+    refine: bool = True,
+    workers: int = WORKERS,
+) -> None:
+    """흰 배경 사진 채우기. 첫 읽기로 사진 열을 정하고 그 안의 사진 칸을 영상으로 정확히 찾아
+    (photo_runs) 메뉴에 맞춘 뒤(match_runs) 메뉴마다 동시에 자른다. 첫 읽기가 빠뜨린 사진도
+    칸의 이름표로 찾는다. 사진 칸을 못 찾으면 첫 읽기 위치를 잘라 다시 묻는다(refine_box)."""
+    targets = with_photo + no_photo
+    exact: dict[int, Box] = {}
+    if refine and targets:
+        column = photo_column([t.item.box for t in with_photo if t.item.box])
+        runs = photo_runs(board, column) if column else []
+        if runs:
+            exact = match_runs(targets, runs, board, call)
+    jobs = []
+    for i, target in enumerate(targets):
+        if i in exact:
+            target.item.box = exact[i]
+        if i >= len(with_photo):
+            if i not in exact:
+                continue  # 사진이 없는 메뉴
+            log.info("menu photo recovered for %s", target.item.name)
+            store.patch_menu(target.menu_id, {}, by_owner=False, start=("photo",))
+        if not target.item.box:
+            store.patch_menu(target.menu_id, {}, by_owner=False, done=("photo",))
+            continue
+        jobs.append((Registered(target.menu_id, target.item, ["photo"]), refine and i not in exact))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [
+            pool.submit(
+                fill_one, store, job, board, regions, "", call=call, cutout=cutout, refine=again
+            )
+            for job, again in jobs
+        ]
+        for future in futures:
+            try:
+                future.result()
+            except Exception:  # noqa: BLE001 - 한 장 실패가 나머지를 막지 않게
+                log.exception("menu photo crashed")
 
 
 # ---------------------------------------------------------------- 2차: 사진 다듬기 (SEED Omni)

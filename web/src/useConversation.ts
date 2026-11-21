@@ -65,6 +65,8 @@ export type Conversation = {
   routines: Routines | null;
   /** 루틴 설정 스위치·일정을 바꾼다. 대화 턴이 아니다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   changeRoutines: (change: RoutinesChange) => Promise<string | null>;
+  /** 사진을 읽는 중이면 보낸 시각(ms), 아니면 null. 메뉴 탭의 '메뉴판 읽는 중' 진행 막대. */
+  readingSince: number | null;
   /** 메뉴 탭에서 직접 고친 값을 저장한다(승인 카드 없음). 성공하면 null, 실패하면 사장님께 보일 문장. */
   editMenu: (menuId: string, edit: MenuEdit) => Promise<string | null>;
   /** [사진 다듬기]: 사진 다듬기를 부탁한다. 사장님께 보일 한 줄(시작함·준비 중·실패)을 돌려준다. */
@@ -103,6 +105,8 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [reviewReport, setReviewReport] = useState<ReviewReport | null>(null);
   const [routines, setRoutines] = useState<Routines | null>(null);
+  // 사진을 보내고 비서 답을 기다리는 동안(메뉴판 읽는 중) 시작 시각. 메뉴 탭이 진행 막대를 그린다.
+  const [readingSince, setReadingSince] = useState<number | null>(null);
   const toRetry = useRef<Retryable | null>(null);
   const sentCoupon = useRef<CouponInput | null>(null); // 거절되면 블록을 다시 열 값
   const inFlight = useRef(false); // 렌더 전에 들어온 두 번째 클릭도 막는다
@@ -237,9 +241,11 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const perform = useCallback(
     async (text: string, image?: File) => {
       if (!sessionId) return;
+      if (image) setReadingSince(Date.now());
       const turn = await attempt({ kind: "send", text, image }, () =>
         image ? api.sendPhoto(sessionId, image, text) : api.say(sessionId, text),
       );
+      if (image) setReadingSince(null);
       if (turn) applyTurn(turn);
     },
     [api, applyTurn, attempt, sessionId],
@@ -456,6 +462,6 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
     send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
-    routines, changeRoutines, editMenu, deleteMenu, polishMenu,
+    routines, changeRoutines, editMenu, deleteMenu, polishMenu, readingSince,
   };
 }

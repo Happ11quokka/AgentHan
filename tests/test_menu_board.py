@@ -51,7 +51,13 @@ class FakeV3:
         self.calls.append(body)
         content = body["messages"][-1]["content"]
         if isinstance(content, list):
-            assert content[1]["text"] == menu_board.BOARD_PROMPT
+            text = content[1]["text"]
+            if text == menu_board.PHOTOS_PROMPT:  # 사진만 다시 읽기
+                photos = self.board.get("photos", []) if isinstance(self.board, dict) else []
+                return {"message": {"content": json.dumps(photos, ensure_ascii=False)}}
+            if text.startswith("메뉴판 일부를 잘라 낸 그림이다"):  # 사진 위치 다시 묻기
+                return {"message": {"content": '{"box": [0.2, 0.2, 0.8, 0.8]}'}}
+            assert text == menu_board.BOARD_PROMPT
             answer = self.board if isinstance(self.board, str) else json.dumps(self.board)
             return {"message": {"content": answer}}
         name = content.rsplit("메뉴 원어 이름: ", 1)[1]
@@ -439,3 +445,116 @@ def test_polish_button_and_chat_both_start_the_touch_up(api, monkeypatch):
     ).json()["reply"]
     assert "보정하고 있어요" in reply
     wait_filled(api, sid)
+
+
+# ---------------------------------------------------------------- 이름 옆 괄호 풀이
+
+
+@pytest.mark.parametrize(
+    ("raw", "name", "sub"),
+    [
+        ("메도빅 (꿀 케이크)", "메도빅", "꿀 케이크"),
+        ("콤포트（과일 음료）", "콤포트", "과일 음료"),
+        ("Борщ [суп]", "Борщ", "суп"),
+        ("메도빅", "메도빅", ""),
+        ("(세트)", "(세트)", ""),
+    ],
+)
+def test_split_subtitle(raw, name, sub):
+    assert menu_board.split_subtitle(raw) == (name, sub)
+
+
+def test_names_with_a_subtitle_get_their_photo_and_glossary_entry(tmp_path):
+    """'메도빅 (꿀 케이크)'처럼 괄호 풀이가 붙은 메뉴판(2026-11-21 실서버): 사진 이름표 '메도빅'과
+    맞아 사진이 붙고, 사전으로 설명을 채우며, 한글 표기(블리니)는 그대로 둔다."""
+    answer = {
+        "kind": "menu_board",
+        "items": [
+            {"name": "메도빅 (꿀 케이크)", "price": 7500},
+            {"name": "블리니 (러시아식 팬케이크)", "price": 9000},
+            {"name": "머랭롤 (머랭 롤 케이크)", "price": 8500},
+        ],
+        "photos": [
+            {"box": [0.66, 0.19, 0.9, 0.35], "label": "메도빅"},
+            {"box": [0.66, 0.75, 0.9, 0.9], "label": "머랭롤"},
+        ],
+    }
+    store, fake, result = run_board(tmp_path, answer)
+    [first, second, third] = menu_board.read_board(BOARD, call=FakeV3(answer))[1]
+    assert first.box and not second.box and third.box
+    assert third.subtitle == "머랭 롤 케이크"
+    saved = menus(store)
+    assert set(saved) == {"메도빅", "블리니", "머랭롤"}
+    assert saved["블리니"]["description"].startswith("얇게 부친")  # 사전 설명
+    assert saved["블리니"]["ai"] == ["description"]  # 한글 이름은 사장님 표기 그대로
+    assert saved["머랭롤"]["filling"] == ["description", "photo"]  # 사전에 없음 → 모델이 설명
+
+
+def column_board():
+    """크림색 메뉴판 오른쪽 열에 음식 사진 두 장이 위아래로(그 아래 이름표 자리)."""
+    image = np.full((800, 1000, 3), (205, 230, 245), np.uint8)  # BGR 크림색 종이
+    rng = np.random.default_rng(2)
+    for top in (120, 470):
+        image[top : top + 220, 650:900] = rng.integers(0, 255, (220, 250, 3), dtype=np.uint8)
+    ok, encoded = cv2.imencode(".jpg", image)
+    assert ok
+    return encoded.tobytes()
+
+
+def test_photo_cells_are_measured_and_a_missed_photo_found_by_its_label(tmp_path):
+    """첫 읽기는 사진 위치가 어긋나고 4장 중 1장을 자주 빠뜨렸다(2026-11-21 실측): 사진 열 안의
+    칸을 영상으로 재고, 이름이 없는 칸은 아래 이름표를 읽어 메뉴에 붙인다."""
+    board = column_board()
+    answer = {
+        "kind": "menu_board",
+        "items": [{"name": "김밥", "price": 4000}, {"name": "떡볶이", "price": 5000}],
+        # 김밥 사진 위치는 어긋나게(실제 0.15~0.425), 떡볶이 사진은 빠뜨림
+        "photos": [{"box": [0.68, 0.2, 0.92, 0.45], "label": "김밥"}],
+    }
+
+    class Labels(FakeV3):
+        def __call__(self, model, body):
+            content = body["messages"][-1]["content"]
+            if isinstance(content, list) and content[1]["text"] == menu_board.LABEL_PROMPT:
+                return {"message": {"content": '{"label": "떡볶이"}'}}
+            return super().__call__(model, body)
+
+    fake = Labels(answer)
+    runs = menu_board.photo_runs(board, (0.56, 1.0))
+    assert len(runs) == 2
+    assert abs(runs[0][1] - 0.15) < 0.03 and abs(runs[1][1] - 470 / 800) < 0.03
+    assert abs(runs[0][0] - 0.65) < 0.03 and abs(runs[0][2] - 0.9) < 0.03
+
+    store = DummyStore(tmp_path / "store.json")
+    store.write({"shop": {"name": "분식"}, "menus": [], "reviews": []})
+    _, items = menu_board.read_board(board, call=fake)
+    result = menu_board.register(store, items, FakeStoreKnowledge([]))
+    assert [r.item.name for r in result.no_photo] == ["떡볶이"]
+    seen = []
+
+    def cutout(data, **kwargs):
+        seen.append(data)
+        return fake_cutout(data)
+
+    menu_board.fill_all(
+        store, result.jobs, board, "", call=fake, cutout=cutout, no_photo=result.no_photo
+    )()
+    saved = menus(store)
+    assert saved["김밥"]["photo"] and saved["떡볶이"]["photo"]
+    assert all(m["filling"] == [] for m in saved.values())
+    # 자른 조각이 사진 칸 그대로(크림색 종이가 거의 없다)
+    for piece in seen:
+        crop = cv2.imdecode(np.frombuffer(piece, np.uint8), cv2.IMREAD_COLOR)
+        paper = np.all(np.abs(crop.astype(int) - (205, 230, 245)) < 12, axis=2).mean()
+        assert paper < 0.1
+
+
+def test_refine_box_maps_the_answer_back_and_keeps_the_box_on_failure():
+    box = (0.5, 0.2, 0.7, 0.4)
+    refined = menu_board.refine_box(BOARD, box, "김밥", call=FakeV3(ITEMS))
+    assert refined != box and 0.38 <= refined[0] < refined[2] <= 0.82
+
+    def nonsense(model, body):
+        return {"message": {"content": "잘 모르겠어요"}}
+
+    assert menu_board.refine_box(BOARD, box, "김밥", call=nonsense) == box

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { approval, DAYS, discountText, hoursText, MARK_TEXT, periodText, won, type RowMark } from "../labels";
 import type { MenuEdit, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
 import { RoutineSettings } from "./RoutineSettings";
@@ -288,14 +288,65 @@ function MenuItemRow({
   );
 }
 
-/** 메뉴판 사진 칸이 채워지는 동안 위에 한 줄. */
-function FillingBanner({ menu }: { menu: MenuRow[] }) {
-  const count = menu.filter((m) => m.filling?.some((f) => f !== "polish")).length;
-  if (!count) return null;
+/** since(ms)부터 지난 초. since가 null이면 멈춘다. */
+function useElapsed(since: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(timer);
+  }, [since]);
+  return since === null ? 0 : Math.max(0, (now - since) / 1000);
+}
+
+function Progress({ title, detail, seconds, ratio }: { title: string; detail: string; seconds: number; ratio: number }) {
+  const percent = Math.round(Math.min(1, Math.max(0.04, ratio)) * 100);
   return (
-    <p className="shop-banner filling" role="status">
-      메뉴판에서 올린 메뉴 {count}개의 설명과 흰 배경 사진을 채우고 있어요.
-    </p>
+    <div className="menu-progress" role="status" aria-live="polite">
+      <div className="menu-progress-head">
+        <strong>{title}</strong>
+        <span className="menu-progress-time">{seconds.toFixed(1)}초</span>
+      </div>
+      <div className="menu-progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={title}>
+        <span style={{ width: `${percent}%` }} />
+      </div>
+      <p>{detail}</p>
+    </div>
+  );
+}
+
+/** 사진을 보내고 답을 기다리는 동안: 메뉴판 읽기는 보통 7~11초. 끝을 모르니 천천히 차오르다 95%에서 멈춘다. */
+function ReadingProgress({ since }: { since: number }) {
+  const seconds = useElapsed(since);
+  const ratio = 0.95 * (1 - Math.exp(-seconds / 5));
+  const detail = seconds < 4 ? "메뉴 이름과 가격을 읽고 있어요" : seconds < 8 ? "음식 사진을 찾고 메뉴를 정리하고 있어요" : "거의 다 됐어요";
+  return <Progress title="메뉴판 사진을 읽고 있어요" detail={detail} seconds={seconds} ratio={ratio} />;
+}
+
+const fillingFields = (menu: MenuRow[]) => menu.reduce((n, m) => n + (m.filling ?? []).filter((f) => f !== "polish").length, 0);
+
+/** 메뉴판에서 올린 메뉴의 설명·흰 배경 사진을 채우는 동안: 남은 칸 수로 진행률, 다 된 메뉴 수, 걸린 시간.
+ * 채울 칸이 생기면 FillRun이 새로 붙어 그때를 시작 시각으로 삼고, 다 채우면 떨어진다. */
+function FillProgress({ menu }: { menu: MenuRow[] }) {
+  return fillingFields(menu) > 0 ? <FillRun menu={menu} /> : null;
+}
+
+function FillRun({ menu }: { menu: MenuRow[] }) {
+  const remaining = fillingFields(menu);
+  const busyMenus = menu.filter((m) => m.filling?.some((f) => f !== "polish")).length;
+  const [start] = useState(() => Date.now());
+  // 가장 많았던 남은 칸·메뉴 수(이전 렌더 값과 비교해 렌더 중에 고친다)
+  const [peak, setPeak] = useState({ fields: remaining, menus: busyMenus });
+  if (remaining > peak.fields || busyMenus > peak.menus)
+    setPeak({ fields: Math.max(peak.fields, remaining), menus: Math.max(peak.menus, busyMenus) });
+  const seconds = useElapsed(start);
+  return (
+    <Progress
+      title="설명과 흰 배경 사진을 채우고 있어요"
+      detail={`메뉴 ${peak.menus - busyMenus}/${peak.menus}개 완료 · 다 된 칸부터 바로 보여요`}
+      seconds={seconds}
+      ratio={1 - remaining / peak.fields}
+    />
   );
 }
 
@@ -306,21 +357,38 @@ export function MenuTab({
   onEdit,
   onDelete,
   onPolish,
+  readingSince = null,
 }: {
   place: Place;
   pending: Pending[];
   onEdit?: OnMenuEdit;
   onDelete?: OnMenuDelete;
   onPolish?: OnMenuPolish;
+  /** 메뉴판 사진을 읽는 중이면 보낸 시각(ms). */
+  readingSince?: number | null;
 }) {
   const { view, marks, removed } = overlay(place, pending);
   const before = new Map(place.menu.map((m) => [m.id, m]));
   return (
     <div className="shop">
       <PendingBanner pending={pending} />
-      <FillingBanner menu={place.menu} />
+      {readingSince !== null && <ReadingProgress since={readingSince} />}
+      <FillProgress menu={place.menu} />
       <Section title="메뉴" count={view.menu.length}>
-        {view.menu.length + removed.menu.length === 0 ? (
+        {view.menu.length + removed.menu.length === 0 && readingSince !== null ? (
+          <ul className="menu-list" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="menu-item menu-item-ghost">
+                <div className="menu-body">
+                  <span className="skeleton-line" style={{ width: "40%" }} />
+                  <span className="skeleton-line" />
+                  <span className="skeleton-line" style={{ width: "25%" }} />
+                </div>
+                <span className="menu-photo skeleton" />
+              </li>
+            ))}
+          </ul>
+        ) : view.menu.length + removed.menu.length === 0 ? (
           <p className="empty">아직 메뉴가 없어요. 대화창에 메뉴판 사진을 올리면 여기에 바로 채워져요.</p>
         ) : (
           <ul className="menu-list">

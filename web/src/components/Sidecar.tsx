@@ -53,6 +53,8 @@ type Props = {
   onEditMenu?: OnMenuEdit;
   onDeleteMenu?: OnMenuDelete;
   onPolishMenu?: OnMenuPolish;
+  /** 메뉴판 사진을 읽는 중이면 보낸 시각(ms). 메뉴 탭이 진행 막대를 그린다. */
+  readingSince?: number | null;
   onClose: () => void;
 };
 
@@ -126,7 +128,7 @@ export function Sidecar(props: Props) {
             onRunReport={props.onRunReport}
           />
         )}
-        {tab === "menu" && place && <MenuTab place={place} pending={pending} onEdit={props.onEditMenu} onDelete={props.onDeleteMenu} onPolish={props.onPolishMenu} />}
+        {tab === "menu" && place && <MenuTab place={place} pending={pending} onEdit={props.onEditMenu} onDelete={props.onDeleteMenu} onPolish={props.onPolishMenu} readingSince={props.readingSince ?? null} />}
         {tab === "reviews" && (
           <ReviewsTab
             loaded={props.reviews}
