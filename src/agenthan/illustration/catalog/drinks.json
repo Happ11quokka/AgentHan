@@ -1,1 +1,576 @@
-[]
+[
+  {
+    "id": "drink_americano",
+    "name": "아메리카노",
+    "aliases": [
+      "핫 아메리카노",
+      "따뜻한 아메리카노",
+      "americano",
+      "블랙커피"
+    ],
+    "keywords": [
+      "아메리카노"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "mug",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "garnish": [
+        "steam",
+        "beans"
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_iced_americano",
+    "name": "아이스 아메리카노",
+    "aliases": [
+      "iced americano",
+      "아아"
+    ],
+    "keywords": [
+      "아이스아메리카노"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice"
+      ],
+      "straw": "white",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_decaf",
+    "name": "디카페인",
+    "aliases": [
+      "디카페인 커피",
+      "decaf",
+      "디카프"
+    ],
+    "keywords": [
+      "디카페인",
+      "디카페인아메리카노"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "takeaway",
+      "liquid": [
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "garnish": [
+        "beans"
+      ],
+      "cup": "leaf",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_latte",
+    "name": "카페라떼",
+    "aliases": [
+      "라떼",
+      "라테",
+      "카페 라테",
+      "카페라테",
+      "caffe latte",
+      "cafe latte",
+      "latte"
+    ],
+    "keywords": [
+      "카페라떼",
+      "카페라테"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "cup",
+      "liquid": [
+        [
+          "latte",
+          1
+        ]
+      ],
+      "garnish": [
+        "latte_art"
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_iced_latte",
+    "name": "아이스 라떼",
+    "aliases": [
+      "iced latte"
+    ],
+    "keywords": [
+      "아이스라떼",
+      "아이스라테",
+      "아이스카페라떼"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "milk",
+          2
+        ],
+        [
+          "coffee",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice"
+      ],
+      "straw": "white",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_cappuccino",
+    "name": "카푸치노",
+    "aliases": [
+      "cappuccino",
+      "카프치노"
+    ],
+    "keywords": [
+      "카푸치노"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "cup",
+      "liquid": [
+        [
+          "latte",
+          1
+        ]
+      ],
+      "foam": "cream",
+      "garnish": [
+        "cocoa"
+      ],
+      "cup": "cup_clay",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_caramel_macchiato",
+    "name": "카라멜 마끼아또",
+    "aliases": [
+      "캐러멜 마키아토",
+      "caramel macchiato"
+    ],
+    "keywords": [
+      "마끼아또",
+      "마키아토",
+      "마키아또"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "milk",
+          2
+        ],
+        [
+          "coffee",
+          1.2
+        ]
+      ],
+      "foam": "cream",
+      "garnish": [
+        "caramel"
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_raf",
+    "name": "라프 커피",
+    "aliases": [
+      "라프",
+      "raf coffee",
+      "라프 라떼"
+    ],
+    "keywords": [
+      "라프커피",
+      "바닐라라프"
+    ],
+    "category": "coffee",
+    "recipe": {
+      "vessel": "glass_mug",
+      "liquid": [
+        [
+          "milk",
+          1
+        ]
+      ],
+      "foam": "cream",
+      "garnish": [
+        "vanilla"
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "drink_black_tea",
+    "name": "블랙티",
+    "aliases": [
+      "홍차",
+      "black tea",
+      "블랙 티"
+    ],
+    "keywords": [
+      "블랙티"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "teacup",
+      "liquid": [
+        [
+          "tea",
+          1
+        ]
+      ],
+      "garnish": [
+        "tea_leaves",
+        "steam"
+      ],
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "drink_earl_grey",
+    "name": "얼그레이",
+    "aliases": [
+      "earl grey",
+      "얼그레이 티"
+    ],
+    "keywords": [
+      "얼그레이"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "teacup",
+      "liquid": [
+        [
+          "earl_grey",
+          1
+        ]
+      ],
+      "garnish": [
+        "tea_tag"
+      ],
+      "cup": "cup_blue",
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "drink_milk_tea",
+    "name": "밀크티",
+    "aliases": [
+      "milk tea",
+      "로얄 밀크티"
+    ],
+    "keywords": [
+      "밀크티"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "mug",
+      "liquid": [
+        [
+          "milk_tea",
+          1
+        ]
+      ],
+      "garnish": [
+        "tea_leaves"
+      ],
+      "cup": "cup_clay",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "drink_sea_buckthorn_tea",
+    "name": "오블레피하 차",
+    "aliases": [
+      "오블레피하",
+      "sea buckthorn tea",
+      "비타민나무 차",
+      "산자나무 차",
+      "씨벅톤 차"
+    ],
+    "keywords": [
+      "오블레피하",
+      "비타민나무",
+      "산자나무",
+      "씨벅톤"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "glass_mug",
+      "liquid": [
+        [
+          "buckthorn",
+          1
+        ]
+      ],
+      "garnish": [
+        "buckthorn"
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "drink_honey_lemon_tea",
+    "name": "허니레몬티",
+    "aliases": [
+      "꿀레몬차",
+      "레몬차",
+      "honey lemon tea"
+    ],
+    "keywords": [
+      "허니레몬",
+      "꿀레몬",
+      "레몬티"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "glass_mug",
+      "liquid": [
+        [
+          "honey",
+          1
+        ]
+      ],
+      "garnish": [
+        "lemon_float",
+        "honey_dipper"
+      ],
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "drink_berry_tea",
+    "name": "베리티",
+    "aliases": [
+      "베리 티",
+      "berry tea",
+      "베리차"
+    ],
+    "keywords": [
+      "블랙커런트티"
+    ],
+    "category": "tea",
+    "recipe": {
+      "vessel": "teacup",
+      "liquid": [
+        [
+          "berry_tea",
+          1
+        ]
+      ],
+      "garnish": [
+        "berry_mix",
+        "steam"
+      ],
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "drink_lemonade",
+    "name": "레몬에이드",
+    "aliases": [
+      "레모네이드"
+    ],
+    "keywords": [
+      "레몬에이드",
+      "레모네이드"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "ade",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "lemon_slices",
+        "ice",
+        "mint"
+      ],
+      "straw": "leaf",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "drink_grapefruit_ade",
+    "name": "자몽에이드",
+    "aliases": [
+      "grapefruit ade"
+    ],
+    "keywords": [
+      "자몽에이드",
+      "자몽주스"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "grapefruit",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice",
+        "grapefruit_rim"
+      ],
+      "straw": "white",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "drink_raspberry_ade",
+    "name": "라즈베리 에이드",
+    "aliases": [
+      "raspberry ade",
+      "산딸기 에이드"
+    ],
+    "keywords": [
+      "라즈베리에이드",
+      "산딸기에이드"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "raspberry_ade",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice",
+        "raspberries",
+        "mint"
+      ],
+      "straw": "white",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "drink_strawberry_lemon_ade",
+    "name": "스트로베리레몬 에이드",
+    "aliases": [
+      "딸기레몬에이드",
+      "strawberry lemonade"
+    ],
+    "keywords": [
+      "스트로베리레몬",
+      "딸기레몬"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "berry",
+          1
+        ],
+        [
+          "ade",
+          1.3
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice",
+        "lemon_rim",
+        "strawberry_rim"
+      ],
+      "straw": "white",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "drink_omija_ade",
+    "name": "오미자 에이드",
+    "aliases": [
+      "omija ade"
+    ],
+    "keywords": [
+      "오미자"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "glass",
+      "liquid": [
+        [
+          "omija",
+          1
+        ]
+      ],
+      "garnish": [
+        "straw",
+        "ice",
+        "omija"
+      ],
+      "straw": "white",
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "drink_mors",
+    "name": "모르스",
+    "aliases": [
+      "mors",
+      "크랜베리 모르스"
+    ],
+    "keywords": [
+      "모르스",
+      "크랜베리주스"
+    ],
+    "category": "ade",
+    "recipe": {
+      "vessel": "tumbler",
+      "liquid": [
+        [
+          "mors",
+          1
+        ]
+      ],
+      "garnish": [
+        "cranberries",
+        "mint"
+      ],
+      "card": "card_mint"
+    }
+  }
+]

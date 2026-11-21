@@ -306,3 +306,25 @@ def cake_slice(
     arc = [at(math.radians(270 - span / 2 + span * i / 12), 0) for i in range(13)]
     parts.append(polygon([apex(0), *arc], top))
     return "".join(parts)
+
+
+# ── 음료 색(티켓 03) ──────────────────────────────────────────────────────────
+# 음료끼리 한눈에 구분되도록 음료 색·잔 색을 더한다. 거품·라떼아트는 cream·white를 쓴다.
+PALETTE.update(
+    {
+        "latte": "#C99B6A",
+        "earl_grey": "#8F3B22",
+        "milk_tea": "#D3A679",
+        "buckthorn": "#F39A26",
+        "berry_tea": "#8C2F4E",
+        "blackcurrant": "#4A2340",
+        "grapefruit": "#F2846F",
+        "grapefruit_light": "#FBC3B3",
+        "raspberry_ade": "#EC6F8A",
+        "omija": "#C42F4A",
+        "mors": "#7A1D38",
+        "cup_blue": "#9DB7D5",
+        "cup_clay": "#D98C6A",
+        "kraft": "#C9A57A",
+    }
+)
