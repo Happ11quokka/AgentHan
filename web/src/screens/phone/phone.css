@@ -376,3 +376,51 @@
   margin-top: 12px;
   width: 100%;
 }
+
+/* 손님 취소 (티켓 07): [취소하기] → 화면 안에서 한 번 묻기(브라우저 대화상자 없음), 제시간 수락의 "가게로 전화" 안내 */
+.phone-btn-cancel {
+  border-color: var(--phone-danger);
+  color: var(--phone-danger);
+}
+
+.phone-cancel-ask {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--phone-danger);
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.phone-cancel-ask p {
+  flex-basis: 100%;
+  margin: 0;
+  font-weight: 700;
+}
+
+.phone-status-card .phone-cancel-ask .phone-btn {
+  margin-top: 0;
+  width: auto;
+  flex: 1;
+  min-height: 48px;
+}
+
+.phone-btn-cancel-yes {
+  background: var(--phone-danger);
+  border-color: var(--phone-danger);
+  color: #fff;
+}
+
+.phone-cancel-hint,
+.phone-cancel-notice {
+  margin: 12px 0 0;
+}
+
+.phone-cancel-hint {
+  color: var(--phone-muted);
+}
+
+.phone-cancel-notice {
+  color: var(--phone-danger);
+}
