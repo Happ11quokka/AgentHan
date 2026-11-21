@@ -197,7 +197,7 @@ def test_the_owner_answer_is_kept_in_the_order_transcript() -> None:
 # ---------------------------------------------------------------- 막는 조건 (티켓 06)
 
 CINNAMON = "블린에 시나몬 들어가요?"
-LATER = "확인해서 문자로 알려 드릴게요."
+LATER = "죄송해요, 사장님이 지금 바로 답하기 어려우세요."
 
 
 def _open(engine: DialogEngine, text: str = NUTS) -> OwnerQuestion:
@@ -286,18 +286,29 @@ def test_the_owner_seeing_the_card_is_said_once_while_the_question_is_open() -> 
     assert engine.owner_seen(asked.number, NOW).utterances == []  # 닫힌 질문
 
 
-def test_closing_with_an_open_question_promises_a_text_and_closes_it() -> None:
+def test_closing_with_an_open_question_promises_no_text_and_closes_it() -> None:
+    """문자는 나가지 않고 손님 화면에도 없으므로 마무리에 문자를 약속하지 않는다 (리뷰)."""
     engine = make_engine()
     talk(engine, "메도빅 하나요")
     asked = _open(engine)
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
     assert r.state is State.CLOSING
-    assert r.utterances == [
-        "네, 6시 반까지 준비해 둘게요. 여쭤보신 건 확인해서 문자로 알려 드릴게요. "
-        ""
-                            "감사합니다."]
+    assert r.utterances == ["네, 6시 반까지 준비해 둘게요. 감사합니다."]
     assert r.order is not None
     assert engine.owner_answered(asked.number, "yes", NOW).utterances == []
+
+
+def test_placing_the_order_with_an_open_question_promises_no_text() -> None:
+    """통화 중 대기 0의 마무리("주문 넣어 드렸어요")도 문자를 약속하지 않는다 (리뷰)."""
+    engine = make_engine()
+    talk(engine, "메도빅 하나요")
+    _open(engine)
+    for text in ("그게 다예요", "6시 반이요"):
+        engine.handle(text, NOW, approval=True)
+    r = engine.handle("네", NOW, approval=True)
+    assert r.utterances == [
+        "주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요. 감사합니다."]
+    assert r.approval_request is not None
 
 
 def test_closing_without_an_open_question_is_unchanged() -> None:
@@ -324,7 +335,8 @@ def test_a_written_answer_is_not_read_out_and_promises_a_text_message() -> None:
     engine = make_engine()
     talk(engine, "메도빅 하나요")
     r = engine.owner_answered(_open(engine).number, "free", NOW)
-    assert r.utterances == ["사장님이 답을 남기셨어요. 문자로 보내 드릴게요.", MORE_Q]
+    assert r.utterances == [
+        "사장님이 글로 답을 남기셨어요. 자세한 건 가게에 물어봐 주세요.", MORE_Q]
     assert r.state is State.ORDERING
     r = talk(engine, "그게 다예요", "6시 반이요", "네")
     assert r.utterances == [

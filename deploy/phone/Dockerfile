@@ -64,11 +64,18 @@ COPY src/ src/
 COPY fixtures/ fixtures/
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --extra cutout
 
+# rembg import는 pymatting의 numba 함수를 컴파일한다(빈 캐시면 서버 8 vCPU에서 34.5초, 있으면 0.9초).
+# 캐시를 /tmp에 두면 컨테이너를 새로 띄울 때마다 비어 배포 뒤 첫 메뉴판 사진의 흰 배경 사진이 모두
+# 그만큼 기다렸다(2026-11-21 실측 37.9초). 빌드 때 이미지 안에 만들어 둔다. 빌드도 같은 서버에서 하므로
+# CPU가 같다. 다르면 numba가 다시 컴파일해 이 폴더에 더하므로 app 사용자가 쓸 수 있어야 한다(아래 chown).
+RUN NUMBA_CACHE_DIR=/app/cache/numba python -c "import rembg"
+
 COPY --from=web /web/dist web/dist
 
 # 루트로 돌리지 않는다. logs/는 볼륨이 붙는 자리라 미리 만들어 둔다(이름 있는 볼륨이 소유자를 물려받음)
 RUN useradd --system --uid 10001 --home-dir /app app \
-    && mkdir -p /app/logs /app/sessions && chown app:app /app/logs /app/sessions
+    && mkdir -p /app/logs /app/sessions && chown app:app /app/logs /app/sessions \
+    && chown -R app:app /app/cache
 USER app
 
 # 코드 기본값과 같지만 서버에서 헷갈리지 않게 적어 둔다. 키는 여기 적지 않는다
@@ -81,7 +88,7 @@ ENV PHONE_TZ=Asia/Seoul \
     GRPC_DNS_RESOLVER=native \
     AGENTHAN_CUTOUT_MODEL=rembg \
     U2NET_HOME=/app/models/rembg \
-    NUMBA_CACHE_DIR=/tmp/numba
+    NUMBA_CACHE_DIR=/app/cache/numba
 
 # 어느 커밋의 이미지인지 (/healthz의 version). `deploy.sh up`이 넣는다. 키가 아니다
 ARG GIT_SHA=dev

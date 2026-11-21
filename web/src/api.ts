@@ -32,6 +32,8 @@ export interface AssistantApi {
   draftIntroduction(sessionId: string): Promise<{ text: string }>;
   /** 메뉴판에서 잘못 읽은 줄을 지운다. 대화 턴이 아니다. */
   deleteMenu(sessionId: string, menuId: string): Promise<View>;
+  /** 메뉴 탭 [순서 바꾸기]: 사장님이 정한 메뉴 순서(id들)를 승인 카드 없이 바로 저장한다. 대화 턴이 아니다. */
+  reorderMenus(sessionId: string, ids: string[]): Promise<View>;
 }
 
 export class ApiError extends Error {
@@ -110,4 +112,10 @@ export const httpApi: AssistantApi = {
   polishMenu: (id, menuId) => call(`${base(id)}/menus/${encodeURIComponent(menuId)}/polish`, { method: "POST" }),
   draftIntroduction: (id) => call(`${base(id)}/introduction/draft`, { method: "POST" }),
   deleteMenu: (id, menuId) => call(`${base(id)}/menus/${encodeURIComponent(menuId)}`, { method: "DELETE" }),
+  reorderMenus: (id, ids) =>
+    call(`${base(id)}/menus/order`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }),
 };

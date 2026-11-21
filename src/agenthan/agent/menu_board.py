@@ -521,6 +521,12 @@ def fill_one(
                 box = job.item.box
                 if refine:
                     box = refine_box(board, box, job.item.photo_label or job.item.name, call=call)
+                    # 다시 물은 위치도 틀릴 수 있다(이름표·장식 띠를 잡음, 2026-11-21 머랭롤).
+                    # 아래 이름표로 확인 못 하면 사진 없이 둔다: 엉뚱한 조각보다 일러스트가 낫다.
+                    if not labelled(board, box, job.item.name, call):
+                        log.info("menu photo dropped for %s: no matching label", job.item.name)
+                        store.patch_menu(job.menu_id, {}, by_owner=False, done=("photo",))
+                        return
                 image, piece = white_photo(board, box, regions, cutout)
             except (ImageCutoutError, ValueError):
                 store.patch_menu(job.menu_id, {}, by_owner=False, done=("photo",))
@@ -604,9 +610,13 @@ def fill_all(
                     future.result()
                 except Exception:  # noqa: BLE001 - 한 줄 실패가 나머지를 막지 않게
                     log.exception("menu fill crashed")
-        log.info("menu board fill %.2fs for %d menus", time.monotonic() - started, len(jobs))
-        # 남은 '채우는 중' 표시는 지운다(실패한 칸이 영원히 돌지 않게).
-        for job in jobs:
+        # 첫 읽기가 사진을 빠뜨린 메뉴(no_photo)도 이 일이 사진을 찾아 채운다. 사전 메뉴처럼 처음엔
+        # 채울 칸이 없어 jobs에 없을 수 있다(2026-11-21 '3 menus'인데 사진은 4장): 함께 센다.
+        touched = list({j.menu_id: j for j in [*jobs, *(no_photo or [])]}.values())
+        log.info("menu board fill %.2fs for %d menus", time.monotonic() - started, len(touched))
+        # 남은 '채우는 중' 표시는 지운다(실패한 칸이 영원히 돌지 않게). 찾은 사진이 예상 못 한
+        # 오류로 죽은 메뉴도.
+        for job in touched:
             try:
                 store.patch_menu(
                     job.menu_id, {}, by_owner=False, done=("name", "description", "photo")
@@ -729,7 +739,7 @@ def match_runs(
     이름으로 맞춘다. 첫 읽기의 사진 위치로는 맞추지 않는다: 한 칸씩 밀려 펠메니 이름에 보르시
     칸이 붙었다(2026-11-21 실측)."""
     out: dict[int, Box] = {}
-    if not runs:
+    if not runs or not targets:
         return out
     with ThreadPoolExecutor(max_workers=len(runs)) as pool:
         labels = list(pool.map(lambda box: read_label(board, box, call=call), runs))
@@ -746,6 +756,37 @@ def match_runs(
     return out
 
 
+def pitch_cells(cells: list[Box]) -> list[Box]:
+    """이름표로 맞춘 사진 칸들의 간격으로, 재기가 놓친 칸이 있을 자리를 짐작한다(위에서부터).
+
+    흰 크림·흰 접시 사진은 종이색과 비슷해 photo_runs가 놓친다(2026-11-21 머랭롤). 한 열의 사진
+    칸은 같은 크기로 같은 간격이라, 맞춘 칸들의 아래 끝 간격만큼 위아래·사이 빈자리를 후보로
+    낸다. 칸 위 끝은 장식 띠와 붙어 흔들리므로 아래 끝(사진 → 이름표 경계)으로 잰다. 후보는
+    이름표를 읽어 맞아야만 쓴다(match_runs)."""
+    if len(cells) < 2:
+        return []
+    bottoms = sorted(c[3] for c in cells)
+    pitch = min(b - a for a, b in zip(bottoms, bottoms[1:], strict=False))
+    if pitch < 0.05:
+        return []
+    height = min(c[3] - c[1] for c in cells)
+    left, right = cells[0][0], cells[0][2]
+    out = []
+    for k in range(-2, round((bottoms[-1] - bottoms[0]) / pitch) + 3):
+        bottom = bottoms[0] + k * pitch
+        if bottom - height < 0 or bottom > 1 or any(abs(bottom - b) < pitch / 2 for b in bottoms):
+            continue
+        out.append((left, bottom - height, right, bottom))
+    return out
+
+
+def labelled(board: bytes, box: Box, name: str, call: Call) -> bool:
+    """box 바로 아래 이름표가 이 메뉴 이름인가. 모델이 준 사진 위치를 쓰기 전 확인한다."""
+    label = read_label(board, box, call=call)
+    key = menu_photo._norm(split_subtitle(label)[0]) if label else ""
+    return bool(key) and _label_score(key, name) >= LABEL_MIN
+
+
 def place_photos(
     store: DummyStore,
     with_photo: list[Registered],
@@ -759,7 +800,9 @@ def place_photos(
 ) -> None:
     """흰 배경 사진 채우기. 첫 읽기로 사진 열을 정하고 그 안의 사진 칸을 영상으로 정확히 찾아
     (photo_runs) 메뉴에 맞춘 뒤(match_runs) 메뉴마다 동시에 자른다. 첫 읽기가 빠뜨린 사진도
-    칸의 이름표로 찾는다. 사진 칸을 못 찾으면 첫 읽기 위치를 잘라 다시 묻는다(refine_box)."""
+    칸의 이름표로 찾는다. 재기가 놓친 칸은 맞춘 칸들의 간격으로 자리를 짐작해 이름표로 찾는다
+    (pitch_cells). 그래도 못 찾으면 첫 읽기 위치를 잘라 다시 묻고(refine_box), 그 아래 이름표가
+    메뉴 이름과 맞을 때만 자른다(fill_one)."""
     targets = with_photo + no_photo
     exact: dict[int, Box] = {}
     if refine and targets:
@@ -767,6 +810,13 @@ def place_photos(
         runs = photo_runs(board, column) if column else []
         if runs:
             exact = match_runs(targets, runs, board, call)
+        missing = [i for i in range(len(targets)) if i not in exact]
+        guesses = pitch_cells(list(exact.values())) if missing else []
+        if guesses:
+            found = match_runs([targets[i] for i in missing], guesses, board, call)
+            for j, box in found.items():
+                log.info("menu photo cell found by spacing for %s", targets[missing[j]].item.name)
+                exact[missing[j]] = box
     jobs = []
     for i, target in enumerate(targets):
         if i in exact:

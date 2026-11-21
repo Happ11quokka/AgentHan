@@ -28,3 +28,14 @@ def _no_database_unless_asked(monkeypatch):
     from agenthan.db.conn import reset_pause
 
     reset_pause()
+
+
+@pytest.fixture
+def broken_embed():
+    """대표 그림 고르기 테스트용 임베딩: 늘 실패한다(진짜 임베딩을 부르지 않고, 이름·키워드·
+    분류만으로 붙는지 본다)."""
+
+    def embed(_text):
+        raise RuntimeError("임베딩 서버가 응답하지 않음")
+
+    return embed

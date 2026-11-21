@@ -6,9 +6,10 @@ import type { CustomerText } from '../customerText.ts'
 /**
  * 사장님 처리 상태 (Part A 어휘 + expired, 주문 승인). new: 확인 대기(확인 요청 카드).
  * accepted: 수락(자동 확정 포함). rejected·expired는 거절·자동 취소 티켓(03·05)이 보낸다.
- * cancelled: 늦춰 수락했는데 손님이 바뀐 시각에 "아니요"(티켓 04)
+ * cancelled: 늦춰 수락했는데 손님이 바뀐 시각에 "아니요"(티켓 04).
+ * customer_cancelled: 손님이 주문 현황에서 취소(확인 대기·늦춘 수락 뒤, 전화 메뉴·주문 현황·쿠폰 티켓 07)
  */
-export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired' | 'cancelled'
+export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired' | 'cancelled' | 'customer_cancelled'
 
 /**
  * 통화 중 늦춘 수락에 손님 답 (티켓 04). asking: 손님이 바뀐 시각을 듣는 중. yes: 받아들임.
@@ -62,12 +63,21 @@ export interface OrderCard {
   /** 서버가 넣은 고정 표기 `18:30` (Intl을 쓰지 않는다) */
   pickup_label: string
   lines: OrderCardLine[]
+  /** 낼 금액(쿠폰 할인 뒤) */
   total: number
   /** 서버가 넣은 고정 표기 `25,000₩` */
   total_label: string
+  // 쿠폰 (쿠폰 티켓 09). 할인이 없으면 discount 0·coupon_name "". 쿠폰 전 서버는 안 보낸다
+  /** 할인 전 금액(줄 합계) */
+  subtotal?: number
+  subtotal_label?: string
+  coupon_id?: string
+  coupon_name?: string
+  discount?: number
+  discount_label?: string
   /**
-   * 그 통화에 답을 못 받은 손님 질문이 있다(티켓 06). 손님은 "확인해서 문자로 알려 드릴게요"를
-   * 들었다. 화면은 "사장님 확인 필요"를 붙인다. 06 전 서버는 안 보낸다
+   * 그 통화에 답을 못 받은 손님 질문이 있다(티켓 06). 손님은 "사장님이 지금 바로 답하기
+   * 어려우세요"를 들었다. 화면은 "사장님 확인 필요"를 붙인다. 06 전 서버는 안 보낸다
    */
   owner_check?: boolean
   /** 손님에게 보낸 문자(보낸 순서, 티켓 07). 07 전 서버는 안 보낸다 */
@@ -449,6 +459,7 @@ export function canAccept(card: OrderCard): boolean {
  * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
  * expired: 자동 취소(회색, 버튼 없음, 티켓 03). delayed: 늦춰 수락(바뀐 시각, 티켓 04).
  * declined: 늦춘 시각을 손님이 거절해 취소(회색). rejected: 거절(회색 + 사유, 티켓 05).
+ * customer_cancelled: 손님이 주문 현황에서 취소("손님 취소", 회색, 버튼 없음, 전화 주문 현황 티켓 07).
  * closed: 그 밖의 처리 상태(뒤 티켓이 더할 값)
  */
 export type OrderOutcome =
@@ -461,6 +472,7 @@ export type OrderOutcome =
   | 'auto'
   | 'expired'
   | 'rejected'
+  | 'customer_cancelled'
   | 'closed'
 
 export function orderOutcome(card: OrderCard): OrderOutcome {
@@ -476,6 +488,7 @@ export function orderOutcome(card: OrderCard): OrderOutcome {
   if (card.status === 'expired') return 'expired'
   if (card.status === 'rejected') return 'rejected'
   if (card.status === 'cancelled' && card.delay_min) return 'declined'
+  if (card.status === 'customer_cancelled') return 'customer_cancelled'
   return 'closed'
 }
 

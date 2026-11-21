@@ -25,7 +25,7 @@ function blankCoupon(): CouponInput {
   const today = new Date();
   const end = new Date(today);
   end.setDate(end.getDate() + 14);
-  return { title: "", discount_type: "percent", discount_value: "", start_date: isoDay(today), end_date: isoDay(end) };
+  return { title: "", discount_type: "percent", discount_value: "", start_date: isoDay(today), end_date: isoDay(end), min_order: "" };
 }
 
 /** 실패했을 때 [다시 시도]가 되풀이할 일. */
@@ -87,6 +87,8 @@ export type Conversation = {
   polishMenu: (menuId: string) => Promise<string>;
   /** 메뉴 탭에서 메뉴 한 줄을 지운다. 성공하면 null, 실패하면 사장님께 보일 문장. */
   deleteMenu: (menuId: string) => Promise<string | null>;
+  /** 메뉴 탭 [순서 바꾸기]: 메뉴 순서(id들)를 바로 저장한다(승인 카드 없음). 성공하면 null, 실패하면 사장님께 보일 문장. */
+  reorderMenus: (ids: string[]) => Promise<string | null>;
   /** 세션 조회를 바로 다시 읽는다(리뷰 도착 직후 비서 알림 받기). 실패는 조용히 넘긴다. */
   refresh: () => Promise<void>;
 };
@@ -98,6 +100,8 @@ const ONBOARD_FAILED = "저장하지 못했어요. 다시 시도해 주세요.";
 const REPORT_FAILED = "리뷰 보고를 받지 못했어요. 다시 시도해 주세요.";
 const ROUTINES_FAILED = "설정을 바꾸지 못했어요. 다시 시도해 주세요.";
 const MENU_FAILED = "메뉴를 저장하지 못했어요. 다시 시도해 주세요.";
+const MENU_INVALID = "값을 확인해 주세요. 이름은 비울 수 없고, 같은 이름이 있으면 안 되며, 가격은 0보다 커야 해요.";
+const ORDER_INVALID = "순서를 저장하지 못했어요. 메뉴 탭을 새로 보고 다시 시도해 주세요.";
 
 /** 서버가 먼저 보낸 메시지 → 대화창의 비서 말풍선(칩은 그대로 누를 수 있다). */
 const fromServer = (m: ServerMessage): Message => ({ id: newId(), role: "agent", text: m.text, nextActions: m.next_actions });
@@ -390,7 +394,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
 
   /** 메뉴 탭 직접 수정·삭제: 대화 턴이 아니다. 가게 화면만 바꾼다. */
   const changeMenu = useCallback(
-    async (call: (id: string) => Promise<View>) => {
+    async (call: (id: string) => Promise<View>, invalid = MENU_INVALID) => {
       if (!sessionId) return MENU_FAILED;
       try {
         const view = await call(sessionId);
@@ -400,7 +404,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
         return null;
       } catch (e) {
         if (isOffline(e)) setOnline(false);
-        if (e instanceof ApiError && e.status === 422) return "값을 확인해 주세요. 이름은 비울 수 없고, 같은 이름이 있으면 안 되며, 가격은 0보다 커야 해요.";
+        if (e instanceof ApiError && e.status === 422) return invalid;
         return isOffline(e) ? friendly(e) : MENU_FAILED;
       }
     },
@@ -422,6 +426,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     [api, sessionId],
   );
   const deleteMenu = useCallback((menuId: string) => changeMenu((id) => api.deleteMenu(id, menuId)), [api, changeMenu]);
+  const reorderMenus = useCallback((ids: string[]) => changeMenu((id) => api.reorderMenus(id, ids), ORDER_INVALID), [api, changeMenu]);
   const refresh = useCallback(async () => {
     if (!sessionId) return;
     await api
@@ -484,6 +489,8 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
         discount_value: Number(values.discount_value),
         start_date: values.start_date,
         end_date: values.end_date,
+        // 비우거나 0이면 보내지 않는다(서버가 조건 없음 0으로 저장한다).
+        ...(Number(values.min_order) > 0 ? { min_order: Number(values.min_order) } : {}),
       },
     });
   }, [act, sessionId]);
@@ -532,6 +539,6 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     businessForm, closeBusiness, submitBusiness, draftIntroduction,
     hoursForm, closeHours, submitHours,
     send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
-    routines, changeRoutines, editMenu, deleteMenu, polishMenu, readingSince, refresh,
+    routines, changeRoutines, editMenu, deleteMenu, reorderMenus, polishMenu, readingSince, refresh,
   };
 }

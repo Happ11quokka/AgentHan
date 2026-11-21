@@ -6,7 +6,7 @@ import type { Loaded } from "../useLoad";
 import { AgentAvatar } from "./AgentAvatar";
 import { Icon } from "./Icon";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
-import { HomeTab, MenuTab, type OnMenuDelete, type OnMenuEdit, type OnMenuPolish } from "./ShopTab";
+import { HomeTab, MenuTab, type HomeEdit, type OnMenuDelete, type OnMenuEdit, type OnMenuPolish, type OnMenuReorder } from "./ShopTab";
 import { type StatsKind, StatsTab } from "./StatsTab";
 
 export type Tab = "home" | "menu" | "reviews" | "stats";
@@ -53,6 +53,10 @@ type Props = {
   onEditMenu?: OnMenuEdit;
   onDeleteMenu?: OnMenuDelete;
   onPolishMenu?: OnMenuPolish;
+  /** 메뉴 탭 [순서 바꾸기](승인 카드 없음). 없으면 순서는 바꿀 수 없다. */
+  onReorderMenus?: OnMenuReorder;
+  /** 홈 탭 영업시간·쿠폰·대표키워드·루틴의 [수정]. 대화에서 이어 간다. */
+  onEditHome?: (target: HomeEdit) => void;
   /** 메뉴판 사진을 읽는 중이면 보낸 시각(ms). 메뉴 탭이 진행 막대를 그린다. */
   readingSince?: number | null;
   onClose: () => void;
@@ -126,9 +130,10 @@ export function Sidecar(props: Props) {
             routines={props.routines ?? null}
             onRoutines={props.onRoutines}
             onRunReport={props.onRunReport}
+            onEdit={props.onEditHome}
           />
         )}
-        {tab === "menu" && place && <MenuTab place={place} pending={pending} onEdit={props.onEditMenu} onDelete={props.onDeleteMenu} onPolish={props.onPolishMenu} readingSince={props.readingSince ?? null} />}
+        {tab === "menu" && place && <MenuTab place={place} pending={pending} onEdit={props.onEditMenu} onDelete={props.onDeleteMenu} onPolish={props.onPolishMenu} onReorder={props.onReorderMenus} readingSince={props.readingSince ?? null} />}
         {tab === "reviews" && (
           <ReviewsTab
             loaded={props.reviews}

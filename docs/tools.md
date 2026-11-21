@@ -25,7 +25,7 @@
 | 주문 | `update_order_status` | **order_id**, **status**, reason | 접수·거절·준비 완료·전달 완료, 거절 사유 |
 | 예약 | `update_reservation_status` | **reservation_id**, **status**, reason | 확정·취소·노쇼, 취소 사유 |
 | 대표키워드 | `set_representative_keywords` | add, remove, keywords (하나 이상) | 더하기·빼기·전체 교체. 최대 5개, 넘치면 `too_many_keywords`, 없는 단어를 빼면 `keyword_not_found` |
-| 쿠폰 | `create_coupon` | **title**, **discount_type**, **discount_value**, **start_date**, **end_date** | 쿠폰 만들기(게시 안 함) |
+| 쿠폰 | `create_coupon` | **title**, **discount_type**, **discount_value**, **start_date**, **end_date**, min_order | 쿠폰 만들기(네이버 플레이스에 게시는 안 함). 저장하면 메뉴와 함께 전화용 가게로 게시돼 다음 전화 주문부터 쓰인다(가게 전체 쿠폰, 기간 안이면 누구나, 주문 전체 금액에 하나). min_order는 최소 주문 금액(원, 0 이상 정수). 비우거나 0이면 저장하지 않고, 읽는 쪽은 없으면 0(조건 없음)으로 본다(옛 쿠폰도 같다). 사장님이 먼저 말할 때만 넣고 비서는 묻지 않는다 |
 | 새 오픈 | `register_new_opening` | **opening_date** | 오픈 날짜 등록 |
 | 매장결제 | `set_onsite_payment` | **enabled** | 켜기·끄기 |
 
@@ -48,5 +48,9 @@
 
 - 통계 `get_statistics`의 기간(7d·30d)은 공통 기간으로 바꾸지 않았다. 통계 질문은 `report_explainer`가 처리한다.
 - 리뷰 서브에이전트 도구(`analyze_reviews` 등)의 기간(1d·7d·30d·90d·all)은 그대로다. 근형님과 맞출 때 같이 바꾼다.
-- 쿠폰 최소 주문 금액·대상 메뉴는 넣었다가 뺐다. 선택 입력으로 열어 두면 HCX-005가 프롬프트·재요청에도 매번 그 값을 되물어 쿠폰 만들기가 끝나지 않았다(S1 `missing-coupon`).
+- 쿠폰 대상 메뉴는 넣었다가 뺐다. 최소 주문 금액도 같은 이유로 뺐다가(선택 입력으로 열어 두면 HCX-005가
+  프롬프트·재요청에도 매번 그 값을 되물어 쿠폰 만들기가 끝나지 않았다, S1 `missing-coupon`) 전화 주문 쿠폰
+  때문에 `min_order`로 다시 넣었다(11/21). 되묻기를 막는 장치: 스키마 설명·프롬프트·기능 안내에 "말했을 때만, 묻지 않음",
+  사장님 말에 없는 값은 묻지 않고 뺀다(`owner_assistant.DROPPABLE`), 다른 쿠폰의 값은 근거가 아니다(`planner_loop.lookup`).
+  쿠폰 평가 사례(S1·S2)를 다시 돌려 확인해야 한다.
 - 전화 기록 기간 필터, 쿠폰 목록·중지, 새 오픈 신청 조건 검사는 없다.

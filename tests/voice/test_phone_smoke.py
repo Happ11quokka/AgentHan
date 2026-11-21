@@ -19,17 +19,23 @@ import uvicorn
 from fastapi import FastAPI
 
 from agenthan.core.fakes import FakeStoreKnowledge, MemoryOrderSink
+from agenthan.voice.dialog.coupons import Coupon
 from agenthan.voice.nlu.base import Act, NluContext
 from agenthan.voice.nlu.fake import FakeNlu
-from agenthan.voice.settings import VoiceSettings
+from agenthan.voice.settings import DEFAULT_FAKE_REPLIES, VoiceSettings
 from agenthan.voice.smoke import calls, scripts
 from agenthan.voice.smoke.__main__ import main, summary_line
 from agenthan.voice.store_config import KST, StoreConfig
+from agenthan.voice.store_snapshot import StoreSnapshot, fixed_store
 from agenthan.voice.ws import WS_PATH, phone_router
 
 PHO = Path(__file__).parents[2] / "fixtures" / "phone" / "sample_pho_store.json"
-ORDER_REPLIES = ("메도빅 하나요", "아니요 그게 다예요", "지금 바로 갈게요", "네")
+ORDER_REPLIES = ("메도빅 두 개요", "아니요 그게 다예요", "지금 바로 갈게요", "네")
 PACE = 0.03
+# 파일럿 가게 쿠폰(`app/pilot_store.json`). 10,000원 아래 주문이면 복창 전에 권유가 나온다
+PILOT_COUPON = Coupon("coupon-1", "전화 주문 1,000원 할인", "amount", 1000,
+                      datetime(2026, 11, 2).date(), datetime(2026, 12, 31).date(),
+                      min_order=10_000)
 
 
 def sample() -> tuple[FakeStoreKnowledge, StoreConfig]:
@@ -154,13 +160,12 @@ def test_nlu_calls_are_paced_under_the_rate_limit() -> None:
 
 @contextlib.asynccontextmanager
 async def server(replies: tuple[str, ...] = ORDER_REPLIES, sink: MemoryOrderSink | None = None,
-                 **settings: Any) -> AsyncIterator[str]:
+                 coupons: tuple[Coupon, ...] = (), **settings: Any) -> AsyncIterator[str]:
     voice = VoiceSettings(nlu="fake", stt="fake", tts="fake", log_dir=None,
                           now=datetime.fromisoformat("2026-11-08T16:00:00+09:00"),
                           fake_replies=replies, **settings)
     app = FastAPI()
-    app.include_router(phone_router(store=FakeStoreKnowledge.from_fixture(),
-                                    config=StoreConfig.from_fixture(),
+    app.include_router(phone_router(stores=fixed_store(StoreSnapshot.of(*sample(), coupons)),
                                     order_sink=sink or MemoryOrderSink(), settings=voice))
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning",
                                         lifespan="off"))
@@ -187,9 +192,10 @@ def plan(n: int = 1, *, hour: int = 16) -> list[calls.CallPlan]:
 
 def test_call_plans_come_from_the_store_and_fall_back_to_a_handoff_outside_hours() -> None:
     one, two, three = plan(3)
+    # 10,000원 이상으로 담는다: 쿠폰이 있는 가게에서도 복창 전 권유 없이 "네"로 확정된다
     assert (one.kind, one.says) == (
-        "order", ("메도빅 하나 주세요", "아니요, 그게 다예요", "지금 바로 갈게요", "네"))
-    assert one.expect_lines == (("m01", 1, ()),)
+        "order", ("메도빅 두 개 주세요", "아니요, 그게 다예요", "지금 바로 갈게요", "네"))
+    assert one.expect_lines == (("m01", 2, ()),)
     assert (two.kind, two.says, two.expect_status) == (
         "handoff", ("사장님 바꿔 주세요",), "handoff")
     assert three.says[0] == "메도빅 하나랑 나폴레옹 하나 주세요"
@@ -207,10 +213,26 @@ def test_a_call_against_the_fake_server_reaches_a_confirmed_order() -> None:
     assert report.ok and (report.passed, report.total) == (1, 1)
     (call,) = report.calls
     assert (call.status, call.end_reason, call.problems) == ("confirmed", "confirmed", [])
-    assert call.lines == [["m01", 1]]
+    assert call.lines == [["m01", 2]]
     assert len(call.voice_ms) == 4 and all(ms >= 0 for ms in call.voice_ms)
     assert report.voice["n"] == 4 and report.voice["p50_ms"] is not None
     assert call.routes == ["nlu", "rule", "nlu", "rule"]
+
+
+def test_smoke_scripts_still_confirm_when_the_store_has_the_pilot_coupon() -> None:
+    """파일럿 쿠폰(최소 10,000원)이 있어도 스모크 대본(음성 대본·가짜 STT 기본 대본)은 권유 없이
+    확정까지 간다. 10,000원 아래면 "네"가 권유를 받아 확정이 안 된다 (쿠폰 티켓 10)."""
+    (order,) = plan(1)
+    for replies in (order.says, DEFAULT_FAKE_REPLIES):
+        async def go(replies: tuple[str, ...] = replies) -> calls.S2Report:
+            async with server(replies=replies, coupons=(PILOT_COUPON,)) as url:
+                return await calls.run_s2(url, [calls.fake_stt_plan(replies)], voice=None,
+                                          pace=PACE)
+
+        report = run(go())
+        assert report.ok, report.calls[0].problems
+        (call,) = report.calls
+        assert (call.status, call.lines) == ("confirmed", [["m01", 2]])
 
 
 def test_a_call_that_does_not_reach_an_order_fails() -> None:

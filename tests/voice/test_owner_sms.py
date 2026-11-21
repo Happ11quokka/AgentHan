@@ -233,7 +233,7 @@ def test_a_late_answer_to_a_contains_question_texts_what_the_buttons_meant() -> 
 
 def test_an_answer_in_time_that_the_call_never_said_is_texted_when_the_call_ends() -> None:
     # 리뷰 C1: 제시간 답이 손님 말 때문에 미뤄진 채 통화가 끝나면 통화는 말하지 못했다. 손님은
-    # "확인해서 문자로 알려 드릴게요"를 들었으니 문자로 보낸다
+    # 시간 초과 답을 들었으니 늦은 답은 문자(사장님 카드의 문자 칸)로 보낸다
     hub, _ = _hub()
     hub.call_started("call-1")
     hub.open_question("call-1", NUTS, lambda note: None)

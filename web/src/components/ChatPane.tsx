@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { REPLY_NOTICE_VIEW, RESULT_TEXT } from "../labels";
 import type { Action, Message } from "../types";
+import { pickWelcome } from "../welcomeMessages";
 import type { Conversation } from "../useConversation";
 import { ApprovalCard } from "./ApprovalCard";
 import { Composer } from "./Composer";
@@ -11,6 +12,7 @@ import { Icon } from "./Icon";
 import { ReadingBubble } from "./ReadingBubble";
 import { ReplyText } from "./ReplyText";
 
+const WELCOME_PLACEHOLDER = "메뉴 등록, 영업시간, 쿠폰, 리뷰까지 말로 하면 제가 대신 해 드려요.";
 const SUGGESTIONS = ["메뉴판 사진으로 메뉴 올리고 싶어요", "일요일에도 10시부터 6시까지 열래요", "요즘 리뷰 어때?"];
 
 type Props = {
@@ -120,6 +122,10 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
   const end = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
+  // 대화를 새로 열 때(세션이 바뀔 때)마다 한 번 고른다. 다시 그려도 문구가 바뀌지 않는다.
+  const welcome = useMemo(() => pickWelcome(), [chat.sessionId]);
+  // 첫 화면: 대화가 아직 없을 때. 응원 문구는 가운데, 제안 칩은 입력창 위, 안내는 입력창 안에 둔다.
+  const first = chat.messages.length === 0 && !chat.busy;
   const open = new Set(chat.pending.map((p) => p.task_id));
   const bundled = bundledCards(chat);
 
@@ -169,18 +175,9 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
 
       <div className="messages">
         <div className="messages-inner">
-          {chat.messages.length === 0 && !chat.busy && (
+          {first && (
             <section className="welcome">
-              <img src="/agent.png" alt="" className="welcome-face" />
-              <h1>사장님, 무엇을 도와드릴까요?</h1>
-              <p>메뉴 등록, 영업시간, 쿠폰, 리뷰까지 말로 하면 제가 대신 해 드려요.</p>
-              <div className="suggestions">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" onClick={() => void (s === "요즘 리뷰 어때?" ? chat.act({ action_id: "review.summary", args: {}, label: s }) : chat.send(s))} disabled={!chat.sessionId}>
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <h1>{welcome}</h1>
             </section>
           )}
           {chat.messages.map((m) => (
@@ -266,7 +263,17 @@ export function ChatPane({ chat, photoInput, sideOpen, onToggleNav, onToggleSide
         </div>
       </div>
 
+      {first && (
+        <div className="suggestions">
+          {SUGGESTIONS.map((s) => (
+            <button key={s} type="button" onClick={() => void (s === "요즘 리뷰 어때?" ? chat.act({ action_id: "review.summary", args: {}, label: s }) : chat.send(s))} disabled={!chat.sessionId}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
       <Composer
+        placeholder={first ? WELCOME_PLACEHOLDER : undefined}
         disabled={!chat.sessionId || chat.busy}
         inputRef={photoInput}
         dropped={dropped}

@@ -30,7 +30,7 @@ def make_engine() -> DialogEngine:
 def talk(engine: DialogEngine, *texts: str) -> TurnResult:
     result = None
     for text in texts:
-        result = engine.handle(text, NOW, approval=True)
+        result = engine.handle(text, NOW, approval=True, wait_in_call=True)
     assert result is not None
     return result
 

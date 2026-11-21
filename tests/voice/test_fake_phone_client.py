@@ -24,6 +24,7 @@ from agenthan.voice.call.vad import rms
 from agenthan.voice.fake_phone.client import Clip, run_call
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.store_snapshot import StoreSnapshot, fixed_store
 from agenthan.voice.ws import WS_PATH, phone_router
 
 ORDER_SCRIPT = ("메도빅 하나요", "그게 다예요", "6시 반이요", "네")
@@ -58,8 +59,9 @@ async def _server(streams: list[Any] | None = None, tts: Any = None) -> AsyncIte
         return stream
 
     app = FastAPI()
-    app.include_router(phone_router(store=FakeStoreKnowledge.from_fixture(),
-                                    config=StoreConfig.from_fixture(),
+    stores = fixed_store(StoreSnapshot.of(FakeStoreKnowledge.from_fixture(),
+                                          StoreConfig.from_fixture()))
+    app.include_router(phone_router(stores=stores,
                                     order_sink=MemoryOrderSink(), settings=settings,
                                     stt_factory=make_stt, tts_factory=tts))
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning",

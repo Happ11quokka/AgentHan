@@ -4,8 +4,8 @@ import type { Action, DraftRow, MenuEdit, OnboardingInput, Pending, Period, Plac
 
 export const SEED: Place = {
   menu: [
-    { id: "m01", name: "메도빅", price: 7500, description: "꿀 케이크", photo_url: null },
-    { id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null },
+    { id: "m01", name: "메도빅", price: 7500, description: "꿀 케이크", photo_url: null, illustration_url: "/illustrations/default_cake.svg" },
+    { id: "m02", name: "나폴레옹", price: 7000, description: "", photo_url: null, illustration_url: "/illustrations/default_cake.svg" },
   ],
   business_hours: {
     mon: { closed: false, open_time: "09:00", close_time: "21:00" },
@@ -256,6 +256,11 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
     polishMenu: vi.fn(async (_id: string, _menuId: string) => ({ place: SEED, pending: [], message: "다듬기 시작했어요.", started: true })),
     deleteMenu: vi.fn(async (_id: string, menuId: string): Promise<View> => ({
       place: { ...SEED, menu: SEED.menu.filter((m) => m.id !== menuId) },
+      pending: [],
+    })),
+    // 기본: 받은 순서대로 늘어놓은 SEED를 돌려준다.
+    reorderMenus: vi.fn(async (_id: string, ids: string[]): Promise<View> => ({
+      place: { ...SEED, menu: ids.flatMap((i) => SEED.menu.filter((m) => m.id === i)) },
       pending: [],
     })),
   } satisfies AssistantApi;

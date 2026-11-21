@@ -73,6 +73,7 @@ def test_new_order_fields_have_defaults() -> None:
     order = Order(id="o1", lines=[line])
     assert (line.name, line.unit_price) == ("", 0)
     assert order.created_at == ""
+    assert (order.coupon_id, order.coupon_name, order.discount) == ("", "", 0)  # 쿠폰 티켓 09
 
 
 def test_order_goes_to_json_as_is() -> None:

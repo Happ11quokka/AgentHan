@@ -5,6 +5,7 @@ import type { StatsKind } from "./components/StatsTab";
 import { SuggestionsPage } from "./components/SuggestionsPage";
 import { LeftNav, type Quick } from "./components/LeftNav";
 import { Onboarding } from "./components/Onboarding";
+import type { HomeEdit } from "./components/ShopTab";
 import { Sidecar, type Tab } from "./components/Sidecar";
 import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./labels";
 import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow, ReviewStatsPeriod, RoutinesChange, Suggestion } from "./types";
@@ -21,6 +22,35 @@ function loadCollapsed() {
   }
 }
 
+/** 오른쪽 사이드카 너비: 왼쪽 가장자리를 끌어 바꾸고, 다음에도 기억한다(브라우저마다). */
+const SIDE_W_KEY = "agenthan.side.width";
+const SIDE_W_DEFAULT = 380;
+const SIDE_W_MIN = 320;
+const SIDE_W_MAX = 640;
+const clampSideW = (w: number) => Math.round(Math.min(SIDE_W_MAX, Math.max(SIDE_W_MIN, w)));
+function loadSideW() {
+  try {
+    const w = Number(localStorage.getItem(SIDE_W_KEY));
+    return w ? clampSideW(w) : SIDE_W_DEFAULT;
+  } catch {
+    return SIDE_W_DEFAULT;
+  }
+}
+function saveSideW(w: number) {
+  try {
+    localStorage.setItem(SIDE_W_KEY, String(w));
+  } catch {
+    // 저장이 막혀도 이번 화면에서는 그대로 쓴다.
+  }
+}
+
+/** 사이드카 [수정]이 대화로 보내는 말(쿠폰은 액션이라 없음). 영업시간·대표키워드는 도구함 문구와 같다. */
+const HOME_EDIT_ASK: Record<Exclude<HomeEdit, "coupon">, string> = {
+  hours: "영업시간이나 휴무를 바꾸고 싶어",
+  keywords: "대표키워드를 바꾸고 싶어",
+  routines: "루틴 설정을 바꾸고 싶어",
+};
+
 /** 답글 대기함 초안을 쓰는 동안 리뷰를 다시 읽는 간격. */
 const REVIEW_POLL_MS = 2500;
 /** 카드 버튼이 실패했을 때 채팅에도 알릴 까닭: 검사에 걸려 막힘, 저장·초안 쓰기 실패(서버 쪽 오류). */
@@ -35,6 +65,8 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
   const [period, setPeriod] = useState<Period>("week");
   const [navOpen, setNavOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
+  const [sideW, setSideW] = useState(loadSideW);
+  const [resizing, setResizing] = useState(false);
   const [hasInput, setHasInput] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
 
@@ -185,8 +217,60 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
     else photoInput.current?.click();
   };
 
+  // 사이드카 구역의 [수정]: 대화로 돌아와 그 일의 액션을 실행한다. 쿠폰은 입력 블록, 나머지는 도구함과 같은 말로 시작한다.
+  const editHome = (target: HomeEdit) => {
+    setSideOpen(false);
+    setPage("chat");
+    if (target === "coupon") void chat.act({ action_id: "coupon.create", args: {}, label: "쿠폰 만들기" });
+    else void chat.send(HOME_EDIT_ASK[target]);
+  };
+
   return (
-    <div className="app" data-nav={navOpen ? "open" : "closed"} data-side={sideOpen ? "open" : "closed"} data-nav-collapsed={navCollapsed}>
+    <div
+      className="app"
+      data-nav={navOpen ? "open" : "closed"}
+      data-side={sideOpen ? "open" : "closed"}
+      data-nav-collapsed={navCollapsed}
+      data-resizing={resizing || undefined}
+      style={{ "--side-w": `${sideW}px` } as React.CSSProperties}
+    >
+      <div
+        className="side-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="오른쪽 칸 너비 조절"
+        aria-valuemin={SIDE_W_MIN}
+        aria-valuemax={SIDE_W_MAX}
+        aria-valuenow={sideW}
+        tabIndex={0}
+        title="끌어서 너비 조절 · 두 번 누르면 원래대로"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setResizing(true);
+        }}
+        onPointerMove={(e) => {
+          if (resizing) setSideW(clampSideW(window.innerWidth - e.clientX));
+        }}
+        onPointerUp={(e) => {
+          if (!resizing) return;
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          setResizing(false);
+          saveSideW(sideW);
+        }}
+        onDoubleClick={() => {
+          setSideW(SIDE_W_DEFAULT);
+          saveSideW(SIDE_W_DEFAULT);
+        }}
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowLeft" ? 20 : e.key === "ArrowRight" ? -20 : 0;
+          if (!step) return;
+          e.preventDefault();
+          const w = clampSideW(sideW + step);
+          setSideW(w);
+          saveSideW(w);
+        }}
+      />
       <LeftNav
         recent={chat.recent}
         current={chat.sessionId}
@@ -237,6 +321,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         period={period}
         onPeriod={setPeriod}
         onAction={(action) => void chat.act(action)}
+        onEditHome={editHome}
         onSimulateReview={demo ? () => void simulateReview() : undefined}
         onReply={replyToReview}
         focusReview={focusReview}
@@ -256,6 +341,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onEditMenu={chat.editMenu}
         onDeleteMenu={chat.deleteMenu}
         onPolishMenu={chat.polishMenu}
+        onReorderMenus={chat.reorderMenus}
         readingSince={chat.readingSince}
         onClose={() => setSideOpen(false)}
       />

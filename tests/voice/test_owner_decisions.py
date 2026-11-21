@@ -5,6 +5,7 @@ DB 쓰기 자체는 `tests/test_db.py`(실 DB가 있을 때만)에서 본다.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
 from agenthan.core.contracts import Order, OrderLine
@@ -12,6 +13,7 @@ from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice.call.fakes import FakeClock
 from agenthan.voice.dialog.approval import ApprovalRequest
 from agenthan.voice.owner.decisions import DecisionRecord, decision_of
+from agenthan.voice.owner.fakes import FakeTranslator
 from agenthan.voice.owner.hub import OwnerHub
 
 NOW = datetime.fromisoformat("2026-11-08T16:02:00+09:00")
@@ -115,3 +117,31 @@ def test_an_after_call_request_that_expires_is_recorded_once_as_expired() -> Non
     (record,) = sink.decisions
     assert _fields(record) == ("call-1", "expired", "", expired_at.isoformat(), "")
     assert record.order == _order()
+
+
+def test_reject_details_ride_with_the_decision() -> None:
+    """거절 내용(재료 소진 메뉴·직접 쓴 글과 번역)도 기록에 실린다. 서버가 다시 떠도 주문 현황이
+    사유와 품절 메뉴를 보인다 (전화 메뉴·주문 현황·쿠폰 티켓 06)."""
+    sink = Recorded()
+    hub = _hub(sink)
+    hub.open_approval("call-1", ApprovalRequest(1, _order(), in_call=False), lambda d: None)
+    hub.reject("call-1", "out_of_stock", menu_ids=["m01"])
+    (record,) = sink.decisions
+    assert (record.reject_reason, record.reject_menu_ids) == ("out_of_stock", ("m01",))
+
+
+def test_a_written_reject_is_recorded_again_once_translated() -> None:
+    sink = Recorded()
+    translator = FakeTranslator({"Закрываемся": "문을 닫아요"})
+
+    async def scenario() -> None:
+        hub = OwnerHub(store=FakeStoreKnowledge.from_fixture(), clock=FakeClock(NOW),
+                       translator=translator, decision_sink=sink)
+        hub.open_approval("call-1", ApprovalRequest(1, _order(), in_call=False), lambda d: None)
+        hub.reject("call-1", "free", text="Закрываемся")
+        for _ in range(20):  # 번역은 비동기다
+            await asyncio.sleep(0)
+
+    asyncio.run(scenario())
+    assert [(r.owner_status, r.reject_text, r.reject_text_ko) for r in sink.decisions] == [
+        ("rejected", "Закрываемся", ""), ("rejected", "Закрываемся", "문을 닫아요")]

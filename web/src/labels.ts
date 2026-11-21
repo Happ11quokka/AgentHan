@@ -31,15 +31,19 @@ export const discountText = (c: Pick<Coupon, "discount_type" | "discount_value">
 
 const monthDay = (iso: string) => iso.slice(5).replace("-", "/");
 export const periodText = (c: Pick<Coupon, "start_date" | "end_date">) => `${monthDay(c.start_date)} ~ ${monthDay(c.end_date)}`;
+/** 최소 주문 금액 조건: "10,000원 이상 주문 시". 조건이 없으면(없음·0) null. */
+export const minOrderText = (c: Pick<Coupon, "min_order">) => (c.min_order && c.min_order > 0 ? `${won(c.min_order)} 이상 주문 시` : null);
 
 // ── 쿠폰 입력 블록 ─────────────────────
-/** 블록 칸의 값. discount_value는 입력칸 글자 그대로 둔다(비운 칸을 0과 구별). */
+/** 블록 칸의 값. discount_value·min_order는 입력칸 글자 그대로 둔다(비운 칸을 0과 구별). */
 export type CouponInput = {
   title: string;
   discount_type: Coupon["discount_type"];
   discount_value: string;
   start_date: string;
   end_date: string;
+  /** 선택. 비우거나 0이면 조건 없는 쿠폰. */
+  min_order: string;
 };
 
 export const COUPON_FORM_TEXT = {
@@ -52,6 +56,9 @@ export const COUPON_FORM_TEXT = {
   value: "할인 값",
   start: "시작일",
   end: "종료일",
+  minOrder: "최소 주문 금액",
+  minOrderOptional: "(선택)",
+  minOrderPlaceholder: "비우면 조건 없음",
   cancel: "취소",
   submit: "미리 보기",
 } as const;
@@ -186,7 +193,15 @@ export function couponProblem(c: CouponInput): string | null {
   if (c.discount_type === "percent" && value > 100) return "% 할인은 1~100 사이로 적어 주세요.";
   if (!c.start_date || !c.end_date) return "시작일과 종료일을 골라 주세요.";
   if (c.end_date < c.start_date) return "종료일이 시작일보다 빨라요.";
+  if (minOrderValue(c) === null) return "최소 주문 금액은 0 이상의 정수(원)로 적거나 비워 주세요.";
   return null;
+}
+
+/** 블록의 최소 주문 금액(원). 비우면 0. 음수·정수가 아닌 값이면 null. */
+export function minOrderValue(c: Pick<CouponInput, "min_order">): number | null {
+  if (!c.min_order.trim()) return 0;
+  const value = Number(c.min_order);
+  return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 /** 블록 아래 미리보기 한 줄: "겨울 할인 · 10% 할인 · 11/17 ~ 12/01". */
@@ -195,6 +210,8 @@ export function couponPreview(c: CouponInput): string {
   const value = Number(c.discount_value);
   if (c.discount_value.trim() && Number.isFinite(value)) parts.push(discountText({ discount_type: c.discount_type, discount_value: value }));
   if (c.start_date && c.end_date) parts.push(periodText(c));
+  const condition = minOrderText({ min_order: minOrderValue(c) ?? 0 });
+  if (condition) parts.push(condition);
   return parts.join(" · ");
 }
 
@@ -546,10 +563,12 @@ function recordChanges(before: Place, after: Place): string[] {
   return lines;
 }
 
-/** 새 쿠폰 줄: 이름·할인·기간을 따로. 이름만으로는 할인율·기간을 알 수 없다. */
+/** 새 쿠폰 줄: 이름·할인·기간을 따로. 이름만으로는 할인율·기간을 알 수 없다. 최소 주문 금액 조건이 있으면 한 줄 더. */
 function couponLines(c: Coupon): string[] {
   const amount = c.discount_type === "percent" ? `${c.discount_value}%` : won(c.discount_value);
-  return [`새 쿠폰: ${c.title}`, `할인: ${amount}`, `기간: ${periodText(c)}`];
+  const lines = [`새 쿠폰: ${c.title}`, `할인: ${amount}`, `기간: ${periodText(c)}`];
+  const condition = minOrderText(c);
+  return condition ? [...lines, `조건: ${condition}`] : lines;
 }
 
 const hasHangul = (text: string) => /[가-힣]/.test(text);

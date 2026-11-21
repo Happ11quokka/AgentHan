@@ -34,9 +34,11 @@ def test_snapshot_has_the_place_and_record_sections():
         "keywords",
         "business_info",
         "shop_status",
+        "menu_fill",  # 메뉴판 사진 채우기 진행(없으면 None)
         *owner.RECORD_TARGETS,
     }
     assert view["shop_status"] == {"new_opening": None, "onsite_payment": False}
+    assert view["menu_fill"] is None
     assert view["business_info"] == {k: SEED["shop"].get(k) for k in place.BUSINESS_FIELDS}
     assert view["keywords"] == SEED["shop"].get("keywords", [])
     assert view["menu"][0] == {
@@ -45,6 +47,7 @@ def test_snapshot_has_the_place_and_record_sections():
         "price": 7500,
         "description": SEED["menus"][0]["description"],
         "photo_url": None,
+        "illustration_url": None,  # 시드에는 그림 id가 없다(세션을 열 때 채운다)
         "ai": [],
         "filling": [],
     }
@@ -82,6 +85,27 @@ def test_preview_of_a_coupon_lists_the_new_coupon():
     result = place.preview(SEED, "coupon", [{"name": "create_coupon", "arguments": args}])
     assert result["changes"]["coupon"] == {"added": ["coupon-1"], "updated": [], "removed": []}
     assert result["after"]["coupon"][0]["title"] == "오픈 기념"
+    assert result["after"]["coupon"][0]["min_order"] == 0
+
+    floor = {**args, "min_order": 10000}
+    result = place.preview(SEED, "coupon", [{"name": "create_coupon", "arguments": floor}])
+    assert result["after"]["coupon"][0]["min_order"] == 10000
+
+
+def test_a_coupon_saved_before_min_order_reads_as_no_condition():
+    data = json.loads(json.dumps(SEED))
+    data["coupons"] = [
+        {
+            "id": "coupon-1",
+            "title": "옛 쿠폰",
+            "discount_type": "amount",
+            "discount_value": 1000,
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-30",
+            "status": "published",
+        }
+    ]
+    assert place.snapshot(data)["coupon"][0]["min_order"] == 0
 
 
 def test_preview_of_keywords_lists_added_and_removed_words():
