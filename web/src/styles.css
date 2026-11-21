@@ -1,5 +1,6 @@
 /* 디자인 토큰은 전화·사장님 화면과 같이 쓰는 `tokens.css` 한 곳에 있다 (ADR-0004) */
 @import "./tokens.css";
+@import "./brandmark.css";
 
 /* 본 앱 레이아웃 치수 */
 :root {
@@ -75,7 +76,7 @@ p {
   padding: 0 8px 18px;
 }
 
-/* 워드마크(.brand-logo·.brand-hn)는 `tokens.css` */
+/* 워드마크(.brand-logo·.brand-hn)는 `brandmark.css` */
 
 .new-chat {
   display: flex;
