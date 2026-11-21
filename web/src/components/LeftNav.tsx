@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { quickBadgeText, whenText } from "../labels";
 import { ownerKey as rememberedOwnerKey } from "../screens/owner/ownerStream";
 import type { Recent } from "../storage";
+import { BrandLogo } from "./BrandMark";
 import { Icon, type IconName } from "./Icon";
 import type { Tab } from "./Sidecar";
 
@@ -110,11 +111,9 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
   return (
     <>
       <nav className="nav" aria-label="대화 목록" data-collapsed={collapsed}>
-        {/* 위에는 로고만: 펼치면 AgentHan, 접으면 H */}
+        {/* 위에는 로고만: 펼치면 AgentHan, 접으면 H/N 마크 */}
         <div className="brand">
-          <span className="brand-logo">
-            {collapsed ? "H" : "AgentHan"}
-          </span>
+          <BrandLogo collapsed={collapsed} />
         </div>
         <button type="button" className="new-chat" onClick={onNew} disabled={busy} aria-label={collapsed ? "새 대화" : undefined} title={collapsed ? "새 대화" : undefined}>
           <Icon name="plus" />
