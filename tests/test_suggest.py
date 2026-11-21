@@ -31,7 +31,7 @@ def test_every_rule_uses_a_registered_button_and_fixed_short_label():
         assert 0 < len(rule.label) <= 12
 
 
-def test_facts_read_keywords_live_coupons_low_unanswered_and_report():
+def test_facts_read_keywords_live_coupons_unanswered_and_report():
     shop = {
         **SHOP,
         "coupons": [
@@ -42,7 +42,7 @@ def test_facts_read_keywords_live_coupons_low_unanswered_and_report():
     f = facts(shop, {"enabled": True}, TODAY)
     assert f.keywords == ("러시안 베이커리", "메도빅")
     assert f.live_coupons == ("주말 쿠폰",)
-    assert f.low_unanswered == ("r02",)
+    assert f.unanswered == ("r02", "r01", "r04")  # 낮은 별점부터, 별점 없는 리뷰는 맨 뒤
     assert f.report_enabled
     assert not facts(SHOP, None, TODAY).report_enabled
 
@@ -52,7 +52,7 @@ def test_each_context_gets_its_own_one_to_three_chips():
     review, stats, coupon = (merge([], [d], f) for d in ("review", "statistics", "coupon"))
     for chips in (review, stats, coupon):
         assert 1 <= len(chips) <= 3
-    assert labels(review) == ["매일 리뷰 요약 받기", "불만 리뷰 답글 초안", "이번 주 통계 보기"]
+    assert labels(review) == ["매일 리뷰 요약 받기", "리뷰 답글 초안", "이번 주 통계 보기"]
     assert review[1]["args"] == {"review_id": "r02"}
     assert review[0] == {
         "action_id": "chat.say",
@@ -68,7 +68,7 @@ def test_skip_conditions_drop_what_is_already_set_up():
     full = Facts(
         keywords=("a", "b", "c", "d", "e"),
         live_coupons=("주말 쿠폰",),
-        low_unanswered=(),
+        unanswered=(),
         report_enabled=True,
     )
     assert labels(merge([], ["review"], full)) == ["이번 주 통계 보기"]
@@ -78,7 +78,7 @@ def test_skip_conditions_drop_what_is_already_set_up():
 
 def test_merge_keeps_existing_chips_without_duplicates():
     existing = [
-        {"action_id": "review.draft_reply", "label": "불만 리뷰 답글 초안", "args": {}},
+        {"action_id": "review.draft_reply", "label": "리뷰 답글 초안", "args": {}},
         {"action_id": "coupon.create", "label": "쿠폰 검토", "args": {}},
     ]
     chips = merge(existing, ["review", "statistics"], facts(SHOP, None, TODAY))

@@ -1246,21 +1246,20 @@ class OwnerAssistant:
                 counts = result.get("sentiment", {})
                 rows = box.ctx["repo"].get_reviews(box.ctx["store_id"], None, box.ctx["today"])
                 unanswered = {r["review_id"] for r in rows if not r.get("has_owner_reply")}
-                example = next(
-                    (
-                        e
-                        for e in result.get("examples", [])
-                        if e.get("sentiment") in ("negative", "mixed")
-                        and e["review_id"] in unanswered
-                    ),
-                    None,
+                # 답글 안 단 리뷰라면 무엇이든 초안 대상이다. 불만·엇갈림을 먼저 고른다.
+                examples = [e for e in result.get("examples", []) if e["review_id"] in unanswered]
+                examples.sort(key=lambda e: e.get("sentiment") not in ("negative", "mixed"))
+                target = (
+                    examples[0]["review_id"]
+                    if examples
+                    else next((r["review_id"] for r in rows if r["review_id"] in unanswered), None)
                 )
-                if example:
+                if target:
                     next_actions.append(
                         {
                             "action_id": "review.draft_reply",
-                            "label": "불만 리뷰 답글 초안",
-                            "args": {"review_id": example["review_id"]},
+                            "label": "리뷰 답글 초안",
+                            "args": {"review_id": target},
                         }
                     )
                 names = {"positive": "좋음", "negative": "아쉬움", "mixed": "엇갈림"}

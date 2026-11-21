@@ -26,8 +26,8 @@ class Facts:
     keywords: tuple[str, ...] = ()
     # 오늘 이후로 끝나는(아직 쓸 수 있는) 쿠폰 제목.
     live_coupons: tuple[str, ...] = ()
-    # 답글이 없는 낮은 별점(3점 이하) 리뷰 id. 별점 없는 리뷰는 세지 않는다.
-    low_unanswered: tuple[str, ...] = ()
+    # 답글이 없는 리뷰 id. 낮은 별점부터(별점 없는 리뷰는 맨 뒤).
+    unanswered: tuple[str, ...] = ()
     report_enabled: bool = False
 
 
@@ -56,10 +56,10 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         "review",
-        "불만 리뷰 답글 초안",
+        "리뷰 답글 초안",
         "review.draft_reply",
-        lambda f: {"review_id": f.low_unanswered[0]},
-        skip=lambda f: not f.low_unanswered,
+        lambda f: {"review_id": f.unanswered[0]},
+        skip=lambda f: not f.unanswered,
     ),
     Rule("review", "이번 주 통계 보기", "stats.week"),
     # 통계(유입 경로·조회) 뒤
@@ -94,15 +94,12 @@ def facts(shop: dict, report_settings: dict | None, today: date) -> Facts:
         if str(c.get("end_date") or "9999-12-31") >= today.isoformat()
         and c.get("status") not in ("ended", "deleted")
     ]
-    low = [
-        r["review_id"]
-        for r in shop.get("reviews", [])
-        if isinstance(r.get("rating"), int) and r["rating"] <= 3 and not r.get("has_owner_reply")
-    ]
+    open_ = [r for r in shop.get("reviews", []) if not r.get("has_owner_reply")]
+    open_.sort(key=lambda r: r["rating"] if isinstance(r.get("rating"), int) else 99)
     return Facts(
         keywords=tuple(shop.get("shop", {}).get("keywords", [])),
         live_coupons=tuple(str(c.get("title", "")) for c in coupons),
-        low_unanswered=tuple(low),
+        unanswered=tuple(r["review_id"] for r in open_),
         report_enabled=bool((report_settings or {}).get("enabled")),
     )
 

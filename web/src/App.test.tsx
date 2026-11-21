@@ -362,6 +362,20 @@ describe("새 대화 첫 화면", () => {
   });
 });
 
+describe("네이버 플레이스 불러오기 (시연 컨셉)", () => {
+  test("불러오기 전에는 홈이 비어 있고, 승인하면 홈이 보이며 메뉴는 그대로다", async () => {
+    localStorage.removeItem("agenthan.naverPlace.v1");
+    const { user } = await open(fakeApi([]));
+    const home = screen.getByRole("tabpanel", { name: "홈" });
+    expect(within(home).getByText("아직 불러온 가게 정보가 없어요")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /네이버 플레이스 불러오기/ }));
+    await user.click(await screen.findByRole("button", { name: "승인" }, { timeout: 4000 }));
+    expect(within(screen.getByRole("tabpanel", { name: "홈" })).queryByText("아직 불러온 가게 정보가 없어요")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /네이버 플레이스 불러오기/ })).not.toBeInTheDocument();
+    expect(localStorage.getItem("agenthan.naverPlace.v1")).toBe("true");
+  }, 8000);
+});
+
 describe("사이드카 [홈]·[메뉴]", () => {
   test("홈 구역의 [수정]은 대화에서 그 일을 시작한다(쿠폰은 입력 블록, 나머지는 말)", async () => {
     const seeded = { ...SEED, keywords: ["이태원 케이크"] };
@@ -1017,6 +1031,7 @@ describe("답글 대기함", () => {
     await waitFor(() => expect(api.reviews.mock.calls.length).toBeGreaterThan(before));
     cleanup();
     localStorage.clear();
+    localStorage.setItem("agenthan.naverPlace.v1", "true");
     const hidden = await openInbox(fakeApi(), { demo: false });
     expect(hidden.panel.queryByRole("button", { name: "새 리뷰 도착 (데모)" })).not.toBeInTheDocument();
   });
@@ -1077,7 +1092,7 @@ describe("리뷰 정기 보고 (#98)", () => {
     id: "report-1",
     role: "agent" as const,
     text: "리뷰 정기 보고 (2026-11-07 ~ 2026-11-08)\n리뷰 3건\n답글 안 단 불만 리뷰 1건이 있어요.",
-    next_actions: [{ action_id: "review.draft_reply", label: "불만 리뷰 답글 초안", args: { review_id: "r09" } }],
+    next_actions: [{ action_id: "review.draft_reply", label: "리뷰 답글 초안", args: { review_id: "r09" } }],
   };
 
   test("홈 루틴 설정에 보고 한 줄이 보이고 [지금 한 번 받아 보기]는 보고를 대화에 한 번 넣는다", async () => {
@@ -1090,7 +1105,7 @@ describe("리뷰 정기 보고 (#98)", () => {
     await user.click(panel.getByRole("button", { name: "지금 한 번 받아 보기" }));
     expect(api.runReviewReport).toHaveBeenCalledWith("s1");
     expect(await chatArea().findByText(/답글 안 단 불만 리뷰 1건/)).toBeInTheDocument();
-    expect(chatArea().getByRole("button", { name: "불만 리뷰 답글 초안" })).toBeInTheDocument();
+    expect(chatArea().getByRole("button", { name: "리뷰 답글 초안" })).toBeInTheDocument();
     expect(api.act).not.toHaveBeenCalled();
   });
 

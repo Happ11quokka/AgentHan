@@ -62,3 +62,17 @@ export function saveChat(id: string, saved: SavedChat) {
   );
   write(CHAT(id), { ...saved, messages });
 }
+
+// 네이버 플레이스 불러오기(시연 컨셉): 실제 연동 없이, 승인 전에는 홈·리뷰·통계를 비워 보인다.
+// 주소에 ?naver=0을 붙이면 불러오기 전으로 되돌린다(다시 시연).
+const NAVER = "agenthan.naverPlace.v1";
+
+export function naverImported(): boolean {
+  if (new URLSearchParams(window.location.search).get("naver") === "0") {
+    write(NAVER, false);
+    return false;
+  }
+  return read<boolean>(NAVER, false);
+}
+
+export const rememberNaverImported = () => write(NAVER, true);
