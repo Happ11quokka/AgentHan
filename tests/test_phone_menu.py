@@ -1,5 +1,5 @@
-"""비서 메뉴로 전화 주문 (전화 메뉴 티켓 02). 발표 서버 하나에서 비서 API로 메뉴를 바꾸고
-전화(WS)로 주문한다.
+"""비서 메뉴로 전화 주문 (전화 메뉴 티켓 02·03). 발표 서버 하나에서 비서 API로 메뉴를 바꾸고
+전화(WS)로 주문한다. DB가 있으면 게시된 메뉴가 재시작 뒤에도 남고 벡터 색인이 따라온다(03).
 
 바깥에서 보이는 것만 본다: 비서 대화에서 메뉴를 더하고·고치고·지운 뒤 새 통화가 그 메뉴로 주문을
 받는지, 진행 중인 통화는 시작할 때의 메뉴로 끝나는지. 손님 말은 가짜 STT 대본(`fake_replies`)이다.
@@ -8,11 +8,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from agenthan.app import pilot
@@ -320,3 +324,198 @@ def _first_sse(lines) -> dict[str, Any]:
         if line.startswith("data:"):
             return json.loads(line.removeprefix("data:").strip())
     raise AssertionError("SSE 이벤트가 오지 않았다")
+
+
+# ---------------------------------------------------------------- DB: 게시 보존·벡터 색인 (티켓 03)
+
+TEST_DB = os.environ.get("AGENTHAN_TEST_DB_URL", "")
+needs_db = pytest.mark.skipif(not TEST_DB, reason="AGENTHAN_TEST_DB_URL 없음")
+CLOSED_DB = "postgresql://nobody:nothing@127.0.0.1:1/none"
+
+
+class FakeEmbed:
+    """글마다 정해진 1024차원 단위 벡터(같은 글 = 같은 벡터). 부른 글을 적어 둔다."""
+
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+
+    def __call__(self, text: str) -> list[float]:
+        self.texts.append(text)
+        seed = hashlib.sha256(text.encode()).digest()
+        raw = [((seed[i % 32] * (i + 1)) % 251) - 125.0 for i in range(1024)]
+        n = math.sqrt(sum(x * x for x in raw))
+        return [x / n for x in raw]
+
+
+def _base() -> StoreSnapshot:
+    return StoreSnapshot.of(FakeStoreKnowledge.from_fixture(), StoreConfig.from_fixture())
+
+
+def _honey_latte(data: dict) -> dict:
+    """블린(m04)을 지우고 꿀 라떼(m99)를 더한 가게."""
+    data["menus"] = [m for m in data["menus"] if m["id"] != "m04"] + [
+        {"id": "m99", "name": "꿀 라떼", "price": 5500, "description": "꿀을 넣은 달달한 라떼"}]
+    return data
+
+
+@pytest.fixture(scope="module")
+def seeded_db():
+    """빈 테스트 DB에 스키마 + 레포 가게 전부 (tests/test_db.py와 같은 방식)."""
+    if not TEST_DB:
+        pytest.skip("AGENTHAN_TEST_DB_URL 없음")
+    from agenthan.db import seed
+    from agenthan.db.conn import connect
+    from agenthan.db.migrate import migrate
+
+    with connect(TEST_DB) as c:
+        c.execute("DROP SCHEMA public CASCADE")
+        c.execute("CREATE SCHEMA public")
+        migrate(c)
+        for rows in seed.all_stores(include_real=False):
+            seed.write_store(c, rows)
+    return TEST_DB
+
+
+@pytest.fixture
+def db(seeded_db) -> str:
+    """테스트마다 게시된 전화용 가게(와 그 벡터)를 비운다."""
+    from agenthan.db.conn import connect
+    from agenthan.db.stores import PUBLISHED_STORE_ID
+
+    with connect(seeded_db) as c:
+        c.execute("DELETE FROM stores WHERE id = %s", (PUBLISHED_STORE_ID,))
+    return seeded_db
+
+
+def _menu_vectors(url: str) -> set[str]:
+    from agenthan.db.conn import connect
+    from agenthan.db.stores import PUBLISHED_STORE_ID
+
+    with connect(url) as c:
+        return {r[0] for r in c.execute(
+            "SELECT ref_id FROM embeddings WHERE store_id = %s AND kind = 'menu'",
+            (PUBLISHED_STORE_ID,))}
+
+
+@needs_db
+def test_after_a_restart_the_first_call_takes_the_last_published_menu(tmp_path, db) -> None:
+    """재배포: 대화 파일도 메모리도 사라진다. 비서 대화를 새로 열지 않고 건 첫 통화가 마지막으로
+    게시된 이름·가격으로 주문을 받는다."""
+    with _client(tmp_path / "before", (), AGENTHAN_DB_URL=db) as client:
+        session = _session(client)
+        _edit(client, session, "m01", name="허니 메도빅", price=8000)
+
+    with _client(tmp_path / "after", _order_script("허니 메도빅 하나요"),
+                 AGENTHAN_DB_URL=db) as client:
+        order, _ = _call(client, 4)
+
+    assert _lines(order) == [("m01", 1, "")]
+    assert order["total"] == 8000
+
+
+@needs_db
+def test_without_a_published_menu_the_server_starts_on_the_pilot_menu(db) -> None:
+    stores = PhoneStores(_base(), db_url=db, embed=False)
+    stores.start(pilot.seed())
+    assert [m.name_ko for m in stores().store.list_menu()][:2] == ["메도빅", "나폴레옹"]
+    # 기본 가게는 게시가 아니다: 다시 띄워도 DB에 남은 값이 없다
+    again = PhoneStores(_base(), db_url=db, embed=False)
+    again.start(_honey_latte(pilot.seed()))
+    assert "꿀 라떼" in [m.name_ko for m in again().store.list_menu()]
+
+
+@needs_db
+def test_semantic_search_follows_the_published_menu_and_embeds_only_changes(db) -> None:
+    embed = FakeEmbed()
+    stores = PhoneStores(_base(), db_url=db, embed=embed)
+    stores.start(pilot.seed())
+    first = stores().store
+    blin = first._embed_text("m04")
+    assert first.vector.search(blin, k=1)[0][0] == "m04"  # 다음 검색 때 메뉴를 모두 올린다
+    assert len(embed.texts) == 13
+    assert _menu_vectors(db) == set(first.records)
+
+    embed.texts.clear()
+    assert stores.publish(_honey_latte(pilot.seed()))
+    second = stores().store
+    latte = second._embed_text("m99")
+    assert second.vector.search(latte, k=1)[0][0] == "m99"  # 새 메뉴를 찾는다
+    assert "m04" not in [i for i, _ in second.vector.search(blin, k=20)]  # 지운 메뉴는 없다
+    assert embed.texts == [latte]  # 바뀌지 않은 메뉴는 다시 임베딩하지 않는다
+    assert _menu_vectors(db) == set(second.records)
+    assert "m99" not in [i for i, _ in first.vector.search(latte, k=20)]  # 진행 중인 통화의 메뉴
+
+    # 다시 띄운 서버: 마지막 게시 값으로 시작하고, 이미 올린 벡터를 그대로 쓴다
+    embed.texts.clear()
+    restarted = PhoneStores(_base(), db_url=db, embed=embed)
+    restarted.start(pilot.seed())
+    assert restarted.doc == stores.doc
+    assert restarted().store.vector.search(latte, k=1)[0][0] == "m99"
+    assert embed.texts == []
+
+
+@needs_db
+def test_going_back_to_an_earlier_menu_reindexes_it(db) -> None:
+    """같은 게시 값으로 돌아가면 만들어 둔 스냅숏을 다시 쓰지만, 색인은 다음 검색 때 다시 맞춘다."""
+    stores = PhoneStores(_base(), db_url=db, embed=FakeEmbed())
+    stores.start(pilot.seed())
+    stores().store.vector.search("꿀", k=1)
+    stores.publish(_honey_latte(pilot.seed()))
+    stores().store.vector.search("꿀", k=1)
+    assert stores.publish(pilot.seed())
+    back = stores().store
+    assert back.vector.search(back._embed_text("m04"), k=1)[0][0] == "m04"
+    assert "m99" not in [i for i, _ in back.vector.search("꿀을 넣은 달달한 라떼", k=20)]
+    assert _menu_vectors(db) == set(back.records)
+
+
+@needs_db
+def test_seed_and_embed_scripts_leave_the_published_menu_alone(db) -> None:
+    """시드는 게시된 전화용 가게를 덮어쓰지 않고, 벡터 채우기도 그 메뉴 벡터를 지우지 않는다."""
+    from agenthan.db import seed
+    from agenthan.db.conn import connect
+    from agenthan.db.embed import embed_store
+    from agenthan.db.stores import PUBLISHED_STORE_ID
+    from agenthan.rag.vector import PgEmbeddingCache
+
+    embed = FakeEmbed()
+    stores = PhoneStores(_base(), db_url=db, embed=embed)
+    stores.start(pilot.seed())
+    stores.publish(_honey_latte(pilot.seed()))
+    stores().store.vector.search("꿀", k=1)
+    with connect(db) as c:
+        for rows in seed.all_stores(include_real=False):
+            seed.write_store(c, rows)
+        embed_store(c, PUBLISHED_STORE_ID, embed, PgEmbeddingCache(db), pace=0)
+
+    restarted = PhoneStores(_base(), db_url=db, embed=embed)
+    restarted.start(pilot.seed())
+    assert "꿀 라떼" in [m.name_ko for m in restarted().store.list_menu()]
+    assert "m99" in _menu_vectors(db)
+
+
+@needs_db
+def test_without_an_embedding_key_the_phone_matches_by_name(db, monkeypatch) -> None:
+    monkeypatch.delenv("CLOVASTUDIO_API_KEY", raising=False)
+    stores = PhoneStores(_base(), db_url=db)
+    stores.start(pilot.seed())
+    assert stores.publish(_honey_latte(pilot.seed()))
+    store = stores().store
+    assert store.search_menu("꿀 라떼")[0].item.id == "m99"
+    assert store.search_menu("꿀라테")[0].item.id == "m99"  # 오타 매칭
+    store.search_menu("달달한 거 뭐 있어요")  # 뜻 검색 없이도 예외 없이
+
+
+def test_without_a_reachable_db_the_phone_keeps_working(tmp_path) -> None:
+    from agenthan.db.conn import reset_pause
+
+    embed = FakeEmbed()
+    try:
+        stores = PhoneStores(_base(), db_url=CLOSED_DB, embed=embed)
+        stores.start(pilot.seed())
+        assert stores.publish(_honey_latte(pilot.seed()))
+        store = stores().store
+        assert store.search_menu("꿀 라떼")[0].item.id == "m99"
+        assert store.vector.search("꿀을 넣은 달달한 라떼") == []  # 벡터는 쉬고 키워드로
+    finally:
+        reset_pause()
