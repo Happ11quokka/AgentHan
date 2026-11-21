@@ -1,13 +1,14 @@
 // 대화 상태 한곳: 메시지·가게 화면·승인 대기·오늘 한 일·연결 상태. 사이드카와 승인 카드가 같은 상태를 본다.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type AssistantApi } from "./api";
-import { businessActionLabel, businessInitial, couponActionLabel, describeChanges, describeReportChange, REVIEW_POSTED_TEXT, type BusinessInput, type CouponInput } from "./labels";
+import { businessActionLabel, businessInitial, hoursActionLabel, hoursEntries, hoursInitial, couponActionLabel, describeChanges, describeReportChange, REVIEW_POSTED_TEXT, type BusinessInput, type CouponInput, type HoursInput } from "./labels";
 import { forgetPhotoUrl, photoUrl } from "./photo";
 import * as storage from "./storage";
 import type { Action, LogEntry, MenuEdit, Message, OnboardingInput, Pending, Place, ReviewReport, ReviewRow, Routines, RoutinesChange, ServerMessage, ShopInfo, Turn, View } from "./types";
 
 const COUPON_ACTION = "coupon.create";
 const BUSINESS_ACTION = "business_info.edit";
+const HOURS_ACTION = "hours.edit";
 const SAY_ACTION = "chat.say";
 /** 정해진 때의 리뷰 보고(#98)를 받으려고 세션 조회(/place)를 다시 읽는 간격. */
 export const REPORT_POLL_MS = 60_000;
@@ -56,6 +57,11 @@ export type Conversation = {
   submitBusiness: (changes: Partial<BusinessInput>) => Promise<void>;
   /** 블록의 [추천 글 받기]: 소개글 초안. 실패하면 던진다. */
   draftIntroduction: () => Promise<string>;
+  /** 대화 영역에 떠 있는 영업시간 시간표: 처음 값(지금 영업시간)과 열 때 값. 없으면 null. */
+  hoursForm: { initial: HoursInput; values: HoursInput } | null;
+  closeHours: () => void;
+  /** 시간표의 [미리 보기]: 고친 요일만 hours.edit 액션으로 보낸다. */
+  submitHours: (values: HoursInput) => Promise<void>;
   send: (text: string, image?: File) => Promise<void>;
   act: (action: Action) => Promise<void>;
   retry: () => void;
@@ -113,6 +119,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const [error, setError] = useState<string | null>(null);
   const [couponForm, setCouponForm] = useState<CouponInput | null>(null);
   const [businessForm, setBusinessForm] = useState<BusinessInput | null>(null);
+  const [hoursForm, setHoursForm] = useState<{ initial: HoursInput; values: HoursInput } | null>(null);
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [reviewReport, setReviewReport] = useState<ReviewReport | null>(null);
   const [routines, setRoutines] = useState<Routines | null>(null);
@@ -120,6 +127,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
   const [readingSince, setReadingSince] = useState<number | null>(null);
   const toRetry = useRef<Retryable | null>(null);
   const sentCoupon = useRef<CouponInput | null>(null); // 거절되면 블록을 다시 열 값
+  const sentHours = useRef<{ label: string; initial: HoursInput; values: HoursInput } | null>(null);
   const sentBusiness = useRef<{ label: string; initial: BusinessInput; changes: Partial<BusinessInput> } | null>(null);
   const inFlight = useRef(false); // 렌더 전에 들어온 두 번째 클릭도 막는다
   const latest = useRef({ place, pending, messages, reviewReport });
@@ -285,6 +293,10 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     const biz = sentBusiness.current;
     if (action.action_id === BUSINESS_ACTION && biz && action.label === biz.label && !turn.pending.some((p) => p.feature === "business_info"))
       setBusinessForm({ ...biz.initial, ...biz.changes });
+    // 시간표도 승인 카드 없이 돌아오면 고친 시간표 그대로 다시 연다.
+    const hrs = sentHours.current;
+    if (action.action_id === HOURS_ACTION && hrs && action.label === hrs.label && !turn.pending.some((p) => p.feature === "business_hours"))
+      setHoursForm({ initial: hrs.initial, values: hrs.values });
   }, [api, applyTurn, attempt, sessionId]);
 
   /** 대화 턴 밖에서 한 일(예: 대기함 [올리기])을 '오늘 한 일'에만 남긴다. */
@@ -434,6 +446,16 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
       if (!inFlight.current) setCouponForm((open) => open ?? blankCoupon());
       return;
     }
+    // 값 없이 온 영업시간 수정(도구함·칩)은 지금 영업시간으로 채운 시간표를 연다.
+    if (action.action_id === HOURS_ACTION && Object.keys(action.args).length === 0) {
+      if (!inFlight.current)
+        setHoursForm((open) => {
+          if (open) return open;
+          const initial = hoursInitial(latest.current.place?.business_hours);
+          return { initial, values: initial };
+        });
+      return;
+    }
     // 값 없이 온 가게 정보 수정(도구함)은 지금 가게 값으로 채운 입력 블록을 연다.
     if (action.action_id === BUSINESS_ACTION && Object.keys(action.args).length === 0) {
       if (!inFlight.current) setBusinessForm((open) => open ?? businessInitial(latest.current.place?.business_info));
@@ -474,6 +496,15 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     setBusinessForm(null);
     await act({ action_id: BUSINESS_ACTION, label, args: changes });
   }, [act, businessForm, sessionId]);
+  const closeHours = useCallback(() => setHoursForm(null), []);
+  const submitHours = useCallback(async (values: HoursInput) => {
+    if (!sessionId || inFlight.current || !hoursForm) return;
+    const { initial } = hoursForm;
+    const label = hoursActionLabel(initial, values);
+    sentHours.current = { label, initial, values };
+    setHoursForm(null);
+    await act({ action_id: HOURS_ACTION, label, args: { entries: hoursEntries(initial, values) } });
+  }, [act, hoursForm, sessionId]);
   const draftIntroduction = useCallback(async () => {
     if (!sessionId) throw new Error("no session");
     return (await api.draftIntroduction(sessionId)).text;
@@ -499,6 +530,7 @@ export function useConversation(api: AssistantApi, reportPollMs: number = REPORT
     sessionId, messages, place, shop, pending, log, recent, busy, online, error,
     couponForm, reviewOf, openCoupon, closeCoupon, submitCoupon,
     businessForm, closeBusiness, submitBusiness, draftIntroduction,
+    hoursForm, closeHours, submitHours,
     send, act, retry, newChat, open, addLog, notify, onboard, reviewReport, runReport,
     routines, changeRoutines, editMenu, deleteMenu, polishMenu, readingSince, refresh,
   };

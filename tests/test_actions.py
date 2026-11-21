@@ -112,6 +112,27 @@ def test_business_info_form_previews_then_saves(setup):
     assert done["place"]["business_info"]["phone"] == "02-111-2222"
 
 
+def test_hours_table_sends_changed_days_as_one_preview(setup):
+    _, _, action, _ = setup
+    entries = [
+        {"days": ["sat"], "closed": False, "open_time": "11:00", "close_time": "20:00"},
+        {"days": ["sun"], "closed": False, "open_time": "10:00", "close_time": "18:00"},
+        {"days": ["mon"], "closed": True},
+    ]
+    first = action("hours.edit", {"entries": entries}).json()
+    [pending] = first["pending"]  # 요일 셋이 확인 카드 하나
+    assert pending["feature"] == "business_hours"
+    assert sorted(pending["changes"]["business_hours"]["updated"]) == ["mon", "sat", "sun"]
+    hours = pending["after"]["business_hours"]
+    assert hours["sat"] == {"closed": False, "open_time": "11:00", "close_time": "20:00"}
+    assert hours["sun"]["open_time"] == "10:00" and hours["mon"]["closed"] is True
+    done = action(
+        "task.approve", {"task_id": pending["task_id"], "version": pending["version"]}
+    ).json()
+    assert done["place"]["business_hours"]["sat"]["open_time"] == "11:00"
+    assert done["place"]["business_hours"]["mon"]["closed"] is True
+
+
 def test_business_info_form_rejects_unknown_fields(setup):
     _, _, action, _ = setup
     assert action("business_info.edit", {"category": "카페"}).status_code == 400

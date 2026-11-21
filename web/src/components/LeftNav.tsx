@@ -51,7 +51,7 @@ function orderCardLink(search: string) {
 export const TOOLBOX: Array<Quick & { stage: string }> = [
   { stage: "시작하기", key: "business_info", label: "가게 기본 정보 수정", hint: "상호·주소·전화번호·소개글", icon: "store", ask: "가게 기본 정보(이름·주소·전화번호·소개글)를 바꾸고 싶어", action_id: "business_info.edit", tab: "home", inChat: true },
   { stage: "매일 운영", key: "menu", label: "메뉴 등록·수정", hint: "이름·가격·설명, 품절·삭제", icon: "utensils", ask: "메뉴를 등록하거나 고치고 싶어", tab: "menu" },
-  { stage: "매일 운영", key: "business_hours", label: "영업시간·휴무 변경", hint: "여는 시간·브레이크·임시 휴무", icon: "clock", ask: "영업시간이나 휴무를 바꾸고 싶어", tab: "home" },
+  { stage: "매일 운영", key: "business_hours", label: "영업시간·휴무 변경", hint: "여는 시간·브레이크·임시 휴무", icon: "clock", ask: "영업시간이나 휴무를 바꾸고 싶어", action_id: "hours.edit", tab: "home", inChat: true },
   { stage: "매일 운영", key: "talktalk", label: "톡톡 문의 답장", hint: "손님 채팅 문의에 답하기", icon: "chat", ask: "톡톡 문의 온 거 보여 줘", tab: "home" },
   { stage: "매일 운영", key: "order", label: "네이버 주문", hint: "접수·거절·준비 완료", icon: "bag", ask: "들어온 네이버 주문 보여 줘", tab: "home" },
   { stage: "매일 운영", key: "reservation", label: "네이버 예약", hint: "확정·취소·노쇼", icon: "calendar", ask: "들어온 네이버 예약 보여 줘", tab: "home" },

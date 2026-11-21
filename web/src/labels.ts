@@ -56,6 +56,56 @@ export const COUPON_FORM_TEXT = {
   submit: "미리 보기",
 } as const;
 
+// ── 영업시간 시간표 블록 ─────────
+export type HoursRow = { closed: boolean; open: string; close: string };
+export type HoursInput = Record<string, HoursRow>;
+
+export const HOURS_FORM_TEXT = {
+  heading: "영업시간",
+  hint: "바꿀 요일만 고치고 [미리 보기]를 누르세요. 저장은 확인 카드에서 한 번 더 눌러야 해요.",
+  closed: "쉬는 날",
+  open: "여는 시간",
+  close: "닫는 시간",
+  cancel: "취소",
+  submit: "미리 보기",
+} as const;
+
+/** 지금 영업시간으로 채운 시간표(월~일). 정보가 없는 요일은 빈 시간으로 연다. */
+export function hoursInitial(hours: Record<string, DayHours> | undefined): HoursInput {
+  return Object.fromEntries(
+    DAYS.map(([key]) => {
+      const h = hours?.[key];
+      return [key, { closed: Boolean(h?.closed), open: h?.open_time ?? "", close: h?.close_time ?? "" }];
+    }),
+  );
+}
+
+const sameRow = (a: HoursRow, b: HoursRow) => a.closed === b.closed && (a.closed || (a.open === b.open && a.close === b.close));
+const changedDays = (initial: HoursInput, values: HoursInput) => DAYS.filter(([k]) => !sameRow(initial[k], values[k]));
+
+/** 고친 요일만 update_business_hours 항목으로(월~일 순서). */
+export function hoursEntries(initial: HoursInput, values: HoursInput): Array<Record<string, unknown>> {
+  return changedDays(initial, values).map(([k]) =>
+    values[k].closed ? { days: [k], closed: true } : { days: [k], closed: false, open_time: values[k].open, close_time: values[k].close },
+  );
+}
+
+/** [미리 보기]를 막는 이유. 막을 게 없으면 null. */
+export function hoursProblem(initial: HoursInput, values: HoursInput): string | null {
+  const changed = changedDays(initial, values);
+  if (!changed.length) return "바꿀 요일을 고쳐 주세요.";
+  const missing = changed.find(([k]) => !values[k].closed && (!values[k].open || !values[k].close));
+  if (missing) return `${missing[1]} 여는·닫는 시간을 넣어 주세요.`;
+  const same = changed.find(([k]) => !values[k].closed && values[k].open === values[k].close);
+  if (same) return `${same[1]} 여는 시간과 닫는 시간이 같아요.`;
+  return null;
+}
+
+/** 대화창에 남는 사장님 말: "영업시간 바꾸기: 월·토·일". */
+export function hoursActionLabel(initial: HoursInput, values: HoursInput): string {
+  return `영업시간 바꾸기: ${changedDays(initial, values).map(([, name]) => name[0]).join("·")}`;
+}
+
 // ── 가게 기본 정보 입력 블록 ─────────
 export type BusinessField = "name" | "address" | "phone" | "introduction";
 export type BusinessInput = Record<BusinessField, string>;
@@ -381,7 +431,7 @@ export function describeChanges(before: Place, after: Place): string[] {
   for (const [key, label] of DAYS) {
     const a = before.business_hours[key];
     const b = after.business_hours[key];
-    if (JSON.stringify(a) !== JSON.stringify(b)) lines.push(`${label} ${hoursText(b)}`);
+    if (JSON.stringify(a) !== JSON.stringify(b)) lines.push(a ? `${label}: ${hoursText(a)} → ${hoursText(b)}` : `${label}: ${hoursText(b)}`);
   }
 
   const oldCoupons = new Set(before.coupon.map((c) => c.id));
