@@ -604,9 +604,13 @@ def fill_all(
                     future.result()
                 except Exception:  # noqa: BLE001 - 한 줄 실패가 나머지를 막지 않게
                     log.exception("menu fill crashed")
-        log.info("menu board fill %.2fs for %d menus", time.monotonic() - started, len(jobs))
-        # 남은 '채우는 중' 표시는 지운다(실패한 칸이 영원히 돌지 않게).
-        for job in jobs:
+        # 첫 읽기가 사진을 빠뜨린 메뉴(no_photo)도 이 일이 사진을 찾아 채운다. 사전 메뉴처럼 처음엔
+        # 채울 칸이 없어 jobs에 없을 수 있다(2026-11-21 '3 menus'인데 사진은 4장): 함께 센다.
+        touched = list({j.menu_id: j for j in [*jobs, *(no_photo or [])]}.values())
+        log.info("menu board fill %.2fs for %d menus", time.monotonic() - started, len(touched))
+        # 남은 '채우는 중' 표시는 지운다(실패한 칸이 영원히 돌지 않게). 찾은 사진이 예상 못 한
+        # 오류로 죽은 메뉴도.
+        for job in touched:
             try:
                 store.patch_menu(
                     job.menu_id, {}, by_owner=False, done=("name", "description", "photo")

@@ -210,3 +210,15 @@ def test_rollback_also_drains_before_swapping_and_drain_can_be_switched_by_hand(
     assert any("touch /app/logs/DRAIN" in call for call in calls) and "2개" in out
     calls, _ = _deploy(tmp_path, "undrain")
     assert any("rm -f /app/logs/DRAIN" in call for call in calls)
+
+
+def test_the_image_compiles_the_cutout_numba_cache_at_build_time() -> None:
+    """빈 numba 캐시면 rembg import가 서버에서 34.5초: 배포 뒤 첫 메뉴판 사진이 떠안지 않게 빌드 때
+    만들고, 앱이 같은 폴더를 쓰며(쓸 수 있어야 CPU가 달라도 다시 컴파일한다), /tmp에 두지 않는다."""
+    dockerfile = _text("Dockerfile")
+    build = 'RUN NUMBA_CACHE_DIR=/app/cache/numba python -c "import rembg"'
+    assert build in dockerfile
+    assert dockerfile.index("--extra cutout") < dockerfile.index(build)
+    assert re.search(r"^\s+NUMBA_CACHE_DIR=/app/cache/numba$", dockerfile, re.M)  # 앱 ENV
+    assert "chown -R app:app /app/cache" in dockerfile
+    assert "/tmp/numba" not in dockerfile

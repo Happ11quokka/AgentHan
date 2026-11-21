@@ -33,8 +33,10 @@ def test_snapshot_has_the_place_and_record_sections():
         "coupon",
         "keywords",
         "business_info",
+        "menu_fill",  # 메뉴판 사진 채우기 진행(없으면 None)
         *owner.RECORD_TARGETS,
     }
+    assert view["menu_fill"] is None
     assert view["business_info"] == {k: SEED["shop"].get(k) for k in place.BUSINESS_FIELDS}
     assert view["keywords"] == SEED["shop"].get("keywords", [])
     assert view["menu"][0] == {

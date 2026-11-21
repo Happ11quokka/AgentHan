@@ -6,13 +6,14 @@ OwnerAssistant after the owner approves; preview() runs the waiting actions on a
 
 import copy
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 from agenthan.agent import menu_photo
 from agenthan.agent.owner_assistant import RECORD_TARGETS
 from agenthan.illustration import ILLUSTRATION_KEY, illustration_url
-from agenthan.tools.dummy_store import DummyStore
+from agenthan.tools.dummy_store import FILL_KEY, DummyStore
 from agenthan.tools.feature_tools import BUSINESS_FIELDS, execute_feature_tool
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -46,7 +47,26 @@ def _record_rows(records: list[dict], label_fields: tuple[str, ...]) -> list[dic
     return rows
 
 
-def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
+def fill_progress(data: dict, now: float | None = None) -> dict | None:
+    """메뉴판 사진 채우기 진행(dummy_store.track_fill): 시작 뒤 지난 초, 이 일의 메뉴, 채울 칸 수.
+    화면은 이것으로 걸린 초와 'N/M개 완료'를 그린다. 지난 초를 보내므로 기기 시계가 달라도 맞다.
+    채우는 중이 아니면 None."""
+    run = data.get(FILL_KEY)
+    if not isinstance(run, dict) or type(run.get("started_at")) not in (int, float):
+        return None
+    live = {m["id"] for m in data.get("menus", [])}
+    ids = [i for i in run.get("menu_ids") or [] if i in live]  # 그 사이 지운 메뉴는 빼고 센다
+    fields = [f for f in run.get("fields") or [] if f.split("/", 1)[0] in live]
+    seconds = max(0.0, (time.time() if now is None else now) - run["started_at"])
+    return {
+        "started_at": run["started_at"],
+        "seconds": round(seconds, 1),
+        "menu_ids": ids,
+        "fields": len(fields),
+    }
+
+
+def snapshot(data: dict, photo_url: PhotoUrl = _no_photo, now: float | None = None) -> dict:
     """The sections the screen draws, keyed by feature id."""
     hours = data.get("shop", {}).get("hours", {})
     records = {
@@ -75,6 +95,8 @@ def snapshot(data: dict, photo_url: PhotoUrl = _no_photo) -> dict:
         "keywords": list(data.get("shop", {}).get("keywords", [])),
         # 가게 기본 정보: 입력 블록의 처음 값이자, 승인 카드가 바뀌기 전·후를 비교하는 값
         "business_info": {k: data.get("shop", {}).get(k) for k in BUSINESS_FIELDS},
+        # 메뉴판 사진 채우기 진행. 가게 정보가 아니라 바뀜(changes)으로 세지 않는다.
+        FILL_KEY: fill_progress(data, now),
         **records,
     }
 
@@ -90,6 +112,8 @@ def changes(before: dict, after: dict) -> dict:
     """Per section, the keys (record ids or days) that were added, updated or removed."""
     result = {}
     for name in before:
+        if name == FILL_KEY:  # 진행 표시: 승인할 바뀜이 아니다
+            continue
         old, new = _keyed(before[name]), _keyed(after[name])
         diff = {
             "added": [k for k in new if k not in old],

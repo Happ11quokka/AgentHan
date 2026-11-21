@@ -9,7 +9,7 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `POST /assistant/sessions` | 대화 세션 시작(세션마다 파일럿 매장 복사본에서 시작한 저장소) |
 | `POST /assistant/sessions/{id}/messages` | 사장님 말 한 턴 → `reply`·`place`·`pending`, planner 모드는 `next_actions` 포함 |
 | `POST /assistant/sessions/{id}/actions` | 버튼의 `action_id`·`args`·`label`을 실행하고 같은 응답에 `next_actions` 추가 |
-| (선택) 오픈 배경 제거 모델 | `uv sync --extra cutout` + `AGENTHAN_CUTOUT_MODEL=rembg`: 1차 흰 배경·2차 보정의 음식 영역을 GrabCut 대신 U2Net(CPU, 사진당 0.4초, 처음 한 번 모델 176MB 받음)으로 자른다. 코드 기본은 꺼짐. 시연 서버 이미지(`deploy/phone/Dockerfile`)는 모델 파일을 빌드 때 받아(SHA-256 고정) 켠다 |
+| (선택) 오픈 배경 제거 모델 | `uv sync --extra cutout` + `AGENTHAN_CUTOUT_MODEL=rembg`: 1차 흰 배경·2차 보정의 음식 영역을 GrabCut 대신 U2Net(CPU, 사진당 0.2~0.4초, 처음 한 번 모델 176MB 받음)으로 자른다. 코드 기본은 꺼짐. 켜 두면 앱(`agenthan.serve`)이 뜰 때 뒤에서 미리 읽는다(`image_studio.warm`). 시연 서버 이미지(`deploy/phone/Dockerfile`)는 모델 파일을 빌드 때 받아(SHA-256 고정) 켜고, `import rembg`의 numba 캐시도 빌드 때 만든다(비어 있으면 서버에서 34.5초) |
 | `POST /assistant/sessions?menu=empty` | 시연용: 메뉴만 비운 가게로 시작(메뉴판 사진으로 채우는 장면). 화면은 주소에 `?menu=empty`를 붙이고 [새 대화] |
 | `POST /assistant/sessions/{id}/photos` | 메뉴판 사진·음식 사진(multipart `image` + 선택 `text`) → 같은 모양. 메뉴판은 승인 없이 메뉴 탭에 바로 올리고(`menu[].ai`·`menu[].filling`), 설명·흰 배경 사진은 백그라운드로 채운다(`agent/menu_board.py`) |
 | `PATCH /assistant/sessions/{id}/menus/{menu_id}` | 메뉴 탭 직접 수정 `{name?, price?, description?}` → 세션 조회 응답. 승인 카드 없음, 고친 칸의 `ai` 표시를 지움. 빈 이름·같은 이름·0원 422, 없는 메뉴 404 |
@@ -24,7 +24,7 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `GET /assistant/sessions/{id}/report?period=week\|day` | 손님 통계 탭: 요약 카드 3개 증감, 유입 채널, 시간대·요일 조회, 키워드(새로 뜬 것 표시), 해 볼 일 한 줄(`tip`). LLM 없음 |
 
 - 파일럿 매장(`pilot.py`, `pilot_store.json`): 서버의 새 대화는 이 가게로 시작하고 비서의 '오늘'은 2026-11-09로 고정된다(일반 기능·리뷰 둘 다). 메뉴 13·리뷰 20(미답글 8)·톡톡·주문·예약·전화·쿠폰·정산이 손님 통계와 같은 이야기다. 평가 시드(`tools/dummy_store_seed.json`)는 그대로.
-- `place`: 메뉴(`photo_url`·`illustration_url` 포함)·영업시간·쿠폰 스냅샷. `illustration_url`은 메뉴 대표 그림 주소(`/illustrations/<id>.svg`, 카탈로그에 없는 그림이면 null)로, 사진이 있어도 보낸다(무엇을 보일지는 화면이 정한다). AI 표시(`ai`)·채우는 중(`filling`) 대상이 아니다.
+- `place`: 메뉴(`photo_url`·`illustration_url` 포함)·영업시간·쿠폰 스냅샷. `illustration_url`은 메뉴 대표 그림 주소(`/illustrations/<id>.svg`, 카탈로그에 없는 그림이면 null)로, 사진이 있어도 보낸다(무엇을 보일지는 화면이 정한다). AI 표시(`ai`)·채우는 중(`filling`) 대상이 아니다. `menu_fill`: 메뉴판 사진 채우기 진행(`started_at`·지난 초 `seconds`·이 일의 메뉴 `menu_ids`·칸 수 `fields`, 채우는 중이 아니면 null). 화면이 메뉴 탭을 다시 열어도 걸린 초와 'N/M개 완료'를 이어서 센다.
 - 메뉴 대표 그림(`src/agenthan/illustration/README.md`): 메뉴가 들어오거나 이름이 바뀌면 저장소가 잠금 안에서 바로(임베딩 없이) 고른다. 세션을 열 때는 그림이 없는 메뉴(예전 세션·시드 가게)를 바로 채우고, 그 뒤와 메뉴가 바뀐 뒤(대화 턴·버튼·메뉴판 채우기 끝·메뉴 탭 저장·온보딩)마다 `fill_illustrations`가 백그라운드에서 분류 기본 그림인 메뉴를 CLOVA 임베딩으로 다시 찾아본다(저장소 잠금 밖, 응답을 막지 않음, 세션마다 하나씩). `create_app(illustration_embed=...)`로 임베딩을 끼운다(운영 `embed_text`, 기본 None은 임베딩 없이).
 - `store.json`의 그림 칸: 메뉴마다 `illustration`(그림 id). 최상위 `illustration_catalog`(마지막으로 맞춘 카탈로그 지문, 바뀌면 기본 그림 메뉴를 다시 고름)와 `illustration_tried`(`{메뉴 id: 이름}` 그 이름으로 임베딩까지 해 본 메뉴. 이름이 바뀌면 다시 해 보고, 실패한 이름은 기록하지 않아 다음에 다시 해 본다).
 - `pending`: 승인 대기 변경. 사진 작업은 `kind: "photo"`와 초안 줄(`change`: `new`·`price_change`·`unchanged`·`photo_attach`, 가격을 모르면 null. `menu_name`: 맞는 저장된 메뉴 이름)을 더한다. 실제 저장은 승인 뒤에만.
