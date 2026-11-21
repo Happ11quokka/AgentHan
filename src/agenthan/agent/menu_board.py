@@ -714,8 +714,23 @@ def fill_all(
                 )
             except DummyStoreError:
                 pass
+        photos_first(store)
 
     return run
+
+
+def photos_first(store: DummyStore) -> None:
+    """사진이 있는 메뉴를 맨 위로, 대표 그림(일러스트)만 있는 메뉴는 그 뒤로 저장 순서를 바꾼다.
+    각 묶음 안의 순서는 그대로다. 메뉴판 사진의 사진 칸은 대개 그 가게 대표 메뉴라, 메뉴 탭과 전화가
+    메뉴를 알려 주는 순서에서도 앞에 둔다(사장님 요청 2026-11-22). 순서가 같으면 저장하지 않는다."""
+    try:
+        menus = store.read()["menus"]
+        ids = [m["id"] for m in menus if m.get("photo")] + [
+            m["id"] for m in menus if not m.get("photo")]
+        if ids != [m["id"] for m in menus]:
+            store.reorder_menus(ids)
+    except DummyStoreError:
+        log.warning("menu board: photos-first reorder failed", exc_info=True)
 
 
 def photo_runs(board: bytes, column: tuple[float, float]) -> list[Box]:
