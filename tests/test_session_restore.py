@@ -23,9 +23,18 @@ DRINKS = [{"id": "d1", "name": "아메리카노", "price": 4500, "aliases": []},
           {"id": "d2", "name": "카페라떼", "price": 5000, "aliases": []}]
 
 
+PILOT = {"shop": {"name": "파일럿"}, "menus": [{"id": "m1", "name": "메도빅", "price": 7500,
+                                              "aliases": []}], "reviews": []}
+
+
 @pytest.fixture
 def make(mock_index):
+    """운영 `pilot.assistant`처럼 가게 파일이 없으면 파일럿 가게를 깔고 연다."""
+
     def make(path):
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(PILOT, ensure_ascii=False), encoding="utf-8")
         return owner.OwnerAssistant(path, chat=FakeChat(), embed=lambda _: mock_index["menu"])
 
     return make
@@ -53,7 +62,7 @@ def test_a_redeployed_server_reopens_a_chat_from_the_db_copy(tmp_path, make, mon
     """폴더까지 사라졌어도 DB 사본이 있으면 그 가게로 연다."""
     sid = "e6f136e3c7154a33a81d0d80efb43909"
     path = (tmp_path / sid / "store.json").resolve()
-    saved = {**DummyStore(tmp_path / "seed.json").read(), "menus": DRINKS}
+    saved = {**PILOT, "menus": DRINKS}
     monkeypatch.setattr(dummy_store, "_db_copy",
                         lambda p: json.loads(json.dumps(saved)) if p.resolve() == path else None)
 
