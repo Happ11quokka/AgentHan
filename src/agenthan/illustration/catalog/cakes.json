@@ -1,1 +1,1199 @@
-[]
+[
+  {
+    "id": "cake_medovik",
+    "name": "메도빅",
+    "aliases": [
+      "메도빅 꿀 케이크",
+      "꿀 케이크",
+      "허니 케이크",
+      "Medovik",
+      "Медовик"
+    ],
+    "keywords": [
+      "메도빅",
+      "꿀케이크",
+      "꿀케익",
+      "medovik",
+      "медовик",
+      "honeycake"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ]
+      ],
+      "top": "cream",
+      "toppings": [
+        [
+          "crumbs",
+          "honey"
+        ]
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "cake_medovik_choco",
+    "name": "초코 메도빅",
+    "aliases": [
+      "메도빅 꿀케이크 초코",
+      "초콜릿 메도빅",
+      "초코 꿀케이크"
+    ],
+    "keywords": [
+      "초코메도빅",
+      "메도빅초코",
+      "초콜릿메도빅",
+      "꿀케이크초코",
+      "초코꿀케이크"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "choco",
+          0.5
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "choco",
+          0.5
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "choco",
+          0.5
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "choco",
+          0.5
+        ],
+        [
+          "cocoa",
+          1
+        ]
+      ],
+      "top": "choco",
+      "toppings": [
+        [
+          "curls",
+          "cocoa"
+        ],
+        [
+          "drizzle",
+          "caramel"
+        ]
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "cake_medovik_sourberry",
+    "name": "사워베리 메도빅",
+    "aliases": [
+      "메도빅 꿀케이크 사워베리크림",
+      "사워베리 꿀케이크"
+    ],
+    "keywords": [
+      "사워베리",
+      "메도빅사워베리",
+      "꿀케이크사워베리",
+      "사워베리꿀케이크"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "honey",
+          1
+        ],
+        [
+          "berry_cream",
+          0.6
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "berry_cream",
+          0.6
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "berry_cream",
+          0.6
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "berry_cream",
+          0.6
+        ],
+        [
+          "honey",
+          1
+        ]
+      ],
+      "top": "berry_cream",
+      "toppings": [
+        [
+          "sparse_crumbs",
+          "honey"
+        ],
+        [
+          "raspberries",
+          "berry"
+        ]
+      ],
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "cake_medovik_whole",
+    "name": "메도빅 홀케이크",
+    "aliases": [
+      "메도빅 홀 케이크",
+      "메도빅 한 판",
+      "꿀케이크 홀"
+    ],
+    "keywords": [
+      "메도빅홀",
+      "홀메도빅",
+      "꿀케이크홀",
+      "홀꿀케이크"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "whole",
+      "cut": 26,
+      "layers": [
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ],
+        [
+          "cream",
+          0.5
+        ],
+        [
+          "honey",
+          1
+        ]
+      ],
+      "side": "honey",
+      "side_crumbs": "sponge",
+      "top": "cream",
+      "toppings": [
+        [
+          "crumbs",
+          "honey"
+        ],
+        [
+          "honeycomb",
+          "honey"
+        ]
+      ],
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "cake_napoleon",
+    "name": "나폴레옹",
+    "aliases": [
+      "나폴레옹 케이크",
+      "Napoleon",
+      "Наполеон"
+    ],
+    "keywords": [
+      "나폴레옹",
+      "밀푀유",
+      "napoleon",
+      "наполеон"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "bar",
+      "layers": [
+        [
+          "crust",
+          0.55
+        ],
+        [
+          "custard",
+          0.7
+        ],
+        [
+          "crust",
+          0.55
+        ],
+        [
+          "custard",
+          0.7
+        ],
+        [
+          "crust",
+          0.55
+        ],
+        [
+          "custard",
+          0.7
+        ],
+        [
+          "crust",
+          0.55
+        ],
+        [
+          "custard",
+          0.7
+        ],
+        [
+          "crust",
+          0.55
+        ],
+        [
+          "custard",
+          0.7
+        ],
+        [
+          "crust",
+          0.55
+        ]
+      ],
+      "top": "custard",
+      "toppings": [
+        [
+          "crumbs",
+          "sponge"
+        ],
+        [
+          "dust",
+          "white"
+        ]
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "cake_bird_milk",
+    "name": "버드밀크 케이크",
+    "aliases": [
+      "버드밀크",
+      "새의 우유",
+      "Птичье молоко"
+    ],
+    "keywords": [
+      "버드밀크",
+      "birdsmilk",
+      "птичьемолоко"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "choco",
+          0.16
+        ],
+        [
+          "meringue",
+          1
+        ],
+        [
+          "sponge",
+          0.3
+        ],
+        [
+          "meringue",
+          1
+        ],
+        [
+          "sponge",
+          0.3
+        ]
+      ],
+      "top": "choco",
+      "toppings": [
+        [
+          "shine",
+          "white"
+        ],
+        [
+          "drizzle",
+          "meringue"
+        ]
+      ],
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "cake_kiev",
+    "name": "키예프 케이크",
+    "aliases": [
+      "키예프",
+      "키이우 케이크",
+      "Киевский торт"
+    ],
+    "keywords": [
+      "키예프",
+      "키에프",
+      "키이우케이크",
+      "kievcake",
+      "kyivcake",
+      "киевский"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "almond",
+          1
+        ],
+        [
+          "cocoa",
+          0.5
+        ],
+        [
+          "almond",
+          1
+        ],
+        [
+          "cocoa",
+          0.5
+        ],
+        [
+          "almond",
+          1
+        ]
+      ],
+      "top": "cream",
+      "toppings": [
+        [
+          "rosettes",
+          "berry_cream"
+        ],
+        [
+          "hazelnuts",
+          "nut"
+        ]
+      ],
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "cake_praha",
+    "name": "프라하",
+    "aliases": [
+      "프라하 케이크",
+      "Praga",
+      "Прага"
+    ],
+    "keywords": [
+      "프라하",
+      "prague",
+      "praga",
+      "прага"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "choco_shade",
+          0.18
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "choco",
+          0.55
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "choco",
+          0.55
+        ],
+        [
+          "cocoa",
+          1
+        ]
+      ],
+      "top": "choco",
+      "toppings": [
+        [
+          "shine",
+          "white"
+        ],
+        [
+          "rosettes",
+          "cocoa"
+        ]
+      ],
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "cake_smetannik",
+    "name": "스메타닉",
+    "aliases": [
+      "스메타닉 케이크",
+      "Сметанник"
+    ],
+    "keywords": [
+      "스메타닉",
+      "스메따닉",
+      "smetannik",
+      "сметанник"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "sponge",
+          0.6
+        ],
+        [
+          "meringue",
+          0.75
+        ],
+        [
+          "sponge",
+          0.6
+        ],
+        [
+          "meringue",
+          0.75
+        ],
+        [
+          "sponge",
+          0.6
+        ],
+        [
+          "meringue",
+          0.75
+        ],
+        [
+          "sponge",
+          0.6
+        ]
+      ],
+      "top": "meringue",
+      "toppings": [
+        [
+          "sparse_crumbs",
+          "cocoa"
+        ],
+        [
+          "mint",
+          "leaf"
+        ]
+      ],
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "cake_zebra",
+    "name": "제브라 케이크",
+    "aliases": [
+      "제브라",
+      "얼룩말 케이크",
+      "Зебра"
+    ],
+    "keywords": [
+      "제브라",
+      "얼룩말케이크",
+      "zebracake",
+      "зебра"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "wave": 3,
+      "layers": [
+        [
+          "sponge",
+          1
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "sponge",
+          1
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "sponge",
+          1
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "sponge",
+          1
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "sponge",
+          1
+        ]
+      ],
+      "top": "sponge",
+      "toppings": [
+        [
+          "dust",
+          "white"
+        ]
+      ],
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "cake_carrot",
+    "name": "당근 케이크",
+    "aliases": [
+      "캐럿 케이크",
+      "Carrot cake"
+    ],
+    "keywords": [
+      "당근케이크",
+      "당근케익",
+      "캐럿케이크",
+      "캐롯케이크",
+      "carrotcake"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "carrot_sponge",
+          1
+        ],
+        [
+          "cream",
+          0.45
+        ],
+        [
+          "carrot_sponge",
+          1
+        ],
+        [
+          "cream",
+          0.45
+        ],
+        [
+          "carrot_sponge",
+          1
+        ]
+      ],
+      "top": "cream",
+      "toppings": [
+        [
+          "walnuts",
+          "nut"
+        ],
+        [
+          "carrots",
+          "carrot"
+        ]
+      ],
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "cake_cheesecake_vanilla",
+    "name": "바닐라 치즈케이크",
+    "aliases": [
+      "치즈케이크",
+      "바닐라 치즈 케이크"
+    ],
+    "keywords": [
+      "치즈케이크",
+      "치즈케익",
+      "바닐라치즈",
+      "cheesecake"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "height": 62,
+      "layers": [
+        [
+          "cheese_top",
+          0.08
+        ],
+        [
+          "cheese",
+          1
+        ],
+        [
+          "crust",
+          0.22
+        ]
+      ],
+      "top": "cheese_top",
+      "toppings": [
+        [
+          "vanilla",
+          "choco_shade"
+        ]
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "cake_walnut",
+    "name": "호두 케이크",
+    "aliases": [
+      "호두케익",
+      "월넛 케이크"
+    ],
+    "keywords": [
+      "호두케이크",
+      "월넛케이크",
+      "walnutcake"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "sponge",
+          1
+        ],
+        [
+          "custard",
+          0.5
+        ],
+        [
+          "choco",
+          0.35
+        ],
+        [
+          "sponge",
+          1
+        ],
+        [
+          "custard",
+          0.5
+        ],
+        [
+          "sponge",
+          1
+        ]
+      ],
+      "top": "custard",
+      "toppings": [
+        [
+          "drizzle",
+          "choco"
+        ],
+        [
+          "walnuts",
+          "nut"
+        ]
+      ],
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "cake_symphony",
+    "name": "심포니",
+    "aliases": [
+      "심포니 케이크"
+    ],
+    "keywords": [
+      "심포니",
+      "symphony",
+      "симфония"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "cream",
+          1
+        ],
+        [
+          "berry",
+          0.22
+        ],
+        [
+          "almond",
+          0.6
+        ],
+        [
+          "cream",
+          1
+        ],
+        [
+          "lemon",
+          0.22
+        ],
+        [
+          "almond",
+          0.6
+        ]
+      ],
+      "top": "cream",
+      "toppings": [
+        [
+          "almonds",
+          "almond"
+        ],
+        [
+          "strawberries",
+          "berry"
+        ]
+      ],
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "cake_tchaikovsky",
+    "name": "차이코프스키",
+    "aliases": [
+      "차이코프스키 케이크",
+      "차이콥스키"
+    ],
+    "keywords": [
+      "차이코프스키",
+      "차이콥스키",
+      "tchaikovsky",
+      "чайковский"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "whole",
+      "rx": 66,
+      "height": 54,
+      "top_y": 118,
+      "side": "cream",
+      "drip": "caramel",
+      "top": "meringue",
+      "toppings": [
+        [
+          "curls",
+          "cocoa"
+        ],
+        [
+          "raspberries",
+          "berry"
+        ]
+      ],
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "cake_choco_mascarpone",
+    "name": "초코 마스카포네",
+    "aliases": [
+      "초콜릿 마스카포네",
+      "초코마스카포네 케이크"
+    ],
+    "keywords": [
+      "초코마스카포네",
+      "초콜릿마스카포네",
+      "마스카포네"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "choco",
+          1
+        ],
+        [
+          "meringue",
+          0.8
+        ],
+        [
+          "choco",
+          1
+        ],
+        [
+          "meringue",
+          0.8
+        ],
+        [
+          "choco",
+          1
+        ]
+      ],
+      "top": "meringue",
+      "toppings": [
+        [
+          "dust",
+          "cocoa"
+        ],
+        [
+          "raspberries",
+          "berry"
+        ]
+      ],
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "cake_choco_bomb",
+    "name": "초코렛 폭탄",
+    "aliases": [
+      "초콜릿 폭탄",
+      "초콜렛 폭탄",
+      "초코 폭탄",
+      "초코 밤"
+    ],
+    "keywords": [
+      "초코렛폭탄",
+      "초콜릿폭탄",
+      "초콜렛폭탄",
+      "초코폭탄",
+      "chocobomb",
+      "chocolatebomb"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "dome",
+      "color": "choco",
+      "toppings": [
+        [
+          "drizzle",
+          "caramel"
+        ],
+        [
+          "raspberries",
+          "berry"
+        ]
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "cake_pushkin",
+    "name": "푸쉬킨",
+    "aliases": [
+      "푸시킨",
+      "푸쉬킨 케이크"
+    ],
+    "keywords": [
+      "푸쉬킨",
+      "푸시킨",
+      "pushkin",
+      "пушкин"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "slice",
+      "layers": [
+        [
+          "choco",
+          0.3
+        ],
+        [
+          "cream",
+          0.35
+        ],
+        [
+          "caramel",
+          0.3
+        ],
+        [
+          "cocoa",
+          1
+        ],
+        [
+          "caramel",
+          0.3
+        ],
+        [
+          "cocoa",
+          1
+        ]
+      ],
+      "top": "choco",
+      "toppings": [
+        [
+          "almonds",
+          "almond"
+        ],
+        [
+          "drizzle",
+          "caramel"
+        ]
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "cake_eclair_mini",
+    "name": "미니 에클레어",
+    "aliases": [
+      "미니 에클레르",
+      "에클레어 세트"
+    ],
+    "keywords": [
+      "미니에클레어",
+      "미니에클레르",
+      "minieclair"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "eclair",
+      "glazes": [
+        "choco",
+        "meringue",
+        "caramel"
+      ],
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "cake_eclair_big",
+    "name": "빅 에클레어",
+    "aliases": [
+      "에클레어",
+      "에클레르",
+      "Eclair",
+      "Эклер"
+    ],
+    "keywords": [
+      "에클레어",
+      "에클레르",
+      "eclair",
+      "эклер"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "eclair",
+      "glazes": [
+        "choco"
+      ],
+      "drizzle": "meringue",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "cake_meringue_roll",
+    "name": "머랭 롤",
+    "aliases": [
+      "머랭 롤케이크",
+      "머랭롤 케이크"
+    ],
+    "keywords": [
+      "머랭롤",
+      "meringueroll"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "roll",
+      "outer": "meringue",
+      "inner": "berry_cream",
+      "toppings": [
+        [
+          "currants",
+          "berry"
+        ],
+        [
+          "zest",
+          "lemon"
+        ]
+      ],
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "cake_berry_tart",
+    "name": "베리 타르트",
+    "aliases": [
+      "과일 타르트",
+      "블루베리 타르트",
+      "산딸기 타르트"
+    ],
+    "keywords": [
+      "베리타르트",
+      "블루베리타르트",
+      "산딸기타르트",
+      "berrytart"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "tart",
+      "filling": "custard",
+      "toppings": [
+        [
+          "raspberries",
+          "berry"
+        ],
+        [
+          "blueberries",
+          "blueberry"
+        ]
+      ],
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "cake_tart",
+    "name": "타르트",
+    "aliases": [
+      "크랜베리 타르트",
+      "크랜베리 파인애플 타르트"
+    ],
+    "keywords": [
+      "타르트",
+      "tart",
+      "тарт"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "tart",
+      "filling": "custard",
+      "toppings": [
+        [
+          "pineapple",
+          "lemon"
+        ],
+        [
+          "cranberries",
+          "berry_shade"
+        ]
+      ],
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "cake_pavlova",
+    "name": "파블로바",
+    "aliases": [
+      "파브로바",
+      "파블로바 케이크",
+      "Pavlova",
+      "Павлова"
+    ],
+    "keywords": [
+      "파블로바",
+      "파브로바",
+      "pavlova",
+      "павлова"
+    ],
+    "category": "cake",
+    "recipe": {
+      "shape": "nest",
+      "toppings": [
+        [
+          "raspberries",
+          "berry"
+        ],
+        [
+          "blueberries",
+          "blueberry"
+        ],
+        [
+          "mint",
+          "leaf"
+        ]
+      ],
+      "card": "card_mint"
+    }
+  }
+]

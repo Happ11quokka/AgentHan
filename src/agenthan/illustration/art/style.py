@@ -343,3 +343,25 @@ PALETTE.update(
         "kraft": "#C9A57A",
     }
 )
+
+
+# ── 케이크·디저트 색(티켓 02) ──────────────────────────────────────────────────
+
+PALETTE.update(
+    {
+        "cocoa": "#A06A43",  # 코코아 시트(초코보다 밝다)
+        "caramel": "#C27A33",
+        "berry_cream": "#F4B9C4",  # 베리 크림·사워베리 크림
+        "custard": "#F8D985",
+        "cheese": "#FCEBB6",
+        "cheese_top": "#E8B45E",  # 구운 치즈케이크 윗면
+        "carrot": "#EE8636",
+        "carrot_sponge": "#D6843F",
+        "nut": "#B27A47",
+        "nut_shade": "#8C5A30",
+        "almond": "#EBCB9B",
+        "blueberry": "#4F5E9E",
+        "meringue": "#FFFCF4",
+        "meringue_shade": "#EEE3CD",
+    }
+)
