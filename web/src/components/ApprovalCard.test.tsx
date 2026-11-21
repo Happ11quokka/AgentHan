@@ -5,7 +5,7 @@ import { draft, photoPending, SEED } from "../test/fakeApi";
 import type { DraftRow } from "../types";
 import { ApprovalCard } from "./ApprovalCard";
 
-/** 음식 사진 초안: 이름은 비어 있고 AI 추측은 자리표시자로만 온다(#93). */
+/** 음식 사진 초안: 이름은 비어 있고 사진으로 짐작한 이름은 자리표시자로만 온다(#93). */
 const food = (over: Partial<DraftRow> = {}) =>
   draft({ name_ko: "", is_food: true, name_guess: "밀푀유 케이크", notes: ["food_guess", "price_missing"], ...over });
 
@@ -16,7 +16,7 @@ function show(drafts: DraftRow[]) {
 }
 
 describe("음식 사진 승인 카드", () => {
-  test("메뉴 이름은 사장님이 입력하고 AI 추측은 자리표시자로만 보인다", async () => {
+  test("메뉴 이름은 사장님이 입력하고 짐작한 이름은 자리표시자로만 보인다", async () => {
     const { onAnswer, card, user } = show([food()]);
     const input = card.getByRole("textbox", { name: "메뉴 이름" });
     expect(input).toHaveValue("");

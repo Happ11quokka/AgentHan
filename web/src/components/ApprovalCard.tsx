@@ -10,7 +10,7 @@ const NEW_MENU_ANSWER = "새 메뉴로 올려 줘";
 
 /**
  * 음식 사진 초안의 메뉴 이름 입력칸. 사진만으로는 이름을 맞히기 어려워 사장님이 입력한다(#93).
- * AI 추측 이름은 확정값이 아니라 자리표시자로만 보인다.
+ * 사진으로 짐작한 이름은 확정값이 아니라 자리표시자로만 보인다.
  */
 function FoodName({ draft, onAnswer }: { draft: DraftRow; onAnswer: (text: string) => void }) {
   const [name, setName] = useState(draft.name_ko);
@@ -26,7 +26,7 @@ function FoodName({ draft, onAnswer }: { draft: DraftRow; onAnswer: (text: strin
       <input
         aria-label="메뉴 이름"
         value={name}
-        placeholder={draft.name_guess ? `메뉴 이름 (AI 추측: ${draft.name_guess})` : "메뉴 이름"}
+        placeholder={draft.name_guess ? `메뉴 이름 (예: ${draft.name_guess})` : "메뉴 이름"}
         onChange={(e) => setName(e.target.value)}
       />
       <button type="submit" className="ghost" disabled={!ready}>

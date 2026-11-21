@@ -233,7 +233,7 @@ describe("사진과 승인 카드", () => {
     const card = await screen.findByRole("region", { name: "저장 전 확인" });
     expect(within(card).getByText("밀푀유 케이크")).toBeInTheDocument();
     expect(within(card).getByText("가격을 알려 주세요")).toBeInTheDocument();
-    expect(within(card).getByText("AI 추측")).toBeInTheDocument();
+    expect(within(card).getByText("이름 확인 필요")).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "저장" })).toBeDisabled();
     expect(within(card).getByText("저장하려면 대화로 알려 주세요: 1번 가격")).toBeInTheDocument();
   });

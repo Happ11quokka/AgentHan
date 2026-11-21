@@ -259,7 +259,7 @@ export function draftStatus(d: DraftRow): { text: string; tone: Tone } {
 }
 
 const NOTE_BADGES: Record<string, string> = {
-  food_guess: "AI 추측",
+  food_guess: "이름 확인 필요",
   cutout_failed: "배경 지우기 실패",
   check_spelling: "철자 확인",
   generated: "AI가 쓴 설명",

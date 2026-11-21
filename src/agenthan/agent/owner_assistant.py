@@ -534,13 +534,15 @@ PHOTO_TEXT = {
         "새 메뉴로 올리려면 '새 메뉴로 올려 줘'라고 말해 주세요."
     ),
     "need_food_name": (
-        "사진만으로는 메뉴 이름을 알 수 없어요. 메뉴 이름을 입력해 주세요 (AI 추측: {guess})."
+        "사진만으로는 메뉴 이름을 알 수 없어요. "
+        "메뉴 이름을 입력해 주세요 (사진으로 본 이름: {guess})."
     ),
     "need_food_name_price": (
-        "사진만으로는 메뉴 이름을 알 수 없어요. 메뉴 이름을 입력해 주세요 (AI 추측: {guess}). "
+        "사진만으로는 메뉴 이름을 알 수 없어요. "
+        "메뉴 이름을 입력해 주세요 (사진으로 본 이름: {guess}). "
         "가격도 알려 주세요."
     ),
-    "food_unnamed": "이름 입력 필요 (AI 추측: {guess})",
+    "food_unnamed": "이름 입력 필요 (사진으로 본 이름: {guess})",
     "same_name": (
         "같은 이름의 메뉴 {name}이(가) 이미 있어서 새 메뉴로 올릴 수 없어요. "
         "다른 이름을 입력해 주세요."
@@ -559,7 +561,7 @@ PHOTO_TEXT = {
     "generated": "이름·설명은 AI 초안",
     "check_spelling": "사진 글자(원어 철자) 확인 필요",
     "won": "원",
-    "food_guess": "AI 추측, 이름을 확인해 주세요",
+    "food_guess": "사진으로 짐작한 이름이에요. 확인해 주세요",
     "cutout_failed": "배경 지우기 실패, 원본 사진 사용",
     "board_added": "메뉴판에서 읽은 메뉴 {n}개를 메뉴 탭에 올렸어요.",
     "board_updated": "기존 메뉴 {n}개는 가격을 맞췄어요: {names}.",
@@ -2387,7 +2389,7 @@ class OwnerAssistant:
         draft.description = description.strip() if isinstance(description, str) else ""
 
     def _refresh_food_match(self, draft):
-        """사장님이 입력한 이름(name_ko)과 맞는 기존 메뉴를 찾는다. AI 추측 이름·후보로는
+        """사장님이 입력한 이름(name_ko)과 맞는 기존 메뉴를 찾는다. 사진으로 짐작한 이름·후보로는
         찾지 않는다(#93). 사장님이 새 메뉴로 고르면(as_new) 비슷한 이름은 넘기지만, 저장된
         메뉴와 이름이 똑같으면 새로 만들 수 없으니 그 메뉴를 다시 묻는다."""
         draft.possible_menu_id = draft.possible_menu_name = None
@@ -2534,7 +2536,7 @@ class OwnerAssistant:
         if len(drafts) == 1 and drafts[0].is_food:
             d = drafts[0]
             if not d.name_ko.strip():
-                # 사진만으로는 이름을 확정하지 않는다(#93): AI 추측은 참고로만 보인다.
+                # 사진만으로는 이름을 확정하지 않는다(#93): 짐작한 이름은 참고로만 보인다.
                 key = "need_food_name" if d.price else "need_food_name_price"
                 return t[key].format(guess=d.name_read or "?")
             if d.price:

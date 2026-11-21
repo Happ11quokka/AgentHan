@@ -146,7 +146,8 @@ def photo_preview(
                 "menu_name": record["name"] if record else None,  # the saved menu it matches
                 "notes": list(d.notes),
                 "photo_url": draft_photo_url(i) if d.photo is not None else None,
-                # 음식 사진: 이름은 사장님이 카드에 입력한다. AI 추측은 자리표시자로만(#93).
+                # 음식 사진: 이름은 사장님이 카드에 입력한다.
+                # 사진으로 짐작한 이름은 자리표시자로만(#93).
                 "is_food": d.is_food,
                 "name_guess": d.name_read if d.is_food else None,
             }

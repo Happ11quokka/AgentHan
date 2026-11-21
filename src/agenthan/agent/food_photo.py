@@ -100,7 +100,7 @@ def read_food_photo(data, store_context="", *, call=chat_v3) -> FoodGuess:
 def draft_from_food(
     data, knowledge: StoreKnowledge, *, store_context="", call=chat_v3, cutout=cutout_on_white
 ):
-    """사진만으로는 메뉴 이름을 맞히기 어렵다(#93). AI 추측 이름은 `name_read`에만 두고
+    """사진만으로는 메뉴 이름을 맞히기 어렵다(#93). 사진으로 짐작한 이름은 `name_read`에만 두고
     `name_ko`(저장할 이름)는 비워 둔다: 사장님이 입력한 이름으로만 저장하고, 기존 메뉴
     매칭도 그 이름으로 한다(owner_assistant._refresh_food_match). `knowledge`는 예전 호출과
     맞추려고 받기만 한다."""

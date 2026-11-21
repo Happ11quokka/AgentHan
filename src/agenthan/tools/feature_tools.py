@@ -264,7 +264,7 @@ def _menu(store, args):
     if args.get("description"):
         record["description"] = " ".join(args["description"].split())
     if record.get("ai"):
-        # 사장님이 대화로 승인한 칸은 더 이상 AI 추측이 아니다(메뉴판 사진으로 올린 메뉴).
+        # 사장님이 대화로 승인한 칸은 더 이상 자동으로 채운 칸이 아니다(메뉴판 사진으로 올린 메뉴).
         said = {"price": "price", "new_name": "name", "description": "description"}
         record["ai"] = [f for f in record["ai"] if f not in {said[k] for k in changes}]
     store.write(data)

@@ -24,7 +24,7 @@ function setup(place: Place = filling) {
 }
 
 describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
-  test("채우는 중인 칸은 흐린 자리로, AI가 채운 칸은 배지로 보인다", () => {
+  test("채우는 중인 칸은 흐린 자리로, 자동으로 채운 칸은 점선 밑줄과 안내로 보인다", () => {
     const { row } = setup();
     expect(screen.getByRole("status")).toHaveTextContent("설명과 흰 배경 사진을 채우고 있어요");
     expect(screen.getByRole("status")).toHaveTextContent("메뉴 0/1개 완료");
@@ -32,7 +32,8 @@ describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
     expect(row("Сырники").getByLabelText("설명 쓰는 중")).toBeInTheDocument();
     expect(row("Сырники").getByLabelText("흰 배경 사진 만드는 중")).toBeInTheDocument();
     expect(row("Сырники").getByText(/한국어 이름 만드는 중/)).toBeInTheDocument();
-    expect(row("메도빅").getByText("AI 추측")).toBeInTheDocument();
+    expect(row("메도빅").getByRole("button", { name: "가격: 눌러서 고치기" })).toHaveAttribute("title", expect.stringContaining("자동으로 채웠어요"));
+    expect(screen.queryByText(/AI 추측/)).toBeNull();
     expect(row("메도빅").getByText("메뉴판 사진")).toBeInTheDocument();
   });
 
@@ -93,12 +94,9 @@ describe("메뉴 탭: 메뉴판 사진으로 바로 올린 메뉴", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  test("메뉴판 사진을 읽는 동안 걸린 시간과 진행 막대, 빈 메뉴 자리를 보인다", () => {
+  test("메뉴판 사진을 읽는 동안 메뉴 탭에는 빈 메뉴 자리만 보인다(진행 막대는 대화창)", () => {
     render(<MenuTab place={{ ...SEED, menu: [] }} pending={[]} readingSince={Date.now() - 3000} />);
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("메뉴판 사진을 읽고 있어요");
-    expect(status).toHaveTextContent(/[34]\.\d초/);
-    expect(Number(screen.getByRole("progressbar").getAttribute("aria-valuenow"))).toBeGreaterThan(30);
+    expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByText(/아직 메뉴가 없어요/)).toBeNull();
   });
 
