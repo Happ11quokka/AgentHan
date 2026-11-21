@@ -184,9 +184,9 @@ def test_a_deleted_menu_is_not_on_the_phone_menu(tmp_path) -> None:
 
         answer = _first_answer(client)
 
-    # 손님에게 알려 주는 메뉴도 비서 메뉴다 (피로시키는 비서 가게에만 있다)
+    # 손님에게 알려 주는 메뉴도 비서 메뉴다. 전화로는 앞의 네 개만 든다(실통화 2026-11-22)
     assert answer.startswith("죄송해요, 그 메뉴는 없어요. 저희는 메도빅, 나폴레옹, 아메리카노, "
-                             "메도빅 홀케이크, 피로시키")
+                             "메도빅 홀케이크 같은 메뉴가 있어요.")
     assert "블린" not in answer
 
 
@@ -251,7 +251,7 @@ def test_the_phone_lists_menus_in_the_order_the_owner_saved(tmp_path) -> None:
         answer = _first_answer(client)
 
     assert answer.startswith("죄송해요, 그 메뉴는 없어요. 저희는 피로시키, 아메리카노, 메도빅, "
-                             "나폴레옹, ")
+                             "나폴레옹 같은 메뉴가 있어요.")
 
 
 def test_a_pure_reorder_republishes_but_other_saves_still_do_not(tmp_path) -> None:

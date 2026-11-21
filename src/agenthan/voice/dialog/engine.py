@@ -148,6 +148,16 @@ _QUESTION_CUE = re.compile(
     r"\?|(?<!하)나요|까요|던가|는지|인가|얼마|몇\s|뭐|무슨|어떤|어때|어떻|언제|어디|왜"
     r"|돼|되나|되죠|될까|있어|있나|있죠|없어|없나|들어가|들어\s*있|달아|매워|맛|많아|커요|작아")
 _SPACES_PUNCT = re.compile(r"[\s.,!?~]+")
+# 마실 것을 찾는 말. 없는 메뉴를 찾았을 때 가게 음료만 알려 줄지 본다(`_drinks_if_asked`)
+_DRINK_WORDS = re.compile(
+    r"마실|음료|커피|아메리카노|라떼|카페|에이드|주스|쥬스|스무디|콜라|사이다|탄산|맥주|소주|와인|우유|녹차|홍차")
+# 그 마실 것을 파는지 묻는 말("커피 있어요?", "아메리카노 돼요?"). 무엇이 있는지 묻는 말("음료 뭐
+# 있어요?")은 답변기가 답한다
+_ASKS_FOR_DRINK = re.compile(
+    rf"(?:{_DRINK_WORDS.pattern})\S*\s*(?:도\s*)?(?:있|돼|되|팔|파나|하나요|해요)")
+# 픽업 시각을 물었는데 몇 시에 올지 모른다는 말. 가장 빨리 되는 시각을 권한다(`_on_unhandled`)
+_ANY_TIME = re.compile(
+    r"몰라|모르겠|아무\s*(?:때|시간)|언제든|상관\s*없|빨리|되는\s*대로|편한\s*(?:때|시간)")
 
 
 @dataclass(frozen=True)
@@ -272,7 +282,9 @@ class _CouponOffer:
     """
 
     suggest: MenuItem | None  # "네"면 하나 담을 메뉴. 메뉴 이름 없는 권유면 None
-    question: str  # 지금 기다리는 질문. 되물을 때 다시 한다
+    question: str  # 지금 기다리는 질문(처음 한 번 하는 긴 권유)
+    # 되물을 때 할 짧은 질문("피로시키 하나 더 담으실까요?"). 긴 권유를 되풀이하지 않는다
+    again: str = ""
 
 
 @dataclass(frozen=True)
@@ -1171,8 +1183,23 @@ class DialogEngine:
         """
         if turn.unhandled or turn.responded:
             return
+        if self._suggest_earliest_pickup(turn):
+            return
         turn.unhandled = turn.lost = True
         self._fail(turn)
+
+    def _suggest_earliest_pickup(self, turn: _Turn) -> bool:
+        """몇 시에 오시냐는 물음에 "몰라"·"아무 때나": 되묻지 않고 가장 빨리 되는 시각을 권한다
+        (실통화 2026-11-22: "몰라" → "잘 못 알아들었어요"가 두 번 나왔다). 권했으면 True."""
+        if (self._state is not State.ASK_PICKUP or self._pickup_offer is not None
+                or not _ANY_TIME.search(turn.heard)):
+            return False
+        verdict = judge_pickup(PickupParse(turn.now, asap=True), turn.now, self._config)
+        if verdict.kind != "asap" or verdict.at is None:
+            return False
+        turn.answered = True
+        self._offer_pickup(turn, verdict.at, templates.pickup_suggest_earliest(verdict.at))
+        return True
 
     def _question_again(self, *, short: bool = False) -> str:
         """다시 할 질문. ORDERING에서는 되받기("메도빅 하나요.")를 빼고 질문만 한다.
@@ -1188,7 +1215,9 @@ class DialogEngine:
             if self._state is State.ORDERING and self._stock_out is not None:
                 return self._stock_out.question  # 재료 소진 질문을 다시 (티켓 06)
             if self._state is State.ORDERING and self._coupon_offer is not None:
-                return self._coupon_offer.question  # 쿠폰 권유를 다시 (쿠폰 티켓 10)
+                # 쿠폰 권유를 다시, 짧게 (쿠폰 티켓 10, 실통화 2026-11-22)
+                offer = self._coupon_offer
+                return offer.again or offer.question
             if self._state is State.ORDERING:
                 if self._fixing:  # 복창에 "아니요" 뒤. 고칠 것을 다시 묻는다 (티켓 06)
                     return templates.ask_what_to_fix()
@@ -1415,13 +1444,19 @@ class DialogEngine:
             if reply.kind == "answer":
                 self._say(turn, reply.say)
                 return
+            if unlisted and self._menu_named(reply.menu) is None:
+                # 메뉴판에 없는 메뉴를 물었다("커피 있어요?"): 모른다고 하지 말고 없다고 한다
+                self._say(turn, templates.not_on_menu(self._available_names(),
+                                                      self._drinks_if_asked(turn, act)))
+                return
             if item is None:
                 self._cannot_answer(turn, KnowledgeKey("", "other", _store_gist(question)),
                                     templates.STORE_QUESTION)
                 return
             unlisted = False
         if unlisted:
-            self._say(turn, templates.not_on_menu(self._available_names()))
+            self._say(turn, templates.not_on_menu(self._available_names(),
+                                                  self._drinks_if_asked(turn, act)))
             return
         if item is None:
             self._say(turn, templates.dont_know())
@@ -1588,6 +1623,12 @@ class DialogEngine:
         if reply.kind == "answer":
             self._say(turn, reply.say)
             return
+        if item is None and _ASKS_FOR_DRINK.search(turn.heard):
+            # "커피 있어요?": 가게 자료에 없는 마실 것. 사장님께 넘기지 않고 없다고 한다
+            # (실통화 2026-11-22)
+            self._say(turn, templates.not_on_menu(self._available_names(),
+                                                  self._drinks_if_asked(turn, act)))
+            return
         key = KnowledgeKey(item.id if item else "", "other", _store_gist(question))
         self._cannot_answer(turn, key, item.name_ko if item else templates.STORE_QUESTION)
 
@@ -1636,7 +1677,9 @@ class DialogEngine:
             turn.answered = True
             return
         if self._coupon_offer is not None:
-            turn.answered = True  # 턴 끝에 기다리는 권유를 다시 묻는다 (`_question_again`)
+            # 쿠폰을 또 물었다: 짧은 되묻기가 아니라 권유 전체(부족액·쿠폰 이름)가 답이다
+            self._ask(turn, self._coupon_offer.question, again=self._coupon_offer.again, force=True)
+            turn.answered = True
             return
         if (not self._coupon_offered and not self._read_back
                 and self._state in (State.ORDERING, State.ASK_PICKUP)
@@ -1700,7 +1743,8 @@ class DialogEngine:
             self._open_menu_clarify(turn, act, suggested, question)
         else:
             self._fail(turn)
-            self._say(turn, templates.not_on_menu(self._available_names()))
+            self._say(turn, templates.not_on_menu(self._available_names(),
+                                                  self._drinks_if_asked(turn, act)))
             turn.menu_listed = True
         return None
 
@@ -2418,7 +2462,9 @@ class DialogEngine:
             return None
         question = templates.coupon_offer(
             short.coupon.title, short.short, None if suggest is None else suggest.name_ko)
-        return _CouponOffer(suggest, question)
+        return _CouponOffer(suggest, question,
+                            templates.coupon_offer_again(
+                                None if suggest is None else suggest.name_ko))
 
     def _open_coupon_offer(self, turn: _Turn, offer: _CouponOffer) -> None:
         """권유를 이번 턴의 질문으로 하고 주문 받기로 돌아가 답을 기다린다 (통화당 한 번으로 센다).
@@ -2427,7 +2473,7 @@ class DialogEngine:
         self._coupon_offer = offer
         self._state = State.ORDERING
         self._fixing = False
-        self._ask(turn, offer.question, force=True)
+        self._ask(turn, offer.question, again=offer.again, force=True)
 
     def _room_for(self, amount: int) -> bool:
         """`amount`원어치를 한 개 이상 더 담아도 주문 한도 안인가 (메뉴 이름 없는 권유)."""
@@ -2453,7 +2499,8 @@ class DialogEngine:
                 if offer.question == templates.ask_order():
                     return False  # "어떤 걸로 드릴까요?"에 또 "네": 평소처럼 못 알아들음
                 # 메뉴 이름 없는 권유에 "네": 무엇을 담을지 묻는다. 메뉴를 말하면 바로 복창한다
-                self._coupon_offer = replace(offer, question=templates.ask_order())
+                self._coupon_offer = replace(offer, question=templates.ask_order(),
+                                             again=templates.ask_order())
                 self._ask(turn, templates.ask_order())
                 return True
             self._coupon_offer = None
@@ -2856,6 +2903,15 @@ class DialogEngine:
 
     def _available_names(self) -> list[str]:
         return [m.name_ko for m in self._matcher.available()]
+
+    def _drinks_if_asked(self, turn: _Turn, act: Act) -> list[str]:
+        """손님이 없는 마실 것을 찾았으면("아이스 아메리카노") 가게에서 파는 음료 이름들.
+        아니면 빈 목록. 음료는 종류(잔으로 세는 종류)나 설명에 "음료"가 있는 메뉴다
+        (실통화 2026-11-22: 아홉 메뉴를 다 읽지 말고 음료를 알려 달라)."""
+        if not _DRINK_WORDS.search(f"{act.menu_text} {turn.heard}"):
+            return []
+        return [m.name_ko for m in self._matcher.available()
+                if templates.counter_for(m.category) == "잔" or "음료" in m.description]
 
     # ------------------------------------------------------------ Order
 

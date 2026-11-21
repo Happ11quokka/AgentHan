@@ -141,8 +141,22 @@ def anything_else() -> str:
     return "더 필요하신 거 있으세요?"
 
 
-def not_on_menu(menu_names: Sequence[str]) -> str:
-    return f"죄송해요, 그 메뉴는 없어요. 저희는 {i_ga(_join(menu_names))} 있어요."
+# 없는 메뉴·되묻기 거절 뒤에 드는 메뉴 수. 아홉 개를 다 읽으면 전화로는 못 외운다(실통화 2026-11-22)
+LIST_MENUS = 4
+
+
+def menu_list(menu_names: Sequence[str]) -> str:
+    """가게 메뉴 소개 한 문장. 네 개가 넘으면 앞의 네 개만 "같은 메뉴"로 든다."""
+    if len(menu_names) <= LIST_MENUS:
+        return f"저희는 {i_ga(_join(menu_names))} 있어요."
+    return f"저희는 {_join(menu_names[:LIST_MENUS])} 같은 메뉴가 있어요."
+
+
+def not_on_menu(menu_names: Sequence[str], drinks: Sequence[str] | None = None) -> str:
+    """없는 메뉴. 손님이 마실 것을 찾았고 가게에 음료가 있으면(`drinks`) 음료만 든다."""
+    if drinks:
+        return f"죄송해요, 그 메뉴는 없어요. 마실 거는 {i_ga(_join(drinks))} 있어요."
+    return f"죄송해요, 그 메뉴는 없어요. {menu_list(menu_names)}"
 
 
 # ---------------------------------------------------------------- 옵션·변경·삭제·요청 (티켓 03)
@@ -284,9 +298,14 @@ def coupon_offer(title: str, short: int, suggest_name: str | None) -> str:
     이름 없이 모자란 금액만 말한다.
     """
     if suggest_name is None:
-        return f"{won(short)} 더 담으시면 쿠폰을 쓸 수 있어요. 더 담으실까요?"
-    return (f"{coupon_phrase(title)}이 있는데 {won(short)}이 부족해요. {suggest_name} 하나 더 "
-            "하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더 담으실까요?")
+        return f"{won(short)}만 더 담으시면 {coupon_phrase(title)}을 쓸 수 있어요. 더 담으실까요?"
+    return (f"{won(short)}만 더 담으시면 {coupon_phrase(title)}을 쓸 수 있어요. "
+            f"{suggest_name} 하나 더 담으실까요?")
+
+
+def coupon_offer_again(suggest_name: str | None) -> str:
+    """쿠폰 권유를 다시 물을 때(못 알아들음·질문에 답한 뒤). 긴 권유를 되풀이하지 않는다."""
+    return f"{suggest_name} 하나 더 담으실까요?" if suggest_name else "더 담으실까요?"
 
 
 def coupon_applies(title: str, discount: int) -> str:
@@ -435,6 +454,11 @@ def pickup_before_open(open_at: datetime) -> str:
     return f"죄송해요, 저희는 {spoken_time(open_at)}에 문을 열어요. 몇 시쯤 오세요?"
 
 
+def pickup_suggest_earliest(at: datetime) -> str:
+    """손님이 몇 시에 올지 모를 때("몰라", "아무 때나"): 가장 빨리 되는 시각을 권한다."""
+    return f"가장 빨리 되는 시간은 {meridiem_time(at)}이에요. 그때 오시겠어요?"
+
+
 def confirm_pickup(at: datetime) -> str:
     return f"{meridiem_time(at)}에 오시는 거죠?"
 
@@ -460,7 +484,7 @@ def choose_menu(names: Sequence[str]) -> str:
 
 def menu_declined(menu_names: Sequence[str]) -> str:
     """되묻기에 "아니요"라고 했을 때. 메뉴 목록을 다시 알려 준다."""
-    return f"죄송해요. 저희는 {i_ga(_join(menu_names))} 있어요."
+    return f"죄송해요. {menu_list(menu_names)}"
 
 
 def sold_out(name: str) -> str:

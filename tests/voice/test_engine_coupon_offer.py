@@ -22,6 +22,8 @@ NOW = datetime(2026, 11, 8, 17, 10, tzinfo=KST)
 COUPON = Coupon("coupon-1", "전화 주문 1,000원 할인", "amount", 1000, date(2026, 11, 2),
                 date(2026, 12, 31), min_order=10_000)
 OFFER = templates.coupon_offer("전화 주문 1,000원 할인", 2_500, "아메리카노")
+# 되물을 때(못 알아들음·무응답·질문에 답한 뒤)는 긴 권유를 되풀이하지 않는다 (실통화 2026-11-22)
+OFFER_AGAIN = templates.coupon_offer_again("아메리카노")
 PLAIN = "주문 확인할게요. 메도빅 하나, 6시 반에 찾으러 오시고, 모두 7,500원이에요. 맞으세요?"
 
 
@@ -41,11 +43,15 @@ def _to_pickup(engine: DialogEngine) -> TurnResult:
 
 
 def test_the_offer_sentence() -> None:
-    assert OFFER == ("전화 주문 1,000원 할인 쿠폰이 있는데 2,500원이 부족해요. 아메리카노 하나 더 "
-                     "하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더 담으실까요?")
+    # 실통화(2026-11-22): 네 문장 권유가 길고 되물을 때마다 다 읽었다. 두 문장으로, 되물을 때는 짧게
+    assert OFFER == ("2,500원만 더 담으시면 전화 주문 1,000원 할인 쿠폰을 쓸 수 있어요. "
+                     "아메리카노 하나 더 담으실까요?")
     assert templates.coupon_offer("전화 주문 1,000원 할인", 3_000, None) == (
-        "3,000원 더 담으시면 쿠폰을 쓸 수 있어요. 더 담으실까요?")
-    assert templates.coupon_offer("가을 쿠폰", 500, "블린").startswith("가을 쿠폰이 있는데 500원이")
+        "3,000원만 더 담으시면 전화 주문 1,000원 할인 쿠폰을 쓸 수 있어요. 더 담으실까요?")
+    assert templates.coupon_offer("가을 쿠폰", 500, "블린").startswith(
+        "500원만 더 담으시면 가을 쿠폰을")
+    assert templates.coupon_offer_again("아메리카노") == "아메리카노 하나 더 담으실까요?"
+    assert templates.coupon_offer_again(None) == "더 담으실까요?"
 
 
 def test_the_offer_is_not_a_readback() -> None:
@@ -66,7 +72,7 @@ def test_no_offer_without_a_shortfall() -> None:
 def test_a_suggestion_over_the_order_total_drops_the_menu_name() -> None:
     """아메리카노를 더하면 12,000원 > 한도 10,000원. 2,500원은 더 담을 수 있어 이름 없이 권한다."""
     result = _to_pickup(_engine(replace(StoreConfig.from_fixture(), max_order_total=10_000)))
-    assert result.utterances == [templates.coupon_offer("", 2_500, None)]
+    assert result.utterances == [templates.coupon_offer("전화 주문 1,000원 할인", 2_500, None)]
 
 
 def test_no_offer_when_filling_the_shortfall_breaks_the_order_total() -> None:
@@ -94,7 +100,7 @@ def test_an_unclear_answer_asks_once_more_then_reads_back_without_the_coupon() -
     _to_pickup(engine)
     again = engine.handle("음", NOW)
     assert (again.state, again.utterances) == (State.ORDERING,
-                                              [templates.not_understood(), OFFER])
+                                              [templates.not_understood(), OFFER_AGAIN])
     second = engine.handle("어", NOW)
     assert (second.state, second.utterances) == (State.CONFIRM, [templates.not_understood(), PLAIN])
     assert second.readback and second.handoff == ""
@@ -106,7 +112,7 @@ def test_silence_asks_once_more_then_reads_back_without_the_coupon() -> None:
     engine = _engine()
     _to_pickup(engine)
     again = engine.no_input(NOW)
-    assert again.utterances == [templates.hello_again(), OFFER]
+    assert again.utterances == [templates.hello_again(), OFFER_AGAIN]
     second = engine.no_input(NOW)
     assert (second.state, second.utterances) == (State.CONFIRM, [templates.hello_again(), PLAIN])
     assert second.readback
@@ -116,7 +122,7 @@ def test_a_question_is_answered_and_the_offer_asked_again() -> None:
     engine = _engine()
     _to_pickup(engine)
     result = engine.handle("아메리카노 얼마예요?", NOW)
-    assert result.state is State.ORDERING and result.utterances[-1] == OFFER
+    assert result.state is State.ORDERING and result.utterances[-1] == OFFER_AGAIN
     assert engine.handle("아니요", NOW).utterances == [PLAIN]
 
 

@@ -213,7 +213,7 @@ def checked(reply: AnswerReply, request: AnswerRequest) -> AnswerReply:
         return AnswerReply("not_question", reason="promises")
     source = _fact_with(reply.evidence, request.facts)
     if not source and _only_lists_menus(say, request.facts):
-        return replace(reply, say=say)
+        return replace(reply, say=_narrowed_list(say, request))
     if not source:
         return replace(UNSURE, evidence=reply.evidence, reason="no_evidence")
     known = _numbers(" ".join(request.facts)) | _numbers(request.text)
@@ -234,6 +234,43 @@ def _only_lists_menus(say: str, facts: Sequence[str]) -> bool:
         if (squashed := _squash(name)) in rest:
             rest, found = rest.replace(squashed, ""), found + 1
     return found >= 2 and not _LIST_WORDS.sub("", rest)
+
+
+# 메뉴 이름만 늘어놓은 답에서 드는 이름 수. 아홉 개를 다 읽으면 전화로는 못 외운다
+MAX_LISTED_MENUS = 4
+_WORD = re.compile(r"[가-힣A-Za-z]{2,}")
+_WORD_TAIL = re.compile(r"(?:종류|류|으로|로|은|는|이|가|을|를|도|만|요)$")
+
+
+def _narrowed_list(say: str, request: AnswerRequest) -> str:
+    """메뉴 이름만 늘어놓은 답을 줄인다(실통화 2026-11-22: "케이크 종류 뭐 있어요"에 아홉 개를 다
+    읽었다). 손님 말의 낱말("케이크")이 종류·설명에 적힌 메뉴가 있으면 그 메뉴만 남기고, 많아야
+    `MAX_LISTED_MENUS`개. 줄일 게 없으면 답 그대로."""
+    rows = {m.group(1): line for line in request.facts if (m := _MENU_NAME.match(line))}
+    listed = [name for name in rows if _squash(name) in _squash(say)]
+    picked = listed
+    for word in (_WORD_TAIL.sub("", w) for w in _WORD.findall(request.text)):
+        if len(word) < 2:
+            continue
+        # 낱말 앞이 띄어 있어야 한다("꿀 케이크"는 케이크, "팬케이크"는 아니다).
+        # 붙여 쓴 자료뿐이면 그냥 찾는다
+        alone = re.compile(rf"(?<![가-힣]){re.escape(word)}")
+        kind = ([name for name in listed if alone.search(_about(rows[name]))]
+                or [name for name in listed if word in _about(rows[name])])
+        if kind and len(kind) < len(listed):
+            picked = kind
+            break
+    if picked == listed and len(listed) <= MAX_LISTED_MENUS:
+        return say
+    picked = picked[:MAX_LISTED_MENUS]
+    if len(picked) == 1:
+        return f"{picked[0]} 있어요."
+    return f"{', '.join(picked)} 있어요."
+
+
+def _about(line: str) -> str:
+    """메뉴 자료 줄의 종류·설명 칸만 (가격·후기·이름 칸의 우연한 낱말은 빼고)."""
+    return " ".join(part for part in line.split(" | ") if part.startswith(("종류 ", "설명:")))
 
 
 def notes_from(known: Mapping[str, Sequence[str]]) -> Notes:
