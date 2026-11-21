@@ -46,8 +46,17 @@ export type RecordSection = "talktalk" | "order" | "reservation";
 /** 가게 기본 정보(상호·주소·전화번호·소개글). 비어 있으면 null. */
 export type BusinessInfo = { name: string | null; address: string | null; phone: string | null; introduction: string | null };
 
+/**
+ * 메뉴판 사진 채우기 한 번의 진행(place.py fill_progress). started_at: 이 일을 가리키는 서버 시각(초),
+ * seconds: 응답을 만들 때까지 지난 초(기기 시계가 달라도 맞게), menu_ids: 이 일이 채우는 메뉴(다 채운 메뉴 포함),
+ * fields: 채울 칸 수(다 채운 칸 포함).
+ */
+export type MenuFill = { started_at: number; seconds: number; menu_ids: string[]; fields: number };
+
 export type Place = {
   menu: MenuRow[];
+  /** 메뉴판 사진 채우기 진행. 채우는 중이 아니면 null, 예전 서버 응답에는 없다. */
+  menu_fill?: MenuFill | null;
   business_hours: Record<string, DayHours>;
   coupon: Coupon[];
   /** 대표키워드(검색어). 예전 서버 응답에는 없을 수 있다. */
