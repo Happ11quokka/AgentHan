@@ -39,9 +39,28 @@
   빈 한국어·500자 넘는 글 422. 다음 통화부터 엔진이 "사장님 말씀으로는 …"으로 답한다
 
 손님 쪽 (`customer_texts_router`, 티켓 07):
-- `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE
-  (최대 6분, 주문 승인 티켓 03).
+- `GET /api/phone/calls/{id}/sms`: 손님에게 보낸 문자 미리보기 SSE (최대 6분, 주문 승인 티켓 03).
+  예전 손님 화면의 "받은 문자"였고, 지금 손님 화면은 주문 현황(아래)을 연다(전화 주문 현황 티켓 05).
   토큰 없음(통화 id는 추측할 수 없는 값). 모르는 통화는 404
+
+손님 주문 현황 (`customer_orders_router`, 전화 메뉴·주문 현황·쿠폰 티켓 04):
+- `GET /api/phone/orders/{id}`: 주문 번호(= 통화 id)로 주문 한 건의 현황. 모양과 단계는
+  `order_status.py`(줄 목록·금액·픽업 시각·단계 checking·confirmed·cancelled). 토큰 없음(주문
+  번호가 열쇠다). 허브에 주문 카드가 없으면(서버가 다시 뜸) 전화 주문 기록(DB)의 마지막 상태로
+  같은 모양을 준다(티켓 06, `order_archive.py`). 둘 다 없으면(모르는 번호·주문 없이 끝난 통화·DB
+  없음) 404 "주문을 찾을 수 없어요". 결과·사유·품절 메뉴·취소 가능(`outcome`·`reason`·`sold_out`·
+  `can_cancel`)은 티켓 05
+- `GET /api/phone/orders/{id}/stream`: 주문 현황 SSE (티켓 05, 문자 스트림과 같은 방식). 먼저
+  `order.status`(조회와 같은 모양), 그 뒤 현황이 달라질 때마다 `order.status`(현황 전체). 창
+  (`window_s`, 서버는 자동 취소 마감 + 60초)이 지나면 `order.end`를 보내고 닫는다. 허브에 주문
+  카드가 없으면 404(화면은 조회 API로 읽는다. 기록에서 읽은 주문은 더 바뀌지 않는다)
+- `POST /api/phone/orders/{id}/cancel`: 손님 취소 (티켓 07). 본문 없음. 가게 확인 중인 통화 뒤
+  요청과 늦춘 수락만 받는다(조회의 `can_cancel`). 받으면 바뀐 현황(200, stage cancelled · outcome
+  customer_cancelled). 받지 않으면 409 `{"detail": {"code", "message", "order"}}`: `code`는 거부
+  사유(accepted · auto 제시간·자동 확정, rejected · out_of_stock 거절, expired 자동 취소,
+  customer_cancelled 이미 취소함, in_call 통화가 손님 말을 받는 중), `message`는 손님 화면 한 줄,
+  `order`는 지금 현황(진 쪽 화면이 이긴 결과를 보인다). 허브 카드만 받는다: 허브에 없는 주문(모르는
+  번호·지워진 카드·DB에서만 읽히는 주문)은 404 "주문을 찾을 수 없어요"
 
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
   못 붙여서 쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -67,13 +86,17 @@ from agenthan.voice.owner.hub import (
     AlreadyAnswered,
     AlreadyDecided,
     CardBusy,
+    NotCancellable,
     OwnerEvent,
     OwnerHub,
     UnknownCard,
 )
+from agenthan.voice.owner.order_status import CANCEL_REFUSED
 
 OWNER_PREFIX = "/api/owner"
 CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
+# 손님 주문 현황 (티켓 04). 화면 주소 `/phone/orders/<번호>`와 겹치지 않게 `/api` 아래에 둔다
+CUSTOMER_ORDERS_PREFIX = "/api/phone/orders"
 # 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 최소 시간 (4단계 spec "최대 2분"). 서버는
 # 통화 뒤 확인 대기의 수락·자동 취소 문자까지 받게 `max(이 값, 자동 취소 마감 + 60초)`로 연다
 # (`server.py`, 주문 승인 티켓 03). 창 길이는 `sms.snapshot`의 `window_s`로 화면에 알린다
@@ -90,6 +113,8 @@ _STATUS: tuple[tuple[type[Exception], int], ...] = (
     (AlreadyDecided, 409),  # 주문 결정은 한 번만 (주문 승인 티켓 02)
     (ValueError, 422),  # 모르는 답·빈 글
 )
+# 손님 주문 현황 경로들(조회·구독·취소)의 404 문구
+_ORDER_NOT_FOUND = {404: "주문을 찾을 수 없어요"}
 
 
 @contextmanager
@@ -157,7 +182,7 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
 
     @router.post("/orders/{order_id}/accept")
     async def accept(order_id: str, body: AcceptBody | None = None) -> dict[str, Any]:
-        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(예전 접수 경로와 같은 주소)."""
+        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(승인 전 카드 버튼과 같은 주소)."""
         delay_min = body.delay_min if body is not None else 0
         with _hub_errors({404: "그런 주문이 없어요",
                           409: "이미 결정했거나 손님이 주문을 고치는 중이에요"}):
@@ -234,8 +259,49 @@ def customer_texts_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) ->
     return router
 
 
+def customer_orders_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) -> APIRouter:
+    """손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04·05). 사장님 토큰이 없다(주문 번호가 열쇠다).
+
+    `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 카드가 없으면 전화
+    주문 기록(티켓 06, `OwnerHub.lookup_order_status`). 둘 다 없으면 404.
+    `GET /api/phone/orders/{id}/stream`: 허브 카드 현황의 SSE(`order.status` …, `window_s` 뒤
+    `order.end`). 허브에 카드가 없으면 404.
+    `POST /api/phone/orders/{id}/cancel`: 손님 취소(티켓 07, 모듈 설명). 허브 카드만 받는다.
+    """
+    router = APIRouter(prefix=CUSTOMER_ORDERS_PREFIX)
+
+    def watch(order_id: str) -> AsyncIterator[OwnerEvent]:
+        # 스트림을 열기 전에(의존성에서) 모르는 주문을 404로 거절한다
+        with _hub_errors(_ORDER_NOT_FOUND):
+            return hub.watch_order(order_id)
+
+    @router.get("/{order_id}")
+    async def order_status(order_id: str) -> dict[str, Any]:
+        with _hub_errors(_ORDER_NOT_FOUND):
+            return await hub.lookup_order_status(order_id)
+
+    @router.post("/{order_id}/cancel")
+    async def cancel(order_id: str) -> dict[str, Any]:
+        try:
+            with _hub_errors(_ORDER_NOT_FOUND):
+                return hub.cancel_by_customer(order_id)
+        except NotCancellable as refused:
+            raise HTTPException(status_code=409, detail={
+                "code": refused.code, "message": CANCEL_REFUSED[refused.code],
+                "order": refused.status}) from refused
+
+    @router.get("/{order_id}/stream", response_class=EventSourceResponse)
+    async def order_stream(
+        events: AsyncIterator[OwnerEvent] = Depends(watch),  # noqa: B008 — 닫힌 함수는 문자열 주석으로 못 찾음
+    ) -> AsyncIterator[ServerSentEvent]:
+        async for event in _until_window(events, window_s, end_event="order.end"):
+            yield event
+
+    return router
+
+
 async def _until_window(
-    events: AsyncIterator[OwnerEvent], window_s: float
+    events: AsyncIterator[OwnerEvent], window_s: float, *, end_event: str = "sms.end"
 ) -> AsyncIterator[ServerSentEvent]:
     loop = asyncio.get_running_loop()
     end = loop.time() + window_s
@@ -250,4 +316,4 @@ async def _until_window(
                 # 손님 화면이 같은 시간에 닫도록 창 길이를 알린다(설정에 따라 바뀐다, 리뷰 2번)
                 data = {**data, "window_s": window_s}
             yield ServerSentEvent(event=event.name, data=data, id=str(event.id))
-    yield ServerSentEvent(event="sms.end", data={})
+    yield ServerSentEvent(event=end_event, data={})

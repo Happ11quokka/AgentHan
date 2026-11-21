@@ -32,13 +32,13 @@ def waiting() -> DialogEngine:
                           StoreConfig.from_fixture(), order_id="o-test")
     engine.start(NOW)
     for text in ("메도빅 하나요", "그게 다예요", "6시 반이요", "네"):
-        result = engine.handle(text, NOW, approval=True)
+        result = engine.handle(text, NOW, approval=True, wait_in_call=True)
     assert result.approval_request is not None
     return engine
 
 
 def talk(engine: DialogEngine, text: str) -> TurnResult:
-    return engine.handle(text, NOW, approval=True)
+    return engine.handle(text, NOW, approval=True, wait_in_call=True)
 
 
 @pytest.mark.parametrize("text", [
@@ -65,7 +65,7 @@ def test_other_speech_does_not_ask_the_owner_a_menu_question() -> None:
                           StoreConfig.from_fixture(), order_id="o-test", ask_owner=True)
     engine.start(NOW)
     for text in ("메도빅 하나요", "그게 다예요", "6시 반이요", "네"):
-        engine.handle(text, NOW, approval=True)
+        engine.handle(text, NOW, approval=True, wait_in_call=True)
 
     r = talk(engine, "메도빅에 견과 들어가요?")
 

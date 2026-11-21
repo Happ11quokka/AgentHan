@@ -1,39 +1,65 @@
-/* 통화 화면 전용. 클래스는 모두 phone- 접두어(다른 화면과 겹치지 않게). */
+/* 통화 화면 전용. 클래스는 모두 phone- 접두어(다른 화면과 겹치지 않게).
+   색·글꼴·라운드는 본 앱과 같은 토큰(`src/tokens.css`)을 쓴다. 아래 변수는 그 토큰을 가리키는 이름일 뿐이다 */
 .phone {
-  --phone-accent: #1f7a4d;
-  --phone-danger: #c0392b;
-  --phone-muted: #6b7280;
-  --phone-line: rgba(127, 127, 127, 0.25);
-  --phone-bot-bg: rgba(31, 122, 77, 0.1);
-  --phone-guest-bg: rgba(127, 127, 127, 0.12);
+  /* 채움(버튼·말풍선)은 네이버 그린, 글자는 대비가 충분한 진한 초록 */
+  --phone-accent: var(--green);
+  --phone-accent-press: var(--green-press);
+  --phone-accent-soft: var(--green-soft);
+  --phone-accent-ink: var(--green-ink);
+  --phone-danger: var(--red);
+  --phone-danger-soft: var(--red-soft);
+  --phone-muted: var(--ink-2);
+  --phone-faint: var(--ink-3);
+  --phone-line: var(--line-2);
+  --phone-bot-bg: var(--surface-3);
   max-width: 480px;
   margin: 0 auto;
+  padding: 16px 16px max(16px, env(safe-area-inset-bottom));
   /* 화면 높이에 고정: 자막만 안에서 스크롤하고 말 끝·끊기 버튼은 늘 보이게 */
   height: 100dvh;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
+/* 머리: 브랜드 마크 + "가게 전화 주문" 한 줄, 그 아래 큰 통화 상태 */
 .phone-head {
-  text-align: center;
+  flex: none;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  row-gap: 14px;
+}
+
+.phone-head .brand-logo {
+  font-size: 20px;
 }
 
 .phone-store {
+  justify-self: end;
   margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
   color: var(--phone-muted);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .phone-status {
-  margin: 4px 0 0;
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .phone-phase-listening {
-  color: var(--phone-accent);
+  color: var(--phone-accent-ink);
 }
 
 .phone-status-failed {
@@ -41,8 +67,10 @@
 }
 
 .phone-error {
+  flex: none;
   border: 1px solid var(--phone-danger);
-  border-radius: 12px;
+  border-radius: var(--radius);
+  background: var(--phone-danger-soft);
   padding: 12px 14px;
 }
 
@@ -51,63 +79,73 @@
 }
 
 .phone-warn {
+  flex: none;
   margin: 0;
   border: 1px dashed var(--phone-danger);
-  border-radius: 12px;
+  border-radius: var(--radius-s);
   padding: 8px 14px;
-  font-size: 0.9em;
+  font-size: 14px;
+  color: var(--phone-muted);
 }
 
+/* ── 자막: 본 앱 대화와 같은 말풍선(AI 회색 왼쪽, 손님 초록 오른쪽) ── */
 .phone-captions {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   overflow-y: auto;
   min-height: 0;
 }
 
-.phone-order {
-  flex: none;
-  max-height: 40dvh;
-  overflow-y: auto;
-}
-
 .phone-empty {
-  color: var(--phone-muted);
+  color: var(--phone-faint);
   text-align: center;
   margin: auto 0;
 }
 
 .phone-line {
   margin: 0;
-  padding: 8px 12px;
-  border-radius: 12px;
+  padding: 10px 14px;
+  border-radius: 20px;
   max-width: 85%;
+  font-size: 16px;
+  line-height: 1.5;
+  word-break: keep-all;
 }
 
 .phone-line-bot {
   align-self: flex-start;
   background: var(--phone-bot-bg);
+  border-bottom-left-radius: 6px;
 }
 
 .phone-line-guest {
   align-self: flex-end;
-  background: var(--phone-guest-bg);
+  background: var(--phone-accent);
+  color: #fff;
+  border-bottom-right-radius: 6px;
 }
 
 .phone-who {
   display: block;
+  margin-bottom: 2px;
   font-size: 12px;
-  color: var(--phone-muted);
+  font-weight: 600;
+  color: var(--phone-faint);
+}
+
+.phone-line-guest .phone-who {
+  color: rgb(255 255 255 / 85%);
 }
 
 /* 사장님 확인 요청 배지 (주문 승인 티켓 09) */
 .phone-approval {
   flex: none;
-  border: 1px solid var(--phone-line);
-  border-radius: 12px;
-  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px 16px;
 }
 
 .phone-approval p {
@@ -118,6 +156,7 @@
 
 .phone-approval-wait {
   border-style: dashed;
+  border-color: var(--phone-line);
 }
 
 .phone-approval-wait strong::before {
@@ -127,7 +166,7 @@
   height: 8px;
   margin-right: 8px;
   border-radius: 50%;
-  background: var(--phone-muted);
+  background: var(--phone-accent);
   vertical-align: middle;
   animation: phone-approval-pulse 1.2s ease-in-out infinite;
 }
@@ -138,26 +177,28 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .phone-approval-wait strong::before {
-    animation: none;
-  }
-}
-
 .phone-approval-ok {
-  border-color: var(--phone-accent);
-  color: var(--phone-accent);
+  border-color: transparent;
+  background: var(--phone-accent-soft);
+  color: var(--phone-accent-ink);
 }
 
 .phone-approval-stop {
-  border-color: var(--phone-danger);
+  border-color: transparent;
+  background: var(--phone-danger-soft);
   color: var(--phone-danger);
 }
 
+/* ── 담은 메뉴·주문서 ── */
 .phone-order {
+  flex: none;
+  max-height: 40dvh;
+  overflow-y: auto;
   border: 1px solid var(--phone-line);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
 }
 
 .phone-order-final {
@@ -165,8 +206,9 @@
 }
 
 .phone-order h2 {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   font-size: 16px;
+  font-weight: 700;
 }
 
 .phone-order ul {
@@ -176,17 +218,42 @@
 }
 
 .phone-order li,
+.phone-discount,
 .phone-total {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.phone-order li > span:last-child,
+.phone-status-lines li > span:last-child,
+.phone-discount > span:last-child {
+  flex: none;
+}
+
+.phone-order small,
+.phone-status-lines small {
+  color: var(--phone-muted);
 }
 
 .phone-total {
   margin: 8px 0 0;
-  border-top: 1px solid var(--phone-line);
-  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  font-size: 17px;
+}
+
+.phone-total strong {
+  font-weight: 800;
+}
+
+/* 쿠폰 주문의 할인 전 금액·쿠폰 줄 (쿠폰 티켓 09) */
+.phone-discount {
+  margin: 0;
+  font-size: 14px;
+  color: var(--phone-muted);
 }
 
 .phone-pickup {
@@ -194,64 +261,42 @@
   color: var(--phone-muted);
 }
 
-/* 받은 문자 (4단계 티켓 07): 통화가 끝난 뒤 보이는 문자 미리보기 */
-.phone-texts {
-  border: 1px solid var(--phone-line);
-  border-radius: 12px;
-  padding: 12px 14px;
+.phone-pickup s {
+  color: var(--phone-faint);
 }
 
-.phone-texts h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
+.phone-pickup strong {
+  color: var(--phone-accent-ink);
 }
 
-.phone-texts ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.phone-text {
-  background: var(--phone-guest-bg);
-  border-radius: 12px;
-  padding: 8px 12px;
-}
-
-.phone-text p {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.phone-text time,
-.phone-texts-note {
-  display: block;
-  font-size: 12px;
-  color: var(--phone-muted);
-}
-
-.phone-texts-note {
-  margin: 8px 0 0;
-}
-
+/* ── 버튼: 손가락으로 누르기 충분한 높이(56px) ── */
 .phone-actions {
+  flex: none;
+  margin-top: auto;
   display: flex;
-  gap: 12px;
+  gap: 10px;
+}
+
+/* 주문 현황 아래 [새로 전화하기]는 카드 안 버튼(다시 주문하기·취소하기)보다 한 단계 낮게 */
+.phone-status-card ~ .phone-actions .phone-btn-answer {
+  background: var(--surface);
+  border-color: var(--phone-accent);
+  color: var(--phone-accent-ink);
 }
 
 .phone-btn {
   flex: 1;
   min-height: 56px;
+  padding: 0 16px;
   border-radius: 28px;
   border: 1px solid var(--phone-line);
-  background: transparent;
-  color: inherit;
+  background: var(--surface);
+  color: var(--ink);
   font: inherit;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
 .phone-btn:disabled {
@@ -265,6 +310,11 @@
   color: #fff;
 }
 
+.phone-btn-answer:active:not(:disabled) {
+  background: var(--phone-accent-press);
+  border-color: var(--phone-accent-press);
+}
+
 .phone-btn-hangup {
   background: var(--phone-danger);
   border-color: var(--phone-danger);
@@ -273,18 +323,22 @@
 
 .phone-btn-interrupt {
   border-color: var(--phone-accent);
-  color: var(--phone-accent);
+  background: var(--phone-accent-soft);
+  color: var(--phone-accent-ink);
 }
 
 .phone-btn-warn {
   flex: none;
-  min-height: 44px;
+  min-height: 48px;
   border-color: var(--phone-danger);
+  background: var(--phone-danger-soft);
+  font-size: 16px;
 }
 
 .phone-mic {
+  flex: none;
   font-size: 13px;
-  color: var(--phone-muted);
+  color: var(--phone-faint);
 }
 
 .phone-mic dl {
@@ -304,8 +358,259 @@
 
 /* AI 응대·개인정보 안내 한 줄 (6단계) */
 .phone-notice {
-  margin: 12px 0 0;
+  flex: none;
+  margin: 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--phone-muted);
+}
+
+/* ── 주문 현황 (전화 메뉴·주문 현황 티켓 04). 통화가 확정 주문으로 끝나면 자막·주문서 자리에 보인다 ── */
+.phone-status-card {
+  /* 내용만큼 크고, 길면 줄어들며 안에서 스크롤한다 */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--phone-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 20px 18px;
+}
+
+.phone-status-card h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  word-break: keep-all;
+}
+
+.phone-status-ok {
+  border-color: var(--phone-accent);
+}
+
+.phone-status-ok h2 {
+  color: var(--phone-accent-ink);
+}
+
+.phone-status-stop {
+  border-color: var(--phone-danger);
+}
+
+.phone-status-stop h2 {
+  color: var(--phone-danger);
+}
+
+.phone-status-detail {
+  margin: 6px 0 0;
+  color: var(--phone-muted);
+  word-break: keep-all;
+}
+
+/*
+ * 단계 표시: 주문 넣음 → 가게 확인 중 → 확정(또는 주문 취소) → 픽업 시각을 가로 한 줄로.
+ * 지난 단계는 초록 ✓, 지금 단계는 번호에 초록 테두리, 남은 단계는 회색 번호. 취소는 빨간 ✕ + "주문 취소" 글.
+ */
+.phone-steps {
+  list-style: none;
+  margin: 20px 0 16px;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  counter-reset: phone-step;
+}
+
+.phone-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--phone-faint);
+  word-break: keep-all;
+  counter-increment: phone-step;
+}
+
+.phone-step::before {
+  content: counter(phone-step);
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--phone-line);
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 다음 단계로 잇는 선 */
+.phone-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 15px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--phone-line);
+}
+
+.phone-step-done {
+  color: var(--phone-muted);
+}
+
+.phone-step-done::before {
+  content: '✓' / '';
+  border-color: var(--phone-accent);
+  background: var(--phone-accent);
+  color: #fff;
+}
+
+.phone-step-done:not(:last-child)::after {
+  background: var(--phone-accent);
+}
+
+.phone-step-current {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.phone-step-current::before {
+  border-color: var(--phone-accent);
+  background: var(--phone-accent-soft);
+  color: var(--phone-accent-ink);
+  box-shadow: 0 0 0 4px var(--phone-accent-soft);
+}
+
+/* 가게 확인 중: 지금 단계가 천천히 숨 쉰다 */
+.phone-status-wait .phone-step-current::before {
+  animation: phone-step-wait 1.6s ease-in-out infinite;
+}
+
+@keyframes phone-step-wait {
+  50% {
+    box-shadow: 0 0 0 8px var(--phone-accent-soft);
+  }
+}
+
+/* 취소·거절: 색만이 아니라 ✕ 표시와 "주문 취소" 글로도 구분한다 */
+.phone-status-stop .phone-step-current {
+  color: var(--phone-danger);
+}
+
+.phone-status-stop .phone-step-current::before {
+  content: '✕' / '';
+  border-color: var(--phone-danger);
+  background: var(--phone-danger);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--phone-danger-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-approval-wait strong::before,
+  .phone-status-wait .phone-step-current::before {
+    animation: none;
+  }
+}
+
+/* 직접 쓰기 거절의 사장님 글, 재료 소진 메뉴 (티켓 05) */
+.phone-status-quote {
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--phone-line);
+  background: var(--surface-2);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  word-break: keep-all;
+}
+
+.phone-status-lines .phone-sold-out {
+  color: var(--phone-danger);
+  font-weight: 700;
+}
+
+.phone-status-card .phone-pickup {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.phone-status-lines {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.phone-status-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.phone-status-card .phone-btn {
+  margin-top: 14px;
+  width: 100%;
+}
+
+/* 손님 취소 (티켓 07): [취소하기] → 화면 안에서 한 번 묻기(브라우저 대화상자 없음), 제시간 수락의 "가게로 전화" 안내 */
+.phone-btn-cancel {
+  border-color: var(--phone-danger);
+  color: var(--phone-danger);
+}
+
+.phone-cancel-ask {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--phone-danger);
+  border-radius: var(--radius);
+  background: var(--phone-danger-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.phone-cancel-ask p {
+  flex-basis: 100%;
+  margin: 0;
+  font-weight: 700;
+}
+
+.phone-status-card .phone-cancel-ask .phone-btn {
+  margin-top: 0;
+  width: auto;
+  flex: 1;
+  min-height: 48px;
+}
+
+.phone-btn-cancel-yes {
+  background: var(--phone-danger);
+  border-color: var(--phone-danger);
+  color: #fff;
+}
+
+.phone-cancel-hint,
+.phone-cancel-notice {
+  margin: 12px 0 0;
+}
+
+.phone-cancel-hint {
+  color: var(--phone-muted);
+}
+
+.phone-cancel-notice {
+  color: var(--phone-danger);
 }

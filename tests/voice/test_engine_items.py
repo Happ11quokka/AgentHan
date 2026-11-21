@@ -256,11 +256,26 @@ def test_optional_option_on_item_without_it_is_explained(engine: DialogEngine) -
     ]
 
 
-def test_option_on_item_with_no_options(engine: DialogEngine) -> None:
+def test_option_on_item_with_no_options_is_noted_as_a_request(engine: DialogEngine) -> None:
+    """고를 것이 없는 메뉴(비서 메뉴는 모두 그렇다)의 옵션 말은 그 줄 요청 사항이다(전화 메뉴 02).
+    금액은 그대로다."""
     r = talk(engine, "나폴레옹 하나요", "디카페인으로요")
     assert lines(r) == [("m02", 1, ())]
-    assert r.utterances[0] == "죄송해요, 나폴레옹은 따로 고를 수 있는 옵션이 없어요."
+    assert r.cart.lines[0].request == "디카페인"
+    assert r.cart.total() == 7000
+    assert r.utterances[0] == "나폴레옹에 디카페인이라고 적어 둘게요."
     assert questions(r) == 1
+    # 복창도 같은 조사로 읽는다(리뷰): "디카페인이라고 적어 뒀어요"
+    readback = talk(engine, "그게 다예요", "6시 반이요").utterances[-1]
+    assert "나폴레옹에 디카페인이라고 적어 뒀어요." in readback
+
+
+def test_option_said_with_a_menu_that_has_none_is_a_request_on_that_line(
+    engine: DialogEngine,
+) -> None:
+    r = talk(engine, "나폴레옹 하나 아이스로요")
+    assert [(line.item.id, line.request) for line in r.cart.lines] == [("m02", "아이스")]
+    assert r.utterances[0] == "나폴레옹에 아이스라고 적어 둘게요."
 
 
 def test_option_targets_last_item(engine: DialogEngine) -> None:

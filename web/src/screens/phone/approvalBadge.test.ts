@@ -22,6 +22,13 @@ const orderText: CustomerText = {
 }
 
 describe('approval badge on the customer screen (주문 승인 티켓 09)', () => {
+  it('says the order was placed when the call ends without waiting (전화 메뉴·주문 현황 티켓 04)', () => {
+    const badge = approvalBadge({ approval: view('after_call'), texts: [] })
+    expect(badge).toMatchObject({ tone: 'wait', label: '주문을 넣었어요' })
+    expect(JSON.stringify(badge)).not.toMatch(/접수|문자/)
+    expect(awaitingText({ approval: view('after_call'), texts: [], status: 'ended' })).toBe(false)
+  })
+
   it('shows "사장님 확인 중" while the owner decides', () => {
     expect(approvalBadge({ approval: view('waiting'), texts: [] })).toMatchObject({
       tone: 'wait',

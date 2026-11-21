@@ -182,6 +182,39 @@ def test_order_sink_writes_phone_orders(seeded) -> None:
     assert row == ("sample", "confirmed", 15000, "메도빅")
 
 
+@needs_db
+def test_a_coupon_order_keeps_its_coupon_and_the_payable_total(seeded) -> None:
+    """쿠폰 칸(마이그레이션 004). total은 낼 금액(할인 뒤)이다 (쿠폰 티켓 09)."""
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    order = Order(id="call-coupon-1",
+                  lines=[OrderLine("m01", 1, name="메도빅", unit_price=7500),
+                         OrderLine("m03", 1, name="아메리카노", unit_price=4500)],
+                  status="confirmed", coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인",
+                  discount=1000)
+    sink.submit(order)
+    sink.record_decision(_decision("call-coupon-1", "accepted"))
+    sink.flush()
+    sink.close()
+    with dbconn.connect(seeded) as c:
+        row = c.execute("SELECT total, coupon_id, coupon_name, discount, owner_status"
+                        " FROM phone_orders WHERE id = %s", ("call-coupon-1",)).fetchone()
+    assert row == (11000, "coupon-1", "전화 주문 1,000원 할인", 1000, "accepted")
+
+
+@needs_db
+def test_an_order_row_from_before_coupons_reads_as_no_coupon(seeded) -> None:
+    """마이그레이션 004 전 모양으로 넣은 행(쿠폰 칸 없이)도 그대로 읽힌다: ''·''·0."""
+    with dbconn.connect(seeded) as c:
+        c.execute("INSERT INTO phone_orders (id, status, lines, total) VALUES (%s, %s, %s, %s)",
+                  ("call-old-1", "confirmed", json.dumps([{"menu_id": "m01", "quantity": 1}]),
+                   7500))
+        row = c.execute("SELECT total, coupon_id, coupon_name, discount FROM phone_orders"
+                        " WHERE id = %s", ("call-old-1",)).fetchone()
+    assert row == (7500, "", "", 0)
+
+
 def _decision(order_id: str, status: str, *, order: Order | None = None, **kw):
     from agenthan.db.orders import OwnerDecisionRow
 
@@ -226,6 +259,10 @@ def test_owner_decisions_reach_db_rows_through_serve() -> None:
     assert rows == [OwnerDecisionRow("call-r", "accepted", "", "2026-11-25T16:00:09+09:00",
                                      "2026-11-25T18:45:00+09:00")]
     assert rows[0].order is order
+    DecisionsToDb(Rows()).record(DecisionRecord(
+        "call-r", "rejected", "out_of_stock", "2026-11-25T16:00:09+09:00",
+        reject_menu_ids=("m01",), reject_text="", reject_text_ko=""))
+    assert rows[-1].reject_menu_ids == ("m01",)  # 거절 내용도 옮긴다 (티켓 06)
 
 
 def test_decisions_without_db_are_dropped_quietly() -> None:
@@ -283,6 +320,131 @@ def test_decisions_are_plain_values_and_the_last_one_wins(seeded) -> None:
     assert _owner_row(seeded, "call-d2") == ("draft", "rejected", "out_of_stock", "16:01:00", "",
                                              7500)
     assert _owner_row(seeded, "call-d3") == ("confirmed", "expired", "", "16:07:00", "", 7500)
+
+
+@needs_db
+def test_an_order_reads_back_with_its_reject_details(seeded) -> None:
+    """주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 결정과 거절 내용(마이그레이션 003)이
+    남고, 주문 번호로 한 줄을 다시 읽는다. 없는 번호는 None."""
+    from agenthan.db.orders import PgOrderSink, find_order
+
+    sink = PgOrderSink(url=seeded)
+    order = Order(id="call-r1", lines=[OrderLine("m01", 2, name="메도빅", unit_price=7500)],
+                  pickup_time="2026-11-25T18:30:00+09:00", status="confirmed",
+                  created_at="2026-11-25T16:00:00+09:00")
+    sink.submit(order)
+    sink.record_decision(_decision("call-r1", "rejected", order=order, reject_reason="free",
+                                   reject_text="Закрываемся", reject_text_ko="문을 닫아요",
+                                   decided_at="2026-11-25T16:01:00+09:00"))
+    sink.record_decision(_decision("call-r2", "rejected", order=_phone_order("call-r2"),
+                                   reject_reason="out_of_stock", reject_menu_ids=("m01",)))
+    sink.flush()
+    sink.close()
+
+    row = find_order("call-r1", seeded)
+    assert row is not None
+    assert (row.status, row.owner_status, row.reject_reason, row.reject_text,
+            row.reject_text_ko) == ("confirmed", "rejected", "free", "Закрываемся", "문을 닫아요")
+    assert row.lines == [{"menu_id": "m01", "quantity": 2, "options": [], "request": "",
+                          "name": "메도빅", "unit_price": 7500}]
+    assert (row.pickup_time, row.created_at) == ("2026-11-25T18:30:00+09:00",
+                                                 "2026-11-25T16:00:00+09:00")
+    assert row.decided_at.startswith("2026-11-25T")
+    assert (row.coupon_id, row.coupon_name, row.discount) == ("", "", 0)  # 쿠폰 없는 주문
+    assert find_order("call-r2", seeded).reject_menu_ids == ("m01",)
+    assert find_order("call-nope", seeded) is None
+
+
+def test_reading_an_order_without_db_finds_nothing() -> None:
+    from agenthan.db.orders import find_order
+
+    assert find_order("call-x", url="") is None  # DB 설정 없음
+
+
+@needs_db
+def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> None:
+    """서버가 다시 떠 허브에 카드가 없다: 조회 API가 phone_orders의 마지막 상태를 같은 모양으로
+    돌려준다(serve `OrdersFromDb`). 결정 전 주문은 요청 + 5분이 지났으면 자동 취소다."""
+    from datetime import datetime
+
+    from fastapi.testclient import TestClient
+
+    from agenthan.db.orders import PgOrderSink
+    from agenthan.serve import OrdersFromDb, phone_order_archive
+    from agenthan.voice.server import create_app
+    from agenthan.voice.settings import VoiceSettings
+
+    sink = PgOrderSink(url=seeded)
+    delayed = Order(id="call-s1", lines=[OrderLine("m01", 2, name="메도빅", unit_price=7500)],
+                    pickup_time="2026-11-25T18:30:00+09:00", status="confirmed",
+                    created_at="2026-11-25T16:00:00+09:00")
+    sink.submit(delayed)
+    sink.record_decision(_decision("call-s1", "accepted", decided_at="2026-11-25T16:01:00+09:00",
+                                   owner_pickup_time="2026-11-25T18:45:00+09:00"))
+    waiting = Order(id="call-s2", lines=delayed.lines, pickup_time=delayed.pickup_time,
+                    status="confirmed", created_at="2026-11-25T16:00:00+09:00")
+    sink.submit(waiting)  # 통화 뒤 확인 요청: 결정 전에 서버가 꺼졌다
+    coupon = Order(id="call-s3", lines=delayed.lines, pickup_time=delayed.pickup_time,
+                   status="confirmed", created_at="2026-11-25T16:00:00+09:00",
+                   coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인", discount=1000)
+    sink.submit(coupon)  # 쿠폰 주문 (쿠폰 티켓 09): 기록에서도 같은 낼 금액
+    sink.record_decision(_decision("call-s3", "accepted", decided_at="2026-11-25T16:01:00+09:00"))
+    cancelled = Order(id="call-s4", lines=delayed.lines, pickup_time=delayed.pickup_time,
+                      status="confirmed", created_at="2026-11-25T16:00:00+09:00",
+                      coupon_id="coupon-1", coupon_name="전화 주문 1,000원 할인", discount=1000)
+    sink.submit(cancelled)  # 손님 취소한 쿠폰 주문 (티켓 07 × 09)
+    sink.record_decision(_decision("call-s4", "customer_cancelled",
+                                   decided_at="2026-11-25T16:02:00+09:00"))
+    sink.flush()
+    sink.close()
+
+    assert phone_order_archive(VoiceSettings(env={})) is None  # DB 없으면 허브만
+    settings = VoiceSettings(log_dir=tmp_path / "logs", web_dist=tmp_path / "dist",
+                             now=datetime.fromisoformat("2026-11-25T16:10:00+09:00"))
+    with TestClient(create_app(settings, order_archive=OrdersFromDb(seeded))) as client:
+        moved = client.get("/api/phone/orders/call-s1").json()
+        expired = client.get("/api/phone/orders/call-s2").json()
+        discounted = client.get("/api/phone/orders/call-s3").json()
+        customer_cancelled = client.get("/api/phone/orders/call-s4").json()
+        cancel_db_only = client.post("/api/phone/orders/call-s1/cancel")
+        missing = client.get("/api/phone/orders/call-nope")
+
+    assert (moved["stage"], moved["outcome"], moved["can_cancel"]) == ("confirmed", "delayed",
+                                                                       False)
+    assert (moved["pickup"]["label"], moved["pickup"]["original_label"]) == ("18:45", "18:30")
+    assert moved["lines"] == [{"menu_id": "m01", "name": "메도빅", "quantity": 2, "options": [],
+                               "request": "", "subtotal": 15000}]
+    assert moved["amount"] == {"subtotal": 15000, "total": 15000}  # 쿠폰 없는 주문: 할인 칸 없음
+    assert discounted["amount"] == {"subtotal": 15000, "discount": 1000,
+                                    "coupon_name": "전화 주문 1,000원 할인",
+                                    "coupon_label": "전화 주문 1,000원 할인 쿠폰", "total": 14000}
+    assert (expired["stage"], expired["outcome"]) == ("cancelled", "expired")
+    # 손님 취소는 기록에서도 customer_cancelled, 취소 버튼 없음, 할인 칸은 그대로 (티켓 07 × 09)
+    assert (customer_cancelled["stage"], customer_cancelled["outcome"],
+            customer_cancelled["can_cancel"]) == ("cancelled", "customer_cancelled", False)
+    assert customer_cancelled["amount"] == discounted["amount"]
+    assert cancel_db_only.status_code == 404  # 취소 API는 허브 카드만 받는다 (티켓 07)
+    assert missing.status_code == 404
+
+
+@needs_db
+def test_a_customer_cancel_overwrites_the_later_pickup_decision(seeded) -> None:
+    """늦춘 수락 뒤 손님 취소(티켓 07): 같은 행의 결정이 customer_cancelled로 바뀌고 바뀐 시각은
+    남는다."""
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    sink.submit(_phone_order("call-d4"))
+    moved = "2026-11-25T18:45:00+09:00"
+    sink.record_decision(_decision("call-d4", "accepted", decided_at="2026-11-25T16:01:00+09:00",
+                                   owner_pickup_time=moved))
+    sink.record_decision(_decision("call-d4", "customer_cancelled",
+                                   decided_at="2026-11-25T16:03:00+09:00",
+                                   owner_pickup_time=moved))
+    sink.flush()
+    sink.close()
+    assert _owner_row(seeded, "call-d4") == ("confirmed", "customer_cancelled", "", "16:03:00",
+                                             moved, 7500)
 
 
 @needs_db

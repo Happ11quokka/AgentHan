@@ -5,6 +5,7 @@ Wraps OwnerAssistant without changing it: one assistant and one store file per s
     uv run --env-file .env uvicorn agenthan.app.server:app
 """
 
+import functools
 import threading
 import uuid
 from collections.abc import Callable
@@ -20,7 +21,7 @@ from agenthan.agent.owner_assistant import OwnerAssistant
 from agenthan.agent.review import inbox
 from agenthan.agent.review_routine import ReviewRoutine
 from agenthan.app import pilot, place, screens
-from agenthan.tools.dummy_store import DummyStoreError
+from agenthan.tools.dummy_store import DummyStoreError, watch
 
 DEFAULT_ROOT = Path(".agenthan/sessions")
 DRAFT_PHOTO_PREFIX = "draft-"  # photo URL name of the n-th waiting draft: draft-<n>
@@ -250,9 +251,14 @@ def create_app(
     root: str | Path = DEFAULT_ROOT,
     prepare_on_start: bool = False,
     clock: Callable[[], datetime] = datetime.now,
+    on_save: Callable[[str, dict], None] | None = None,
 ) -> FastAPI:
     """prepare_on_start: 세션을 시작하면 답글 없는 리뷰의 초안을 백그라운드로 미리 쓴다.
-    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다)."""
+    clock: 리뷰 정기 보고가 보는 지금 시각(테스트가 시간을 흉내 낸다).
+    on_save: 대화의 가게 파일을 저장할 때마다 (대화 id, 그 가게 한 벌)로 부른다(대화·버튼·메뉴
+        탭·사진의 백그라운드 채우기 모두). 통합 서버가 전화용 가게로 게시한다(전화 메뉴 티켓
+        02). 대화를 시작할 때 파일럿 가게를 깔아 두는 것과 미리보기 사본은 저장으로 치지
+        않는다."""
     app = FastAPI(title="AgentHan owner backend")
     sessions: dict[str, Session] = {}
     root = Path(root)
@@ -272,6 +278,8 @@ def create_app(
         session = sessions[session_id] = Session(
             session_id, make_assistant(folder / "store.json"), clock, drafts=prepare_on_start
         )
+        if on_save is not None:
+            watch(session.assistant.store.path, functools.partial(on_save, session_id))
         if menu == "empty":
             store = session.assistant.store
             data = store.read()

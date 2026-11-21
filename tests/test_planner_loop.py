@@ -845,6 +845,15 @@ def test_b5e_unchanged_fields_and_incompatible_store_fields(tmp_path):
     assert "price" not in loop.lookup("menu", {"name": "블린", "price": 9123})
 
 
+def test_another_coupons_min_order_is_not_a_basis(tmp_path):
+    app = assistant(tmp_path, HCX([]))
+    data = app.store.read()
+    data["coupons"] = [{"id": "coupon-1", "title": "전화 주문", "min_order": 10000}]
+    app.store.write(data)
+    # 새 쿠폰의 최소 주문 금액은 사장님이 말한 값만 쓴다. 옛 쿠폰 값을 옮기면 되묻지 않고 뺀다.
+    assert "min_order" not in app.planner_loop.lookup("coupon", {"min_order": 10000})
+
+
 def test_b5e_refs_require_a_direct_selection_basis(tmp_path):
     from agenthan.agent import planner
 

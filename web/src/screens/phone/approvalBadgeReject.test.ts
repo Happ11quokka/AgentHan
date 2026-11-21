@@ -52,9 +52,9 @@ describe('rejection on the customer screen (주문 승인 티켓 05)', () => {
     expect(cancelledByStore(ended)).toBe(true)
   })
 
-  it('points a written reason to the texts', () => {
+  it('does not point a written reason to a received-text area the screen no longer has (전화 주문 현황 티켓 05)', () => {
     expect(approvalBadge({ approval: view('rejected', { reason: 'free' }), texts: [] })?.detail).toBe(
-      '사장님이 남긴 사정을 받은 문자로 확인해 주세요.',
+      '가게 사정으로 지금은 주문을 받을 수 없대요.',
     )
   })
 

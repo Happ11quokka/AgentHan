@@ -64,7 +64,7 @@ export function cancelledByStore(s: Shown): boolean {
 const REJECT_DETAIL: Record<ApprovalRejectReason, string> = {
   busy: '가게가 바빠서 지금은 주문을 받기 어렵대요.',
   closed: '가게 사정으로 지금은 주문을 받을 수 없대요.',
-  free: '사장님이 남긴 사정을 받은 문자로 확인해 주세요.',
+  free: '가게 사정으로 지금은 주문을 받을 수 없대요.', // "받은 문자" 미리보기는 없앴다(전화 주문 현황 티켓 05)
   out_of_stock: '재료가 떨어진 메뉴가 있어요.',
 }
 
@@ -75,17 +75,20 @@ export function approvalBadge(s: Shown): ApprovalBadge | null {
   const a = s.approval
   if (!a) return null
   if (handedToTexts(s)) {
-    if (cancelledByStore(s)) return { tone: 'stop', label: STOPPED, detail: '받은 문자를 확인해 주세요.' }
+    if (cancelledByStore(s)) return { tone: 'stop', label: STOPPED, detail: null }
     if (awaitingText(s)) {
       return { tone: 'wait', label: '가게 확인 중', detail: '확인되는 대로 문자로 알려 드려요. 확정 문자를 받으시면 주문 완료예요.' }
     }
     return s.texts.some((t) => t.kind === 'delayed')
-      ? { tone: 'ok', label: '가게가 시간을 늦춰 확정했어요', detail: '받은 문자에서 바뀐 픽업 시간을 확인해 주세요.' }
-      : { tone: 'ok', label: '가게가 주문을 확정했어요', detail: '받은 문자를 확인해 주세요.' }
+      ? { tone: 'ok', label: '가게가 시간을 늦춰 확정했어요', detail: null }
+      : { tone: 'ok', label: '가게가 주문을 확정했어요', detail: null }
   }
   switch (a.status) {
     case 'waiting':
       return { tone: 'wait', label: '사장님 확인 중', detail: '가게에서 주문을 확인하고 있어요. 잠시만 기다려 주세요.' }
+    case 'after_call':
+      // 통화 중 대기 0: 주문을 넣고 끊는다. 통화가 끝나면 화면이 주문 현황으로 바뀐다 (전화 메뉴·주문 현황 티켓 04)
+      return { tone: 'wait', label: '주문을 넣었어요', detail: '통화가 끝나면 이 화면에서 가게 확인 결과를 보여 드려요.' }
     case 'delayed':
       // 사장님이 늦춰 수락했고 손님이 통화에서 바뀐 시각에 답하는 중 (티켓 04)
       return {

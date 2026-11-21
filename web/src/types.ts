@@ -26,6 +26,8 @@ export type Coupon = {
   discount_value: number;
   start_date: string;
   end_date: string;
+  /** 최소 주문 금액(원). 0이면 조건 없음. 예전 서버 응답·옛 쿠폰에는 없을 수 있다(없으면 0). */
+  min_order?: number;
   status?: string;
 };
 

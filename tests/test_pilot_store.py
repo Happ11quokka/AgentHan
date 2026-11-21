@@ -55,6 +55,28 @@ def test_pilot_records_happen_on_or_before_the_pilot_day(tmp_path):
     assert any(r["status"] == "requested" for r in data["reservations"])
 
 
+# 전화 주문 시연(2026-11-25 발표)에서 바로 쓰이는 쿠폰: 메뉴 이름 없이 주문 전체에 적용된다.
+PHONE_COUPON = {
+    "id": "coupon-1",
+    "title": "전화 주문 1,000원 할인",
+    "discount_type": "amount",
+    "discount_value": 1000,
+    "min_order": 10000,
+    "start_date": "2026-11-02",
+    "end_date": "2026-12-31",
+    "status": "published",
+}
+DEMO_DAY = date(2026, 11, 25)
+
+
+def test_the_pilot_coupon_is_the_phone_order_coupon(tmp_path):
+    data = pilot.assistant(tmp_path / "store.json").store.read()
+
+    assert data["coupons"] == [PHONE_COUPON]
+    period = [date.fromisoformat(PHONE_COUPON[k]) for k in ("start_date", "end_date")]
+    assert period[0] <= PILOT_DAY <= DEMO_DAY <= period[1]
+
+
 DUMMY_DATA = "fixtures/dummy_store"  # same format as data/clean, safe to commit
 
 
@@ -71,7 +93,7 @@ def test_a_store_data_folder_replaces_the_made_up_shop(tmp_path, monkeypatch):
     data = pilot.assistant(tmp_path / "check.json").store.read()
     menu_names = {m["name"] for m in data["menus"]}
     assert all(any(n in o["items"] for n in menu_names) for o in data["orders"])
-    assert any(n in data["coupons"][0]["title"] for n in menu_names)
+    assert data["coupons"] == [PHONE_COUPON], "the same coupon as the made-up shop"
     for review in data["reviews"]:
         assert date.fromisoformat(review["visit_date"]) <= PILOT_DAY
     assert data["statistics"] and data["reservations"], "missing records stay as dummies"

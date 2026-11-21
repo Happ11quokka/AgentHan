@@ -41,19 +41,24 @@ def use_knowledge() -> None:
         _knowledge_on = True
 
 
+def seed() -> dict:
+    """The shop a new chat starts from. Until a chat saves, the phone takes its menu from it."""
+    pilot = json.loads(PILOT_SEED.read_text(encoding="utf-8"))
+    folder = os.environ.get(store_data.DATA_DIR_ENV)
+    return store_data.pilot_seed(folder, pilot, PILOT_TODAY) if folder else pilot
+
+
 def assistant(path: str | Path, **kwargs) -> OwnerAssistant:
     """An assistant over a fresh copy of the pilot shop. kwargs go to OwnerAssistant.
 
     Its store knowledge (menu photo matching) is Part B search over this chat's own shop file,
     rebuilt whenever the menus or reviews in that file change."""
     path = Path(path)
-    folder = os.environ.get(store_data.DATA_DIR_ENV)
     use_knowledge()
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        if folder:
-            pilot = json.loads(PILOT_SEED.read_text(encoding="utf-8"))
-            DummyStore(path).write(store_data.pilot_seed(folder, pilot, PILOT_TODAY))
+        if os.environ.get(store_data.DATA_DIR_ENV):
+            DummyStore(path).write(seed())
         else:
             shutil.copyfile(PILOT_SEED, path)
     kwargs.setdefault("knowledge", LiveShopKnowledge(DummyStore(path).read))

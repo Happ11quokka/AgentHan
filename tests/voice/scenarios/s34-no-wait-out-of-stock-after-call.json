@@ -1,0 +1,72 @@
+{
+  "id": "s34-no-wait-out-of-stock-after-call",
+  "title": "대기 없는 주문: 통화 뒤 재료 소진 거절 → 주문 취소, 떨어진 메뉴 이름, 그 메뉴는 오늘 품절",
+  "now": "2026-11-08T17:10:00+09:00",
+  "approval": true,
+  "turns": [
+    {
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "guest": "6시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing",
+      "expect_request": 1,
+      "expect_say_exact": [
+        "주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요. 감사합니다."
+      ]
+    }
+  ],
+  "after_call": [
+    {
+      "owner": "reject",
+      "reason": "out_of_stock",
+      "menu_ids": [
+        "m01"
+      ]
+    }
+  ],
+  "after_call_s": 120,
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  },
+  "expect_owner": {
+    "status": "rejected",
+    "reject_reason": "out_of_stock",
+    "sms": [
+      "rejected"
+    ],
+    "sold_out_today": [
+      "m01"
+    ]
+  },
+  "expect_status": {
+    "stage": "cancelled",
+    "outcome": "out_of_stock",
+    "reason": "out_of_stock",
+    "sold_out": [
+      "메도빅"
+    ]
+  }
+}

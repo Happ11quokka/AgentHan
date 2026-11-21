@@ -1,0 +1,88 @@
+{
+  "id": "s49-coupon-order-status",
+  "title": "쿠폰 주문의 통화 뒤 수락: 사장님 카드와 주문 현황에 할인 전 금액·쿠폰 이름·낼 금액",
+  "now": "2026-11-08T17:10:00+09:00",
+  "approval": true,
+  "coupons": [
+    {
+      "id": "coupon-1",
+      "title": "전화 주문 1,000원 할인",
+      "discount_type": "amount",
+      "discount_value": 1000,
+      "min_order": 10000,
+      "start_date": "2026-11-02",
+      "end_date": "2026-12-31"
+    }
+  ],
+  "turns": [
+    {
+      "guest": "메도빅 하나랑 나폴레옹 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        },
+        {
+          "menu_id": "m02",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "guest": "6시 반이요",
+      "expect_state": "confirm",
+      "expect_say_exact": [
+        "주문 확인할게요. 메도빅 하나, 나폴레옹 하나, 6시 반에 찾으러 오시고, 전화 주문 1,000원 할인 쿠폰이 있어서 1,000원 빼고 모두 13,500원이에요. 맞으세요?"
+      ]
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing",
+      "expect_request": 1,
+      "expect_say_exact": [
+        "주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요. 감사합니다."
+      ]
+    }
+  ],
+  "after_call": [
+    {
+      "owner": "accept"
+    }
+  ],
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      },
+      {
+        "menu_id": "m02",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed",
+    "coupon_id": "coupon-1",
+    "coupon_name": "전화 주문 1,000원 할인",
+    "discount": 1000
+  },
+  "expect_owner": {
+    "status": "accepted",
+    "sms": [
+      "order"
+    ]
+  },
+  "expect_status": {
+    "stage": "confirmed",
+    "pickup_label": "18:30",
+    "subtotal": 14500,
+    "discount": 1000,
+    "coupon_name": "전화 주문 1,000원 할인",
+    "total": 13500
+  }
+}

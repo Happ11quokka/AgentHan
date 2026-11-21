@@ -336,7 +336,7 @@ describe('callReducer', () => {
   })
 })
 
-describe('received texts after the call (4단계 티켓 07)', () => {
+describe('texts that come with the end of the call (4단계 티켓 07)', () => {
   const orderText: CustomerText = {
     id: 'c1-s1',
     call_id: 'c1',
@@ -347,45 +347,18 @@ describe('received texts after the call (4단계 티켓 07)', () => {
     question_id: '',
     translate_failed: false,
   }
-  const lateText: CustomerText = {
-    ...orderText,
-    id: 'c1-s2',
-    kind: 'late_answer',
-    text: '메도빅 문의 답변이에요. 사장님께 여쭤보니 네, 된다고 하세요.',
-    sent_label: '16:07',
-    question_id: 'c1-q1',
-  }
   const ended: CallAction = {
     type: 'server',
     event: { type: 'call.ended', turn: 6, reason: 'confirmed', sms: [orderText] },
   }
 
-  it('remembers the call id so the end-of-call screen can open the text stream', () => {
+  it('remembers the call id so the end-of-call screen can show its order status', () => {
     expect(run(dial, micReady, ready).callId).toBe('c1')
     expect(run(dial, micReady, ready, { type: 'hangup' }, dial).callId).toBeNull()
   })
 
   it('shows the texts that came with the end of the call', () => {
     const s = run(dial, micReady, ready, ended, { type: 'socket.closed' })
-    expect(s.texts).toEqual([orderText])
-  })
-
-  it('takes texts from the stream after the call ended, once each, in sent order', () => {
-    const s = run(
-      dial,
-      micReady,
-      ready,
-      ended,
-      { type: 'socket.closed' },
-      { type: 'texts', texts: [orderText] }, // 스트림 snapshot: 이미 받은 문자
-      { type: 'texts', texts: [lateText] }, // 늦은 사장님 답
-      { type: 'texts', texts: [lateText] },
-    )
-    expect(s.texts.map((t) => t.id)).toEqual(['c1-s1', 'c1-s2'])
-  })
-
-  it('keeps texts when the customer hung up before the server ended the call', () => {
-    const s = run(dial, micReady, ready, { type: 'hangup' }, { type: 'texts', texts: [orderText] })
     expect(s.texts).toEqual([orderText])
   })
 })

@@ -12,7 +12,8 @@
 | 주소 | 화면 | 백엔드 |
 |---|---|---|
 | `/` | 사장님 비서 (이 문서의 나머지) | `/assistant` |
-| `/phone` | 손님 전화 주문 통화 화면 (Part C) | `/api/phone/ws` |
+| `/phone` | 손님 전화 주문 통화 화면 (Part C). 주문으로 끝난 통화는 주문 현황으로 바뀌고 주소가 아래로 바뀐다 | `/api/phone/ws` |
+| `/phone/orders/<주문 번호>` | 손님 주문 현황 (Part C, 새로 고치거나 다시 열어도 같은 주문) | `/api/phone/orders/*` (조회·SSE·취소) |
 | `/owner?key=…` | 사장님 전화 주문 카드 (Part C, 언어 기본 ru, `&lang=ko`면 한국어. 비서 화면 왼쪽 "전화 주문 카드"는 한국어로 연다) | `/api/owner/*` SSE |
 
 `src/main.tsx`가 주소를 보고 둘 중 한 쪽만 불러온다. 전역 CSS가 달라서(`styles.css` / `index.css`) 섞지 않는다.
@@ -50,4 +51,6 @@ npm run lint      # oxlint
 | `src/types.ts` | API 응답과 화면 상태의 타입 |
 | `src/useLoad.ts` | 탭이 열릴 때 읽기 전용 데이터 불러오기·다시 불러오기 |
 | `src/components/` | 왼쪽 목록, 대화, 입력창, 승인 카드, 사이드카, 내 가게·리뷰·손님 통계 탭 |
-| `src/styles.css` | 디자인 토큰(네이버 그린 `#03C75A`, Pretendard, 라이트 모드)과 화면 |
+| `src/tokens.css` | 디자인 토큰(네이버 그린 `#03C75A`, Pretendard, 라이트 모드). 비서·전화·사장님 화면이 같이 읽는다 |
+| `src/brandmark.css` | 브랜드 워드마크 모양(`components/BrandMark.tsx`) |
+| `src/styles.css` | 비서 화면 (토큰·워드마크는 위 두 파일을 읽는다) |
