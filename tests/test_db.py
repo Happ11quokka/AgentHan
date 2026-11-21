@@ -182,6 +182,88 @@ def test_order_sink_writes_phone_orders(seeded) -> None:
     assert row == ("sample", "confirmed", 15000, "메도빅")
 
 
+def _decision(order_id: str, status: str, *, order: Order | None = None, **kw):
+    from agenthan.voice.owner.decisions import DecisionRecord
+
+    return DecisionRecord(order_id, status, order=order, **kw)
+
+
+def _phone_order(order_id: str) -> Order:
+    return Order(
+        id=order_id,
+        lines=[OrderLine("m01", 1, name="메도빅", unit_price=7500)],
+        pickup_time="2026-11-25T18:30:00+09:00",
+        status="confirmed",
+    )
+
+
+def _owner_row(url: str, order_id: str) -> tuple:
+    with dbconn.connect(url) as c:
+        return c.execute(
+            "SELECT status, owner_status, reject_reason, to_char(decided_at AT TIME ZONE"
+            " 'Asia/Seoul', 'HH24:MI:SS'), owner_pickup_time, total FROM phone_orders"
+            " WHERE id = %s",
+            (order_id,),
+        ).fetchone()
+
+
+def test_decisions_without_db_are_dropped_quietly() -> None:
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url="")  # DB 설정 없음: 메모리(사장님 화면)만
+    sink.record(_decision("call-x", "accepted", decided_at="2026-11-25T16:00:00+09:00"))
+    sink.flush()
+    sink.close()
+
+
+@needs_db
+def test_migration_002_gives_orders_empty_decision_columns(seeded) -> None:
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    sink.submit(_phone_order("call-d0"))
+    sink.flush()
+    sink.close()
+    assert _owner_row(seeded, "call-d0") == ("confirmed", "", "", None, "", 7500)
+
+
+@needs_db
+def test_a_decision_before_the_order_record_survives_it(seeded) -> None:
+    """통화 중 수락(결정)이 통화 끝 확정 주문보다 먼저 온다. 둘 다 남는다."""
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    order = _phone_order("call-d1")
+    sink.record(_decision("call-d1", "accepted", order=order,
+                          decided_at="2026-11-25T16:00:09+09:00",
+                          owner_pickup_time="2026-11-25T18:45:00+09:00"))
+    sink.flush()
+    assert _owner_row(seeded, "call-d1") == (
+        "draft", "accepted", "", "16:00:09", "2026-11-25T18:45:00+09:00", 7500)
+    sink.submit(order)
+    sink.flush()
+    sink.close()
+    assert _owner_row(seeded, "call-d1") == (
+        "confirmed", "accepted", "", "16:00:09", "2026-11-25T18:45:00+09:00", 7500)
+
+
+@needs_db
+def test_decisions_are_plain_values_and_the_last_one_wins(seeded) -> None:
+    """거절(주문 기록이 안 오는 통화)은 draft 행으로 남고, 새 상태·사유 글도 그대로 들어간다."""
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    sink.record(_decision("call-d2", "rejected", order=_phone_order("call-d2"),
+                          reject_reason="out_of_stock", decided_at="2026-11-25T16:01:00+09:00"))
+    sink.submit(_phone_order("call-d3"))
+    sink.record(_decision("call-d3", "expired", decided_at="2026-11-25T16:07:00+09:00"))
+    sink.flush()
+    sink.close()
+    assert _owner_row(seeded, "call-d2") == ("draft", "rejected", "out_of_stock", "16:01:00", "",
+                                             7500)
+    assert _owner_row(seeded, "call-d3") == ("confirmed", "expired", "", "16:07:00", "", 7500)
+
+
 @needs_db
 def test_dummy_store_mirrors_to_db_and_restores(db_env, tmp_path) -> None:
     from agenthan.tools.dummy_store import DummyStore

@@ -43,6 +43,7 @@ from agenthan.core.fakes import FakeStoreKnowledge
 from agenthan.voice import adapters
 from agenthan.voice.gate import CallGate
 from agenthan.voice.housekeeping import INTERVAL_S, Housekeeper
+from agenthan.voice.owner.decisions import DecisionSink
 from agenthan.voice.owner.http import customer_texts_router, owner_router
 from agenthan.voice.owner.hub import OwnerHub
 from agenthan.voice.owner.papago import papago_from_env
@@ -65,6 +66,7 @@ def create_app(
     store_raw: Mapping[str, object] | None = None,
     order_sinks: Sequence[OrderSink] = (),
     knowledge: StoreKnowledge | None = None,
+    decision_sink: DecisionSink | None = None,
 ) -> FastAPI:
     """`clova`를 골랐는데 어댑터가 없으면 `AdapterMissing`으로 뜨기 전에 멈춘다.
 
@@ -72,6 +74,7 @@ def create_app(
     order_sinks: 확정·넘김 주문을 사장님 화면과 함께 받을 곳(DB 기록 등). 실패해도 통화는 계속.
     knowledge: 같은 가게의 다른 `StoreKnowledge` 구현(Part B 검색 등). 메뉴 목록이 가게 JSON과
         같아야 한다(다르면 경고하고 JSON 쪽을 쓴다).
+    decision_sink: 사장님 결정(수락·거절·자동 취소 …)을 받을 곳(DB 기록). 없으면 메모리만.
     """
     settings = settings or VoiceSettings.from_env()
     fixture = settings.store_fixture
@@ -101,7 +104,8 @@ def create_app(
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
     hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
                    question_wait_s=settings.owner_wait_s,
-                   approval_wait_s=settings.approval_wait_s, limits=settings.hub_limits())
+                   approval_wait_s=settings.approval_wait_s, limits=settings.hub_limits(),
+                   decision_sink=decision_sink)
     # 6단계: 문지기와 HCX 연결은 프로세스에 하나. 서버가 끝날 때 닫는다
     gate = make_gate(settings)
     hcx = HcxRuntime(settings) if settings.nlu == "hcx" else None
