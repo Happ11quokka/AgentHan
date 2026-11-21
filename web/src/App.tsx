@@ -341,6 +341,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, repo
         onEditMenu={chat.editMenu}
         onDeleteMenu={chat.deleteMenu}
         onPolishMenu={chat.polishMenu}
+        onReorderMenus={chat.reorderMenus}
         readingSince={chat.readingSince}
         onClose={() => setSideOpen(false)}
       />

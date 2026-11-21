@@ -119,6 +119,12 @@ class MenuEdit(BaseModel):
     description: str | None = None
 
 
+class MenuOrder(BaseModel):
+    """메뉴 탭 [순서 바꾸기]의 새 순서(메뉴 id들). 대화 턴이 아니고 승인 카드도 없다."""
+
+    ids: list[str] = Field(min_length=1)
+
+
 class Routines(BaseModel):
     """사이드카 루틴 설정(#33). report: 리뷰 정기 보고, drafts: 답글 초안 미리 쓰기,
     alert: 나쁜 리뷰 바로 알림."""
@@ -516,6 +522,18 @@ def create_app(
         if record is None:
             raise HTTPException(404, "없는 메뉴입니다.")
         session.illustrate_later()  # 이름을 고쳤으면 임베딩으로 더 맞는 그림을 찾아본다
+        return session.view()
+
+    @app.put("/assistant/sessions/{session_id}/menus/order")
+    def reorder_menus(session_id: str, body: MenuOrder) -> dict:
+        """메뉴 탭 [순서 바꾸기]: 사장님이 직접 정한 메뉴 순서를 바로 저장한다(이름·가격 고치기와
+        같이 승인 카드 없음, 세션 잠금 없이 저장소 잠금만). 저장한 순서는 전화용 가게에도 그대로
+        게시된다(전화가 메뉴를 알려 주는 순서)."""
+        session = get(session_id)
+        try:
+            session.assistant.store.reorder_menus(body.ids)
+        except DummyStoreError as exc:
+            raise HTTPException(422, str(exc)) from exc
         return session.view()
 
     @app.post("/assistant/sessions/{session_id}/menus/{menu_id}/polish")

@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useElapsed } from "../useElapsed";
 import { ProgressBar } from "./ProgressBar";
 import { approval, DAYS, discountText, hoursText, MARK_TEXT, minOrderText, periodText, won, type RowMark } from "../labels";
 import type { MenuEdit, MenuFill, MenuRow, Pending, Place, ReviewReport, Routines, RoutinesChange, SectionChanges } from "../types";
+import { MENU_SORTS, sortMenu } from "../menuSort";
+import { loadMenuSort, saveMenuSort, type MenuSort } from "../storage";
 import { Icon } from "./Icon";
 import { RoutineSettings } from "./RoutineSettings";
 
@@ -346,6 +348,190 @@ function FillRun({ menu, run }: { menu: MenuRow[]; run: MenuFill | null }) {
   );
 }
 
+export type OnMenuReorder = (ids: string[]) => Promise<string | null>;
+
+const REORDER_ONLY_SAVED = "순서 바꾸기는 등록순에서만 할 수 있어요.";
+
+/**
+ * [순서 바꾸기]: 저장된 메뉴를 끌어서(마우스·손가락) 또는 위·아래 버튼(키보드·화면 낭독기)으로 옮기고
+ * [순서 저장]을 누르면 그 순서를 바로 저장한다(이름·가격 고치기처럼 승인 카드 없음). 전화도 이 순서로 메뉴를 알려 준다.
+ */
+function MenuReorder({ rows, onSave, onDone }: { rows: MenuRow[]; onSave: OnMenuReorder; onDone: () => void }) {
+  const [order, setOrder] = useState(() => rows.map((m) => m.id));
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 화면 낭독기에 알릴 메뉴(옮긴 뒤 놓인 자리). 끄는 동안은 비워 둔다.
+  const [moved, setMoved] = useState<string | null>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const focusAfter = useRef<{ id: string; dir: "up" | "down" } | null>(null);
+  // 고르는 사이 지운 메뉴는 빼고, 새로 올라온 메뉴는 뒤에 붙인다.
+  const byId = new Map(rows.map((m) => [m.id, m]));
+  const ids = [...order.filter((id) => byId.has(id)), ...rows.map((m) => m.id).filter((id) => !order.includes(id))];
+  const shown = ids.map((id) => byId.get(id) as MenuRow);
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= ids.length || to === from) return;
+    const next = [...ids];
+    const [id] = next.splice(from, 1);
+    next.splice(to, 0, id);
+    setOrder(next);
+    setError(null);
+  };
+  const step = (id: string, dir: "up" | "down") => {
+    const from = ids.indexOf(id);
+    const to = from + (dir === "up" ? -1 : 1);
+    move(from, to);
+    focusAfter.current = { id, dir };
+    setMoved(id);
+  };
+
+  // 버튼으로 옮긴 뒤에도 같은 메뉴의 같은 버튼에 머문다(맨 위·아래에 닿아 꺼졌으면 반대 버튼).
+  useLayoutEffect(() => {
+    const want = focusAfter.current;
+    if (!want || !list.current) return;
+    focusAfter.current = null;
+    const row = list.current.querySelector<HTMLElement>(`[data-id="${CSS.escape(want.id)}"]`);
+    const same = row?.querySelector<HTMLButtonElement>(`[data-move="${want.dir}"]`);
+    const other = row?.querySelector<HTMLButtonElement>(`[data-move="${want.dir === "up" ? "down" : "up"}"]`);
+    (same && !same.disabled ? same : other)?.focus();
+  });
+
+  // 끌기: 손잡이를 누른 채 움직이면 손가락·커서가 지나간 줄 자리로 옮긴다. 줄이 옮겨져도 놓치지 않게 창에서 듣는다.
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      const items = Array.from(list.current?.children ?? []) as HTMLElement[];
+      const from = items.findIndex((el) => el.dataset.id === dragging);
+      if (from < 0) return;
+      let to = 0;
+      items.forEach((el, i) => {
+        if (i === from) return;
+        const box = el.getBoundingClientRect();
+        if (e.clientY > box.top + box.height / 2) to += 1;
+      });
+      if (to === from) return;
+      const next = items.map((el) => el.dataset.id as string); // 지금 그린 순서
+      next.splice(from, 1);
+      next.splice(to, 0, dragging);
+      setOrder(next);
+    };
+    const onUp = () => {
+      setDragging(null);
+      setMoved(dragging);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [dragging]);
+
+  const save = async () => {
+    if (saving) return;
+    if (ids.join("\n") === rows.map((m) => m.id).join("\n")) return onDone();
+    setSaving(true);
+    const failed = await onSave(ids);
+    setSaving(false);
+    if (failed) setError(failed);
+    else onDone();
+  };
+
+  return (
+    <>
+      <div className="menu-toolbar reordering">
+        <p className="menu-hint">끌어서 옮기거나 화살표로 순서를 바꾼 뒤 저장해 주세요.</p>
+        <div className="menu-toolbar-actions">
+          <button type="button" className="menu-tool" disabled={saving} onClick={onDone}>
+            취소
+          </button>
+          <button type="button" className="menu-tool primary" disabled={saving} onClick={() => void save()}>
+            {saving ? "저장 중…" : "순서 저장"}
+          </button>
+        </div>
+      </div>
+      {error && (
+        <p className="menu-error" role="alert">
+          {error}
+        </p>
+      )}
+      <ul className="menu-list menu-reorder" ref={list} aria-label="메뉴 순서">
+        {shown.map((m, i) => (
+          <li key={m.id} className="menu-order-row" data-id={m.id} data-dragging={dragging === m.id || undefined}>
+            <span
+              className="menu-grip"
+              aria-hidden
+              title="끌어서 옮기기"
+              onPointerDown={(e) => {
+                if (saving || (e.pointerType === "mouse" && e.button !== 0)) return;
+                e.preventDefault();
+                setMoved(null);
+                setDragging(m.id);
+              }}
+            >
+              <Icon name="grip" size={18} />
+            </span>
+            <span className="menu-order-no" aria-hidden>
+              {i + 1}
+            </span>
+            <span className="menu-order-name">
+              <strong>{m.name}</strong>
+              <small>{m.price !== null ? won(m.price) : "가격 없음"}</small>
+            </span>
+            <span className="menu-order-move">
+              <button type="button" className="icon-button" data-move="up" aria-label={`${m.name} 위로`} disabled={saving || i === 0} onClick={() => step(m.id, "up")}>
+                <Icon name="up" size={18} />
+              </button>
+              <button type="button" className="icon-button" data-move="down" aria-label={`${m.name} 아래로`} disabled={saving || i === shown.length - 1} onClick={() => step(m.id, "down")}>
+                <Icon name="down" size={18} />
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="sr-only" aria-live="polite">
+        {moved && ids.includes(moved) ? `${byId.get(moved)?.name}, ${ids.length}개 중 ${ids.indexOf(moved) + 1}번째` : ""}
+      </p>
+    </>
+  );
+}
+
+/** 메뉴 탭 맨 위: 보기 정렬(이 브라우저에 기억)과 [순서 바꾸기]. 순서 바꾸기는 등록순일 때만. */
+function MenuToolbar({ sort, onSort, onReorder }: { sort: MenuSort; onSort: (s: MenuSort) => void; onReorder?: () => void }) {
+  const hint = useId();
+  const locked = sort !== "saved";
+  return (
+    <>
+      <div className="menu-toolbar">
+        <label className="menu-sort">
+          <span>정렬</span>
+          <select value={sort} onChange={(e) => onSort(e.target.value as MenuSort)}>
+            {MENU_SORTS.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {onReorder && (
+          <button type="button" className="menu-tool" disabled={locked} aria-describedby={locked ? hint : undefined} onClick={onReorder}>
+            <Icon name="grip" size={16} />
+            순서 바꾸기
+          </button>
+        )}
+      </div>
+      {onReorder && locked && (
+        <p className="menu-hint" id={hint}>
+          {REORDER_ONLY_SAVED}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** 메뉴 탭: 네이버 플레이스처럼 테두리 없는 줄(이름·설명·가격, 오른쪽 사진). 승인 전 변경은 알약 배지. */
 export function MenuTab({
   place,
@@ -353,6 +539,7 @@ export function MenuTab({
   onEdit,
   onDelete,
   onPolish,
+  onReorder,
   readingSince = null,
 }: {
   place: Place;
@@ -360,17 +547,26 @@ export function MenuTab({
   onEdit?: OnMenuEdit;
   onDelete?: OnMenuDelete;
   onPolish?: OnMenuPolish;
+  /** [순서 바꾸기] 저장. 없으면 보기 정렬만 있다. */
+  onReorder?: OnMenuReorder;
   /** 메뉴판 사진을 읽는 중이면 보낸 시각(ms). 진행 막대는 대화창에, 여기는 빈 메뉴 자리만. */
   readingSince?: number | null;
 }) {
+  const [sort, setSort] = useState<MenuSort>(loadMenuSort);
+  const [reordering, setReordering] = useState(false);
   const { view, marks, removed } = overlay(place, pending);
   const before = new Map(place.menu.map((m) => [m.id, m]));
+  const pick = (next: MenuSort) => {
+    setSort(next);
+    saveMenuSort(next);
+  };
+  const empty = view.menu.length + removed.menu.length === 0;
   return (
     <div className="shop">
       <PendingBanner pending={pending} />
       <FillProgress menu={place.menu} run={place.menu_fill ?? null} />
       <Section title="메뉴" count={view.menu.length}>
-        {view.menu.length + removed.menu.length === 0 && readingSince !== null ? (
+        {empty && readingSince !== null ? (
           <ul className="menu-list" aria-hidden>
             {[0, 1, 2].map((i) => (
               <li key={i} className="menu-item menu-item-ghost">
@@ -383,29 +579,34 @@ export function MenuTab({
               </li>
             ))}
           </ul>
-        ) : view.menu.length + removed.menu.length === 0 ? (
+        ) : empty ? (
           <p className="empty">아직 메뉴가 없어요. 대화창에 메뉴판 사진을 올리면 여기에 바로 채워져요.</p>
+        ) : reordering && onReorder ? (
+          <MenuReorder rows={place.menu} onSave={onReorder} onDone={() => setReordering(false)} />
         ) : (
-          <ul className="menu-list">
-            {[...view.menu, ...removed.menu].map((m) => {
-              const mark = marks.menu.get(m.id);
-              const old = mark === "updated" ? before.get(m.id) : undefined;
-              const oldPrice = old && old.price !== m.price && old.price !== null ? won(old.price) : null;
-              // 승인 전 변경(미리보기)에만 있는 줄은 아직 저장되지 않아 고칠 수 없다.
-              const saved = before.has(m.id) && !mark;
-              return (
-                <MenuItemRow
-                  key={m.id}
-                  m={m}
-                  mark={mark}
-                  oldPrice={oldPrice}
-                  onEdit={saved ? onEdit : undefined}
-                  onDelete={saved ? onDelete : undefined}
-                  onPolish={saved ? onPolish : undefined}
-                />
-              );
-            })}
-          </ul>
+          <>
+            <MenuToolbar sort={sort} onSort={pick} onReorder={onReorder && place.menu.length > 1 ? () => setReordering(true) : undefined} />
+            <ul className="menu-list">
+              {[...sortMenu(view.menu, sort), ...removed.menu].map((m) => {
+                const mark = marks.menu.get(m.id);
+                const old = mark === "updated" ? before.get(m.id) : undefined;
+                const oldPrice = old && old.price !== m.price && old.price !== null ? won(old.price) : null;
+                // 승인 전 변경(미리보기)에만 있는 줄은 아직 저장되지 않아 고칠 수 없다.
+                const saved = before.has(m.id) && !mark;
+                return (
+                  <MenuItemRow
+                    key={m.id}
+                    m={m}
+                    mark={mark}
+                    oldPrice={oldPrice}
+                    onEdit={saved ? onEdit : undefined}
+                    onDelete={saved ? onDelete : undefined}
+                    onPolish={saved ? onPolish : undefined}
+                  />
+                );
+              })}
+            </ul>
+          </>
         )}
       </Section>
     </div>

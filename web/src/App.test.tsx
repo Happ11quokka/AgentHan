@@ -428,6 +428,18 @@ describe("사이드카 [홈]·[메뉴]", () => {
     expect(within(row).getByText("7,500원").tagName).toBe("S");
     expect(within(row).getByText("8,000원")).toBeInTheDocument();
   });
+
+  test("메뉴 탭 [순서 바꾸기]는 대화 턴 없이 그 순서를 바로 저장하고 새 순서로 그린다", async () => {
+    const { user, api } = await open();
+    await user.click(screen.getByRole("tab", { name: "메뉴" }));
+    const menu = within(screen.getByRole("tabpanel", { name: "메뉴" }));
+    await user.click(menu.getByRole("button", { name: "순서 바꾸기" }));
+    await user.click(menu.getByRole("button", { name: "나폴레옹 위로" }));
+    await user.click(menu.getByRole("button", { name: "순서 저장" }));
+    expect(api.reorderMenus).toHaveBeenCalledWith(expect.any(String), ["m02", "m01"]);
+    expect(api.say).not.toHaveBeenCalled();
+    await waitFor(() => expect(menu.getAllByRole("listitem")[0]).toHaveTextContent("나폴레옹"));
+  });
 });
 
 describe("왼쪽 자주 쓰는 일", () => {

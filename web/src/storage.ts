@@ -25,6 +25,18 @@ function write(key: string, value: unknown) {
   }
 }
 
+export type MenuSort = "saved" | "name" | "price-asc" | "price-desc" | "no-photo";
+const MENU_SORT = "agenthan.menuSort.v1";
+const MENU_SORTS: readonly MenuSort[] = ["saved", "name", "price-asc", "price-desc", "no-photo"];
+
+/** 메뉴 탭 보기 정렬: 이 브라우저에서 마지막으로 고른 것. 모르는 값·막힌 저장소면 등록순. */
+export function loadMenuSort(): MenuSort {
+  const saved = read<unknown>(MENU_SORT, "saved");
+  return MENU_SORTS.includes(saved as MenuSort) ? (saved as MenuSort) : "saved";
+}
+
+export const saveMenuSort = (sort: MenuSort) => write(MENU_SORT, sort);
+
 export const loadRecent = () => read<Recent[]>(RECENT, []);
 
 export function rememberRecent(entry: Recent) {

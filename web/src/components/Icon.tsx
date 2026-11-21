@@ -32,6 +32,9 @@ const PATHS = {
   coin: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 9l2 6 2-5 2 5 2-6M7.5 12h9",
   pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   book: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h7",
+  grip: "M5 9h14M5 15h14",
+  up: "M6 15l6-6 6 6",
+  down: "M6 9l6 6 6-6",
 } as const;
 
 export type IconName = keyof typeof PATHS;
