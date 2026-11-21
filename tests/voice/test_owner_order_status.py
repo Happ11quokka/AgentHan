@@ -84,12 +84,12 @@ def test_an_order_number_the_hub_does_not_know_is_not_found() -> None:
 # ---------------------------------------------------------------- 결과·사유 (티켓 05)
 
 
-def test_a_placed_order_has_no_outcome_yet_and_cannot_be_cancelled() -> None:
+def test_a_placed_order_has_no_outcome_yet_and_can_be_cancelled() -> None:
     hub, _, _ = _placed()
     status = hub.order_status(CALL)
 
     assert (status["outcome"], status["reason"], status["sold_out"]) == (None, None, [])
-    assert status["can_cancel"] is False  # 손님 취소는 다음 티켓(07)
+    assert status["can_cancel"] is True  # 가게 확인 중이면 손님이 취소할 수 있다 (티켓 07)
 
 
 def test_an_accept_on_time_or_later_says_which_kind_of_confirmation() -> None:

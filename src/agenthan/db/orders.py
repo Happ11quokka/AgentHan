@@ -55,7 +55,9 @@ class OwnerDecisionRow:
     """phone_orders의 사장님 결정 열 한 벌(마이그레이션 002). 같은 주문이 다시 오면 덮어쓴다."""
 
     order_id: str
-    owner_status: str  # accepted · auto_accepted · rejected · expired · cancelled
+    # accepted · auto_accepted · rejected · expired · cancelled ·
+    # customer_cancelled(손님 취소, 티켓 07)
+    owner_status: str
     reject_reason: str = ""  # out_of_stock · busy · closed · free, 없으면 ""
     decided_at: str = ""  # ISO 8601(시간대 포함), 없으면 "" → NULL
     owner_pickup_time: str = ""  # 늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ""

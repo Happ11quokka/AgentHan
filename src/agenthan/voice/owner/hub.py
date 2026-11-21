@@ -78,8 +78,11 @@
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
 - 손님 주문 현황 (전화 메뉴·주문 현황 티켓 04, `order_status`): 주문 번호(통화 id)로 주문 카드
   하나를 손님 모양(줄·금액·픽업 시각·단계·결과·사유)으로 돌려준다. 단계·결과 규칙은
-  `order_status.py`. 주문 현황 구독(`watch_order`, 티켓 05)은 처음에 `order.status`(지금 현황),
-  그 뒤 손님 현황이 달라질 때마다 `order.status`(현황 전체)를 받는다. 주문 카드가 바뀌면
+  `order_status.py`. 손님 취소(`cancel_by_customer`, 티켓 07)는 가게 확인 중인 통화 뒤 요청과
+  늦춘 수락만 받아 카드를 처리 상태 customer_cancelled("손님 취소", 버튼 없음)로 바꾼다. 사장님
+  결정과 한 주문에 결정 한 번 규칙을 같이 따른다. 주문 현황 구독(`watch_order`, 티켓 05)은
+  처음에 `order.status`(지금 현황), 그 뒤 손님 현황이 달라질 때마다 `order.status`(현황 전체)를
+  받는다. 주문 카드가 바뀌면
   (`order.update`를 보낼 때) 다시 재서 지난번 보낸 것과 다를 때만 보낸다
 - 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
   주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
@@ -167,7 +170,7 @@ from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
-from agenthan.voice.owner.order_status import order_status
+from agenthan.voice.owner.order_status import cancel_refusal, order_status
 from agenthan.voice.owner.translate import Translator
 from agenthan.voice.store_snapshot import StoreProvider
 
@@ -197,6 +200,18 @@ class AlreadyAnswered(Exception):
 
 class AlreadyDecided(Exception):
     """이미 결정한(또는 확인 대기가 아닌) 주문 카드다. 결정은 한 번만 받는다 (HTTP 409)."""
+
+
+class NotCancellable(Exception):
+    """손님이 주문 현황에서 취소할 수 없는 주문이다 (티켓 07, HTTP 409).
+
+    `code`: 거부 사유(`order_status.cancel_refusal`), `status`: 지금 손님 현황(진 쪽 화면이 보인다).
+    """
+
+    def __init__(self, code: str, status: dict[str, Any]) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status = status
 
 
 # 넘김 카드에 붙이는 마지막 손님 말 줄 수 (spec 이야기 49)
@@ -659,7 +674,32 @@ class OwnerHub:
         card = self._orders.get(order_id)
         if card is None:
             raise UnknownCard(order_id)
-        return order_status(card, unspoken=order_id in self._unspoken)
+        return order_status(card, unspoken=order_id in self._unspoken, cancellable=True)
+
+    def cancel_by_customer(self, order_id: str) -> dict[str, Any]:
+        """손님 취소 (전화 메뉴·주문 현황·쿠폰 티켓 07): 손님이 주문 현황에서 [취소하기]를 눌렀다.
+        카드를 customer_cancelled로 바꾸고 바뀐 손님 현황을 돌려준다.
+
+        받는 때는 손님 현황의 `can_cancel`(`order_status.py` "손님 취소"): 가게 확인 중인 통화 뒤
+        확인 요청, 늦춘 수락으로 확정. 사장님 결정과 같은 "한 주문에 결정 한 번" 규칙이다: 먼저 온
+        쪽이 이긴다. 손님이 먼저면 카드가 확인 대기가 아니라 사장님 수락·거절이 `AlreadyDecided`,
+        사장님이 먼저(제시간 수락·거절)면 여기서 `NotCancellable`(사유 코드 + 이긴 현황). 마감 지난
+        카드는 먼저 자동 취소한다(expired로 거부). 주문 카드가 없으면 `UnknownCard`.
+
+        손님 스스로 취소했으니 문자는 없다. 카드를 한 번 보내면(`order.update`) 사장님 화면이
+        "손님 취소"로 바뀌고, 결정 기록(DB `owner_status` customer_cancelled)과 주문 현황 구독이
+        같이 간다. 기다리는 카드가 아니게 되니 자동 취소 타이머도 그 카드를 더 세지 않는다.
+        """
+        status = self.order_status(order_id)  # 마감 지난 카드는 먼저 자동 취소, 없으면 UnknownCard
+        if (refused := cancel_refusal(status)) is not None:
+            raise NotCancellable(refused, status)
+        self._deciders.pop(order_id, None)
+        self._orders[order_id] = {**self._orders[order_id], "status": "customer_cancelled",
+                                  "decided_at": self._clock.now().isoformat()}
+        log.info("손님이 주문 현황에서 취소: %s", order_id)
+        self._publish("order.update", self._orders[order_id])
+        self._arm_expiry()
+        return self.order_status(order_id)
 
     def watch_order(self, order_id: str) -> AsyncIterator[OwnerEvent]:
         """손님 주문 현황 구독 (전화 메뉴·주문 현황 티켓 05). 처음에 `order.status`(지금 현황,
@@ -678,7 +718,8 @@ class OwnerHub:
         try:
             card = self._orders.get(order_id)
             if card is not None:  # 구독을 연 사이 상한으로 지워졌으면 첫 현황 없이 기다린다
-                status = order_status(card, unspoken=order_id in self._unspoken)
+                status = order_status(card, unspoken=order_id in self._unspoken,
+                                      cancellable=True)
                 self._order_sent[order_id] = status
                 yield OwnerEvent("order.status", status, self._seq)
             while True:
@@ -695,7 +736,7 @@ class OwnerHub:
         watchers = self._order_watchers.get(order_id)
         if not watchers:
             return
-        status = order_status(card, unspoken=order_id in self._unspoken)
+        status = order_status(card, unspoken=order_id in self._unspoken, cancellable=True)
         if self._order_sent.get(order_id) == status:
             return
         self._order_sent[order_id] = status

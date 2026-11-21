@@ -286,6 +286,26 @@ def test_decisions_are_plain_values_and_the_last_one_wins(seeded) -> None:
 
 
 @needs_db
+def test_a_customer_cancel_overwrites_the_later_pickup_decision(seeded) -> None:
+    """늦춘 수락 뒤 손님 취소(티켓 07): 같은 행의 결정이 customer_cancelled로 바뀌고 바뀐 시각은
+    남는다."""
+    from agenthan.db.orders import PgOrderSink
+
+    sink = PgOrderSink(url=seeded)
+    sink.submit(_phone_order("call-d4"))
+    moved = "2026-11-25T18:45:00+09:00"
+    sink.record_decision(_decision("call-d4", "accepted", decided_at="2026-11-25T16:01:00+09:00",
+                                   owner_pickup_time=moved))
+    sink.record_decision(_decision("call-d4", "customer_cancelled",
+                                   decided_at="2026-11-25T16:03:00+09:00",
+                                   owner_pickup_time=moved))
+    sink.flush()
+    sink.close()
+    assert _owner_row(seeded, "call-d4") == ("confirmed", "customer_cancelled", "", "16:03:00",
+                                             moved, 7500)
+
+
+@needs_db
 def test_dummy_store_mirrors_to_db_and_restores(db_env, tmp_path) -> None:
     from agenthan.tools.dummy_store import DummyStore
 

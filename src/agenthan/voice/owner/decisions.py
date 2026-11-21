@@ -30,7 +30,9 @@ class DecisionRecord:
     """주문 하나의 사장님 결정. 같은 주문의 결정이 바뀌면 다시 온다. 마지막 것이 맞다."""
 
     order_id: str  # = 통화 id = `Order.id`
-    owner_status: str  # accepted · auto_accepted · rejected · expired …
+    # accepted · auto_accepted · rejected · expired · cancelled(늦춘 시각 거절) ·
+    # customer_cancelled(손님이 주문 현황에서 취소, 전화 메뉴·주문 현황·쿠폰 티켓 07) …
+    owner_status: str
     reject_reason: str = ""
     decided_at: str = ""  # ISO 8601, 시간대 포함
     owner_pickup_time: str = ""  # 늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ""
