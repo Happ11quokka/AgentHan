@@ -3,6 +3,8 @@ import { forgetPhotoUrl, photoUrl } from "../photo";
 import { Icon } from "./Icon";
 
 type Props = {
+  /** 사진이 없을 때 입력창에 회색으로 보이는 안내. 없으면 "비서에게 말하기…". */
+  placeholder?: string;
   disabled: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
   dropped: File | null;
@@ -11,7 +13,7 @@ type Props = {
   onInputChange: (hasInput: boolean) => void;
 };
 
-export function Composer({ disabled, inputRef, dropped, onDroppedTaken, onSend, onInputChange }: Props) {
+export function Composer({ placeholder, disabled, inputRef, dropped, onDroppedTaken, onSend, onInputChange }: Props) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [thumb, setThumb] = useState<string | undefined>();
@@ -74,7 +76,7 @@ export function Composer({ disabled, inputRef, dropped, onDroppedTaken, onSend, 
         </label>
         <textarea
           aria-label="비서에게 말하기"
-          placeholder={image ? "사진과 함께 보낼 말 (없어도 돼요)" : "비서에게 말하기…"}
+          placeholder={image ? "사진과 함께 보낼 말 (없어도 돼요)" : (placeholder ?? "비서에게 말하기…")}
           rows={1}
           value={text}
           onChange={(e) => setText(e.target.value)}

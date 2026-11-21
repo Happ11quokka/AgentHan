@@ -1,3 +1,4 @@
+import { WELCOME_MESSAGES } from "./welcomeMessages";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
@@ -28,7 +29,7 @@ const CAKE = new File(["jpeg"], "cake.jpg", { type: "image/jpeg" });
 async function open(api = fakeApi()) {
   const user = userEvent.setup();
   render(<App api={api} />);
-  await screen.findByText(/무엇을 도와드릴까요/);
+  await screen.findByRole("heading", { level: 1 });
   return { user, api };
 }
 
@@ -332,7 +333,35 @@ describe("사진과 승인 카드", () => {
   });
 });
 
+describe("새 대화 첫 화면", () => {
+  test("응원 문구 한 줄만 보이고 비서 이미지는 없다", async () => {
+    await open();
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(WELCOME_MESSAGES).toContain(heading.textContent);
+    expect(screen.getByRole("textbox", { name: "비서에게 말하기" })).toHaveAttribute("placeholder", expect.stringContaining("말로 하면 제가 대신 해 드려요"));
+    expect(screen.getByRole("button", { name: "요즘 리뷰 어때?" })).toBeInTheDocument();
+    expect(document.querySelector(".welcome-face")).toBeNull();
+  });
+});
+
 describe("사이드카 [홈]·[메뉴]", () => {
+  test("홈 구역의 [수정]은 대화에서 그 일을 시작한다(쿠폰은 입력 블록, 나머지는 말)", async () => {
+    const seeded = { ...SEED, keywords: ["이태원 케이크"] };
+    const api = fakeApi([{ reply: "언제로 바꿀까요?", place: seeded, pending: [] }], { place: seeded, pending: [] });
+    const { user } = await open(api);
+    const home = screen.getByRole("tabpanel", { name: "홈" });
+    await user.click(within(home).getByRole("button", { name: "쿠폰 수정" }));
+    expect(chatArea().getByRole("form", { name: "쿠폰 만들기" })).toBeInTheDocument();
+    expect(api.act).not.toHaveBeenCalled();
+    await user.click(within(home).getByRole("button", { name: "영업시간 수정" }));
+    expect(api.say).toHaveBeenCalledWith("s1", "영업시간이나 휴무를 바꾸고 싶어");
+    expect(await screen.findByText("언제로 바꿀까요?")).toBeInTheDocument();
+    await user.click(within(home).getByRole("button", { name: "대표키워드 수정" }));
+    expect(api.say).toHaveBeenLastCalledWith("s1", "대표키워드를 바꾸고 싶어");
+    await user.click(within(home).getByRole("button", { name: "루틴 설정 수정" }));
+    expect(api.say).toHaveBeenLastCalledWith("s1", "루틴 설정을 바꾸고 싶어");
+  });
+
   test("홈에 영업시간·쿠폰, 메뉴 탭에 메뉴가 보이고 저장 전 변경은 강조된다", async () => {
     const coupon = {
       id: "coupon-1",
@@ -729,7 +758,7 @@ describe("답글 대기함", () => {
     api.reviews.mockResolvedValue(INBOX);
     const user = userEvent.setup();
     render(<App api={api} {...props} />);
-    await screen.findByText(/무엇을 도와드릴까요/);
+    await screen.findByRole("heading", { level: 1 });
     await user.click(screen.getByRole("tab", { name: "리뷰" }));
     const panel = within(await screen.findByRole("tabpanel", { name: "리뷰" }));
     await panel.findByRole("heading", { name: "답글 기다리는 리뷰 3개" });

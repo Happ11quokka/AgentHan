@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { DAYS, FREQUENCY_TEXT, REPORT_TEXT, reportScheduleText, ROUTINE_TEXT } from "../labels";
+import { Icon } from "./Icon";
 import type { ReviewReport, Routines, RoutinesChange } from "../types";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   onChange: (change: RoutinesChange) => Promise<string | null>;
   /** [지금 한 번 받아 보기]. 설정과 상관없이 보고 한 회분을 대화로 받는다. */
   onRunReport: () => Promise<string | null>;
+  /** 구역 머리의 [수정]: 대화에서 루틴 설정을 이어 간다. */
+  onEdit?: () => void;
 };
 
 const TIME = /^\d{2}:\d{2}$/;
@@ -50,7 +53,7 @@ function Routine({ title, hint, on, children }: { title: string; hint: string; o
   );
 }
 
-export function RoutineSettings({ report, routines, onChange, onRunReport }: Props) {
+export function RoutineSettings({ report, routines, onChange, onRunReport, onEdit }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -91,6 +94,11 @@ export function RoutineSettings({ report, routines, onChange, onRunReport }: Pro
       <h3>
         {ROUTINE_TEXT.section}
         {count !== null && <span>{count}</span>}
+        {onEdit && (
+          <button type="button" className="icon-button section-edit" aria-label={`${ROUTINE_TEXT.section} 수정`} title="수정" onClick={onEdit}>
+            <Icon name="pencil" size={16} />
+          </button>
+        )}
       </h3>
       <ul className="routine-list">
         {!routines ? (
