@@ -29,6 +29,9 @@ services:
       - "8000"
     volumes:
       - phone_logs:/app/logs # 통화 기록 JSONL, 하루 예산(phone-budget.json), 점검 표시(DRAIN)
+      # 메뉴 대표 그림: 실제 가게 메뉴 이름 → 그림 짝(git·이미지 밖, README 4-1). 읽기만 한다.
+      # 서버에 파일이 없으면 Docker가 빈 폴더를 만들고 앱은 별칭 없이 고른다
+      - ../../data/illustration_aliases.json:/app/data/illustration_aliases.json:ro
     # DB는 먼저 띄우기만 한다(건강할 때까지 안 기다림). DB가 없거나 죽어도 앱은 JSON 파일로 뜬다
     depends_on:
       - db

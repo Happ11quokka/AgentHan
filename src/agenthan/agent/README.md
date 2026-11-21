@@ -168,8 +168,6 @@ flowchart TD
 uv run --env-file .env python -m agenthan.agent.owner_assistant
 uv run --env-file .env python -m agenthan.agent.owner_assistant --store /tmp/agenthan-demo/store.json
 uv run python -m agenthan.agent.place_matcher build-index   # 카탈로그를 고친 뒤 기능 벡터 다시 만들기
-uv run python -m agenthan.illustration.art                  # 메뉴 대표 그림 SVG·카탈로그·갤러리(build/illustrations/gallery.html) 다시 만들기
-uv run --env-file .env python -m agenthan.illustration.build_index   # 그림을 더하거나 이름·별칭을 고친 뒤(병합 뒤에도) 그림 임베딩 인덱스 갱신(바뀐 것만 임베딩)
 uv run --env-file .env python -m agenthan.eval.run --backend live   # 기능 매칭·전체 흐름 평가
 uv run pytest -q -m network                                 # 실제 CLOVA 호출 테스트 (키 필요)
 ```
