@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from agenthan.core.contracts import StoreKnowledge
 from agenthan.voice.owner.lexicon import Lexicon
@@ -42,10 +42,22 @@ _AFTERNOON = ("오후", "저녁", "밤")
 
 class CardTexts:
     def __init__(
-        self, translator: Translator | None, *, store: StoreKnowledge, lexicon: Lexicon
+        self,
+        translator: Translator | None,
+        *,
+        store: StoreKnowledge | None = None,
+        current_store: Callable[[], StoreKnowledge] | None = None,
+        lexicon: Lexicon,
     ) -> None:
+        """`current_store`는 지금 가게를 돌려주는 함수(허브의 가게 공급자). 번역할 때마다 읽는다.
+        `store`만 주면 늘 그 가게."""
         self._translator = translator
-        self._store = store
+        if current_store is None:
+            if store is None:
+                raise TypeError("CardTexts에는 store나 current_store가 있어야 한다")
+            fixed = store
+            current_store = lambda: fixed  # noqa: E731
+        self._store = current_store
         self._lexicon = lexicon
         self._done: dict[str, dict[str, str]] = {}  # 통화 id → 원문 → 번역("" = 버림)
         self._pending: dict[str, set[str]] = {}  # 통화 id → 번역 중인 원문
@@ -83,7 +95,7 @@ class CardTexts:
         if not rest:
             return changed
         texts = rest
-        names = menu_names(self._store)
+        names = menu_names(self._store())
         masked = [mask(t, names=names, terms=self._lexicon.terms) for t in texts]
         try:
             out = await self._translator.translate(

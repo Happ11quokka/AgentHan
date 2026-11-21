@@ -1,7 +1,6 @@
 """WS 라우터 `/api/phone/ws` (spec WS 계약, 티켓 04). 연결 하나 = 통화 세션 하나.
 
-    app.include_router(phone_router(store=..., config=..., order_sink=..., settings=...,
-                                    owner=...))
+    app.include_router(phone_router(stores=..., order_sink=..., settings=..., owner=...))
 
 - 올리는 binary(PCM16LE 16kHz mono 100ms)는 `feed_audio`, text(JSON)는 `feed_event`로 넘긴다
 - 내보내기는 세션의 송신 작업 하나가 `WsOutbound`로만 한다 (Starlette `send`에 잠금이 없음)
@@ -23,7 +22,9 @@
   (`runtime.HcxRuntime`: 연결 풀 하나, 분당 버킷, 사용량 기록, 규칙 NLU 폴백, 6단계). 만들지
   못하면(키 없음) 전처럼 세션이 `"hcx"`로 직접 만들다가 `nlu_config` 오류를 낸다
 
-가게 지식·설정·`OrderSink`는 만드는 쪽이 넣는다. 여기에는 가짜 기본값이 없다.
+가게(`stores`, 가게 스냅숏 공급자)·`OrderSink`는 만드는 쪽이 넣는다. 여기에는 가짜 기본값이 없다.
+통화(WS 연결) 하나는 연결될 때 공급자를 한 번 불러 그 스냅숏(가게 지식·설정·STT 부스팅 단어)을
+끝까지 쓴다. 가게가 바뀌면 다음 통화부터 새 가게다(전화 메뉴 티켓 01, `store_snapshot.py`).
 `owner`(`OwnerChannel`, 사장님 허브)를 주면 통화마다 시작·장바구니·말·끝을 알린다(없으면 안 알림).
 """
 
@@ -43,7 +44,7 @@ import anyio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from agenthan.core.contracts import OrderSink, StoreKnowledge
+from agenthan.core.contracts import OrderSink
 from agenthan.voice import adapters
 from agenthan.voice.adapters import SttFactory, TtsFactory
 from agenthan.voice.call.ports import (
@@ -53,6 +54,7 @@ from agenthan.voice.call.ports import (
     OwnerChannel,
     PortError,
     RunningClock,
+    SttStream,
     SystemClock,
     Tts,
     TurnModel,
@@ -70,8 +72,7 @@ from agenthan.voice.gate import (
 from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.smart_turn import load_turn_model
-from agenthan.voice.store_config import StoreConfig
-from agenthan.voice.stt.boost import menu_boost_words
+from agenthan.voice.store_snapshot import StoreProvider, StoreSnapshot
 
 WS_PATH = "/api/phone/ws"
 ENGINE_THREADS_PER_CALL = 2  # 지금 도는 턴 1 + 시간을 넘겨 아직 남은 스레드 1
@@ -111,8 +112,7 @@ def _gone(err: BaseException) -> str:
 
 def phone_router(
     *,
-    store: StoreKnowledge,
-    config: StoreConfig,
+    stores: StoreProvider,
     order_sink: OrderSink,
     settings: VoiceSettings,
     stt_factory: SttFactory | None = None,
@@ -132,15 +132,8 @@ def phone_router(
     `gate`를 주면(서버가 `/healthz`와 같이 쓸 때) 그 문지기를, 없으면 설정으로 하나 만든다.
     `hcx`도 같다(서버가 끝날 때 닫으려고 넘긴다). `PHONE_NLU=hcx`일 때만 쓴다.
     """
-    if stt_factory is None:
-        # 키워드 부스팅 단어(티켓 10). 메뉴는 라우터를 만들 때 한 번 읽는다(`list_menu`가 동기라
-        # 통화마다 이벤트 루프에서 부르지 않는다). 메뉴 이름이 바뀌면 서버를 다시 띄운다
-        boost = (menu_boost_words(store.list_menu())
-                 if settings.stt == "clova" and settings.stt_boost_weight > 0 else ())
-        stt_factory = adapters.stt_factory(settings, boost_words=boost)
-    make_stt = stt_factory
+    make_stt = _stt_maker(settings, stt_factory)
     make_tts = tts_factory or adapters.tts_factory(settings)
-    config = settings.with_order_limits(replace(config, tz=settings.tz))  # 주문 가드 (6단계)
     engine_pool = ThreadPoolExecutor(
         max_workers=settings.max_calls * ENGINE_THREADS_PER_CALL,
         thread_name_prefix=ENGINE_THREAD_PREFIX,
@@ -193,15 +186,17 @@ def phone_router(
     async def _serve(ws: WebSocket) -> None:
         tts: Tts | None = None
         try:
+            snapshot = stores()  # 이 통화가 끝까지 쓸 가게. 통화 중에는 다시 묻지 않는다
             tts = make_tts()
-            stt = make_stt()  # 만들기만 한다. 연결(`start`)은 세션이 한다
+            stt = make_stt(snapshot)  # 만들기만 한다. 연결(`start`)은 세션이 한다
         except Exception as err:  # 키 없음 등. 세션 전이라 여기서 직접 한 번 보낸다
             await _aclose(tts)
             await _refuse(ws, err)
             return
         nlu, answerer = await _engines()
+        config = settings.with_order_limits(replace(snapshot.config, tz=settings.tz))  # 주문 가드
         session = CallSession(
-            store=store,
+            store=snapshot.store,
             config=config,
             nlu=nlu,
             answerer=answerer,
@@ -237,6 +232,23 @@ def phone_router(
                 await _close(ws)
 
     return router
+
+
+def _stt_maker(
+    settings: VoiceSettings, stt_factory: SttFactory | None
+) -> Callable[[StoreSnapshot], SttStream]:
+    """통화의 가게 스냅숏 → 그 통화의 STT. `stt_factory`를 주면 그것을 그대로 쓴다.
+
+    설정으로 만들 때는 어댑터가 없으면 여기서(라우터를 만들 때) `AdapterMissing`. 키워드 부스팅
+    단어(티켓 10)는 통화가 받은 스냅숏의 것이라 메뉴 이름이 바뀌어도 다음 통화부터 따라간다.
+    """
+    if stt_factory is not None:
+        made = stt_factory
+        return lambda snapshot: made()
+    plain = adapters.stt_factory(settings)
+    if not (settings.stt == "clova" and settings.stt_boost_weight > 0):
+        return lambda snapshot: plain()
+    return lambda snapshot: adapters.stt_factory(settings, boost_words=snapshot.boost_words)()
 
 
 def store_clock(settings: VoiceSettings, *,

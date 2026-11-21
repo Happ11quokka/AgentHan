@@ -51,6 +51,7 @@ from agenthan.voice.runtime import HcxRuntime
 from agenthan.voice.settings import VoiceSettings
 from agenthan.voice.store_check import ensure_usable
 from agenthan.voice.store_config import StoreConfig
+from agenthan.voice.store_snapshot import StoreProvider, StoreSnapshot, fixed_store
 from agenthan.voice.ws import make_gate, phone_router, store_clock
 
 log = logging.getLogger(__name__)
@@ -63,38 +64,20 @@ SHUTDOWN_LIMIT_S = 8  # uvicorn이 남은 작업을 기다리는 상한 (compose
 def create_app(
     settings: VoiceSettings | None = None,
     *,
-    store_raw: Mapping[str, object] | None = None,
+    stores: StoreProvider | None = None,
     order_sinks: Sequence[OrderSink] = (),
-    knowledge: StoreKnowledge | None = None,
     decision_sink: DecisionSink | None = None,
 ) -> FastAPI:
     """`clova`를 골랐는데 어댑터가 없으면 `AdapterMissing`으로 뜨기 전에 멈춘다.
 
-    store_raw: 가게 JSON과 같은 모양의 dict(DB에서 읽은 것). 없으면 `PHONE_STORE_FIXTURE` 파일.
+    stores: 지금의 가게 스냅숏을 돌려주는 공급자(`store_snapshot.py`). 통화는 시작할 때 한 번,
+        사장님 허브는 메뉴를 읽을 때마다 부른다. 없으면 `PHONE_STORE_FIXTURE` 파일의 고정 가게.
     order_sinks: 확정·넘김 주문을 사장님 화면과 함께 받을 곳(DB 기록 등). 실패해도 통화는 계속.
-    knowledge: 같은 가게의 다른 `StoreKnowledge` 구현(Part B 검색 등). 메뉴 목록이 가게 JSON과
-        같아야 한다(다르면 경고하고 JSON 쪽을 쓴다).
     decision_sink: 사장님 결정(수락·거절·자동 취소 …)을 받을 곳(DB 기록). 없으면 메모리만.
     """
     settings = settings or VoiceSettings.from_env()
-    fixture = settings.store_fixture
-    if store_raw is not None:
-        store = FakeStoreKnowledge.from_dict(dict(store_raw))
-        config = StoreConfig.from_store_json(store_raw)
-    else:
-        store = (
-            FakeStoreKnowledge.from_fixture(fixture)
-            if fixture
-            else FakeStoreKnowledge.from_fixture()
-        )
-        config = StoreConfig.from_fixture(fixture)
-    if knowledge is not None:
-        if knowledge.list_menu() == store.list_menu():
-            store = knowledge
-        else:
-            log.warning("가게 지식(%s) 메뉴가 가게 JSON과 달라 JSON을 씀", type(knowledge).__name__)
-    # 가게 데이터 검사 (5단계 티켓 06): 오류면 여기서 멈추고, 경고는 로그에 남긴다
-    ensure_usable(store.list_menu(), config, log)
+    if stores is None:
+        stores = fixed_store(load_store(settings))
     # 확정 주문과 통화 상황(통화 중·넘김·미완료)을 받아 사장님 화면으로 보낸다(주문은 로그 한 줄도
     # 남긴다). 손님 화면의 `order` 이벤트는 그대로
     # 손님 요청·넘김 카드 손님 말은 Papago로 사장님 언어(ru)로 옮긴다. 키가 없으면 원문만 (티켓 03)
@@ -102,7 +85,7 @@ def create_app(
                                  keepalive=settings.translate_keepalive_s)
     if translator is None:
         log.info("PAPAGO_CLIENT_ID·PAPAGO_CLIENT_SECRET이 없어 사장님 카드를 번역하지 않음")
-    hub = OwnerHub(store=store, clock=store_clock(settings), translator=translator,
+    hub = OwnerHub(stores=stores, clock=store_clock(settings), translator=translator,
                    question_wait_s=settings.owner_wait_s,
                    approval_wait_s=settings.approval_wait_s,
                    approval_expire_s=settings.approval_expire_s, limits=settings.hub_limits(),
@@ -155,8 +138,7 @@ def create_app(
 
     app.include_router(
         phone_router(
-            store=store,
-            config=config,
+            stores=stores,
             order_sink=_TeeSink(hub, *order_sinks) if order_sinks else hub,
             settings=settings,
             owner=hub,
@@ -181,6 +163,39 @@ def create_app(
     log.info("통화 설정: NLU=%s STT=%s TTS=%s 시각=%s",
              settings.nlu, settings.stt, settings.tts, settings.now or "지금")
     return app
+
+
+def load_store(
+    settings: VoiceSettings,
+    *,
+    store_raw: Mapping[str, object] | None = None,
+    knowledge: StoreKnowledge | None = None,
+) -> StoreSnapshot:
+    """가게 JSON → 가게 스냅숏 (고정 가게를 쓰는 조립 지점용). 동기라 서버를 만들 때 부른다.
+
+    store_raw: 가게 JSON과 같은 모양의 dict(DB에서 읽은 것). 없으면 `PHONE_STORE_FIXTURE` 파일.
+    knowledge: 같은 가게의 다른 `StoreKnowledge` 구현(Part B 검색 등). 메뉴 목록이 가게 JSON과
+        같아야 한다(다르면 경고하고 JSON 쪽을 쓴다).
+    가게 데이터 검사(5단계 티켓 06): 오류면 `StoreDataError`로 멈추고, 경고는 로그에 남긴다.
+    """
+    fixture = settings.store_fixture
+    if store_raw is not None:
+        store: StoreKnowledge = FakeStoreKnowledge.from_dict(dict(store_raw))
+        config = StoreConfig.from_store_json(store_raw)
+    else:
+        store = (
+            FakeStoreKnowledge.from_fixture(fixture)
+            if fixture
+            else FakeStoreKnowledge.from_fixture()
+        )
+        config = StoreConfig.from_fixture(fixture)
+    if knowledge is not None:
+        if knowledge.list_menu() == store.list_menu():
+            store = knowledge
+        else:
+            log.warning("가게 지식(%s) 메뉴가 가게 JSON과 달라 JSON을 씀", type(knowledge).__name__)
+    ensure_usable(store.list_menu(), config, log)
+    return StoreSnapshot.of(store, config)
 
 
 def _package_version() -> str:
