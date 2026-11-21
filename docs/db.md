@@ -28,6 +28,9 @@ DB를 켜면 바뀌는 것:
   확정·넘김 주문은 사장님 화면과 함께 `phone_orders`에도 남는다(별도 스레드, 실패해도 통화는 계속).
   사장님 결정(수락·늦춘 수락·거절·자동 취소)도 같은 행의 결정 열에 남는다(`agenthan.serve`의
   `DecisionsToDb` → `PgOrderSink.record_decision`, ADR-0009).
+  서버가 다시 떠 사장님 허브에 주문 카드가 없으면 손님 주문 현황(`GET /api/phone/orders/{id}`)을 이 행의
+  마지막 상태로 다시 만든다(`OrdersFromDb` → `db.orders.find_order`, 전화 메뉴·주문 현황·쿠폰 티켓 06).
+  DB가 없으면 허브에 있는 주문만 보인다.
 - 비서(`tools/dummy_store.py`): 대화마다 쓰는 가게 파일을 쓸 때마다 `assistant_store_docs`에 한 벌 남긴다.
   파일이 없어지면(재배포) DB 사본을 읽는다.
 - Part B(`RagStoreKnowledge.from_db()`): 메뉴·묶음·리뷰를 DB에서 읽고 벡터는 pgvector에서 찾는다.
@@ -57,7 +60,7 @@ DB를 켜면 바뀌는 것:
 | `embedding_cache` | 내용 해시 → 벡터(메뉴·리뷰·질문 공통). 같은 글은 CLOVA를 다시 안 부른다 |
 | `embeddings` | 검색 대상 벡터 `(store_id, kind=menu·review·doc, ref_id)` + HNSW 인덱스 |
 | `eval_cases` | 골드셋·holdout 채점 문항 |
-| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled, 결정 전 ''), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다 |
+| `phone_orders` | 전화 주문(확정·넘김)과 사장님 결정(마이그레이션 002): `owner_status`(accepted·auto_accepted·rejected·expired·cancelled, 결정 전 ''), `reject_reason`(out_of_stock·busy·closed·free, 없으면 ''), `decided_at`(timestamptz, 없으면 NULL), `owner_pickup_time`(늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ''). 거절 내용(마이그레이션 004): `reject_menu_ids`(재료 소진의 떨어진 메뉴 id, jsonb 배열)·`reject_text`(직접 쓴 글 원문)·`reject_text_ko`(그 한국어 번역). 결정 전 행(`owner_status` '')은 `created_at`(= 확인 요청을 연 시각) + 자동 취소 마감이 지나면 주문 현황에서 자동 취소로 읽는다. 결정이 주문 기록보다 먼저 오면 `status` draft 행으로 만든다 |
 | `assistant_store_docs` | 비서 대화 가게 파일 사본 |
 
 ## 명령

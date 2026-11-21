@@ -78,9 +78,11 @@
   통화가 끝나면(`call_ended`) 자막을 버린다. ordered·handoff가 된 통화도 snapshot에 자막을 안 넣는다
 - 손님 주문 현황 (전화 메뉴·주문 현황 티켓 04, `order_status`): 주문 번호(통화 id)로 주문 카드
   하나를 손님 모양(줄·금액·픽업 시각·단계·결과·사유)으로 돌려준다. 단계·결과 규칙은
-  `order_status.py`. 주문 현황 구독(`watch_order`, 티켓 05)은 처음에 `order.status`(지금 현황),
-  그 뒤 손님 현황이 달라질 때마다 `order.status`(현황 전체)를 받는다. 주문 카드가 바뀌면
-  (`order.update`를 보낼 때) 다시 재서 지난번 보낸 것과 다를 때만 보낸다
+  `order_status.py`. 카드가 없으면(서버가 다시 뜸·상한으로 지움) 전화 주문 기록(`archive`, DB)의
+  마지막 상태로 같은 모양을 만든다(`lookup_order_status`, 티켓 06, `order_archive.py`). 주문 현황
+  구독(`watch_order`, 티켓 05)은 처음에 `order.status`(지금 현황), 그 뒤 손님 현황이 달라질 때마다
+  `order.status`(현황 전체)를 받는다. 주문 카드가 바뀌면(`order.update`를 보낼 때) 다시 재서
+  지난번 보낸 것과 다를 때만 보낸다
 - 손님 문자 미리보기 (티켓 07, `sms.py` 문장): 실제 발송은 없다. 통화 id마다 보낸 순서로 쌓고
   주문 카드·통화 카드의 `sms`에 싣는다(문자가 생기면 그 카드를 다시 보낸다). 종류: 확정 주문
   (order), 확인 요청 자동 취소(expired, 주문 승인 티켓 03), 늦은 버튼 답(late_answer, 시간
@@ -167,6 +169,7 @@ from agenthan.voice.owner.badges import request_badges
 from agenthan.voice.owner.card_texts import SOURCE_LANG, CardTexts
 from agenthan.voice.owner.decisions import DecisionRecord, DecisionSink, decision_of
 from agenthan.voice.owner.lexicon import lexicon_for
+from agenthan.voice.owner.order_archive import ArchivedOrder, OrderArchive, archived_order_status
 from agenthan.voice.owner.order_status import order_status
 from agenthan.voice.owner.translate import Translator
 from agenthan.voice.store_snapshot import StoreProvider
@@ -256,6 +259,7 @@ class OwnerHub:
         knowledge: KnowledgeStore | None = None,
         limits: HubLimits | None = None,
         decision_sink: DecisionSink | None = None,
+        archive: OrderArchive | None = None,
     ) -> None:
         # 가게 메뉴(원어 이름·품절 되돌리기·번역 때 가릴 메뉴명). 통화 밖이라 읽을 때마다 공급자에게
         # 지금 가게를 묻는다(전화 메뉴 티켓 01). `store`만 주면 늘 그 가게
@@ -264,6 +268,8 @@ class OwnerHub:
         self._decision_sink = decision_sink
         self._recorded: dict[str, DecisionRecord] = {}
         self._order_of: dict[str, Order] = {}
+        # 전화 주문 기록(티켓 06): 카드가 없는 주문의 손님 주문 현황을 읽는 곳. 없으면 허브만
+        self._archive = archive
         self._limits = limits or HubLimits()
         # 보충 지식 저장소(티켓 13). 허브가 쓰고, 통화 엔진이 읽는다(`phone_router(knowledge=...)`)
         self.knowledge = knowledge if knowledge is not None else KnowledgeStore()
@@ -660,6 +666,36 @@ class OwnerHub:
         if card is None:
             raise UnknownCard(order_id)
         return order_status(card, unspoken=order_id in self._unspoken)
+
+    async def lookup_order_status(self, order_id: str) -> dict[str, Any]:
+        """손님 주문 현황 조회 (전화 메뉴·주문 현황·쿠폰 티켓 04·06, `GET /api/phone/orders/{id}`).
+
+        허브의 주문 카드가 먼저다(`order_status`). 없으면 전화 주문 기록(`archive`)의 마지막 상태로
+        같은 모양을 만든다(`order_archive.py`: 마감 지난 결정 전 기록은 자동 취소, 손님 취소 없음).
+        둘 다 없거나 기록 읽기가 없으면 `UnknownCard`. 기록 읽기(DB)는 루프를 막지 않게 스레드에서.
+        """
+        try:
+            return self.order_status(order_id)
+        except UnknownCard:
+            if self._archive is None:
+                raise
+        record = await asyncio.to_thread(self._read_archive, order_id)
+        if order_id in self._orders:  # 읽는 사이 카드가 생겼다(새 통화가 같은 번호일 리는 없다)
+            return self.order_status(order_id)
+        status = None if record is None else archived_order_status(
+            record, now=self._clock.now(), expire=self._approval_expire)
+        if status is None:
+            raise UnknownCard(order_id)
+        return status
+
+    def _read_archive(self, order_id: str) -> ArchivedOrder | None:
+        """루프 밖 스레드에서 돈다. 허브 상태는 건드리지 않는다."""
+        assert self._archive is not None
+        try:
+            return self._archive.load(order_id)
+        except Exception:
+            log.exception("주문 %s 기록 읽기 실패 (%s)", order_id, type(self._archive).__name__)
+            return None
 
     def watch_order(self, order_id: str) -> AsyncIterator[OwnerEvent]:
         """손님 주문 현황 구독 (전화 메뉴·주문 현황 티켓 05). 처음에 `order.status`(지금 현황,

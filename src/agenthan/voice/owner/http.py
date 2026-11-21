@@ -46,12 +46,14 @@
 손님 주문 현황 (`customer_orders_router`, 전화 메뉴·주문 현황·쿠폰 티켓 04):
 - `GET /api/phone/orders/{id}`: 주문 번호(= 통화 id)로 주문 한 건의 현황. 모양과 단계는
   `order_status.py`(줄 목록·금액·픽업 시각·단계 checking·confirmed·cancelled). 토큰 없음(주문
-  번호가 열쇠다). 주문 카드가 없으면(모르는 번호·주문 없이 끝난 통화) 404 "주문을 찾을 수 없어요"
-  결과·사유·품절 메뉴·취소 가능(`outcome`·`reason`·`sold_out`·`can_cancel`)은 티켓 05
+  번호가 열쇠다). 허브에 주문 카드가 없으면(서버가 다시 뜸) 전화 주문 기록(DB)의 마지막 상태로
+  같은 모양을 준다(티켓 06, `order_archive.py`). 둘 다 없으면(모르는 번호·주문 없이 끝난 통화·DB
+  없음) 404 "주문을 찾을 수 없어요". 결과·사유·품절 메뉴·취소 가능(`outcome`·`reason`·`sold_out`·
+  `can_cancel`)은 티켓 05
 - `GET /api/phone/orders/{id}/stream`: 주문 현황 SSE (티켓 05, 문자 스트림과 같은 방식). 먼저
   `order.status`(조회와 같은 모양), 그 뒤 현황이 달라질 때마다 `order.status`(현황 전체). 창
   (`window_s`, 서버는 자동 취소 마감 + 60초)이 지나면 `order.end`를 보내고 닫는다. 허브에 주문
-  카드가 없으면 404(화면은 조회 API로 읽는다)
+  카드가 없으면 404(화면은 조회 API로 읽는다. 기록에서 읽은 주문은 더 바뀌지 않는다)
 
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
   못 붙여서 쿼리로 받는다. 없거나 틀리거나 서버에 토큰이 없으면 401
@@ -249,8 +251,10 @@ def customer_texts_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) ->
 def customer_orders_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) -> APIRouter:
     """손님 주문 현황 (전화 메뉴·주문 현황·쿠폰 티켓 04·05). 사장님 토큰이 없다(주문 번호가 열쇠다).
 
-    `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 없으면 404.
-    `GET /api/phone/orders/{id}/stream`: 그 현황의 SSE(`order.status` …, `window_s` 뒤 `order.end`).
+    `GET /api/phone/orders/{id}`: 허브 주문 카드의 손님 모양(`order_status.py`). 카드가 없으면 전화
+    주문 기록(티켓 06, `OwnerHub.lookup_order_status`). 둘 다 없으면 404.
+    `GET /api/phone/orders/{id}/stream`: 허브 카드 현황의 SSE(`order.status` …, `window_s` 뒤
+    `order.end`). 허브에 카드가 없으면 404.
     """
     router = APIRouter(prefix=CUSTOMER_ORDERS_PREFIX)
 
@@ -262,7 +266,7 @@ def customer_orders_router(hub: OwnerHub, *, window_s: float = TEXTS_WINDOW_S) -
     @router.get("/{order_id}")
     async def order_status(order_id: str) -> dict[str, Any]:
         with _hub_errors({404: "주문을 찾을 수 없어요"}):
-            return hub.order_status(order_id)
+            return await hub.lookup_order_status(order_id)
 
     @router.get("/{order_id}/stream", response_class=EventSourceResponse)
     async def order_stream(

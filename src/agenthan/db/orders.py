@@ -8,8 +8,12 @@ DB가 꺼져 있거나 실패하면 경고만 남기고 버린다(통화·사장
 한다: db는 voice를 import하지 않는다(PRD §7).
 결정은 주문 기록보다 먼저 올 수 있다(통화 중 수락 → 통화 끝 확정). 그래서 둘 다 upsert이고 서로
 다른 열만 고친다: 주문은 주문 열, 결정은 `owner_status`·`reject_reason`·`decided_at`·
-`owner_pickup_time`. 통화가 거절·취소로 끝나 주문 기록이 오지 않으면 결정에 실린 주문서로
-행을 채운다.
+`owner_pickup_time`과 거절 내용(`reject_menu_ids`·`reject_text`·`reject_text_ko`, 마이그레이션
+004). 통화가 거절·취소로 끝나 주문 기록이 오지 않으면 결정에 실린 주문서로 행을 채운다.
+
+주문 현황 다시 열기(전화 메뉴·주문 현황·쿠폰 티켓 06): 서버가 다시 떠 사장님 허브에 카드가 없을 때
+`find_order`가 주문 한 줄을 `PhoneOrderRow`로 읽는다. 손님 모양으로 바꾸는 일은 전화 쪽이 한다
+(`agenthan.serve`가 잇는다).
 """
 
 from __future__ import annotations
@@ -30,6 +34,18 @@ log = logging.getLogger(__name__)
 _ORDER_COLUMNS = (
     "id, store_id, status, lines, total, pickup_time, customer_name, customer_phone,"
     " transcript, created_at"
+)
+
+
+# 사장님 결정 열(002·004). `save_decision`이 이 열만 고친다
+_OWNER_COLUMNS = (
+    "owner_status",
+    "reject_reason",
+    "decided_at",
+    "owner_pickup_time",
+    "reject_menu_ids",
+    "reject_text",
+    "reject_text_ko",
 )
 
 
@@ -59,6 +75,10 @@ class OwnerDecisionRow:
     reject_reason: str = ""  # out_of_stock · busy · closed · free, 없으면 ""
     decided_at: str = ""  # ISO 8601(시간대 포함), 없으면 "" → NULL
     owner_pickup_time: str = ""  # 늦춘 수락의 바뀐 픽업 시각 ISO, 없으면 ""
+    # 거절 내용(마이그레이션 004): 재료 소진의 떨어진 메뉴 id들, 직접 쓰기 글 원문과 한국어 번역
+    reject_menu_ids: tuple[str, ...] = ()
+    reject_text: str = ""
+    reject_text_ko: str = ""
     # 행이 아직 없을 때(통화가 거절·취소로 끝나 주문 기록이 안 옴) 행을 채울 주문서
     order: Order | None = field(default=None, compare=False)
 
@@ -81,22 +101,92 @@ def save_decision(conn, decision: OwnerDecisionRow, store_id: str = "") -> None:
     `save_order`가 confirmed로 바꾼다. 통화 중 거절처럼 주문 기록이 끝내 안 오면 draft로 남는다.
     """
     decided_at = datetime.fromisoformat(decision.decided_at) if decision.decided_at else None
-    owner = (decision.owner_status, decision.reject_reason, decided_at, decision.owner_pickup_time)
+    owner = (
+        decision.owner_status,
+        decision.reject_reason,
+        decided_at,
+        decision.owner_pickup_time,
+        Jsonb(list(decision.reject_menu_ids)),
+        decision.reject_text,
+        decision.reject_text_ko,
+    )
     if decision.order is None:
         conn.execute(
-            "UPDATE phone_orders SET owner_status = %s, reject_reason = %s, decided_at = %s,"
-            " owner_pickup_time = %s WHERE id = %s",
+            f"UPDATE phone_orders SET {', '.join(f'{c} = %s' for c in _OWNER_COLUMNS)}"
+            " WHERE id = %s",
             (*owner, decision.order_id),
         )
         return
     conn.execute(
-        f"INSERT INTO phone_orders ({_ORDER_COLUMNS}, owner_status, reject_reason, decided_at,"
-        " owner_pickup_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
-        " ON CONFLICT (id) DO UPDATE SET owner_status = EXCLUDED.owner_status,"
-        " reject_reason = EXCLUDED.reject_reason, decided_at = EXCLUDED.decided_at,"
-        " owner_pickup_time = EXCLUDED.owner_pickup_time",
+        f"INSERT INTO phone_orders ({_ORDER_COLUMNS}, {', '.join(_OWNER_COLUMNS)})"
+        f" VALUES ({', '.join(['%s'] * (10 + len(_OWNER_COLUMNS)))})"
+        f" ON CONFLICT (id) DO UPDATE SET"
+        f" {', '.join(f'{c} = EXCLUDED.{c}' for c in _OWNER_COLUMNS)}",
         (*_order_values(replace(decision.order, status="draft"), store_id), *owner),
     )
+
+
+@dataclass(frozen=True)
+class PhoneOrderRow:
+    """phone_orders 한 줄 (주문 현황 다시 열기, 티켓 06). 주문 열 + 사장님 결정 열(002·004)."""
+
+    id: str
+    status: str  # draft · confirmed · handoff (통화가 어떻게 끝났나)
+    lines: list[dict]  # `OrderLine` 칸: menu_id·quantity·options·request·name·unit_price
+    pickup_time: str
+    created_at: str  # 주문서를 만든 가게 시각 ISO (통화 뒤 확인 요청을 연 시각)
+    owner_status: str  # '' = 아직 결정 전
+    reject_reason: str
+    decided_at: str  # ISO 8601, 없으면 ""
+    owner_pickup_time: str
+    reject_menu_ids: tuple[str, ...]
+    reject_text: str
+    reject_text_ko: str
+
+
+def load_order(conn, order_id: str) -> PhoneOrderRow | None:
+    """주문 번호(통화 id)로 한 줄. 없으면 None."""
+    row = conn.execute(
+        "SELECT id, status, lines, pickup_time, created_at, owner_status, reject_reason,"
+        " decided_at, owner_pickup_time, reject_menu_ids, reject_text, reject_text_ko"
+        " FROM phone_orders WHERE id = %s",
+        (order_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    (
+        id_,
+        status,
+        lines,
+        pickup,
+        created,
+        owner,
+        reason,
+        decided,
+        moved,
+        menu_ids,
+        text,
+        text_ko,
+    ) = row
+    return PhoneOrderRow(
+        id=id_,
+        status=status,
+        lines=list(lines or []),
+        pickup_time=pickup,
+        created_at=created,
+        owner_status=owner,
+        reject_reason=reason,
+        decided_at=decided.isoformat() if decided is not None else "",
+        owner_pickup_time=moved,
+        reject_menu_ids=tuple(str(m) for m in menu_ids or ()),
+        reject_text=text,
+        reject_text_ko=text_ko,
+    )
+
+
+def find_order(order_id: str, url: str | None = None) -> PhoneOrderRow | None:
+    """`load_order`를 DB가 꺼져 있거나 실패해도 부를 수 있게(None). 동기라 이벤트 루프 밖에서."""
+    return guarded(lambda conn: load_order(conn, order_id), None, url)
 
 
 class PgOrderSink:
