@@ -416,7 +416,8 @@ def test_after_a_restart_the_order_status_api_reads_the_db(seeded, tmp_path) -> 
                                "request": "", "subtotal": 15000}]
     assert moved["amount"] == {"subtotal": 15000, "total": 15000}  # 쿠폰 없는 주문: 할인 칸 없음
     assert discounted["amount"] == {"subtotal": 15000, "discount": 1000,
-                                    "coupon_name": "전화 주문 1,000원 할인", "total": 14000}
+                                    "coupon_name": "전화 주문 1,000원 할인",
+                                    "coupon_label": "전화 주문 1,000원 할인 쿠폰", "total": 14000}
     assert (expired["stage"], expired["outcome"]) == ("cancelled", "expired")
     # 손님 취소는 기록에서도 customer_cancelled, 취소 버튼 없음, 할인 칸은 그대로 (티켓 07 × 09)
     assert (customer_cancelled["stage"], customer_cancelled["outcome"],
