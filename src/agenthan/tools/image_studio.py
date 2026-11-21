@@ -17,6 +17,7 @@ import logging
 import math
 import os
 import threading
+import time
 from collections.abc import Callable
 
 import cv2
@@ -45,17 +46,54 @@ _rembg_session = None
 _rembg_lock = threading.Lock()  # 사진 여러 장을 동시에 자를 때 모델을 한 번만 읽는다
 
 
-def rembg_mask(image: np.ndarray) -> np.ndarray:
-    """오픈 배경 제거 모델(U2Net). 처음 부를 때 모델을 읽는다(약 170MB, 서버 캐시)."""
+def _session():
+    """U2Net 세션(한 번만 만든다). 처음 부를 때 rembg를 import하고 모델을 읽는다(약 170MB)."""
     global _rembg_session
-    from rembg import new_session, remove  # 선택 의존성: uv sync --extra cutout
+    from rembg import new_session  # 선택 의존성: uv sync --extra cutout
 
     with _rembg_lock:
         if _rembg_session is None:
             _rembg_session = new_session("u2net")
+        return _rembg_session
+
+
+def rembg_mask(image: np.ndarray) -> np.ndarray:
+    """오픈 배경 제거 모델(U2Net). 사진 한 장 0.2초(서버 8코어, 4장 동시 0.8초)."""
+    from rembg import remove
+
+    session = _session()
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    mask = remove(rgb, session=_rembg_session, only_mask=True)
+    mask = remove(rgb, session=session, only_mask=True)
     return np.asarray(mask, dtype=np.uint8)
+
+
+def warm() -> bool:
+    """rembg를 켰으면 지금 import하고 모델 세션을 만든다. 켜지 않았으면 아무것도 않고 False.
+
+    `import rembg`는 pymatting의 numba 함수를 컴파일한다. 캐시(NUMBA_CACHE_DIR)가 비어 있으면
+    서버(8 vCPU)에서 34.5초 걸렸다(캐시가 있으면 0.9초, 2026-11-21 실측). 이걸 첫 메뉴판 사진이
+    떠안으면 메뉴 사진 칸이 모두 import 잠금에 묶여 38초쯤 뒤 한꺼번에 끝났다. 그래서 앱이 뜰 때
+    뒤에서 미리 부른다(warm_in_background)."""
+    if model_name() != "rembg":
+        return False
+    started = time.monotonic()
+    _session()
+    log.info("cutout model warm %.2fs", time.monotonic() - started)
+    return True
+
+
+def warm_in_background() -> threading.Thread:
+    """앱 시작용: warm()을 데몬 스레드로. 실패해도 첫 사진이 다시 시도하므로 로그만 남긴다."""
+
+    def run() -> None:
+        try:
+            warm()
+        except Exception:  # noqa: BLE001 - 미리 읽기가 앱 시작을 막지 않게
+            log.warning("cutout model warm failed", exc_info=True)
+
+    thread = threading.Thread(target=run, name="cutout-warm", daemon=True)
+    thread.start()
+    return thread
 
 
 def model_name() -> str:

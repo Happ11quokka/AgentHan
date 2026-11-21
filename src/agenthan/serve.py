@@ -410,6 +410,12 @@ def include_assistant(
     )
     app.include_router(assistant.router)
     log.info("사장님 비서(/assistant) 붙임, 대화 파일은 %s", root)
+    # 메뉴판 사진의 흰 배경 사진(rembg)을 미리 읽는다. 첫 사진이 import·모델 읽기를 떠안으면
+    # 메뉴 사진 칸이 모두 묶여 한꺼번에 끝난다(image_studio.warm). rembg를 안 켰으면
+    # 아무것도 하지 않는다.
+    from agenthan.tools import image_studio
+
+    image_studio.warm_in_background()
 
 
 def main(argv: Sequence[str] | None = None) -> None:
