@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReviewReport, ReviewRow } from "./types";
+import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReportFrequency, ReviewReport, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -138,14 +138,38 @@ export const INBOX_TEXT = {
   empty: "답글 기다리는 리뷰가 없어요.",
   simulate: "새 리뷰 도착 (데모)",
 } as const;
-/** 리뷰 탭의 정기 보고 줄(#98). 켜고 끄기는 대화에서 미리보기·승인으로만 한다. */
+/** 리뷰 정기 보고(#98). 홈 탭 루틴 설정에 보인다(#33). */
 export const REPORT_TEXT = {
   section: "리뷰 정기 보고",
   off: "정기 보고 꺼짐",
   howTo: "대화에서 \"매일 리뷰 요약해서 보내 줘\"라고 하면 켤 수 있어요.",
-  runNow: "지금 받아 보기",
+  runNow: "지금 한 번 받아 보기",
   running: "보고 만드는 중…",
 } as const;
+
+/** 홈 탭 루틴 설정(#33): 사장님이 스위치로 직접 켜고 끈다(승인 카드 없음). */
+export const ROUTINE_TEXT = {
+  section: "루틴 설정",
+  report: "리뷰 정기 보고",
+  reportOn: "요약 받아두기",
+  reportOff: "요약 받지 말기",
+  reportOffHint: "꺼 두면 정해진 때 요약을 보내지 않아요",
+  frequency: "얼마나 자주",
+  weekday: "무슨 요일",
+  time: "몇 시에",
+  drafts: "답글 초안 미리 쓰기",
+  draftsOn: "초안 받아두기",
+  draftsOff: "초안 받지 말기",
+  draftsOnHint: "새 리뷰가 오면 답글 초안을 미리 써 둬요",
+  draftsOffHint: "리뷰 탭에서 [답글 초안 받기]를 누를 때만 써요",
+} as const;
+export const FREQUENCY_TEXT: Array<[ReportFrequency, string]> = [
+  ["daily", "매일"],
+  ["weekly", "매주"],
+  ["biweekly", "격주"],
+  ["monthly", "매달 1일"],
+];
+export const reportScheduleText = (schedule: string) => `${schedule}에 리뷰 요약을 보내요`;
 export const waitingText = (n: number) => `답글 기다리는 리뷰 ${n}개`;
 /** 왼쪽 자주 쓰는 일 배지를 읽어 줄 말. */
 export const quickBadgeText = (key: string, n: number) => (key === "reviews" ? waitingText(n) : `${n}개`);

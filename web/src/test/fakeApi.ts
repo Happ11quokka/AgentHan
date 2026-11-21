@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { ApiError, type AssistantApi } from "../api";
-import type { Action, DraftRow, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, Turn, View } from "../types";
+import type { Action, DraftRow, OnboardingInput, Pending, Period, Place, ReplyOp, ReplyResult, ReportView, ReviewsView, RoutinesChange, Turn, View } from "../types";
 
 export const SEED: Place = {
   menu: [
@@ -197,6 +197,7 @@ export function fakeApi(script: Script = [], view: View | Error = { place: SEED,
     }),
     report: vi.fn(async (_id: string, period: Period) => report(period)),
     runReviewReport: vi.fn(async (_id: string): Promise<View> => ({ place: SEED, pending: [], messages: [] })),
+    setRoutines: vi.fn(async (_id: string, _change: RoutinesChange): Promise<View> => ({ place: SEED, pending: [] })),
   } satisfies AssistantApi;
   return api;
 }

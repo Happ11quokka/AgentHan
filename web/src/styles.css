@@ -1353,29 +1353,6 @@ p {
   text-align: center;
 }
 
-.shop-section .today {
-  border: 0;
-  border-radius: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.today li {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  font-size: 13px;
-}
-
-.today time {
-  flex: none;
-  color: var(--ink-3);
-}
-
 /* ── 리뷰 탭 ───────────────────────────── */
 .link {
   align-self: flex-start;
@@ -1441,38 +1418,6 @@ p {
 }
 
 /* 리뷰 정기 보고 줄 (#98) */
-.report-routine {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-
-.report-routine p {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-2);
-}
-
-.report-routine p[data-on="true"] {
-  color: var(--green-ink);
-}
-
-.report-routine .report-howto {
-  margin-top: 2px;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--ink-3);
-}
-
-.report-routine .inbox-error {
-  flex-basis: 100%;
-}
-
 .review-list {
   list-style: none;
   margin: 0;
@@ -1917,6 +1862,443 @@ p {
   border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 13px;
+}
+
+/* ── 사이드카 네이버식 목록 (#33) ─────────
+   위쪽(프로필·탭 상자)은 그대로 두고, 탭 안은 테두리 없는 줄과 회색 띠로 나눈다. */
+.tab-panel {
+  padding: 0 0 24px;
+}
+
+.tab-panel > .loading,
+.tab-panel > .soon {
+  margin: 16px;
+}
+
+.shop {
+  gap: 0;
+}
+
+.shop-banner {
+  margin: 14px 16px 0;
+}
+
+.shop-section {
+  padding: 20px;
+}
+
+.shop-section + .shop-section {
+  border-top: 8px solid var(--surface-3);
+}
+
+.shop-section h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.shop-section h3 span {
+  padding: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.shop-section ul {
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.shop-section .empty {
+  padding: 0;
+  border: 0;
+  text-align: left;
+  font-size: 14px;
+}
+
+/* 승인 전 변경 배지: 줄 오른쪽 위가 아니라 이름 앞의 알약 */
+.shop .mark {
+  position: static;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--surface);
+}
+
+.shop .shop-row {
+  padding: 10px 0;
+}
+
+.shop .shop-row[data-mark] {
+  margin: 0 -8px;
+  padding-inline: 8px;
+  border-radius: 10px;
+}
+
+.shop .shop-row + .shop-row {
+  border-top: 0;
+}
+
+.shop .hours .shop-row {
+  padding-block: 6px;
+  font-size: 15px;
+}
+
+.shop .coupons .shop-row + .shop-row {
+  border-top: 1px solid var(--line);
+}
+
+.shop .keywords {
+  display: flex;
+  flex-flow: row wrap;
+  gap: 8px;
+}
+
+.shop .keywords .shop-row {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.shop .keywords .shop-row[data-mark] {
+  margin: 0;
+}
+
+.shop .keyword::before {
+  content: "#";
+}
+
+/* 메뉴: 이름·설명·가격 왼쪽, 큰 사진 오른쪽 */
+.menu-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-item {
+  display: flex;
+  gap: 14px;
+  padding: 18px 0;
+}
+
+.menu-item + .menu-item {
+  border-top: 1px solid var(--line);
+}
+
+.menu-item .menu-body {
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.menu-item strong {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.menu-desc {
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.menu-item .menu-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.menu-price s {
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.menu-item .menu-photo {
+  width: 88px;
+  height: 88px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.menu-item .menu-photo.empty {
+  color: #b4b7be;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.menu-item[data-mark="updated"] .menu-price span {
+  color: var(--blue);
+}
+
+.menu-item[data-mark="removed"] {
+  color: var(--ink-3);
+}
+
+.menu-item[data-mark="removed"] strong,
+.menu-item[data-mark="removed"] .menu-price span {
+  text-decoration: line-through;
+}
+
+[data-mark="added"] .mark {
+  background: var(--green-soft);
+}
+
+[data-mark="updated"] .mark {
+  background: var(--blue-soft);
+}
+
+[data-mark="removed"] .mark {
+  background: var(--red-soft);
+}
+
+/* 루틴 설정: 스위치 + 일정 고르기 */
+.routine-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.routine {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.routine + .routine {
+  border-top: 1px solid var(--line);
+}
+
+.routine-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.routine-head strong {
+  font-size: 16px;
+}
+
+.routine-head span {
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.routine-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.routine-switch i {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: #c9ccd2;
+  transition: background 0.2s;
+}
+
+.routine-switch i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(20 20 30 / 25%);
+  transition: transform 0.2s;
+}
+
+.routine-switch[aria-checked="true"] {
+  border-color: #bfeccf;
+  background: #f3fcf6;
+  color: var(--green-ink);
+}
+
+.routine-switch[aria-checked="true"] i {
+  background: var(--green);
+}
+
+.routine-switch[aria-checked="true"] i::after {
+  transform: translateX(20px);
+}
+
+.routine-switch:disabled {
+  opacity: 0.6;
+}
+
+.routine-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.routine-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.routine-field-label {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.routine-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.routine-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.routine-chips button,
+.routine-days button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.routine-days button {
+  padding: 0;
+  border-radius: 8px;
+}
+
+.routine-chips button[aria-checked="true"],
+.routine-days button[aria-checked="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.routine-time {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.routine-time input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.routines .inbox-error {
+  margin-top: 8px;
+}
+
+/* 리뷰·통계: 같은 여백, 카드 테두리 대신 줄 */
+.reviews,
+.stats {
+  padding: 16px 20px 0;
+}
+
+.review {
+  padding: 16px 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.review-list {
+  gap: 0;
+}
+
+.review + .review {
+  border-top: 1px solid var(--line);
+}
+
+.review[data-must-read="true"],
+.review[data-focused="true"] {
+  margin: 0 -10px;
+  padding-inline: 10px;
+  border-radius: 12px;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label value" "change value";
+  align-items: end;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.card + .card {
+  border-top: 1px solid var(--line);
+}
+
+.card span {
+  grid-area: label;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.card strong {
+  grid-area: value;
+  font-size: 24px;
+}
+
+.card small {
+  grid-area: change;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stats-section h3 {
+  font-size: 18px;
+  font-weight: 800;
 }
 
 /* ── 좁은 화면 ─────────────────────────── */

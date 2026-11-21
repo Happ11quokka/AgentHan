@@ -1,20 +1,21 @@
 import { useRef } from "react";
 import { avatarState } from "../avatarState";
 import { CONNECTION_TEXT } from "../labels";
-import type { Action, LogEntry, Pending, Period, Place, ReportView, ReviewReport, ReviewsView } from "../types";
+import type { Action, Pending, Period, Place, ReportView, ReviewReport, ReviewsView, Routines, RoutinesChange } from "../types";
 import type { Loaded } from "../useLoad";
 import { AgentAvatar } from "./AgentAvatar";
 import { Icon } from "./Icon";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
-import { ShopTab } from "./ShopTab";
+import { HomeTab, MenuTab } from "./ShopTab";
 import { StatsTab } from "./StatsTab";
 
-export type Tab = "shop" | "reviews" | "stats";
+export type Tab = "home" | "menu" | "reviews" | "stats";
 
 const TABS: Array<[Tab, string]> = [
-  ["shop", "내 가게"],
+  ["home", "홈"],
+  ["menu", "메뉴"],
   ["reviews", "리뷰"],
-  ["stats", "손님 통계"],
+  ["stats", "통계"],
 ];
 
 type Props = {
@@ -22,7 +23,6 @@ type Props = {
   onTab: (tab: Tab) => void;
   place: Place | null;
   pending: Pending[];
-  log: LogEntry[];
   online: boolean;
   busy: boolean;
   hasInput: boolean;
@@ -37,14 +37,16 @@ type Props = {
   onReply: OnReply;
   /** [리뷰 탭에서 보기]가 가리키는 카드(at: 누른 때, 같은 카드를 다시 눌러도 다시 스크롤). */
   focusReview: { id: string; at: number } | null;
-  /** 리뷰 정기 보고 설정 한 줄과 [지금 받아 보기](#98). */
+  /** 홈 탭 루틴 설정(#33): 리뷰 정기 보고(#98)와 답글 초안 미리 쓰기. */
   reviewReport?: ReviewReport | null;
   onRunReport?: () => Promise<string | null>;
+  routines?: Routines | null;
+  onRoutines?: (change: RoutinesChange) => Promise<string | null>;
   onClose: () => void;
 };
 
 export function Sidecar(props: Props) {
-  const { tab, onTab, place, pending, log, online, onClose } = props;
+  const { tab, onTab, place, pending, online, onClose } = props;
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
 
   const moveFocus = (step: number) => {
@@ -102,8 +104,18 @@ export function Sidecar(props: Props) {
       </div>
 
       <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "shop" &&
-          (place ? <ShopTab place={place} pending={pending} log={log} /> : <p className="loading">불러오는 중…</p>)}
+        {(tab === "home" || tab === "menu") && !place && <p className="loading">불러오는 중…</p>}
+        {tab === "home" && place && (
+          <HomeTab
+            place={place}
+            pending={pending}
+            report={props.reviewReport ?? null}
+            routines={props.routines ?? null}
+            onRoutines={props.onRoutines}
+            onRunReport={props.onRunReport}
+          />
+        )}
+        {tab === "menu" && place && <MenuTab place={place} pending={pending} />}
         {tab === "reviews" && (
           <ReviewsTab
             loaded={props.reviews}
@@ -111,8 +123,6 @@ export function Sidecar(props: Props) {
             onReply={props.onReply}
             focus={props.focusReview}
             onSimulate={props.onSimulateReview}
-            report={props.reviewReport}
-            onRunReport={props.onRunReport}
           />
         )}
         {tab === "stats" && <StatsTab loaded={props.report} period={props.period} onPeriod={props.onPeriod} />}

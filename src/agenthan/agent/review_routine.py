@@ -16,6 +16,7 @@ from datetime import datetime
 
 from agenthan.agent.review.report import (
     DEFAULTS,
+    _norm_time,
     next_run,
     report_digest,
     run_report,
@@ -75,6 +76,26 @@ class ReviewRoutine:
         if not settings.get("frequency"):
             settings = {**settings, "frequency": "weekly"}
         self._deliver(settings, self.clock(), "리뷰 보고")
+
+    def update(self, changes: dict) -> None:
+        """사이드카 루틴 설정(#33): 사장님이 화면에서 직접 바꾼 값(enabled·frequency·weekday·time)을
+        승인 카드 없이 바로 저장한다. 주기 없이 켜면 매일(시각은 기본 09:00).
+        잘못된 시각이면 ValueError (아무것도 저장하지 않는다)."""
+        changed = {k: v for k, v in changes.items() if v is not None}
+        if "time" in changed:
+            changed["time"] = _norm_time(changed["time"])
+        box = self._box(create=True)
+        store_id = box.ctx["store_id"]
+        new = {**box.settings_store.get(store_id), **changed}
+        if new.get("enabled") and not new.get("frequency"):
+            new["frequency"] = "daily"
+        now = self.clock()
+        if new.get("frequency") == "biweekly" and (
+            changed.get("frequency") or not new.get("anchor")
+        ):
+            new["anchor"] = now.date().isoformat()
+        new["updated_at"] = now.isoformat(timespec="minutes")
+        box.settings_store.save(store_id, new)
 
     def status(self) -> dict:
         """리뷰 탭 한 줄: '매일 09:00 리뷰 요약 받는 중' / '정기 보고 꺼짐'."""

@@ -79,6 +79,12 @@ def test_due_report_arrives_once_as_one_assistant_message(tmp_path):
     api = api_with(tmp_path, clock, paraphrased("리뷰 요약", "read"))
     sid = api.post("/assistant/sessions").json()["session_id"]
     first = place(api, sid)
+    assert first["routines"]["report"] == {
+        "enabled": False,
+        "frequency": None,
+        "weekday": "mon",
+        "time": "09:00",
+    }
     assert first["review_report"] == {
         "enabled": False,
         "schedule": None,
@@ -185,3 +191,65 @@ def test_report_period_follows_the_store_data_date_not_the_clock(tmp_path):
     # 하루 기간에는 리뷰가 없다: 0건을 말로 쓰고, 답글 안 단 불만은 전체 기준임을 드러낸다
     assert body == "이번 기간에는 새 리뷰가 없어요."
     assert todo == "아직 답글을 안 단 불만 리뷰가 모두 1건 있어요."
+
+
+# ── 사이드카 루틴 설정 스위치(#33): 사장님이 화면에서 직접 바꾼다(승인 카드 없음) ──
+
+
+def routines(api, sid, **body):
+    return api.put(f"/assistant/sessions/{sid}/routines", json=body)
+
+
+def test_screen_switch_turns_on_daily_0900_without_an_approval_card(tmp_path):
+    clock = Clock(datetime(2026, 11, 7, 8, 0))
+    api = api_with(tmp_path, clock)
+    sid = api.post("/assistant/sessions").json()["session_id"]
+
+    body = routines(api, sid, report={"enabled": True}).json()
+    assert body["pending"] == []
+    assert body["review_report"]["text"] == "매일 09:00 리뷰 요약 받는 중"
+    assert body["review_report"]["next_run"] == "2026-11-07T09:00"
+
+    clock.now = datetime(2026, 11, 7, 9, 3)
+    [message] = place(api, sid)["messages"]
+    assert message["text"].startswith("리뷰 정기 보고")
+
+
+def test_screen_changes_schedule_and_keeps_it_while_off(tmp_path):
+    clock = Clock(datetime(2026, 11, 7, 8, 0))  # 토요일
+    api = api_with(tmp_path, clock)
+    sid = api.post("/assistant/sessions").json()["session_id"]
+
+    report = {"enabled": True, "frequency": "weekly", "weekday": "fri", "time": "18:30"}
+    body = routines(api, sid, report=report).json()
+    assert body["review_report"]["schedule"] == "매주 금요일 18:30"
+    assert body["review_report"]["next_run"] == "2026-11-13T18:30"
+    assert body["routines"]["report"] == report  # 화면이 고른 값을 다시 보여 준다
+
+    off = routines(api, sid, report={"enabled": False}).json()["review_report"]
+    assert off["text"] == "정기 보고 꺼짐" and off["next_run"] is None
+    clock.now = datetime(2026, 11, 13, 19, 0)
+    assert place(api, sid)["messages"] == []  # 꺼 두면 오지 않는다
+
+    again = routines(api, sid, report={"enabled": True}).json()["review_report"]
+    assert again["schedule"] == "매주 금요일 18:30"  # 껐다 켜도 고른 일정 그대로
+
+
+def test_screen_time_change_moves_the_next_report(tmp_path):
+    clock = Clock(datetime(2026, 11, 7, 8, 0))
+    api = api_with(tmp_path, clock)
+    sid = api.post("/assistant/sessions").json()["session_id"]
+    routines(api, sid, report={"enabled": True})
+    body = routines(api, sid, report={"time": "7:30"}).json()["review_report"]
+    assert body["schedule"] == "매일 07:30" and body["next_run"] == "2026-11-08T07:30"
+
+
+@pytest.mark.parametrize(
+    "report",
+    [{"frequency": "hourly"}, {"weekday": "monday"}, {"time": "25:00"}, {"time": "아침"}],
+)
+def test_screen_rejects_unknown_schedule_values(tmp_path, report):
+    api = api_with(tmp_path, Clock(datetime(2026, 11, 7, 8, 0)))
+    sid = api.post("/assistant/sessions").json()["session_id"]
+    assert routines(api, sid, report=report).status_code in (400, 422)
+    assert place(api, sid)["review_report"]["text"] == "정기 보고 꺼짐"

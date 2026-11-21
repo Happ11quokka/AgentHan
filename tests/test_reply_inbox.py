@@ -423,3 +423,38 @@ def test_draft_op_is_busy_while_that_review_is_being_written(make):
     worker.join(5)
     assert "error" not in results[0] and results[0]["review"]["draft"]["status"] == "ready"
     assert len(s.writer.calls) == 1
+
+
+# ── 답글 초안 미리 쓰기 스위치(#33) ──
+
+
+def drafts_switch(s, on):
+    return s.api.put(f"/assistant/sessions/{s.sid}/routines", json={"drafts": on})
+
+
+def test_session_view_says_whether_drafts_are_prepared(make):
+    on = make()
+    assert on.api.get(f"/assistant/sessions/{on.sid}/place").json()["routines"]["drafts"] is True
+    off = make(prepare_on_start=False)
+    body = off.api.get(f"/assistant/sessions/{off.sid}/place").json()
+    assert body["routines"]["drafts"] is False
+
+
+def test_turning_drafts_on_starts_writing_right_away(make):
+    s = make(prepare_on_start=False)
+    body = drafts_switch(s, True).json()
+    assert body["routines"]["drafts"] is True
+    after = s.reviews()
+    assert after["summary"]["waiting"] == len(UNANSWERED)
+
+
+def test_with_drafts_off_a_new_review_waits_for_the_owner(make):
+    s = make()
+    s.reviews()
+    n = len(s.writer.calls)
+    assert drafts_switch(s, False).json()["routines"]["drafts"] is False
+    rid = s.api.post(f"/assistant/sessions/{s.sid}/reviews/simulate").json()["review_id"]
+    after = s.reviews()
+    assert by_id(after)[rid]["draft"] is None and len(s.writer.calls) == n
+    # 카드의 [답글 초안 받기]는 스위치와 상관없이 쓴다
+    assert s.reply(rid, "draft").json()["review"]["draft"]["status"] == "ready"

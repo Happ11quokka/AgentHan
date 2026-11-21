@@ -1,4 +1,4 @@
-import type { Action, OnboardingInput, Period, ReplyOp, ReplyResult, ReportView, ReviewsView, Started, Turn, View } from "./types";
+import type { Action, OnboardingInput, Period, ReplyOp, ReplyResult, ReportView, ReviewsView, RoutinesChange, Started, Turn, View } from "./types";
 
 /** 화면이 서버와 주고받는 유일한 길. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface AssistantApi {
@@ -17,6 +17,8 @@ export interface AssistantApi {
   report(sessionId: string, period: Period): Promise<ReportView>;
   /** 리뷰 탭 [지금 받아 보기]: 리뷰 보고 한 회분을 대화 메시지(View.messages)로 받는다. 설정은 그대로. */
   runReviewReport(sessionId: string): Promise<View>;
+  /** 루틴 설정 스위치·일정(#33): 사장님이 직접 바꾼 값이라 승인 카드 없이 저장한다. 대화 턴이 아니다. */
+  setRoutines(sessionId: string, change: RoutinesChange): Promise<View>;
 }
 
 export class ApiError extends Error {
@@ -78,4 +80,10 @@ export const httpApi: AssistantApi = {
     }),
   report: (id, period) => call(`${base(id)}/report?period=${period}`),
   runReviewReport: (id) => call(`${base(id)}/reviews/report`, { method: "POST" }),
+  setRoutines: (id, change) =>
+    call(`${base(id)}/routines`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(change),
+    }),
 };
