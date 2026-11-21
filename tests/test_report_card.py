@@ -8,6 +8,7 @@ import pytest
 from agenthan.agent import report_explainer as report
 from agenthan.agent.clova_chat import chat as hcx_chat
 from agenthan.agent.owner_assistant import OwnerAssistant
+from agenthan.tools.dummy_store import DummyStore
 
 
 def failing_chat(*args, **kwargs):
@@ -129,10 +130,20 @@ def test_glossary_does_not_intercept_edit_requests(question):
     assert report.glossary_lookup(question) is None
 
 
+def _live_named_store(path):
+    """검색 결과 예시(`search_fixture_sample.json`)는 운영 가게 이름(파일럿 가게, 2026-11-22
+    "한양케이크 HANYANG CAKE")으로 나온다. 평가용 시드는 옛 이름 그대로라 이름만 맞춘다."""
+    store = DummyStore(path)
+    data = store.read()
+    data["shop"]["name"] = "한양케이크 HANYANG CAKE"
+    store.write(data)
+    return path
+
+
 def test_seed_search_and_card_action(tmp_path):
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
+    assistant = OwnerAssistant(_live_named_store(tmp_path / "store.json"), chat=search_chat)
     summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
-    assert "샘플 러시안 베이커리: 1위" in summary
+    assert "한양케이크 HANYANG CAKE: 1위" in summary
     assert "이태원동 메도빅: 3위" in summary
     assert "안 나오는 검색어" in summary
     assert "이태원동 베이커리" in assistant.ask("자세히")
@@ -159,7 +170,7 @@ def test_search_summary_is_short_and_details_reuse_results(tmp_path, monkeypatch
     client.blog = Mock(wraps=client.blog)
     monkeypatch.setattr(owner_assistant, "FixtureSearch", Mock(return_value=client))
     monkeypatch.setenv("AGENTHAN_SEARCH_LIVE", "0")
-    assistant = OwnerAssistant(tmp_path / "store.json", chat=search_chat)
+    assistant = OwnerAssistant(_live_named_store(tmp_path / "store.json"), chat=search_chat)
     summary = assistant.ask("우리 가게 검색하면 어떻게 나와?")
     lines = summary.splitlines()
     assert len(lines) <= 6

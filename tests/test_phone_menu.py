@@ -296,6 +296,26 @@ def test_with_the_assistant_off_the_phone_keeps_its_own_store(tmp_path) -> None:
         "죄송해요, 그 메뉴는 없어요. 저희는 메도빅, 나폴레옹, 아메리카노, 블린이")
 
 
+# ---------------------------------------------------------------- 가게 이름 (2026-11-22 한양케이크)
+
+
+def test_the_phone_greets_with_the_assistant_shop_name_without_the_english() -> None:
+    """전화 첫인사는 비서 가게 이름을 읽는다. 화면용 영문 표기("HANYANG CAKE")는 읽지 않는다.
+    가게 이름을 바꾸면 메뉴가 같아도 다시 게시해 전화 이름이 바뀐다."""
+    stores = PhoneStores(_base(), embed=False)
+    seed = pilot.seed()
+    assert seed["shop"]["name"] == "한양케이크 HANYANG CAKE"
+    stores.start(seed)
+    assert stores().config.store_name == "한양케이크 HANYANG CAKE"
+    engine = DialogEngine(stores().store, FakeNlu(), stores().config, order_id="o-name")
+    assert engine.start(datetime(2026, 11, 8, 16, 0, tzinfo=StoreConfig.from_fixture().tz)
+                        ).utterances[0].startswith("네, 한양케이크 AI 전화 주문입니다.")
+
+    renamed = {**seed, "shop": {**seed["shop"], "name": "새 이름 케이크"}}
+    assert stores.publish(renamed)
+    assert stores().config.store_name == "새 이름 케이크"
+
+
 # ---------------------------------------------------------------- 옵션 말·품절
 
 
@@ -489,6 +509,21 @@ def test_without_a_published_menu_the_server_starts_on_the_pilot_menu(db) -> Non
     again = PhoneStores(_base(), db_url=db, embed=False)
     again.start(_honey_latte(pilot.seed()))
     assert "꿀 라떼" in [m.name_ko for m in again().store.list_menu()]
+
+
+@needs_db
+def test_a_publish_saved_before_names_restarts_with_the_pilot_name(db) -> None:
+    """이름 칸이 생기기 전에 DB에 남은 게시 값(메뉴·쿠폰만)으로 다시 떠도 파일럿 가게 이름을
+    쓴다."""
+    from agenthan.db.stores import save_published_phone_store
+    from agenthan.serve import phone_store_doc
+
+    doc = phone_store_doc(pilot.seed())
+    del doc["store_name"]
+    assert save_published_phone_store(doc, db)
+    stores = PhoneStores(_base(), db_url=db, embed=False)
+    stores.start(pilot.seed())
+    assert stores().config.store_name == "한양케이크 HANYANG CAKE"
 
 
 @needs_db

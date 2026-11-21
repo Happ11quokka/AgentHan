@@ -242,7 +242,7 @@ def test_packaged_dummy_patterns(period):
     assert "실제 화면 확인 전 가정" in data["_note"]
     assert "review" not in json.dumps(data).lower() and "리뷰" not in str(data["store"])
     facts = report_facts(data, period)
-    assert facts.store_name == "샘플 러시안 베이커리"
+    assert facts.store_name == "한양케이크 HANYANG CAKE"  # 운영 가게 이름 (2026-11-22)
     assert facts.place_views.change > 0 and facts.booking_order_requests.change < 0
     assert facts.peak_hour == facts.closing_hour - 1 == 20
     assert facts.top_keywords[0].name == "메도빅"

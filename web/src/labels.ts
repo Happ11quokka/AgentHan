@@ -122,7 +122,7 @@ export const BUSINESS_NAMES: Record<BusinessField, string> = { name: "상호", a
 export const BUSINESS_FORM_TEXT = {
   heading: "가게 기본 정보",
   hint: "바꿀 칸만 고치고 [미리 보기]를 누르세요. 저장은 확인 카드에서 한 번 더 눌러야 해요.",
-  placeholders: { name: "예: 샘플 러시안 베이커리", address: "예: 서울시 용산구 …", phone: "예: 02-123-4567", introduction: "손님이 가게를 처음 볼 때 읽는 글이에요." },
+  placeholders: { name: "예: 한양케이크 HANYANG CAKE", address: "예: 서울시 용산구 …", phone: "예: 02-123-4567", introduction: "손님이 가게를 처음 볼 때 읽는 글이에요." },
   draft: "추천 글 받기",
   drafting: "추천 글 쓰는 중…",
   drafted: "추천 글을 넣었어요. 마음대로 고쳐 쓰세요.",

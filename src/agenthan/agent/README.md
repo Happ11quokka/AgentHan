@@ -158,7 +158,7 @@ flowchart TD
 - A-1 메뉴 사진 초안 승인은 `interrupt()`로 멈추지 않는다. `photo_reply` 노드가 다음 턴의 "네/취소/고칠 곳"을 받는다. 웹 폼은 `menu_form()` 값으로 채운다.
 
 더미 플레이스 API 시드(`tools/dummy_store_seed.json`)는 `fixtures/sample_store.json`의
-샘플 러시안 베이커리와 같은 메뉴 4개·리뷰 3개를 쓴다. 메뉴 ID·이름·가격·별칭·원어명·설명과
+한양케이크 HANYANG CAKE와 같은 메뉴 4개·리뷰 3개를 쓴다. 메뉴 ID·이름·가격·별칭·원어명·설명과
 리뷰 ID·본문·평점·방문일의 일치는 `tests/test_seed_alignment.py`로 확인한다.
 시드의 미답글 리뷰는 2건(`r02`, `r03`)이며, 주소·전화번호·영업시간·통계는 가상 값이다.
 
@@ -299,7 +299,7 @@ JPEG로 줄인다. 폰 사진(4032px 등)은 그대로 보내면 거절되거나
 리뷰 예: `답글 안 단 리뷰 있어?` → `안 좋은 리뷰에 답글 써줘` → `더 정중하게 고쳐줘` → `이대로 올려줘`.
 답글은 `owner_reply.status = "saved_not_sent"`로 저장만 하고 보내지 않는다.
 
-샘플 러시안 베이커리로 데모·캡처하기(처음 쓰는 저장 경로 지정):
+한양케이크 HANYANG CAKE로 데모·캡처하기(처음 쓰는 저장 경로 지정):
 
 ```bash
 uv run --env-file .env python -m agenthan.agent.owner_assistant \

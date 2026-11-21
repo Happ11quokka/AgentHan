@@ -7,7 +7,7 @@ import type { OnboardingInput, View } from "../types";
 import { Onboarding } from "./Onboarding";
 
 const BLANK_SHOP = { name: "", category: "" };
-const FILLED_SHOP = { name: "샘플 러시안 베이커리", category: "베이커리·카페" };
+const FILLED_SHOP = { name: "한양케이크 HANYANG CAKE", category: "베이커리·카페" };
 
 function setup(initial = BLANK_SHOP) {
   const user = userEvent.setup();
@@ -82,7 +82,7 @@ describe("온보딩 화면", () => {
 
   test("이미 있는 이름·업종은 채워져 있고, 업종이 선택지에 없으면 직접 입력에 들어간다", () => {
     const { form } = setup(FILLED_SHOP);
-    expect(form.getByRole("textbox", { name: "가게 이름" })).toHaveValue("샘플 러시안 베이커리");
+    expect(form.getByRole("textbox", { name: "가게 이름" })).toHaveValue("한양케이크 HANYANG CAKE");
     expect(form.getByRole("radio", { name: "직접 입력" })).toBeChecked();
     expect(form.getByRole("textbox", { name: "업종 직접 입력" })).toHaveValue("베이커리·카페");
   });
