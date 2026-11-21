@@ -1,0 +1,65 @@
+{
+  "id": "s33-no-wait-reject-after-call",
+  "title": "대기 없는 주문: 통화 뒤 사장님 거절(바쁨) → 주문 취소와 사유 한 줄",
+  "now": "2026-11-08T17:10:00+09:00",
+  "approval": true,
+  "turns": [
+    {
+      "guest": "메도빅 하나요",
+      "expect_state": "ordering",
+      "expect_cart": [
+        {
+          "menu_id": "m01",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "guest": "그게 다예요",
+      "expect_state": "ask_pickup"
+    },
+    {
+      "guest": "6시 반이요",
+      "expect_state": "confirm"
+    },
+    {
+      "guest": "네",
+      "expect_state": "closing",
+      "expect_request": 1,
+      "expect_say_exact": [
+        "주문 넣어 드렸어요. 가게에서 확인하면 화면으로 알려 드릴게요. 감사합니다."
+      ]
+    }
+  ],
+  "after_call": [
+    {
+      "owner": "reject",
+      "reason": "busy"
+    }
+  ],
+  "after_call_s": 120,
+  "expect_order": {
+    "lines": [
+      {
+        "menu_id": "m01",
+        "quantity": 1
+      }
+    ],
+    "pickup_time": "2026-11-08T18:30:00+09:00",
+    "status": "confirmed"
+  },
+  "expect_owner": {
+    "status": "rejected",
+    "reject_reason": "busy",
+    "sms": [
+      "rejected"
+    ]
+  },
+  "expect_status": {
+    "stage": "cancelled",
+    "outcome": "rejected",
+    "reason": "busy",
+    "reason_text": "죄송해요, 가게가 바빠서 주문을 받기 어려워 주문이 취소됐어요. 다음에 다시 주문해 주세요.",
+    "sold_out": []
+  }
+}

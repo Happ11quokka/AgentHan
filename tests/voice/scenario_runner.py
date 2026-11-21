@@ -57,6 +57,8 @@
                                                # 가지 않는다). after_call_s보다 먼저 넣는다
       "expect_status": {"stage": "confirmed",  # 마지막 손님 주문 현황(허브 `order_status`). 칸:
                         "pickup_label": "18:30"}  # stage · pickup_label · total. 카드가 없으면 null
+                        # 티켓 05: outcome · reason(사유 코드, 없으면 null) · reason_text ·
+                        # sold_out(떨어진 메뉴 이름들) · original_pickup_label · can_cancel
 
 금지 규칙(매 턴): 확인 전 confirmed, 복창 없는 CONFIRM, 한 턴 두 질문, 복창 총액 ≠ `Cart.total()`,
 150자 넘는 문장, 괄호·이모지·마크다운, 대답 없는 턴. 무응답 되묻기 앞의 "여보세요?"는 질문으로
@@ -367,8 +369,12 @@ class _Owner:
             got = self.hub.order_status(self.call_id)
         except UnknownCard:
             return None
+        reason = got["reason"] or {"code": None, "text": None}
         return {"stage": got["stage"], "pickup_label": got["pickup"]["label"],
-                "total": got["amount"]["total"]}
+                "original_pickup_label": got["pickup"]["original_label"],
+                "total": got["amount"]["total"], "outcome": got["outcome"],
+                "reason": reason["code"], "reason_text": reason["text"],
+                "sold_out": got["sold_out"], "can_cancel": got["can_cancel"]}
 
 
 @dataclass
