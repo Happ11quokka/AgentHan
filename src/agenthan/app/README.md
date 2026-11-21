@@ -11,7 +11,8 @@ FastAPI 앱 하나에 파트별 라우터를 붙인다: `/assistant`(Part A), `/
 | `POST /assistant/sessions/{id}/actions` | 버튼의 `action_id`·`args`·`label`을 실행하고 같은 응답에 `next_actions` 추가 |
 | `POST /assistant/sessions/{id}/photos` | 메뉴판 사진·음식 사진(multipart `image` + 선택 `text`) → 같은 모양 |
 | `GET /assistant/sessions/{id}/photos/{name}` | `draft-<n>`: 기다리는 초안 사진, 메뉴 id: 저장된 메뉴 사진. 다른 세션·없는 사진은 404 |
-| `GET /assistant/sessions/{id}/place` | 지금 `place`·`pending` |
+| `GET /assistant/sessions/{id}/place` | 지금 `place`·`pending`·`shop`(가게 이름·업종. 둘 중 하나가 비면 화면이 온보딩을 띄움) |
+| `POST /assistant/sessions/{id}/onboarding` | 처음 쓰는 사장님(#94): `name`·`category`(빈칸 422)와 대표 메뉴 `menus` 0~3개(`name`·`price` 양의 정수)를 넣은 값 그대로 `shop`·`menus`에 저장 → 같은 모양. 대화 턴·승인 카드 아님, 실제 발송 없음 |
 | `GET /assistant/sessions/{id}/reviews` | 리뷰 탭: 요약(평균 별점·건수·답글 안 단 수)과 리뷰(최신순, 거친 표현을 거른 `text`, 걸렀을 때만 `original`) |
 | `GET /assistant/sessions/{id}/report?period=week\|day` | 손님 통계 탭: 요약 카드 3개 증감, 유입 채널, 시간대·요일 조회, 키워드(새로 뜬 것 표시), 해 볼 일 한 줄(`tip`). LLM 없음 |
 
