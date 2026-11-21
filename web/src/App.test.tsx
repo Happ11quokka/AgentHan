@@ -879,6 +879,50 @@ describe("리뷰 정기 보고 (#98)", () => {
     await userEvent.setup().click(screen.getByRole("tab", { name: "리뷰" }));
     expect(await screen.findByText("매일 09:00 리뷰 요약 받는 중")).toBeInTheDocument();
   });
+
+  // #112: 보고 설정은 가게 정보가 아니다. 저장 전후 review_report가 바뀌면 결과 줄에 남긴다.
+  const OFF = { enabled: false, schedule: null, next_run: null, text: "정기 보고 꺼짐" };
+  const DAILY = { enabled: true, schedule: "매일 14:47", next_run: "2026-11-08T14:47", text: "매일 14:47 리뷰 요약 받는 중" };
+  const SETTING = { task_id: "t9", version: 1, feature: "review", after: SEED, changes: {} };
+  const CHIPS = [
+    { action_id: "task.approve", label: "모두 저장", args: { task_id: "t9", version: 1 } },
+    { action_id: "task.cancel", label: "모두 취소", args: { task_id: "t9" } },
+  ];
+  test.each([
+    ["켜기", OFF, DAILY, "리뷰 정기 보고: 매일 14:47"],
+    ["바꾸기", ON, DAILY, "리뷰 정기 보고: 매일 14:47"],
+    ["끄기", ON, OFF, "리뷰 정기 보고 끔"],
+  ])("보고 설정 %s를 [모두 저장]하면 결과 줄이 저장 완료이고 오늘 한 일에도 남는다", async (_name, before, after, line) => {
+    const api = fakeApi(
+      [
+        { reply: "리뷰 정기 보고를 바꿀까요?", next_actions: CHIPS, place: SEED, pending: [SETTING], review_report: before },
+        { reply: "저장했어요.", place: SEED, pending: [], review_report: after },
+      ],
+      { place: SEED, pending: [], review_report: before },
+    );
+    const { user } = await open(api);
+    await say(user, "매일 리뷰 요약해서 보내 줘");
+    await user.click(await chatArea().findByRole("button", { name: "모두 저장" }));
+    const result = (await chatArea().findByText("저장 완료")).closest(".result") as HTMLElement;
+    expect(within(result).getByText(line)).toBeInTheDocument();
+    expect(chatArea().queryByText(/저장 안 함/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(line).length).toBeGreaterThan(1); // 오늘 한 일
+  });
+
+  test("[모두 취소]면 보고 설정이 그대로라 지금처럼 저장 안 함이다", async () => {
+    const api = fakeApi(
+      [
+        { reply: "리뷰 정기 보고를 바꿀까요?", next_actions: CHIPS, place: SEED, pending: [SETTING], review_report: OFF },
+        { reply: "취소했어요.", place: SEED, pending: [], review_report: OFF },
+      ],
+      { place: SEED, pending: [], review_report: OFF },
+    );
+    const { user } = await open(api);
+    await say(user, "매일 리뷰 요약해서 보내 줘");
+    await user.click(await chatArea().findByRole("button", { name: "모두 취소" }));
+    const result = (await chatArea().findByText(/저장 안 함/)).closest(".result") as HTMLElement;
+    expect(within(result).queryByText(/리뷰 정기 보고/)).not.toBeInTheDocument();
+  });
 });
 
 describe("대표키워드 변경", () => {

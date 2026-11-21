@@ -1,5 +1,5 @@
 // 서버의 코드·숫자를 사장님 말로 바꾸는 유일한 곳. 화면 다른 곳은 코드나 문구 표를 직접 두지 않는다.
-import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReviewRow } from "./types";
+import type { Coupon, DayHours, DraftRow, MetricKey, Pending, Period, Place, RecordRow, RedraftHint, ReplyError, ReplyOpName, ReviewReport, ReviewRow } from "./types";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const num = (n: number) => n.toLocaleString("ko-KR");
@@ -266,6 +266,13 @@ export function approval(p: Pending): { blocked: boolean; answer: string; need: 
 }
 
 // ── 바뀐 것 문장 ───────────────────────
+/** 저장 전후 리뷰 정기 보고 설정(#98)이 바뀌었으면 그 한 줄. 가게 정보가 아니라 describeChanges가 못 본다(#112). */
+export function describeReportChange(before: ReviewReport | null, after: ReviewReport | undefined): string[] {
+  if (!before || !after) return [];
+  if (before.enabled === after.enabled && before.schedule === after.schedule) return [];
+  return after.enabled && after.schedule ? [`리뷰 정기 보고: ${after.schedule}`] : ["리뷰 정기 보고 끔"];
+}
+
 /** 두 가게 화면 사이에 바뀐 것을 사장님 문장으로. 승인 카드와 '오늘 한 일'이 같이 쓴다. */
 export function describeChanges(before: Place, after: Place): string[] {
   const lines: string[] = [];
