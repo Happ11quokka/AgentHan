@@ -2296,6 +2296,53 @@ p {
   color: var(--blue);
 }
 
+.menu-progress {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-s);
+  background: var(--green-soft);
+  color: var(--green-ink);
+}
+
+.menu-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.menu-progress-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.menu-progress-bar {
+  height: 6px;
+  margin: 8px 0 6px;
+  border-radius: 999px;
+  background: rgb(0 135 61 / 15%);
+  overflow: hidden;
+}
+
+.menu-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width 0.4s ease-out;
+}
+
+.menu-progress p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.menu-item-ghost .menu-body {
+  gap: 6px;
+}
+
 .shop-banner.filling {
   color: var(--green-ink);
   background: var(--green-soft);

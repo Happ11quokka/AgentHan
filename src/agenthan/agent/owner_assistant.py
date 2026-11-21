@@ -2332,15 +2332,19 @@ class OwnerAssistant:
             lines.append(t["board_updated"].format(n=len(result.updated), names=names))
         if result.unchanged:
             lines.append(t["board_unchanged"].format(n=len(result.unchanged)))
-        if result.jobs:
-            lines.append(t["board_filling"])
+        if result.jobs or result.no_photo:
+            if result.jobs:
+                lines.append(t["board_filling"])
             self.photo_job = menu_board.fill_all(
                 self.store,
                 result.jobs,
                 image,
                 context,
                 call=self.clova_v3,
-                menu_list=", ".join(i.name for i in items),
+                menu_list=", ".join(
+                    f"{i.name} ({i.subtitle})" if i.subtitle else i.name for i in items
+                ),
+                no_photo=result.no_photo,
             )
         if result.no_price:
             lines.append(t["board_no_price"].format(names=", ".join(result.no_price)))
