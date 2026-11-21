@@ -134,6 +134,7 @@ export const INBOX_TEXT = {
   editBox: "답글 고치기",
   redraft: "다시 쓰기",
   writing: "초안 쓰는 중…",
+  getDraft: "답글 초안 받기",
   empty: "답글 기다리는 리뷰가 없어요.",
   simulate: "새 리뷰 도착 (데모)",
 } as const;
@@ -165,6 +166,7 @@ export const REDRAFT_HINTS: Array<[RedraftHint, string]> = [
 ];
 /** 카드 버튼을 누른 뒤 그 카드에만 보이는 '하는 중'. 대화창에는 아무것도 남기지 않는다. */
 export const INBOX_WORKING_TEXT: Record<ReplyOpName, string> = {
+  draft: INBOX_TEXT.writing,
   post: "올리는 중…",
   skip: "건너뛰는 중…",
   redraft: "다시 쓰는 중…",

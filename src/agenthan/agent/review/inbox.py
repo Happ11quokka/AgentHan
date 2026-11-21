@@ -194,6 +194,34 @@ class ReplyInbox:
             self.drafts[review_id] = {**current, "status": "skipped"}
         return self._outcome(None, "이 리뷰는 건너뛸게요.")
 
+    def begin_draft(self, review_id: str):
+        """카드 [답글 초안 받기]를 잡는다. → (Outcome, None) 또는 (None, 초안을 쓸 함수).
+
+        쓸 만한 초안(문장 있음, 실패 아님)이 이미 있으면 다시 쓰지 않고 ok만 돌려준다. 초안이 없거나
+        실패했거나 문장 없이 건너뛴 리뷰는 새로 쓴다. 잠금 다루기는 begin_redraft와 같다."""
+        row = self._row(review_id)
+        if row is None:
+            return self._outcome("not_found", "초안을 쓸 리뷰를 찾을 수 없어요."), None
+        if row.get("has_owner_reply"):
+            return self._outcome("replied", "이미 답글이 달린 리뷰예요."), None
+        with self._lock:
+            current = self.drafts.get(review_id)
+            usable = bool(current and current["text"] and current["status"] != "failed")
+        if usable and review_id not in self._working:
+            return self._outcome(None, "초안이 이미 있어요."), None
+        if not self._claim(review_id, again=True):
+            return self._outcome(
+                "busy", "아직 초안을 쓰는 중이에요. 잠시 뒤에 다시 눌러 주세요."
+            ), None
+
+        def job() -> dict:
+            entry = self._write(review_id)
+            if entry["status"] == "failed":
+                return self._outcome("draft_failed", "초안을 쓰지 못했어요.")
+            return self._outcome(None, "초안을 썼어요.")
+
+        return None, job
+
     def begin_redraft(self, review_id: str, hint: str):
         """다시 쓰기를 잡는다. → (실패 Outcome, None) 또는 (None, 초안을 쓸 함수).
 

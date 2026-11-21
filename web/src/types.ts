@@ -114,8 +114,8 @@ export type ReplyDraft = { text: string; status: DraftStatus; issues: string[] }
 export type RedraftHint = "shorter" | "more_apologetic" | "warmer";
 
 /** 답글 대기함 카드 버튼 (POST /reviews/{id}/reply). 대화 턴이 아니다. */
-export type ReplyOpName = "post" | "skip" | "redraft";
-export type ReplyOp = { op: "post"; text?: string } | { op: "skip" } | { op: "redraft"; hint: RedraftHint };
+export type ReplyOpName = "draft" | "post" | "skip" | "redraft";
+export type ReplyOp = { op: "draft" } | { op: "post"; text?: string } | { op: "skip" } | { op: "redraft"; hint: RedraftHint };
 /** reason: checks(검사 거절) | replied | busy | empty | save_failed | draft_failed | server(화면: 서버에 닿지 못함). */
 export type ReplyError = { reason: string; message: string; issues: string[] };
 export type ReplyResult = { review: ReviewRow; summary: ReviewsView["summary"]; error?: ReplyError };

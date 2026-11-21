@@ -48,11 +48,13 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
   const replyToReview = useCallback(
     async (review: ReviewRow, op: ReplyOp): Promise<ReplyError | null> => {
       if (!id) return null;
+      // 초안 받기는 사이드카 안에서만: 실패해도 채팅에 알리지 않고 카드에만 보인다.
+      const quiet = op.op === "draft";
       let result: ReplyResult;
       try {
         result = await api.replyToReview(id, review.id, op);
       } catch {
-        notify(replyNoticeText(review, REPLY_SERVER_ERROR), review.id);
+        if (!quiet) notify(replyNoticeText(review, REPLY_SERVER_ERROR), review.id);
         return REPLY_SERVER_ERROR;
       }
       updateReviews((v) => ({ summary: result.summary, reviews: v.reviews.map((r) => (r.id === result.review.id ? result.review : r)) }));
@@ -61,7 +63,7 @@ export default function App({ api = httpApi, reviewPollMs = REVIEW_POLL_MS, demo
         if (op.op === "post") addLog([REVIEW_POSTED_TEXT]);
         return null;
       }
-      if (NOTICE_REASONS.has(error.reason)) notify(replyNoticeText(result.review, error), review.id);
+      if (!quiet && NOTICE_REASONS.has(error.reason)) notify(replyNoticeText(result.review, error), review.id);
       return error;
     },
     [api, id, addLog, notify, updateReviews],

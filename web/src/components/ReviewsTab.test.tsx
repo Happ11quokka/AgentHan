@@ -2,28 +2,28 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
-import { INBOX } from "../test/fakeApi";
+import { INBOX, inboxWith } from "../test/fakeApi";
 import type { ReplyError, ReplyOp, ReviewRow, ReviewsView } from "../types";
 import { ReviewsTab } from "./ReviewsTab";
 
-type Reply = (review: ReviewRow, op: ReplyOp) => ReviewRow | ReplyError;
+type Reply = (review: ReviewRow, op: ReplyOp) => ReviewRow | ReplyError | Promise<ReviewRow | ReplyError>;
 
 /** 서버 대신 reply가 돌려준 리뷰로 카드 하나만 바꾼다(App의 onReply와 같은 모양). */
 function Harness({ initial, reply }: { initial: ReviewsView; reply: Reply }) {
   const [data, setData] = useState(initial);
   const onReply = async (review: ReviewRow, op: ReplyOp) => {
-    const out = reply(review, op);
+    const out = await reply(review, op);
     if ("reason" in out) return out;
     setData((d) => ({ ...d, reviews: d.reviews.map((r) => (r.id === out.id ? out : r)) }));
     return null;
   };
-  return <ReviewsTab loaded={{ data, failed: false, reload: () => {}, update: () => {} }} busy={false} onAction={() => {}} onReply={onReply} />;
+  return <ReviewsTab loaded={{ data, failed: false, reload: () => {}, update: () => {} }} busy={false} onReply={onReply} />;
 }
 
-function setup(reply: Reply = (r) => r) {
+function setup(reply: Reply = (r) => r, initial: ReviewsView = INBOX) {
   const spy = vi.fn(reply);
   const user = userEvent.setup();
-  render(<Harness initial={INBOX} reply={spy} />);
+  render(<Harness initial={initial} reply={spy} />);
   const card = (text: string) => within(screen.getByText(text).closest("li") as HTMLElement);
   return { user, spy, card };
 }
@@ -92,5 +92,36 @@ describe("리뷰 카드 초안은 바로 고칠 수 있다", () => {
     const { user, spy, card } = setup();
     await user.click(card("커피가 맛있어요.").getByRole("button", { name: "건너뛰기" }));
     expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ id: "r18" }), { op: "skip" });
+  });
+});
+
+describe("[답글 초안 받기]는 카드 안에서 초안을 받는다", () => {
+  const noDraft = inboxWith("r18", { draft: null }, { waiting: 2 });
+
+  test("대기함 경로(op: draft)로 받고, 쓰는 동안 카드에만 '초안 쓰는 중…'을 보인 뒤 입력칸에 초안을 띄운다", async () => {
+    let finish!: (r: ReviewRow) => void;
+    const { user, spy, card } = setup(() => new Promise<ReviewRow>((resolve) => (finish = resolve)), noDraft);
+    const c = card("커피가 맛있어요.");
+    expect(c.queryByRole("textbox", { name: "답글 고치기" })).not.toBeInTheDocument();
+    await user.click(c.getByRole("button", { name: "답글 초안 받기" }));
+    expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ id: "r18" }), { op: "draft" });
+    expect(c.getByRole("status")).toHaveTextContent("초안 쓰는 중…");
+    expect(c.queryByRole("button", { name: "답글 초안 받기" })).not.toBeInTheDocument();
+    // 다른 카드는 그대로
+    expect(card("메도빅 최고예요.").queryByText("초안 쓰는 중…")).not.toBeInTheDocument();
+    finish({ ...noDraft.reviews.find((r) => r.id === "r18")!, draft: { text: "커피 칭찬 고맙습니다.", status: "ready", issues: [] } });
+    await waitFor(() => expect(box(c)).toHaveValue("커피 칭찬 고맙습니다."));
+    expect(c.queryByText("초안 쓰는 중…")).not.toBeInTheDocument();
+    await user.click(c.getByRole("button", { name: "올리기" }));
+    expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ id: "r18" }), { op: "post" });
+  });
+
+  test("초안을 못 쓰면 카드에 이유를 보이고 다시 누를 수 있다", async () => {
+    const { user, spy, card } = setup(() => ({ reason: "draft_failed", message: "초안을 쓰지 못했어요.", issues: [] }), noDraft);
+    const c = card("커피가 맛있어요.");
+    await user.click(c.getByRole("button", { name: "답글 초안 받기" }));
+    expect(await c.findByRole("alert")).toHaveTextContent("초안을 쓰지 못했어요.");
+    await user.click(c.getByRole("button", { name: "답글 초안 받기" }));
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

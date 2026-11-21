@@ -98,7 +98,6 @@ export function Sidecar(props: Props) {
           <ReviewsTab
             loaded={props.reviews}
             busy={props.busy}
-            onAction={props.onAction}
             onReply={props.onReply}
             focus={props.focusReview}
             onSimulate={props.onSimulateReview}

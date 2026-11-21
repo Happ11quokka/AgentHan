@@ -12,7 +12,7 @@ import {
   unansweredText,
   waitingText,
 } from "../labels";
-import type { Action, ReplyError, ReplyOp, ReplyOpName, ReviewRow, ReviewsView } from "../types";
+import type { ReplyError, ReplyOp, ReplyOpName, ReviewRow, ReviewsView } from "../types";
 import type { Loaded } from "../useLoad";
 import { LoadFailed } from "./LoadFailed";
 
@@ -41,14 +41,12 @@ export type OnReply = (review: ReviewRow, op: ReplyOp) => Promise<ReplyError | n
 
 type ReviewProps = {
   review: ReviewRow;
-  busy: boolean;
   preparing: boolean;
   focused: boolean;
-  onAction: (action: Action) => void;
   onReply: OnReply;
 };
 
-function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewProps) {
+function Review({ review, preparing, focused, onReply }: ReviewProps) {
   const [showOriginal, setShowOriginal] = useState(false);
   // 사장님이 입력칸에서 고친 글. null이면 초안 그대로 보인다(새 초안이 오면 따라 바뀐다).
   const [edited, setEdited] = useState<string | null>(null);
@@ -57,7 +55,6 @@ function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewP
   const [error, setError] = useState<ReplyError | null>(null);
   const { draft } = review;
   const chip = draftChip(review);
-  const act = (action_id: string, label: string) => onAction({ action_id, label, args: { review_id: review.id } });
   const reply = async (op: ReplyOp) => {
     if (working) return;
     setWorking(op.op);
@@ -155,10 +152,16 @@ function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewP
       )}
       {!open && errorLine}
 
-      {!open && !review.has_owner_reply && !draft && preparing && <p className="inbox-writing">{INBOX_TEXT.writing}</p>}
-      {!open && !review.has_owner_reply && !(preparing && !draft) && (
-        <button type="button" className="ghost small" disabled={busy} onClick={() => act("review.draft_reply", "답글 초안 받기")}>
-          답글 초안 받기
+      {/* 초안 받기는 대화 턴이 아니라 대기함 경로(op: draft)다: 채팅에는 아무것도 더하지 않는다. */}
+      {!open && working === "draft" && (
+        <p className="inbox-writing" role="status">
+          {INBOX_WORKING_TEXT.draft}
+        </p>
+      )}
+      {!open && !working && !review.has_owner_reply && !draft && preparing && <p className="inbox-writing">{INBOX_TEXT.writing}</p>}
+      {!open && !working && !review.has_owner_reply && !(preparing && !draft) && (
+        <button type="button" className="ghost small" onClick={() => void reply({ op: "draft" })}>
+          {INBOX_TEXT.getDraft}
         </button>
       )}
     </li>
@@ -168,7 +171,6 @@ function Review({ review, busy, preparing, focused, onAction, onReply }: ReviewP
 type Props = {
   loaded: Loaded<ReviewsView>;
   busy: boolean;
-  onAction: (action: Action) => void;
   onReply: OnReply;
   /** 채팅 알림의 [리뷰 탭에서 보기]가 가리키는 카드. 그 카드로 스크롤한다. */
   focus?: { id: string; at: number } | null;
@@ -176,7 +178,7 @@ type Props = {
   onSimulate?: () => void;
 };
 
-export function ReviewsTab({ loaded, busy, onAction, onReply, focus, onSimulate }: Props) {
+export function ReviewsTab({ loaded, busy, onReply, focus, onSimulate }: Props) {
   const { data, failed, reload } = loaded;
   const [chosen, setChosen] = useState<Filter | null>(null);
   const focusId = focus?.id;
@@ -243,10 +245,8 @@ export function ReviewsTab({ loaded, busy, onAction, onReply, focus, onSimulate 
             <Review
               key={r.id}
               review={r}
-              busy={busy}
               preparing={summary.preparing > 0}
               focused={r.id === focusId}
-              onAction={onAction}
               onReply={onReply}
             />
           ))}
