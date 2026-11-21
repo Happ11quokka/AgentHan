@@ -11,6 +11,7 @@ import type { HomeEdit } from "./components/ShopTab";
 import { Sidecar, type Tab } from "./components/Sidecar";
 import { REPLY_SERVER_ERROR, replyNoticeText, REVIEW_POSTED_TEXT } from "./labels";
 import type { OnboardingInput, Period, ReplyError, ReplyOp, ReplyResult, ReviewRow, ReviewStatsPeriod, RoutinesChange, Suggestion } from "./types";
+import * as storage from "./storage";
 import { useConversation } from "./useConversation";
 import { useLoad } from "./useLoad";
 import type { Nudge } from "./orders/orderNudges";
@@ -109,6 +110,7 @@ export default function App({ api = httpApi, ordersApi = httpOrdersApi, reviewPo
   const [sideW, setSideW] = useState(loadSideW);
   const [resizing, setResizing] = useState(false);
   const [hasInput, setHasInput] = useState(false);
+  const [naverImported, setNaverImported] = useState(storage.naverImported);
   const photoInput = useRef<HTMLInputElement>(null);
 
   // 리뷰·통계는 그 탭이 열려 있을 때만 읽고, 대화가 바뀌거나 비서 답이 오면 다시 읽는다.
@@ -334,6 +336,14 @@ export default function App({ api = httpApi, ordersApi = httpOrdersApi, reviewPo
         // 좁은 화면에서 목록을 열면 늘 펼쳐 보인다(접기는 넓은 화면의 아이콘 줄).
         collapsed={navCollapsed && !navOpen}
         onToggle={toggleNav}
+        onNaverImported={
+          naverImported
+            ? undefined
+            : () => {
+                storage.rememberNaverImported();
+                setNaverImported(true);
+              }
+        }
         suggestCount={ideas.length}
         suggestCurrent={page === "suggest"}
         onSuggest={() => {
@@ -396,6 +406,7 @@ export default function App({ api = httpApi, ordersApi = httpOrdersApi, reviewPo
         onPolishMenu={chat.polishMenu}
         onReorderMenus={chat.reorderMenus}
         readingSince={chat.readingSince}
+        imported={naverImported}
         onClose={() => setSideOpen(false)}
         nudge={nudge && !floatNudge ? <AgentNudge nudge={nudge} onOpen={openOrders} onClose={() => dropNudge(nudge)} /> : undefined}
       />

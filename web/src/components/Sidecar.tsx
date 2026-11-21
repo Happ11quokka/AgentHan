@@ -5,6 +5,7 @@ import type { Action, Pending, Period, Place, ReportView, ReviewReport, ReviewSt
 import type { Loaded } from "../useLoad";
 import { AgentAvatar } from "./AgentAvatar";
 import { Icon } from "./Icon";
+import { NaverEmpty } from "./NaverImport";
 import { ReviewsTab, type OnReply } from "./ReviewsTab";
 import { HomeTab, MenuTab, type HomeEdit, type OnMenuDelete, type OnMenuEdit, type OnMenuPolish, type OnMenuReorder } from "./ShopTab";
 import { type StatsKind, StatsTab } from "./StatsTab";
@@ -59,6 +60,8 @@ type Props = {
   onEditHome?: (target: HomeEdit) => void;
   /** 메뉴판 사진을 읽는 중이면 보낸 시각(ms). 메뉴 탭이 진행 막대를 그린다. */
   readingSince?: number | null;
+  /** 네이버 플레이스를 불러왔는지(시연 컨셉). 불러오기 전에는 홈·리뷰·통계를 비워 보인다. 메뉴는 늘 보인다. */
+  imported?: boolean;
   onClose: () => void;
   /** 비서 말풍선(전화 주문 알림). 있으면 얼굴 아래에 띄우고 얼굴은 "주목" 상태가 된다 */
   nudge?: ReactNode;
@@ -66,6 +69,7 @@ type Props = {
 
 export function Sidecar(props: Props) {
   const { tab, onTab, place, pending, online, onClose } = props;
+  const imported = props.imported ?? true;
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
 
   const moveFocus = (step: number) => {
@@ -124,8 +128,9 @@ export function Sidecar(props: Props) {
       </div>
 
       <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {(tab === "home" || tab === "menu") && !place && <p className="loading">불러오는 중…</p>}
-        {tab === "home" && place && (
+        {!imported && tab !== "menu" && <NaverEmpty />}
+        {(tab === "home" || tab === "menu") && !place && (imported || tab === "menu") && <p className="loading">불러오는 중…</p>}
+        {tab === "home" && place && imported && (
           <HomeTab
             place={place}
             pending={pending}
@@ -137,7 +142,7 @@ export function Sidecar(props: Props) {
           />
         )}
         {tab === "menu" && place && <MenuTab place={place} pending={pending} onEdit={props.onEditMenu} onDelete={props.onDeleteMenu} onPolish={props.onPolishMenu} onReorder={props.onReorderMenus} readingSince={props.readingSince ?? null} />}
-        {tab === "reviews" && (
+        {tab === "reviews" && imported && (
           <ReviewsTab
             loaded={props.reviews}
             busy={props.busy}
@@ -146,7 +151,7 @@ export function Sidecar(props: Props) {
             onSimulate={props.onSimulateReview}
           />
         )}
-        {tab === "stats" && (
+        {tab === "stats" && imported && (
           <StatsTab
             loaded={props.report}
             period={props.period}

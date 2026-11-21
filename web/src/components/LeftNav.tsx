@@ -3,6 +3,7 @@ import { quickBadgeText, whenText } from "../labels";
 import type { Recent } from "../storage";
 import { BrandLogo } from "./BrandMark";
 import { Icon, type IconName } from "./Icon";
+import { NaverImportButton } from "./NaverImport";
 import type { Tab } from "./Sidecar";
 
 /**
@@ -81,9 +82,11 @@ type Props = {
   onOrders?: () => void;
   orderCount?: number;
   ordersOpen?: boolean;
+  /** 있으면 [새 대화] 자리에 [네이버 플레이스 불러오기](시연 컨셉)가 먼저 온다. 불러오면 [새 대화]로 돌아간다. */
+  onNaverImported?: () => void;
 };
 
-export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges = {}, collapsed = false, onToggle, suggestCount = 0, suggestCurrent = false, onSuggest, onOrders, orderCount = 0, ordersOpen = false }: Props) {
+export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges = {}, collapsed = false, onToggle, suggestCount = 0, suggestCurrent = false, onSuggest, onOrders, orderCount = 0, ordersOpen = false, onNaverImported }: Props) {
   const toggleLabel = collapsed ? "사이드바 펼치기" : "사이드바 접기";
   // 도구함: 맨 아래 버튼을 누르면 사이드바 옆에 전체 기능 패널이 열린다. Esc·바깥·도구 고르기로 닫는다.
   const [boxOpen, setBoxOpen] = useState(false);
@@ -107,10 +110,14 @@ export function LeftNav({ recent, current, busy, onNew, onOpen, onQuick, badges 
         <div className="brand">
           <BrandLogo collapsed={collapsed} />
         </div>
+        {onNaverImported ? (
+          <NaverImportButton onImported={onNaverImported} className="new-chat" compact={collapsed} />
+        ) : (
         <button type="button" className="new-chat" onClick={onNew} disabled={busy} aria-label={collapsed ? "새 대화" : undefined} title={collapsed ? "새 대화" : undefined}>
           <Icon name="plus" />
           {!collapsed && "새 대화"}
         </button>
+        )}
         {onSuggest && (
           <button
             type="button"

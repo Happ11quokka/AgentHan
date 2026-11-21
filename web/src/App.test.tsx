@@ -362,6 +362,20 @@ describe("새 대화 첫 화면", () => {
   });
 });
 
+describe("네이버 플레이스 불러오기 (시연 컨셉)", () => {
+  test("불러오기 전에는 홈이 비어 있고, 승인하면 홈이 보이며 메뉴는 그대로다", async () => {
+    localStorage.removeItem("agenthan.naverPlace.v1");
+    const { user } = await open(fakeApi([]));
+    const home = screen.getByRole("tabpanel", { name: "홈" });
+    expect(within(home).getByText("아직 불러온 가게 정보가 없어요")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /네이버 플레이스 불러오기/ }));
+    await user.click(await screen.findByRole("button", { name: "승인" }, { timeout: 4000 }));
+    expect(within(screen.getByRole("tabpanel", { name: "홈" })).queryByText("아직 불러온 가게 정보가 없어요")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /네이버 플레이스 불러오기/ })).not.toBeInTheDocument();
+    expect(localStorage.getItem("agenthan.naverPlace.v1")).toBe("true");
+  }, 8000);
+});
+
 describe("사이드카 [홈]·[메뉴]", () => {
   test("홈 구역의 [수정]은 대화에서 그 일을 시작한다(쿠폰은 입력 블록, 나머지는 말)", async () => {
     const seeded = { ...SEED, keywords: ["이태원 케이크"] };
@@ -1017,6 +1031,7 @@ describe("답글 대기함", () => {
     await waitFor(() => expect(api.reviews.mock.calls.length).toBeGreaterThan(before));
     cleanup();
     localStorage.clear();
+    localStorage.setItem("agenthan.naverPlace.v1", "true");
     const hidden = await openInbox(fakeApi(), { demo: false });
     expect(hidden.panel.queryByRole("button", { name: "새 리뷰 도착 (데모)" })).not.toBeInTheDocument();
   });
