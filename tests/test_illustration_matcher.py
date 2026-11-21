@@ -207,6 +207,18 @@ def test_a_far_name_falls_back_to_the_category_default(embedded_catalog):
     assert pick_illustration("가나다", None, embed) == "default_other"
 
 
+def test_category_defaults_are_never_embedding_picks(embedded_catalog):
+    """짧은 이름은 "케이크" 같은 기본 그림 쪽으로 가깝게 나오곤 한다(치즈케이크 → default_cake).
+    기본 그림은 임베딩 후보가 아니고, 분류 단서로만 고른다."""
+    order = [*AXES, *(key for key in embedded_catalog if key not in AXES)]
+    near_default_cake = [0.0] * 1024
+    near_default_cake[order.index("default_cake")] = 1.0
+    near_default_cake[0] = 0.6  # 메도빅과는 0.51: 기준값 미만
+    embed = embed_from({"가나다": near_default_cake})
+    assert pick_illustration("가나다", None, embed) == "default_other"
+    assert pick_illustration("가나다", "Cake", embed) == "default_cake"  # 분류 단서로
+
+
 def test_a_category_clue_keeps_the_match_in_its_group(embedded_catalog):
     """케이크 그림이 조금 더 가까워도 분류가 커피면 커피 그림 안에서 고른다
     ("바닐라 라떼"가 "바닐라 치즈케이크"로 가지 않게)."""

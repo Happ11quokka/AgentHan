@@ -365,3 +365,18 @@ PALETTE.update(
         "meringue_shade": "#EEE3CD",
     }
 )
+
+
+# ── 가까운 메뉴 색(티켓 07) ────────────────────────────────────────────────────
+# 말차(녹차 케이크·녹차 라떼), 레드벨벳 시트, 망고, 허브차(카모마일), 민트차, 구운 자국.
+PALETTE.update(
+    {
+        "matcha": "#8DB255",
+        "matcha_light": "#C6DC9C",
+        "red_velvet": "#B8323F",
+        "mango": "#F6B13C",
+        "herbal": "#EAC461",
+        "mint_tea": "#B5D88A",
+        "burnt": "#5C3A21",
+    }
+)

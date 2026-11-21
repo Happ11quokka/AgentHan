@@ -45,9 +45,9 @@ TABLE = [
     ("가나다 에이드", None, "default_ade"),
     ("가나다 라떼", None, "default_coffee"),
     ("가나다 수프", None, "default_soup"),
-    ("가나다 쿠키", None, "default_bakery"),
+    ("가나다 비스킷", None, "default_bakery"),
     ("가나다 만두", None, "default_savory"),
-    ("가나다 녹차라떼", None, "default_tea"),  # 더 긴 끝말이 이긴다
+    ("가나다 티라떼", None, "default_tea"),  # 더 긴 끝말이 이긴다("라떼"는 커피)
     ("가나다 스파게티", None, "default_savory"),  # "티"로 끝나도 차가 아니다
     ("Gana Lemonade", None, "default_ade"),
     # 아무 단서도 없으면 기타

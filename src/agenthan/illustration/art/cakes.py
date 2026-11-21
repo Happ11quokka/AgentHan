@@ -7,7 +7,8 @@
 
 - shape: 조각 모양. SHAPES의 함수가 접시·몸통을 그리고, 위 장식을 올릴 윗면 자리(Top)를 돌려준다.
   slice(삼각 조각) · whole(홀케이크, cut이면 한 조각 잘라 낸 단면) · bar(네모 조각) · roll(롤)
-  · tart(타르트) · nest(머랭 둥지) · eclair(에클레어 1~3개) · dome(반구)
+  · tart(타르트) · tartlets(작은 타르트 셋, scorch면 구운 자국) · nest(머랭 둥지)
+  · eclair(에클레어 1~3개) · dome(반구)
 - layers: 자른 면에 보이는 층, 위에서부터 [색 이름, 두께 비율]. wave가 있으면 층 경계가 물결.
 - top: 윗면 색. toppings: 윗면 장식 [종류, 색 이름]을 차례로(TOPPINGS 참고).
 - 그 밖에 모양마다 고르는 값(side, side_crumbs, drip, cut, glazes …)은 각 함수 설명에.
@@ -224,28 +225,47 @@ def _roll(r: dict) -> tuple[list[str], Top]:
 def _tart(r: dict) -> tuple[list[str], Top]:
     """타르트: 낮은 원판 크러스트에 주름 테두리, 속(filling) 위에 장식."""
     cx, top_y, rx, height = 128, 122, 88, 22
+    parts = [plate(cx, top_y + height + 2, rx + 16)]
+    parts += _tart_body(cx, top_y, rx, height, r.get("crust", "crust"), r["filling"])
+    return parts, Top(cx, top_y + 2, rx * 0.58, rx * TILT * 0.55)
+
+
+def _tartlets(r: dict) -> tuple[list[str], Top]:
+    """작은 타르트 셋(에그타르트). scorch: 속 위 구운 자국 색. 장식은 앞의 하나에 올린다."""
+    crust, filling = r.get("crust", "crust"), r["filling"]
+    parts = [plate(128, 166, 106)]
+    for cx, top_y in ((88, 118), (168, 118), (128, 160)):
+        rx = 46
+        parts += _tart_body(cx, top_y, rx, 16, crust, filling, rim=4.5, dents=6)
+        if r.get("scorch"):
+            for i, (u, v) in enumerate(((-0.3, -0.2), (0.25, 0.15), (0.05, -0.35), (-0.1, 0.3))):
+                x, y = cx + u * rx * 0.6, top_y + 2 + v * rx * TILT * 0.6
+                parts.append(ellipse(x, y, 6 - i % 2 * 2, 3.5 - i % 2, r["scorch"], opacity=0.7))
+    return parts, Top(128, 162, 46 * 0.5, 46 * TILT * 0.45)
+
+
+def _tart_body(cx, top_y, rx, height, crust, filling, *, rim=6, dents=12) -> list[str]:
+    """타르트 몸통: 주름진 옆면, 크러스트 윗면, 속(filling), 테두리 구슬."""
     ry = rx * TILT
-    crust = r.get("crust", "crust")
+    k = rx / 88  # 큰 타르트(rx 88) 기준 비율
     parts = [
-        plate(cx, top_y + height + 2, rx + 16),
         polygon(
             _arc(cx, top_y, rx, ry, 0, math.pi) + _arc(cx, top_y + height, rx, ry, math.pi, 0),
             crust,
             shaded=True,
         ),
     ]
-    for i in range(1, 12):
-        angle = math.pi * i / 12
+    for i in range(1, dents):
+        angle = math.pi * i / dents
         x, y = cx + rx * math.cos(angle), top_y + ry * math.sin(angle)
         parts.append(line(d("M", x, y + 3, "L", x, y + height - 2), crust, 3, opacity=0.7))
     parts += [
         ellipse(cx, top_y, rx, ry, crust),
-        ellipse(cx, top_y + 2, rx - 12, ry - 9, r["filling"]),
+        ellipse(cx, top_y + 2, rx - 12 * k, ry - 9 * k, filling),
     ]
-    parts += [
-        circle(x, y, 6, crust) for x, y in _arc(cx, top_y, rx - 4, ry - 3, 0, 2 * math.pi, 22)
-    ]
-    return parts, Top(cx, top_y + 2, rx * 0.58, ry * 0.55)
+    beads = _arc(cx, top_y, rx - 4 * k, ry - 3 * k, 0, 2 * math.pi, 22 if k == 1 else 11)
+    parts += [circle(x, y, rim, crust) for x, y in beads]
+    return parts
 
 
 def _nest(r: dict) -> tuple[list[str], Top]:
@@ -347,6 +367,7 @@ SHAPES: dict[str, Callable[[dict], tuple[list[str], Top]]] = {
     "bar": _bar,
     "roll": _roll,
     "tart": _tart,
+    "tartlets": _tartlets,
     "nest": _nest,
     "eclair": _eclair,
     "dome": _dome,
@@ -975,5 +996,170 @@ ILLUSTRATIONS = [
         },
         aliases=("파브로바", "파블로바 케이크", "Pavlova", "Павлова"),
         keywords=("파블로바", "파브로바", "pavlova", "павлова"),
+    ),
+    # ── 가까운 메뉴(티켓 07): 데모 가게엔 없지만 손님·심사위원이 넣을 법한 케이크 ──
+    # 넓은 키워드("치즈케이크", "타르트")가 이미 있으니 변형은 더 긴 키워드로 이긴다.
+    cake(
+        "cake_tiramisu",
+        "티라미수",
+        {
+            "shape": "bar",
+            "height": 58,
+            "layers": [
+                ["cocoa", 0.14],
+                ["cream", 0.9],
+                ["crema", 0.55],
+                ["cream", 0.9],
+                ["crema", 0.55],
+            ],
+            "top": "cocoa",
+            "toppings": [["dust", "choco_shade"], ["mint", "leaf"]],
+            "card": "card_peach",
+        },
+        aliases=("티라미스", "Tiramisu"),
+        keywords=("티라미수", "티라미스", "tiramisu"),
+    ),
+    cake(
+        "cake_cheesecake_newyork",
+        "뉴욕 치즈케이크",
+        {
+            "shape": "slice",
+            "height": 72,
+            "layers": [["cheese", 1], ["crust", 0.3]],
+            "top": "cheese",
+            "toppings": [["shine", "white"], ["strawberries", "berry"]],
+            "card": "card_rose",
+        },
+        aliases=("뉴욕치즈케익", "New York cheesecake"),
+        keywords=("뉴욕치즈케이크", "뉴욕치즈케익", "뉴욕치즈", "newyorkcheesecake"),
+    ),
+    cake(
+        "cake_cheesecake_basque",
+        "바스크 치즈케이크",
+        {
+            "shape": "slice",
+            "height": 64,
+            "layers": [["burnt", 0.1], ["cheese", 1]],
+            "top": "burnt",
+            "toppings": [["shine", "white"]],
+            "card": "card_sand",
+        },
+        aliases=("바스크 치즈케익", "Basque cheesecake"),
+        keywords=("바스크치즈케이크", "바스크치즈케익", "바스크치즈", "바스크", "basque"),
+    ),
+    cake(
+        "cake_red_velvet",
+        "레드벨벳",
+        {
+            "shape": "slice",
+            "layers": _alternate("red_velvet", "cream", 3, cream_w=0.45),
+            "top": "cream",
+            "toppings": [["crumbs", "red_velvet"]],
+            "card": "card_lilac",
+        },
+        aliases=("레드벨벳 케이크", "레드 벨벳 케이크", "Red velvet"),
+        keywords=("레드벨벳", "redvelvet"),
+    ),
+    cake(
+        "cake_roll",
+        "롤케이크",
+        {
+            "shape": "roll",
+            "outer": "sponge",
+            "inner": "cream",
+            "toppings": [["dust", "white"], ["strawberries", "berry"]],
+            "card": "card_cream",
+        },
+        aliases=("롤 케이크", "스위스롤", "생크림 롤케이크", "Roll cake"),
+        keywords=("롤케이크", "롤케익", "스위스롤", "rollcake"),
+    ),
+    cake(
+        "cake_strawberry",
+        "딸기 생크림 케이크",
+        {
+            "shape": "slice",
+            "layers": [
+                ["cream", 0.3],
+                ["sponge", 1],
+                ["cream", 0.4],
+                ["berry", 0.18],
+                ["cream", 0.4],
+                ["sponge", 1],
+            ],
+            "top": "cream",
+            "toppings": [["rosettes", "cream"], ["strawberries", "berry"]],
+            "card": "card_mint",
+        },
+        aliases=("딸기 케이크", "생크림 케이크", "딸기 쇼트케이크", "Strawberry cake"),
+        keywords=("딸기케이크", "딸기케익", "딸기생크림", "생크림케이크", "쇼트케이크"),
+    ),
+    cake(
+        "cake_chocolate",
+        "초코 케이크",
+        {
+            "shape": "whole",
+            "cut": 26,
+            "layers": [["choco_shade", 0.15], *_alternate("cocoa", "choco", 3, cream_w=0.45)],
+            "side": "choco",
+            "top": "choco",
+            "toppings": [["shine", "white"], ["strawberries", "berry"]],
+            "card": "card_cream",
+        },
+        aliases=("초콜릿 케이크", "초콜렛 케이크", "가토 쇼콜라", "Chocolate cake"),
+        keywords=(
+            "초코케이크",
+            "초코케익",
+            "초콜릿케이크",
+            "초콜렛케이크",
+            "가토쇼콜라",
+            "가나슈케이크",
+            "chocolatecake",
+        ),
+    ),
+    cake(
+        "cake_crepe",
+        "크레이프 케이크",
+        {
+            "shape": "slice",
+            "height": 62,
+            "layers": _alternate("custard", "cream", 9, sheet_w=0.3, cream_w=0.45),
+            "top": "crust",
+            "toppings": [["shine", "white"], ["dust", "white"]],
+            "card": "card_sky",
+        },
+        aliases=("밀크레이프", "밀 크레이프", "크레페 케이크", "Mille crepe"),
+        keywords=("크레이프케이크", "밀크레이프", "크레페케이크", "밀크레페", "millecrepe"),
+    ),
+    cake(
+        "cake_matcha",
+        "녹차 케이크",
+        {
+            "shape": "slice",
+            "layers": _alternate("matcha", "cream", 3, cream_w=0.5),
+            "top": "matcha_light",
+            "toppings": [["dust", "matcha"], ["hazelnuts", "nut"]],
+            "card": "card_cream",
+        },
+        aliases=("말차 케이크", "그린티 케이크", "Matcha cake"),
+        keywords=("녹차케이크", "녹차케익", "말차케이크", "말차케익", "그린티케이크"),
+    ),
+    cake(
+        "cake_egg_tart",
+        "에그타르트",
+        {"shape": "tartlets", "filling": "custard", "scorch": "burnt", "card": "card_sky"},
+        aliases=("에그 타르트", "에그타트", "포르투갈 에그타르트", "Egg tart"),
+        keywords=("에그타르트", "에그타트", "eggtart"),
+    ),
+    cake(
+        "cake_lemon_tart",
+        "레몬 타르트",
+        {
+            "shape": "tart",
+            "filling": "lemon",
+            "toppings": [["rosettes", "meringue"], ["zest", "lemon_light"], ["mint", "leaf"]],
+            "card": "card_mint",
+        },
+        aliases=("레몬 머랭 타르트", "Lemon tart"),
+        keywords=("레몬타르트", "레몬머랭타르트", "lemontart"),
     ),
 ]

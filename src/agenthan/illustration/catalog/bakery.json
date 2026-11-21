@@ -1,0 +1,322 @@
+[
+  {
+    "id": "bakery_croissant",
+    "name": "크루아상",
+    "aliases": [
+      "Croissant"
+    ],
+    "keywords": [
+      "크루아상",
+      "크로와상",
+      "크로아상",
+      "크루와상",
+      "croissant"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "croissant",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "bakery_baguette",
+    "name": "바게트",
+    "aliases": [],
+    "keywords": [
+      "바게트",
+      "바게뜨",
+      "baguette"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "baguette",
+      "card": "card_sand"
+    }
+  },
+  {
+    "id": "bakery_salt_bread",
+    "name": "소금빵",
+    "aliases": [],
+    "keywords": [
+      "소금빵",
+      "시오빵",
+      "시오팡"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "salt_bread",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "bakery_bagel",
+    "name": "베이글",
+    "aliases": [],
+    "keywords": [
+      "베이글",
+      "bagel"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "bagel",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "bakery_donut",
+    "name": "도넛",
+    "aliases": [],
+    "keywords": [
+      "도넛",
+      "도너츠",
+      "도나쓰",
+      "donut",
+      "doughnut"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "donut",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "bakery_cinnamon_roll",
+    "name": "시나몬롤",
+    "aliases": [],
+    "keywords": [
+      "시나몬롤",
+      "시나몬번",
+      "cinnamonroll"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "cinnamon_roll",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "bakery_muffin",
+    "name": "머핀",
+    "aliases": [],
+    "keywords": [
+      "머핀",
+      "muffin"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "muffin",
+      "card": "card_cream"
+    }
+  },
+  {
+    "id": "bakery_cookie",
+    "name": "쿠키",
+    "aliases": [
+      "초코칩 쿠키"
+    ],
+    "keywords": [
+      "쿠키",
+      "cookie"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "cookie",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "bakery_macaron",
+    "name": "마카롱",
+    "aliases": [],
+    "keywords": [
+      "마카롱",
+      "뚱카롱",
+      "macaron"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "macaron",
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "bakery_waffle",
+    "name": "와플",
+    "aliases": [],
+    "keywords": [
+      "와플",
+      "크로플",
+      "waffle"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "waffle",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "bakery_madeleine",
+    "name": "마들렌",
+    "aliases": [],
+    "keywords": [
+      "마들렌",
+      "madeleine"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "madeleine",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "bakery_pretzel",
+    "name": "프레첼",
+    "aliases": [],
+    "keywords": [
+      "프레첼",
+      "프렛젤",
+      "pretzel"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "pretzel",
+      "card": "card_mint"
+    }
+  },
+  {
+    "id": "bakery_scone",
+    "name": "스콘",
+    "aliases": [],
+    "keywords": [
+      "스콘",
+      "scone"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "scone",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "bakery_financier",
+    "name": "휘낭시에",
+    "aliases": [],
+    "keywords": [
+      "휘낭시에",
+      "피낭시에",
+      "financier"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "financier",
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "cake_creme_brulee",
+    "name": "크렘 브륄레",
+    "aliases": [],
+    "keywords": [
+      "크렘브륄레",
+      "크림브륄레",
+      "브륄레",
+      "cremebrulee"
+    ],
+    "category": "cake",
+    "recipe": {
+      "bake": "creme_brulee",
+      "card": "card_sky"
+    }
+  },
+  {
+    "id": "bakery_khachapuri",
+    "name": "하차푸리",
+    "aliases": [],
+    "keywords": [
+      "하차푸리",
+      "하차뿌리",
+      "카차푸리",
+      "khachapuri",
+      "хачапури"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "khachapuri",
+      "card": "card_peach"
+    }
+  },
+  {
+    "id": "bakery_vatrushka",
+    "name": "바트루시카",
+    "aliases": [],
+    "keywords": [
+      "바트루시카",
+      "바뜨루시까",
+      "바트루쉬카",
+      "vatrushka",
+      "ватрушка"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "vatrushka",
+      "card": "card_lilac"
+    }
+  },
+  {
+    "id": "bakery_pryanik",
+    "name": "프랴니크",
+    "aliases": [],
+    "keywords": [
+      "프랴니크",
+      "프랴니키",
+      "쁘랴니끼",
+      "pryanik",
+      "пряник"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "bake": "pryanik",
+      "card": "card_rose"
+    }
+  },
+  {
+    "id": "bakery_brownie",
+    "name": "브라우니",
+    "aliases": [],
+    "keywords": [
+      "브라우니",
+      "brownie"
+    ],
+    "category": "bakery",
+    "recipe": {
+      "shape": "bar",
+      "height": 44,
+      "layers": [
+        [
+          "choco_shade",
+          0.12
+        ],
+        [
+          "choco",
+          1
+        ]
+      ],
+      "top": "choco",
+      "toppings": [
+        [
+          "shine",
+          "white"
+        ],
+        [
+          "walnuts",
+          "nut"
+        ],
+        [
+          "dust",
+          "cocoa"
+        ]
+      ],
+      "card": "card_mint"
+    }
+  }
+]

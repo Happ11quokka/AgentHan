@@ -107,12 +107,14 @@ def test_a_price_edit_keeps_the_illustration(tmp_path, mock_index):
 def test_opening_a_session_embeds_an_unknown_menu_once(tmp_path, mock_index, monkeypatch):
     """라이브러리에 없는 이름(키워드도 끝말도 없음)은 임베딩으로 가까운 그림을 받고,
     같은 이름은 한 번만, 다시 열 때는 부르지 않는다."""
-    tea = next(row for row in library.load_catalog() if row["id"] == "default_tea")
+    tea = next(row for row in library.load_catalog() if row["id"] == "drink_black_tea")
     near_tea = [1.0] + [0.0] * 1023
     monkeypatch.setattr(
         embedding_index,
         "stored",
-        lambda: {"default_tea": {"text": embedding_index.embedding_text(tea), "vector": near_tea}},
+        lambda: {
+            "drink_black_tea": {"text": embedding_index.embedding_text(tea), "vector": near_tea}
+        },
     )
     calls = []
 
@@ -133,7 +135,7 @@ def test_opening_a_session_embeds_an_unknown_menu_once(tmp_path, mock_index, mon
     api = TestClient(create_app(make_assistant=make, root=tmp_path, illustration_embed=embed))
     body = api.post("/assistant/sessions").json()
     urls = [row["illustration_url"] for row in body["place"]["menu"]]
-    assert urls == ["/illustrations/default_tea.svg"] * 2
+    assert urls == ["/illustrations/drink_black_tea.svg"] * 2
     assert calls == ["쀍뷁 한 잔"]
     api.get(f"/assistant/sessions/{body['session_id']}/place")
     assert calls == ["쀍뷁 한 잔"]

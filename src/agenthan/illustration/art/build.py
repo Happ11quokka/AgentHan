@@ -6,7 +6,7 @@
 - 카탈로그: src/agenthan/illustration/catalog/<가족>.json (백엔드 매처가 읽는다)
 - 갤러리: build/illustrations/gallery.html (팀 검수용, git에 올리지 않는다)
 
-그림 가족(defaults·cakes·drinks·dishes)마다 파일 하나와 ILLUSTRATIONS 목록 하나를 둔다.
+그림 가족(defaults·cakes·bakery·drinks·dishes)마다 파일 하나와 ILLUSTRATIONS 목록 하나를 둔다.
 가족끼리 같은 줄을 고치지 않도록 카탈로그도 가족마다 따로 쓴다.
 """
 
@@ -16,10 +16,10 @@ import urllib.parse
 from pathlib import Path
 
 from agenthan.illustration import library, matcher
-from agenthan.illustration.art import cakes, defaults, dishes, drinks
+from agenthan.illustration.art import bakery, cakes, defaults, dishes, drinks
 from agenthan.illustration.art.style import Illustration
 
-FAMILIES = (defaults, cakes, drinks, dishes)
+FAMILIES = (defaults, cakes, bakery, drinks, dishes)
 ROOT = Path(__file__).resolve().parents[4]
 SVG_DIR = ROOT / "web" / "public" / "illustrations"
 GALLERY_PATH = ROOT / "build" / "illustrations" / "gallery.html"
@@ -75,7 +75,7 @@ def gallery_html() -> str:
     sections = []
     for family in FAMILIES:
         cards = "".join(
-            f'<figure>{_image(svgs[item.id], 160)}<figcaption><b>{html.escape(item.name)}</b>'
+            f"<figure>{_image(svgs[item.id], 160)}<figcaption><b>{html.escape(item.name)}</b>"
             f"<code>{item.id}</code><span>{item.category}</span>"
             f"<small>{html.escape(', '.join(item.aliases + item.keywords))}</small>"
             "</figcaption></figure>"
