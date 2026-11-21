@@ -269,6 +269,9 @@ uv run --frozen --offline pytest -q -m network tests/test_naver_search.py
 
 입출력은 한국어다. 사진 속 메뉴 이름만 원어 그대로 읽어 `name_native`로 남긴다.
 
+`ask_photo`는 먼저 `menu_photo.fit_for_vision`으로 긴 변 2240px(HCX-005 한도)·10MB를 넘는 사진을
+JPEG로 줄인다. 폰 사진(4032px 등)은 그대로 보내면 거절되거나 10MB 한도에 걸린다(#91).
+
 1. 사진 읽기(HCX-005, 네이티브 REST `core.llm.chat_v3` + `dataUri`): 이름·가격만. 도구 없이 따로 부른다.
 2. 가게 지식 대조: 이름·원어 이름·별칭 일치 → 글자 유사도 0.8 이상 → `search_menu`. 맞으면 기존
    메뉴의 이름·설명을 쓴다.

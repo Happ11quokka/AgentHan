@@ -2179,6 +2179,7 @@ class OwnerAssistant:
         t = PHOTO_TEXT
         shop = self.store.read()["shop"]
         context = " ".join(filter(None, [shop.get("name"), shop.get("category")]))
+        image = menu_photo.fit_for_vision(image)  # 폰 사진은 HCX-005 해상도 한도를 넘는다 (#91)
         try:
             kind = food_photo.classify_photo(image, call=self.clova_v3)
             if kind == "other":

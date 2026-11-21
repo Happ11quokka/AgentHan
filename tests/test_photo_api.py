@@ -1,5 +1,7 @@
 """Owner screen backend: menu photos go in over HTTP and come back in pending and place (#63)."""
 
+import base64
+
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient
@@ -247,3 +249,41 @@ def test_a_board_line_without_a_price_shows_no_change_until_every_line_is_filled
     rows = {d["name_ko"]: d for d in waiting["drafts"]}
     assert (rows["메도빅"]["change"], rows["메도빅"]["previous_price"]) == (None, 7500)
     assert waiting["changes"] == {}  # Nothing is saved while line 1 has no price.
+
+
+class SizeCheckingV3(FakeV3):
+    """HCX-005 refuses images whose long side is over 2240px (docs/research/01)."""
+
+    def __init__(self):
+        super().__init__()
+        self.sides = []
+
+    def __call__(self, model, body):
+        content = body["messages"][-1]["content"]
+        if isinstance(content, list):
+            uri = content[0]["dataUri"]["data"]
+            raw = base64.b64decode(uri.split(",", 1)[1])
+            image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            self.sides.append(max(image.shape[:2]))
+        return super().__call__(model, body)
+
+
+def phone_photo(width=4032, height=3024, ext=".png"):
+    # Noise keeps the PNG large: a phone camera photo is this wide and often over 10MB.
+    noise = np.random.default_rng(0).integers(0, 256, (height, width, 3), dtype=np.uint8)
+    ok, encoded = cv2.imencode(ext, noise)
+    assert ok
+    return encoded.tobytes()
+
+
+def test_a_big_phone_photo_is_shrunk_before_the_vision_model_reads_it(tmp_path):
+    fake = SizeCheckingV3()
+    api = client(tmp_path, fake=fake)
+    session_id = start(api)
+    image = phone_photo()
+    assert len(image) > 10 * 1024 * 1024
+
+    body = send_photo(api, session_id, image).json()
+
+    assert "밀푀유 케이크" in body["reply"]
+    assert fake.sides and max(fake.sides) <= 2240
