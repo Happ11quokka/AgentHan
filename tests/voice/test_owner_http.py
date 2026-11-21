@@ -220,7 +220,8 @@ def test_no_decision_in_the_call_promises_a_text_and_the_card_expires_after_the_
         refused = client.post(url)
 
     later = " ".join(e["text"] for e in phone.of("bot.say", 5))
-    assert later.startswith("가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요.")
+    assert later.startswith(
+        "가게에서 아직 확인 중이에요. 확인되면 화면으로 알려 드릴게요. 감사합니다.")
     assert order["order"]["status"] == "confirmed"  # 주문서는 넘어간다
     (ended,) = phone.of("call.ended")
     assert (ended["reason"], ended["sms"]) == ("confirmed", [])  # 확정 문자는 아직
@@ -388,7 +389,7 @@ def _texts_url(call_id: str) -> str:
 
 
 def test_a_late_owner_answer_reaches_the_customer_text_stream(tmp_path) -> None:
-    # 끝에서 끝: 질문 → 20초(시험 0.3초) 시간 초과 → "문자로 알려 드릴게요" → 확정 → `call.ended`에
+    # 끝에서 끝: 질문 → 20초(시험 0.3초) 시간 초과 → "답하기 어려우세요" → 확정 → `call.ended`에
     # 확정 문자 → 손님 화면이 문자 스트림을 연다 → 사장님 늦은 답 → 손님 문자 스트림에 도착
     settings = VoiceSettings(
         log_dir=tmp_path / "logs", now=NOW, web_dist=tmp_path / "dist",
@@ -432,7 +433,7 @@ def test_a_late_owner_answer_reaches_the_customer_text_stream(tmp_path) -> None:
             late = _until(events, "sms")["data"]
 
     timed_out = " ".join(e["text"] for e in phone.of("bot.say", 3))
-    assert timed_out == "확인해서 문자로 알려 드릴게요. 더 필요하신 거 있으세요?"
+    assert timed_out == "죄송해요, 사장님이 지금 바로 답하기 어려우세요. 더 필요하신 거 있으세요?"
     assert (late["kind"], late["text"]) == (
         "late_answer", "메도빅 문의 답변이에요. 사장님께 여쭤보니 메도빅에 견과가 들어간대요.")
 
@@ -464,7 +465,8 @@ def test_a_written_answer_is_posted_with_its_text(tmp_path) -> None:
             snapshot = next(_sse(stream.iter_lines()))
 
     heard = " ".join(e["text"] for e in phone.of("bot.say", 3))
-    assert heard == "사장님이 답을 남기셨어요. 문자로 보내 드릴게요. 더 필요하신 거 있으세요?"
+    assert heard == ("사장님이 글로 답을 남기셨어요. 자세한 건 가게에 물어봐 주세요. "
+                     "더 필요하신 거 있으세요?")
     # 이 개발 서버는 번역 키가 없다: 원문 + 번역 실패 표시
     [text] = snapshot["data"]["sms"]
     assert (text["kind"], text["translate_failed"]) == ("free_answer", True)

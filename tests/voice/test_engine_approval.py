@@ -78,8 +78,8 @@ def test_a_timeout_promises_a_text_and_still_hands_the_order_over() -> None:
     asked(engine)
     r = engine.owner_decided(OwnerDecision(1, "timeout"), NOW)
 
-    assert r.utterances == ["가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요. "
-                            "확정 문자를 받으시면 주문 완료예요. 감사합니다."]
+    assert r.utterances == [
+        "가게에서 아직 확인 중이에요. 확인되면 화면으로 알려 드릴게요. 감사합니다."]
     assert r.order is not None and r.order.status == "confirmed"
 
 

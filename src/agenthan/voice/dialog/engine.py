@@ -608,7 +608,7 @@ class DialogEngine:
         - 수락 → 지금 마무리 대사(`templates.closing`) + `confirmed`
         - 늦춘 수락(티켓 04) → "사장님이 {시각}에 준비 가능하시대요. 괜찮으세요?" 상태는 CONFIRM
           그대로. 손님 답은 `_on_delay_answer`가 받는다
-        - 시간 초과(세션이 넣음) → 문자로 확정을 알린다는 대사 + `confirmed`(사장님 처리 상태는
+        - 시간 초과(세션이 넣음) → 화면으로 알린다는 대사 + `confirmed`(사장님 처리 상태는
           허브에서 확인 대기로 남는다)
         - 거절(티켓 05) → 사유별 고정 사과 + `cancelled`(`_rejected`)
 
@@ -629,7 +629,6 @@ class DialogEngine:
             self._transcript.append(f"사장님: {decision.delay_min}분 늦춰 수락")
             self._ask(turn, templates.approval_delayed(at))
             return self._result(turn)
-        pending = self._owner_open is not None  # 답을 못 받은 사장님 질문 (티켓 06 문자 약속)
         self._owner_open = None
         if decision.kind == "reject":
             self._rejected(turn, decision)
@@ -640,7 +639,7 @@ class DialogEngine:
             self._say(turn, templates.approval_timeout())
         else:
             self._transcript.append("사장님: 수락")
-            self._say(turn, self._ok(turn, templates.closing(self._pickup, owner_pending=pending)))
+            self._say(turn, self._ok(turn, templates.closing(self._pickup)))
         turn.order_status = "confirmed"
         return self._result(turn)
 
@@ -2497,23 +2496,21 @@ class DialogEngine:
             self._open_approval(turn)
             return
         self._state = State.CLOSING
-        # 답을 못 받은 사장님 질문이 있으면 문자 약속을 붙이고 닫는다 (티켓 06)
-        pending = self._owner_open is not None
         if turn.approval:
-            self._place_order(turn, pending)
+            self._place_order(turn)
         else:
-            self._say(turn, self._ok(turn, templates.closing(self._pickup, owner_pending=pending)))
+            self._say(turn, self._ok(turn, templates.closing(self._pickup)))
         self._owner_open = None
         turn.order_status = "confirmed"
 
-    def _place_order(self, turn: _Turn, owner_pending: bool) -> None:
+    def _place_order(self, turn: _Turn) -> None:
         """통화 중 대기 0 (전화 메뉴·주문 현황 티켓 04): 통화 뒤 확인 요청을 열고 "주문 넣어
         드렸어요"로 끝낸다. 주문서는 이 턴에 넘어간다(시간 초과 문자 약속과 같다). 결정은 통화로
         오지 않으니 열린 요청으로 들지 않는다."""
         self._approvals += 1
         turn.approval_request = ApprovalRequest(
             self._approvals, self._build_order("confirmed", turn.now), in_call=False)
-        self._say(turn, self._ok(turn, templates.order_placed(owner_pending=owner_pending)))
+        self._say(turn, self._ok(turn, templates.order_placed()))
 
     def _open_approval(self, turn: _Turn) -> None:
         """복창에 "네": 사장님께 확인 요청을 연다(주문 승인 티켓 02). 상태는 CONFIRM 그대로.
@@ -2554,8 +2551,7 @@ class DialogEngine:
             self._delay_offer = None
             self._pickup = offer.at
             self._state = State.CLOSING
-            self._say(turn, self._ok(turn, templates.closing(
-                offer.at, owner_pending=self._owner_open is not None)))
+            self._say(turn, self._ok(turn, templates.closing(offer.at)))
             self._owner_open = None
             turn.order_status = "confirmed"
             return True

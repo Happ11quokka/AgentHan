@@ -253,7 +253,7 @@ class OwnerChannel(Protocol):
     def question_timed_out(self, call_id: str, number: int) -> None:
         """질문 카드를 보낸 뒤 답 대기 시간(`owner_wait_s`)이 지났다(티켓 06). 세션 시계로 잰다.
 
-        손님에게는 "확인해서 문자로 알려 드릴게요"가 나간다(손님이 말하는 중이면 조금 뒤). 카드는
+        손님에게는 "사장님이 지금 바로 답하기 어려우세요"가 나간다(손님이 말하는 중이면 조금 뒤). 카드는
         닫지 않는다(늦은 답을 받는다).
         """
 
