@@ -8,7 +8,8 @@
      "stage": "checking" | "confirmed" | "cancelled",
      "placed_at": 주문서를 만든 가게 시각 ISO,
      "lines": [{"menu_id", "name", "quantity", "options", "request", "subtotal"}],
-     "amount": {"subtotal": 할인 전 금액, "total": 낼 금액},
+     "amount": {"subtotal": 할인 전 금액, "total": 낼 금액,
+                "discount": 할인액, "coupon_name": 쿠폰 이름},  # 할인 두 칸은 쿠폰을 쓴 주문만
      "pickup": {"time": ISO, "label": "18:30",
                 "original_time": "", "original_label": ""}}
 
@@ -21,7 +22,10 @@
 - cancelled: 주문 취소. 거절·자동 취소·손님이 통화에서 취소한 요청·늦춘 시각을 거절함.
   사유와 다시 주문하기는 다음 티켓(05)이 더한다
 
-금액: 지금은 할인이 없어 `subtotal` = `total`(줄 합계). 쿠폰(티켓 09)이 할인 칸을 이 묶음에 더한다.
+금액 (쿠폰 티켓 09): `subtotal`은 줄 합계, `total` = `subtotal` - 할인액(낼 금액, 사장님 카드
+`total`과 같다). 쿠폰을 쓴 주문만 `discount`·`coupon_name`(주문서에 적힌 쿠폰, 카드 칸)이 있다.
+쿠폰이 없으면 응답이 쿠폰 전과 똑같다(할인 칸 없음). 카드에 쿠폰 칸이 없으면(쿠폰 전 카드) 할인
+없음으로 읽는다.
 """
 
 from __future__ import annotations
@@ -52,7 +56,8 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, A
     else:
         pickup = {"time": card["pickup_time"], "label": card["pickup_label"],
                   "original_time": "", "original_label": ""}
-    total = sum(line["subtotal"] for line in card["lines"])
+    subtotal = sum(line["subtotal"] for line in card["lines"])
+    discount = card.get("discount", 0)
     return {
         "order_id": card["id"],
         "stage": order_stage(card, unspoken=unspoken),
@@ -63,6 +68,14 @@ def order_status(card: dict[str, Any], *, unspoken: bool = False) -> dict[str, A
              "subtotal": line["subtotal"]}
             for line in card["lines"]
         ],
-        "amount": {"subtotal": total, "total": total},
+        "amount": _amount(subtotal, discount, card.get("coupon_name", "")),
         "pickup": pickup,
     }
+
+
+def _amount(subtotal: int, discount: int, coupon_name: str) -> dict[str, Any]:
+    """주문 현황 금액 칸. 할인 칸은 쿠폰을 쓴 주문만 (쿠폰 티켓 09)."""
+    amount: dict[str, Any] = {"subtotal": subtotal, "total": subtotal - discount}
+    if discount:
+        amount |= {"discount": discount, "coupon_name": coupon_name}
+    return amount

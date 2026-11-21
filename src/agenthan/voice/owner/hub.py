@@ -114,6 +114,11 @@
 찾고, 받은 시각은 허브 시계로 찍는다. 시각·금액은 번역 없이 코드가 고정 표기(`18:30`, `25,000₩`)로
 넣는다.
 
+주문 카드 금액 (쿠폰 티켓 09): `subtotal`(할인 전, 줄 합계) · `coupon_id`·`coupon_name`·
+`discount`(주문서에 적힌 쿠폰, 없으면 ""·""·0) · `total`(낼 금액 = 할인 전 - 할인). 할인액은 통화가
+복창한 쿠폰 계산 결과(`Order.discount`)이고 허브는 다시 셈하지 않는다. 확정 문자·주문 현황도
+`total`을 쓴다.
+
 사장님 언어 (티켓 03, `OwnerHub(..., translator=..., owner_lang="ru")`).
 카드 줄(주문·통화 카드 같음):
 - `name_owner`: `menu_id`로 찾은 원어 이름(`MenuItem.name_native`, 번역기 안 씀). 비면 `name_ko`
@@ -1431,7 +1436,8 @@ class OwnerHub:
 
     def _order_card(self, order: Order) -> dict[str, Any]:
         lines = self._card_lines(order.lines)
-        total = sum(line["subtotal"] for line in lines)
+        subtotal = sum(line["subtotal"] for line in lines)
+        total = subtotal - order.discount  # 낼 금액: 통화가 복창한 쿠폰 할인 (쿠폰 티켓 09)
         received_at = order.created_at or self._clock.now().isoformat()
         return {
             "id": order.id,
@@ -1445,6 +1451,13 @@ class OwnerHub:
             "lines": lines,
             "total": total,
             "total_label": won_label(total),
+            # 쿠폰 (쿠폰 티켓 09). 쿠폰이 없으면 할인 0·이름 "" (카드에 할인 줄이 없다)
+            "subtotal": subtotal,
+            "subtotal_label": won_label(subtotal),
+            "coupon_id": order.coupon_id,
+            "coupon_name": order.coupon_name,
+            "discount": order.discount,
+            "discount_label": won_label(order.discount),
         }
 
     def _card_lines(self, order_lines: Sequence[OrderLine]) -> list[dict[str, Any]]:
