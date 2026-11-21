@@ -86,7 +86,8 @@ def test_a_request_cancelled_while_waiting_hands_nothing_over(tmp_path) -> None:
             return c
 
     c = run(call())
-    assert owner.withdrawn == [(1, "cancelled")]
+    # 묻는 사이 changed로 거두고 확정되면 cancelled로 한 번 더 (티켓 07)
+    assert owner.withdrawn == [(1, "changed"), (1, "cancelled")]
     assert c.sink.orders == []
     assert owner.ended == ["cancelled"]
 

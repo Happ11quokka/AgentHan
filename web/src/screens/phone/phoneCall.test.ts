@@ -2,6 +2,7 @@
 // 마이크·AudioContext·WebSocket은 최소한의 가짜다. 보는 것은 화면 상태(getState)와 소켓으로 나간 것뿐이다.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PhoneCall, phoneOptions } from './phoneCall.ts'
+import { cueKeeps } from './thinkingCue.ts'
 
 type Listener = (e: { data: unknown }) => void
 
@@ -278,6 +279,61 @@ describe('thinking cue (bot.thinking)', () => {
     ws.server(thinking(2))
     ws.server({ type: 'bot.thinking', turn: 1 })
     expect(cueSources(FakeAudioContext.instances[0])).toHaveLength(0)
+  })
+})
+
+describe('hold cue while the owner confirms the order (bot.hold, 주문 승인 티켓 07)', () => {
+  const at = (turn: number, phase: string) => ({ type: 'state', turn, phase, dialog: 'confirm', cart: [], total: 0 })
+
+  it('loops the same cue while listening and stops when the guest speech becomes a turn', async () => {
+    const { ws } = await liveCall()
+    await flush()
+    ws.server(at(4, 'listening'))
+    ws.server({ type: 'bot.hold', turn: 4, max_s: 25 })
+    ws.server(at(4, 'listening')) // 듣는 중의 상태 갱신은 소리를 끄지 않는다
+    const ctx = FakeAudioContext.instances[0]
+    const [cue] = cueSources(ctx)
+    expect(cue.started).toBe(true)
+    expect(cue.loop).toBe(true)
+    expect(cue.stopped).toBe(false)
+    ws.server(at(5, 'thinking')) // 손님 말이 턴이 됐다
+    expect(cue.stopped).toBe(true)
+  })
+
+  it('stops when the bot speaks (the decision) and on hang-up', async () => {
+    const { call, ws } = await liveCall()
+    await flush()
+    ws.server(at(4, 'listening'))
+    ws.server({ type: 'bot.hold', turn: 4, max_s: 25 })
+    ws.onmessage!({ data: audioFrame(5, 0) })
+    const ctx = FakeAudioContext.instances[0]
+    const [first] = cueSources(ctx)
+    expect(first.stopped).toBe(true)
+    ws.server(at(6, 'listening'))
+    ws.server({ type: 'bot.hold', turn: 6, max_s: 10 })
+    const [, second] = cueSources(ctx)
+    expect(second.stopped).toBe(false)
+    call.hangup()
+    expect(second.stopped).toBe(true)
+  })
+
+  it('ignores a hold from an older turn or while not listening', async () => {
+    const { ws } = await liveCall()
+    await flush()
+    ws.server(at(5, 'thinking'))
+    ws.server({ type: 'bot.hold', turn: 5 })
+    ws.server({ type: 'bot.hold', turn: 4 })
+    expect(cueSources(FakeAudioContext.instances[0])).toHaveLength(0)
+  })
+})
+
+describe('cueKeeps', () => {
+  it('keeps the thinking cue only while thinking and the hold cue only while listening, same turn', () => {
+    expect(cueKeeps({ turn: 3, mode: 'thinking' }, { turn: 3, phase: 'thinking' })).toBe(true)
+    expect(cueKeeps({ turn: 3, mode: 'thinking' }, { turn: 3, phase: 'listening' })).toBe(false)
+    expect(cueKeeps({ turn: 3, mode: 'hold' }, { turn: 3, phase: 'listening' })).toBe(true)
+    expect(cueKeeps({ turn: 3, mode: 'hold' }, { turn: 3, phase: 'speaking' })).toBe(false)
+    expect(cueKeeps({ turn: 3, mode: 'hold' }, { turn: 4, phase: 'listening' })).toBe(false)
   })
 })
 

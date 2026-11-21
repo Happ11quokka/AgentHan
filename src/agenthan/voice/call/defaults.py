@@ -31,6 +31,10 @@ NO_INPUT_SPEECH_MAX_S = 8.0
 # (4단계 spec "ASK_OWNER: 세션", 리허설에서 맞춘다. 넘으면 세션이 시간 초과 답을 넣는다(티켓 06),
 # `PHONE_OWNER_WAIT_S`)
 OWNER_WAIT_S = 20.0
+# 주문 확인 요청을 연 뒤 "조금만 더 기다려 주세요."를 한 번 말하는 때(초). 카드를 보낸 때부터 센다.
+# 통화 중 대기(`APPROVAL_WAIT_S`)보다 길거나 0이면 말하지 않는다 (주문 승인 spec "세션", 티켓 07,
+# 리허설에서 맞춘다, `PHONE_APPROVAL_REPROMPT_S`)
+APPROVAL_REPROMPT_S = 10.0
 # 주문 확인 요청의 통화 중 대기(초). 확인 요청 카드를 보낸 때부터 센다. 화면 카운트다운과 같은
 # 시계다 (주문 승인 spec "세션", 리허설에서 맞춘다, `PHONE_APPROVAL_WAIT_S`)
 APPROVAL_WAIT_S = 20.0

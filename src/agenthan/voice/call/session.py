@@ -94,6 +94,7 @@ from agenthan.voice.call.barge import (
 )
 from agenthan.voice.call.debuglog import CallDebugLog
 from agenthan.voice.call.defaults import (
+    APPROVAL_REPROMPT_S,
     APPROVAL_WAIT_S,
     CONT_WAIT_S,
     MODEL_HIGH,
@@ -173,6 +174,9 @@ TURN_THREAD_PREFIX = "phone-turn"
 # 손님 말 하나를 되감아 합치는 최대 횟수 (6단계 티켓 02). 손님이 쉬어 가며 길게 말하면 되감을
 # 때마다 엔진(HCX)을 한 번 더 부른다. 이만큼 되감은 말은 더 되감지 않고 전처럼 다음 턴으로 둔다
 MAX_REWINDS = 2
+# 대기음 신호(`bot.hold`)의 재생 상한 = 남은 확인 대기 + 이만큼(초). 시간 초과 대사가 늦어도 소리가
+# 끝없이 돌지 않게 (주문 승인 티켓 07)
+HOLD_CUE_GRACE_S = 5.0
 _turn_pool: ThreadPoolExecutor | None = None
 
 
@@ -251,6 +255,9 @@ class SessionSettings:
     # 확인 요청의 통화 중 대기. 카드를 보낸 때부터 센다(`PHONE_APPROVAL_WAIT_S`, 허브 카드 마감과
     # 같은 값). 넘으면 "확인되는 대로 문자로 알려 드릴게요"로 통화를 끝낸다
     approval_wait_s: float = APPROVAL_WAIT_S
+    # 확인 요청을 연 뒤 이만큼에 "조금만 더 기다려 주세요."를 한 번 (`PHONE_APPROVAL_REPROMPT_S`,
+    # 주문 승인 티켓 07). 카드를 보낸 때부터 센다. 0이거나 통화 중 대기보다 길면 말하지 않는다
+    approval_reprompt_s: float = APPROVAL_REPROMPT_S
     # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11). NLU를 "hcx"로 골랐을 때만 만든다
     answer: bool = True
     # 말소리가 이만큼 이상인데 글 없는 epFlag 응답이면 "잘 못 들었어요" (결정 8. 기침 거르기)
@@ -541,6 +548,8 @@ class CallSession:
         # 마지막으로 연 확인 요청 (주문 승인 티켓 03). 결정을 기다리는 채 통화가 끝나면 그 주문서를
         # 넘긴다(`_hand_over_waiting_order`)
         self._approval_sent: ApprovalRequest | None = None
+        # 확인 요청 재안내 "조금만 더 기다려 주세요" (주문 승인 티켓 07). 요청마다 한 번
+        self._approval_nudge = OneShot(self._on_approval_nudge)
 
     # ------------------------------------------------------------ 바깥 진입점
 
@@ -1891,6 +1900,7 @@ class CallSession:
         self._phase = "listening"
         self._emit_state()
         self._start_quiet(turn)
+        self._emit_hold(turn)
         pending, self._pending = self._pending, []
         pending = [u for u in pending if not self._drop_early_yes(u)]
         if pending:
@@ -2194,6 +2204,7 @@ class CallSession:
         self._owner_timer.cancel()
         self._owner_retry.cancel()
         self._hand_over_waiting_order()
+        self._approval_nudge.cancel()
         # 통화 뒤 사장님 답은 버린다. 늦은 답·말하지 못한 답의 문자는 허브 몫 (티켓 07, 리뷰 C1)
         self._owner_wait = None
         self._owner_inbox.clear()
@@ -2243,10 +2254,18 @@ class CallSession:
         return view is not None and view.status in ("accepted", "timeout")
 
     def _open_approval(self, turn: int, request: ApprovalRequest) -> None:
-        """확인 요청을 연다(주문 승인 티켓 02). 질문 카드와 같은 대기 장치를 쓴다."""
+        """확인 요청을 연다(주문 승인 티켓 02). 질문 카드와 같은 대기 장치를 쓴다.
+
+        재안내(티켓 07)도 건다: 카드를 보낸 뒤 `approval_reprompt_s`에 한 번.
+        """
         self._open_owner_wait("approval", request.number, self._settings.approval_wait_s)
         self._approval_view = ApprovalView("waiting", request.number)
         self._approval_sent = request
+        nudge_s = self._settings.approval_reprompt_s
+        if 0 < nudge_s < self._settings.approval_wait_s:
+            self._approval_nudge.arm(nudge_s, request.number)
+        else:
+            self._approval_nudge.cancel()
         record = self._log.get(turn)
         if record is not None:
             record.fields["approval_request"] = {"number": request.number,
@@ -2286,6 +2305,41 @@ class CallSession:
             self._sink.submit(request.order)
         except Exception:
             log.exception("기다리던 주문서 넘기기 실패 (%s)", self.call_id)
+    # 확인 요청 대기 경험 (주문 승인 티켓 07, spec "세션"). 기다리는 동안 무응답 되묻기는 멈추고
+    # (`_start_quiet`), 듣는 중이 될 때마다 브라우저에 대기음 신호(`bot.hold`)를 보낸다. 브라우저는
+    # 생각 중 효과음과 같은 소리를 그 턴이 듣는 중인 동안 이어 튼다. 카드를 보낸 뒤
+    # `approval_reprompt_s`에 "조금만 더 기다려 주세요."를 봇 턴으로 한 번 말한다. 사장님 결정과
+    # 같은 조건(`_owner_may_speak`)에서만 말하고, 안 되면 짧게 미룬다. 결정이 먼저 와 있으면 말하지
+    # 않는다
+
+    def _emit_hold(self, turn: int) -> None:
+        """듣는 중이 됐다. 확인 요청을 기다리는 중이면 대기음 신호를 보낸다(남은 대기 + 여유)."""
+        wait = self._owner_wait
+        if wait is None or wait.kind != "approval":
+            return
+        left = self._settings.approval_wait_s - (self._clock.monotonic() - wait.opened_at)
+        self._emit({"type": "bot.hold", "turn": turn,
+                    "max_s": round(max(left, 0.0) + HOLD_CUE_GRACE_S, 1)})
+
+    def _on_approval_nudge(self, number: int) -> None:
+        """재안내 때가 됐다. 그 요청을 아직 기다리면 "조금만 더 기다려 주세요"를 한 번 말한다."""
+        wait = self._owner_wait
+        if self.done or self._terminal or wait is None or wait.key != ("approval", number):
+            return
+        if any(closes_wait(note) for note, _ in self._owner_inbox):
+            return  # 결정(시간 초과 포함)이 와 있다. 결정이 먼저다
+        now = self._clock.monotonic()
+        opened = None
+        if self._phase == "listening" and self._owner_may_speak(now):
+            opened = self.bot_turn("approval_nudge", lambda engine, when:
+                                   engine.approval_still_waiting(number, when))
+        if opened is None:
+            self._approval_nudge.arm(POLL_S, number)  # 손님 말·봇 말 뒤에 다시 본다
+            return
+        record = self._log.get(opened)
+        if record is not None:
+            record.fields["approval_nudge"] = {
+                "request": number, "after_ms": round((now - wait.opened_at) * 1000)}
 
     def _open_owner_wait(self, kind: WaitKind, number: int, wait_s: float) -> None:
         """대기 항목을 열고 시간 초과 타이머를 건다. 열려 있던 항목은 이것으로 바뀐다(하나뿐)."""

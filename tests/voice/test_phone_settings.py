@@ -136,6 +136,16 @@ def test_the_owner_answer_wait_defaults_to_twenty_seconds_and_reaches_the_sessio
         VoiceSettings.from_env({"PHONE_OWNER_WAIT_S": "0"}, env_file=None)
 
 
+def test_the_approval_reprompt_reaches_the_session_and_zero_turns_it_off() -> None:
+    # 주문 승인 티켓 07: 확인 요청 카드를 보낸 뒤 "조금만 더 기다려 주세요"까지의 초
+    assert VoiceSettings.from_env({}, env_file=None).session_settings().approval_reprompt_s == 10.0
+    for value, expected in (("7.5", 7.5), ("0", 0.0)):
+        s = VoiceSettings.from_env({"PHONE_APPROVAL_REPROMPT_S": value}, env_file=None)
+        assert s.session_settings().approval_reprompt_s == expected
+    with pytest.raises(SettingsError):
+        VoiceSettings.from_env({"PHONE_APPROVAL_REPROMPT_S": "-1"}, env_file=None)
+
+
 def test_owner_approval_is_on_by_default_and_its_wait_reaches_the_session() -> None:
     # 주문 승인 티켓 02: 확정 전 사장님 수락(화면이 없으면 건너뜀). 대기 초는 허브 카드 마감과 같다
     default = VoiceSettings.from_env({}, env_file=None)
