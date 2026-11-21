@@ -8,22 +8,22 @@
     "이태원동 메도빅": [
       {"title": "가상 구름 빵집", "category": "베이커리"},
       {"title": "가상 달빛 빵집", "category": "베이커리"},
-      {"title": "샘플 러시안 베이커리", "category": "베이커리"}
+      {"title": "한양케이크 HANYANG CAKE", "category": "베이커리"}
     ],
-    "샘플 러시안 베이커리": [
-      {"title": "샘플 러시안 베이커리", "category": "베이커리"}
+    "한양케이크 HANYANG CAKE": [
+      {"title": "한양케이크 HANYANG CAKE", "category": "베이커리"}
     ],
-    "샘플 러시안 베이커리 이태원동": [
-      {"title": "샘플 러시안 베이커리", "category": "베이커리"}
+    "한양케이크 HANYANG CAKE 이태원동": [
+      {"title": "한양케이크 HANYANG CAKE", "category": "베이커리"}
     ],
     "Медовик": [{"title": "가상 구름 빵집", "category": "베이커리"}]
   },
   "blog": {
-    "샘플 러시안 베이커리": {"total": 2, "items": [
-      {"title": "샘플 러시안 베이커리 가상 방문기", "description": "가상 디저트 이야기"}
+    "한양케이크 HANYANG CAKE": {"total": 2, "items": [
+      {"title": "한양케이크 HANYANG CAKE 가상 방문기", "description": "가상 디저트 이야기"}
     ]},
-    "샘플 러시안 베이커리 메도빅": {"total": 1, "items": [
-      {"title": "가상 메도빅 후기", "description": "샘플 러시안 베이커리의 가상 메뉴"}
+    "한양케이크 HANYANG CAKE 메도빅": {"total": 1, "items": [
+      {"title": "가상 메도빅 후기", "description": "한양케이크 HANYANG CAKE의 가상 메뉴"}
     ]}
   }
 }

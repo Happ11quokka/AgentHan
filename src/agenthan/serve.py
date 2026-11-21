@@ -86,8 +86,12 @@ def phone_store_doc(data: Mapping) -> dict:
 
     쿠폰(쿠폰 티켓 09)은 저장한 순서 그대로 계산에 쓰는 칸만 옮긴다(게시 상태는 보지 않는다).
     조건 없는 쿠폰은 `min_order` 키 없이 저장돼 있어 0으로 적는다(티켓 08).
+
+    가게 이름(`store_name`)도 옮긴다. 전화 첫인사가 비서 가게 이름을 읽는다(가게 이름을 바꾸면
+    전화도 바뀐다, 2026-11-22 "한양케이크"). 이름이 없으면 키를 넣지 않는다(전화 가게 이름 그대로).
     """
-    return {"menus": [
+    name = str((data.get("shop") or {}).get("name") or "").strip()
+    return {**({"store_name": name} if name else {}), "menus": [
         {"id": str(m["id"]), "name": m["name"], "price": m["price"],
          "description": m.get("description") or "", "aliases": list(m.get("aliases") or ()),
          "name_native": m.get("name_native") or "", "sold_out": bool(m.get("sold_out"))}
@@ -166,6 +170,9 @@ class PhoneStores:
             from agenthan.db.stores import load_published_phone_store
 
             saved = load_published_phone_store(self._db_url)
+        if saved and "store_name" not in saved and (name := phone_store_doc(default).get(
+                "store_name")):
+            saved = {"store_name": name, **saved}  # 이름 전의 게시 값: 파일럿 가게 이름으로
         if saved and self.put(saved, save=False):
             self._saved = _content_key(saved)
             log.info("전화용 가게: DB에 남은 마지막 게시 값으로 시작 (메뉴 %d개)",
@@ -225,9 +232,12 @@ class PhoneStores:
         from agenthan.rag import RagStoreKnowledge
 
         coupons = _coupons(doc)
+        config = self._config
+        if doc.get("store_name"):
+            config = replace(config, store_name=doc["store_name"])
         if self._doc is not None and self._doc.get("menus") == doc["menus"]:
-            # 쿠폰만 바뀐 게시: 검색 색인은 그대로 쓴다 (쿠폰 티켓 09)
-            return replace(self._current, coupons=coupons)
+            # 쿠폰·이름만 바뀐 게시: 검색 색인은 그대로 쓴다 (쿠폰 티켓 09)
+            return replace(self._current, coupons=coupons, config=config)
         # DB가 없으면 벡터 없이 (이름·별칭·오타 매칭)
         knowledge = RagStoreKnowledge(_PublishedMenus(doc, self._reviews), embed=False)
         if self._db_url:
@@ -240,8 +250,8 @@ class PhoneStores:
             ensure_published_vector_store(vector_store, self._db_url)
             knowledge.vector = PgVectorIndex(
                 knowledge.vector.docs, vector_store, self._embed, self._db_url)
-        ensure_usable(knowledge.list_menu(), self._config, log)  # 경고는 로그에
-        return StoreSnapshot.of(knowledge, self._config, coupons)
+        ensure_usable(knowledge.list_menu(), config, log)  # 경고는 로그에
+        return StoreSnapshot.of(knowledge, config, coupons)
 
 
 def _coupons(doc: dict) -> tuple:

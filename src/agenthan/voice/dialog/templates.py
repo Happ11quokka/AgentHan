@@ -118,9 +118,19 @@ def i_na(word: str) -> str:
 
 # ---------------------------------------------------------------- 대사
 
+_LATIN_WORDS = re.compile(r"(?:\s*\b[A-Za-z][A-Za-z&'.-]*)+\s*$")
+
+
+def spoken_store_name(store_name: str) -> str:
+    """전화로 읽을 가게 이름. 한글 이름 뒤에 붙은 영문 표기("한양케이크 HANYANG CAKE")는 TTS가
+    어색하게 읽으니 뺀다. 이름이 영문뿐이면 그대로."""
+    short = _LATIN_WORDS.sub("", store_name).strip()
+    return short or store_name.strip()
+
+
 def greeting(store_name: str) -> str:
     """첫마디에 AI가 받는다고 알린다(AI 기본법 제31조 사전 고지, 6단계). 길어지지 않게 한 낱말만."""
-    return f"네, {store_name} AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?"
+    return f"네, {spoken_store_name(store_name)} AI 전화 주문입니다. 어떤 걸로 준비해 드릴까요?"
 
 
 def ask_order() -> str:
@@ -150,6 +160,14 @@ def menu_list(menu_names: Sequence[str]) -> str:
     if len(menu_names) <= LIST_MENUS:
         return f"저희는 {i_ga(_join(menu_names))} 있어요."
     return f"저희는 {_join(menu_names[:LIST_MENUS])} 같은 메뉴가 있어요."
+
+
+def menus_of_kind(kind: str, names: Sequence[str]) -> str:
+    """종류 질문의 답. 예: "음료는 아메리카노, 카페라떼, 바닐라라떼, 헤이즐넛라떼 같은 메뉴가
+    있어요."."""
+    if len(names) <= LIST_MENUS:
+        return f"{eun_neun(kind)} {i_ga(_join(names))} 있어요."
+    return f"{eun_neun(kind)} {_join(names[:LIST_MENUS])} 같은 메뉴가 있어요."
 
 
 def not_on_menu(menu_names: Sequence[str], drinks: Sequence[str] | None = None) -> str:

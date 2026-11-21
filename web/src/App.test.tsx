@@ -1483,7 +1483,7 @@ describe("비서 제안", () => {
 });
 
 describe("가게 기본 정보 입력 블록", () => {
-  const INFO = { name: "샘플 러시안 베이커리", address: "서울시 용산구 가상로 0", phone: "02-000-0000", introduction: "작은 러시안 베이커리예요." };
+  const INFO = { name: "한양케이크 HANYANG CAKE", address: "서울시 용산구 가상로 0", phone: "02-000-0000", introduction: "작은 러시안 베이커리예요." };
   const PLACE = { ...SEED, business_info: INFO };
 
   /** 새 대화가 이 가게 정보로 시작하는 가짜 서버. */

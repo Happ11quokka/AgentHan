@@ -54,6 +54,29 @@ def test_any_time_is_the_same_as_dont_know() -> None:
     assert engine.handle("아무 때나요", NOW).utterances[-1].startswith("가장 빨리 되는 시간은")
 
 
+def test_dont_know_before_opening_hears_the_first_time_after_opening() -> None:
+    """밤 2시에 건 전화(가게는 10시에 연다): 문 연 뒤 준비 시간이 지난 10시 15분을 권한다."""
+    night = datetime(2026, 11, 8, 2, 0, tzinfo=KST)
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), StoreConfig.from_fixture(),
+                          order_id="o-night")
+    engine.start(night)
+    engine.handle("메도빅 하나요", night)
+    engine.handle("그게 다예요", night)
+    r = engine.handle("몰라", night)
+    assert r.utterances == ["가장 빨리 되는 시간은 오전 10시 15분이에요. 그때 오시겠어요?"]
+    assert "10시 15분에 찾으러 오시고" in engine.handle("네", night).utterances[-1]
+
+
+def test_dont_know_after_closing_is_asked_again() -> None:
+    late = datetime(2026, 11, 8, 20, 55, tzinfo=KST)
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), StoreConfig.from_fixture(),
+                          order_id="o-late")
+    engine.start(late)
+    engine.handle("메도빅 하나요", late)
+    engine.handle("그게 다예요", late)
+    assert not engine.handle("몰라", late).utterances[-1].startswith("가장 빨리")
+
+
 def test_a_real_time_is_still_taken_as_said() -> None:
     engine = _engine()
     engine.handle("메도빅 하나요", NOW)
@@ -146,3 +169,50 @@ def test_the_coupon_offer_is_two_sentences_and_short_when_asked_again() -> None:
     assert offer == ("2,500원만 더 담으시면 전화 주문 1,000원 할인 쿠폰을 쓸 수 있어요. "
                      "피로시키 하나 더 담으실까요?")
     assert templates.coupon_offer_again("피로시키") == "피로시키 하나 더 담으실까요?"
+
+
+# ---------------------------------------------------------------- 5. 음료만 23개인 메뉴
+# 같은 날 02:30 실통화: 답변기가 "음료 뭐 있어요"에 "모름", "마실 거 뭐 있냐고요"에 형식 틀림,
+# "커피 있어요?"에 열 개를 다 읽었다
+
+
+DRINKS = [
+    MenuItem("d1", "아메리카노", 4500, "에스프레소에 물을 탄 커피 음료"),
+    MenuItem("d2", "카페라떼", 5000, "음료로, 에스프레소에 스팀 밀크를 섞어 만든 커피."),
+    MenuItem("d3", "바닐라라떼", 5500, "커피와 우유가 어우러진 음료로, 바닐라 향이 더해져요"),
+    MenuItem("d4", "헤이즐넛라떼", 5500, "음료로, 에스프레소에 우유와 헤이즐넛 시럽을 섞어요"),
+    MenuItem("d5", "카페모카", 5500, "초콜릿을 섞은 커피 음료"),
+    MenuItem("d6", "레몬에이드", 5500, "레몬 음료"),
+    MenuItem("d7", "메도빅", 7500, "러시아 꿀 케이크"),
+    MenuItem("d8", "블리니", 9000, "러시아식 팬케이크"),
+]
+
+
+def test_a_kind_question_is_answered_from_the_menu_descriptions() -> None:
+    from agenthan.voice.dialog.answerer import menus_of_kind
+
+    assert menus_of_kind("음료는 뭐 있어요.", DRINKS) == (
+        "음료", ["아메리카노", "카페라떼", "바닐라라떼", "헤이즐넛라떼", "카페모카", "레몬에이드"])
+    assert menus_of_kind("마실 거 뭐 있냐고요", DRINKS)[0] == "음료"
+    assert menus_of_kind("케이크 종류는 뭐 있어요.", DRINKS) == ("케이크", ["메도빅"])
+    for not_kind in ("메도빅 달아요?", "주차 돼요?", "뭐가 맛있어요", "디저트 뭐 있어요"):
+        assert menus_of_kind(not_kind, DRINKS) == ("", []), not_kind
+    assert templates.menus_of_kind("음료", ["아메리카노", "카페라떼", "바닐라라떼", "헤이즐넛라떼",
+                                          "카페모카"]) == (
+        "음료는 아메리카노, 카페라떼, 바닐라라떼, 헤이즐넛라떼 같은 메뉴가 있어요.")
+    assert templates.menus_of_kind("케이크", ["메도빅"]) == "케이크는 메도빅이 있어요."
+
+
+def test_a_long_list_answer_with_evidence_is_cut_too() -> None:
+    facts = store_facts(StoreConfig(store_name="샘플"), DRINKS)
+    said = "아메리카노, 카페라떼, 바닐라라떼, 헤이즐넛라떼, 카페모카, 레몬에이드 있어요."
+    reply = checked(AnswerReply("answer", say=said, evidence="음료"),
+                    AnswerRequest("커피 있어요.", facts))
+    assert reply.kind == "answer"
+    assert reply.say == "아메리카노, 카페라떼, 바닐라라떼, 카페모카 있어요."
+
+
+def test_the_engine_answers_a_kind_question_the_answerer_could_not() -> None:
+    nlu = _Nlu({"커피 뭐 있어요?": [Act("ask_other", free_text="커피 뭐 있어요?")]})
+    r = _engine(nlu, _Unsure()).handle("커피 뭐 있어요?", NOW)
+    assert r.utterances[0] == "커피는 아메리카노가 있어요."  # 시험 가게: 아메리카노만 종류가 커피
