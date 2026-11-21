@@ -126,8 +126,6 @@ _WHILE_APPROVAL: frozenset[ActType] = frozenset({
     "cancel_order", "add_item", "change_qty", "remove_item", "set_option", "set_request",
     "set_pickup_time", "yes", "want_owner"})
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
-# 쿠폰 권유의 질문 문장("더 담으실까요?"). 직전 질문이 권유였는지 볼 때 쓴다 (쿠폰 티켓 11)
-_COUPON_MORE = templates.question_only(templates.coupon_offer("", 0, None))
 # NLU가 놓친 메뉴 한 마디를 매처로 다시 볼 최대 길이(공백·문장부호 뺀 글자). "맥도빅 주세요"(6)까지
 RESCUE_MAX_CHARS = 7
 # 5단계 티켓 11. NLU가 못 알아들은 말을 답변기에 보일 최소 길이와 상태(고르기·확인 중은 뺀다)
@@ -392,9 +390,6 @@ class DialogEngine:
         self._catalog = menu_catalog(self._menu, config.required_options)
         self._set_menu(frozenset(sold_out))
         self._coupons: tuple[Coupon, ...] = tuple(coupons)
-        # 쿠폰 권유를 이 통화에서 했다 (쿠폰 티켓 10·11). 복창 전 권유와 쿠폰 문의의 부족 답이 같이
-        # 센다. 권유는 통화당 한 번이다
-        self._coupon_offered = False
         self._state = State.GREETING
         self._cart = Cart()
         self._pickup: datetime | None = None
@@ -441,7 +436,7 @@ class DialogEngine:
         self._delay_offer: _DelayOffer | None = None
         # 티켓 06. 재료 소진 거절 뒤 손님 답("빼고"·"바꾸고")을 기다리는 중 (`_StockOut`)
         self._stock_out: _StockOut | None = None
-        # 쿠폰 티켓 10. 쿠폰 권유를 이 통화에서 이미 했다(복창 전 권유, 또는 티켓 11의 쿠폰 문의
+        # 쿠폰 티켓 10·11. 쿠폰 권유를 이 통화에서 이미 했다(복창 전 권유, 또는 쿠폰 문의의 부족
         # 답). 권유는 통화당 한 번이다. `_coupon_offer`는 지금 그 답을 기다리는 권유
         self._coupon_offered = False
         self._coupon_offer: _CouponOffer | None = None
@@ -1598,33 +1593,34 @@ class DialogEngine:
         elif isinstance(coupon, Applied):
             self._say(turn, templates.coupon_applies(coupon.coupon.title, coupon.discount))
         elif isinstance(coupon, Shortfall):
-            self._offer_coupon(turn, coupon)
+            self._answer_shortfall(turn, coupon)
             return
         else:
             self._say(turn, templates.no_coupon())
         turn.answered = True
 
-    def _offer_coupon(self, turn: _Turn, short: Shortfall) -> None:
-        """부족 답. 주문 받기·시각·복창 중이면 주문 받기로 돌아가 권유 문장을 이번 턴 질문으로 한다
-        ("아니요"면 주문 끝, "네"면 권할 메뉴를 담는다, `_asked_coupon_offer`). 다른 답을 기다리는
-        중(고르기·취소 확인·재료 소진·늦춘 시각)이면 질문 문장은 빼고 알린 뒤 그 질문을 다시 한다.
+    def _answer_shortfall(self, turn: _Turn, short: Shortfall) -> None:
+        """부족 답. 권유 문장(`templates.coupon_offer`)으로 답하고 통화당 한 번 권유로 센다.
+
+        주문 받기·시각·복창 중이면 복창 전 권유(쿠폰 티켓 10)와 같은 길로 권유를 열어
+        (`_open_coupon_offer`) 답을 `_on_coupon_offer_answer`가 받는다. 다른 답을 기다리는
+        중(고르기·취소 확인·재료 소진·늦춘 시각·사장님 확인)이면 질문 문장은 빼고 알린 뒤 그 질문을
+        다시 한다. 더 담으면 주문 한도를 넘으면 권하지 않고 쿠폰 이름과 조건만 알린다.
         """
-        offer = templates.coupon_offer(short.coupon.title, short.short,
-                                       short.suggest.name_ko if short.suggest else None)
-        self._coupon_offered = True
+        offer = self._coupon_offer_for(short)
+        if offer is None:
+            self._say(turn, templates.coupon_available(short.coupon.title, short.coupon.min_order))
+            turn.answered = True
+            return
         if (self._state in (State.ORDERING, State.ASK_PICKUP, State.CONFIRM)
                 and self._cancel_resume is None and self._stock_out is None
                 and self._delay_offer is None and self._approval_open is None):
-            self._state = State.ORDERING
-            self._fixing = False
-            self._ask(turn, offer)
+            self._open_coupon_offer(turn, offer)
             return
-        self._say(turn, " ".join(s for s in _SENTENCE_END.split(offer) if not s.endswith("?")))
+        self._coupon_offered = True
+        self._say(turn, " ".join(s for s in _SENTENCE_END.split(offer.question)
+                                 if not s.endswith("?")))
         turn.answered = True
-
-    def _asked_coupon_offer(self) -> bool:
-        """직전 질문이 쿠폰 권유("… 더 담으실까요?")였다. 답은 "더 필요하신 거?"처럼 받는다."""
-        return self._coupon_offered and self._last_question.endswith(_COUPON_MORE)
 
     # ------------------------------------------------------------ ORDERING: 메뉴 담기
 
@@ -1833,10 +1829,11 @@ class DialogEngine:
     def _asked_anything_else(self) -> bool:
         """직전 질문이 "더 필요하신 거 있으세요?"였다 (정정 중이 아님).
 
-        쿠폰 권유("… 더 담으실까요?")도 같은 질문으로 본다 (쿠폰 티켓 11).
+        답을 기다리는 쿠폰 권유("… 더 담으실까요?", `_coupon_offer`)도 같은 질문으로 본다
+        (쿠폰 티켓 11). 권유의 답 자체는 `_on_coupon_offer_answer`가 받는다.
         """
         asked = (self._last_question.endswith(templates.anything_else())
-                 or self._asked_coupon_offer())
+                 or self._coupon_offer is not None)
         return asked and not self._fixing and not self._cart.is_empty()
 
     @on("no", State.ORDERING)
@@ -1851,14 +1848,8 @@ class DialogEngine:
     def _on_ordering_yes(self, turn: _Turn, act: Act) -> None:
         """"더 필요하신 거 있으세요?"에 "네"만 했다. 무엇을 더 드릴지 묻는다 (티켓 06).
 
-        쿠폰 권유에 "네"면 권한 메뉴를 하나 담는다(쿠폰 티켓 11). 권할 메뉴가 없었으면 묻는다.
+        쿠폰 권유에 "네"는 `_on_coupon_offer_answer`가 먼저 받는다(쿠폰 티켓 10·11).
         """
-        if self._asked_coupon_offer():
-            short = self._coupon(self._order_day(turn.now))
-            if isinstance(short, Shortfall) and short.suggest is not None:
-                suggest = short.suggest
-                self._add_to_cart(turn, suggest, Act("add_item", menu_text=suggest.name_ko, qty=1))
-                return
         if self._asked_anything_else():
             self._ask(turn, templates.ask_order())
         else:
@@ -2355,7 +2346,7 @@ class DialogEngine:
         self._pickup_offer_question = question
         self._ask(turn, question)
 
-    # ------------------------------------------------------------ 쿠폰 권유 (쿠폰 티켓 10)
+    # ------------------------------------------------------------ 쿠폰 권유 (쿠폰 티켓 10·11)
     #
     # 복창 직전(`_advance`)에 쿠폰 계산이 "부족"이면 한 번 권한다: "전화 주문 1,000원 할인 쿠폰이
     # 있는데 2,500원이 부족해요. 아메리카노 하나 더 하시면 쓸 수 있어요. 다른 메뉴도 괜찮아요. 더
@@ -2367,31 +2358,46 @@ class DialogEngine:
     # - 못 알아들음·무응답은 한 번 다시 묻고, 두 번째(`COUPON_OFFER_TRIES`)면 쿠폰 없이 복창한다
     # 권유는 통화당 한 번(`_coupon_offered`)이고, 첫 복창 전에만 한다. 복창 뒤 주문을 고쳐 금액이
     # 모자라지면 권하지 않고 쿠폰이 빠진 금액으로 다시 복창한다(spec "쿠폰" 대화 흐름).
+    # 쿠폰 문의의 부족 답(쿠폰 티켓 11, `_answer_shortfall`)도 같은 권유(`_open_coupon_offer`)를
+    # 열고 같은 답 처리를 탄다. 이것도 통화당 한 번으로 세어 복창 전 권유는 다시 나오지 않는다.
 
     def _offer_coupon(self, turn: _Turn) -> bool:
-        """복창 직전. 쿠폰 계산이 "부족"이고 권할 수 있으면 권유를 하고 True(복창하지 않는다).
-
-        권할 메뉴(쿠폰 계산 결과)를 하나 더하면 주문 한도(`max_order_qty`·`max_order_total`)를
-        넘으면 메뉴 이름 없이 권한다. 부족액만큼 더 담는 것도 한도를 넘으면 권하지 않는다.
-        """
+        """복창 직전. 쿠폰 계산이 "부족"이고 권할 수 있으면 권유를 하고 True(복창하지 않는다)."""
         if self._coupon_offered or self._read_back:
             return False
         coupon = self._coupon(self._order_day(turn.now))
         if not isinstance(coupon, Shortfall):
             return False
-        suggest = coupon.suggest
+        offer = self._coupon_offer_for(coupon)
+        if offer is None:
+            return False
+        self._open_coupon_offer(turn, offer)
+        return True
+
+    def _coupon_offer_for(self, short: Shortfall) -> _CouponOffer | None:
+        """부족 결과로 할 권유. 더 담을 데가 없으면 None.
+
+        권할 메뉴(쿠폰 계산 결과)를 하나 더하면 주문 한도(`max_order_qty`·`max_order_total`)를
+        넘으면 메뉴 이름 없이 권한다. 부족액만큼 더 담는 것도 한도를 넘으면 권하지 않는다.
+        """
+        suggest = short.suggest
         limits = (self._config.max_order_qty, self._config.max_order_total)
         if suggest is not None and self._cart.add(suggest).over_limit(*limits) is not None:
             suggest = None
-        if suggest is None and not self._room_for(coupon.short):
-            return False
+        if suggest is None and not self._room_for(short.short):
+            return None
         question = templates.coupon_offer(
-            coupon.coupon.title, coupon.short, None if suggest is None else suggest.name_ko)
+            short.coupon.title, short.short, None if suggest is None else suggest.name_ko)
+        return _CouponOffer(suggest, question)
+
+    def _open_coupon_offer(self, turn: _Turn, offer: _CouponOffer) -> None:
+        """권유를 이번 턴의 질문으로 하고 주문 받기로 돌아가 답을 기다린다 (통화당 한 번으로 센다).
+        """
         self._coupon_offered = True
-        self._coupon_offer = _CouponOffer(suggest, question)
+        self._coupon_offer = offer
         self._state = State.ORDERING
-        self._ask(turn, question, force=True)
-        return True
+        self._fixing = False
+        self._ask(turn, offer.question, force=True)
 
     def _room_for(self, amount: int) -> bool:
         """`amount`원어치를 한 개 이상 더 담아도 주문 한도 안인가 (메뉴 이름 없는 권유)."""

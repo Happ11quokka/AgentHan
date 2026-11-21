@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 
 from agenthan.core.fakes import FakeStoreKnowledge
@@ -62,8 +63,10 @@ class _Answerer:
 
 
 def _engine(*coupons: Coupon, answerer: _Answerer | None = None,
-            knowledge: KnowledgeStore | None = None) -> DialogEngine:
-    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), _Nlu(), StoreConfig.from_fixture(),
+            knowledge: KnowledgeStore | None = None,
+            config: StoreConfig | None = None) -> DialogEngine:
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), _Nlu(),
+                          config or StoreConfig.from_fixture(),
                           order_id="o-coupon-q", coupons=coupons, answerer=answerer,
                           knowledge=knowledge)
     engine.start(NOW)
@@ -148,18 +151,30 @@ def test_a_menu_named_after_the_offer_is_added() -> None:
     talk(engine, "메도빅 하나요", "쿠폰 돼요?")
     r = talk(engine, "나폴레옹 하나요")
     assert [line.item.id for line in r.cart.lines] == ["m01", "m02"]
-    assert r.utterances[-1].endswith(MORE_Q)
+    # 권유의 답으로 담았으면 더 묻지 않고 주문을 마친다(쿠폰 티켓 10의 권유 답 처리)
+    assert r.state is State.ASK_PICKUP
 
 
 def test_a_short_cart_at_the_readback_goes_back_to_ordering_with_the_offer() -> None:
     engine = _engine(COUPON)
-    assert talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요").state is State.CONFIRM
-    r = talk(engine, "할인 돼요?")
+    talk(engine, "메도빅 하나요", "그게 다예요", "6시 반이요")  # 복창 전 권유 (쿠폰 티켓 10)
+    assert talk(engine, "아니요").state is State.CONFIRM
+    r = talk(engine, "할인 돼요?")  # 물으면 이미 권했어도 부족 답으로 다시 권한다
     assert r.utterances == [OFFER]
     assert r.state is State.ORDERING
     r = talk(engine, "아니요")  # 쿠폰 없이 다시 복창
     assert r.state is State.CONFIRM
     assert r.utterances[-1].endswith("모두 7,500원이에요. 맞으세요?")
+
+
+def test_a_short_cart_that_cannot_grow_hears_the_condition_not_an_offer() -> None:
+    """더 담으면 주문 한도를 넘는다: 권하지 않고(권유로 세지 않고) 쿠폰 조건만 알린다."""
+    engine = _engine(COUPON, config=replace(StoreConfig.from_fixture(), max_order_total=9_000))
+    talk(engine, "메도빅 하나요")
+    r = talk(engine, "쿠폰 돼요?")
+    assert r.utterances == [
+        "전화 주문 1,000원 할인 쿠폰이 있어요. 10,000원 이상 주문하시면 돼요.", MORE_Q]
+    assert not engine._coupon_offered
 
 
 def test_a_short_cart_while_a_cancel_question_waits_hears_the_facts_only() -> None:
