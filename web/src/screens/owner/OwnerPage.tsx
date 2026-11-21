@@ -4,7 +4,8 @@
 // 손님 요청은 번역(Papago) + 한국어 원문 + 배지(한국어 원문 규칙). 번역이 오면 같은 카드가 다시 와서 덮어쓴다.
 // 고정 문구는 `ownerText.ts` 사전. 화면 아래에 Papago 표기(이용 조건).
 // 통화 카드(티켓 02): 맨 위 줄에 통화 중 카드, 그 아래 "손님 연락 필요"(넘김)·회색 미완료 카드(닫기 버튼).
-// 알림 소리·깜빡임·리마인드·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
+// 알림 소리·깜빡임·카드 색·화면 꺼짐 방지 다시 잡기는 티켓 08(`orderAlerts`·`pickupBand`·`screenWakeLock`).
+// 확인 대기 카드가 남아 있으면 몇 초마다 다시 울리고 깜빡인다(주문 승인 티켓 08, 예전 1분 리마인드 대체).
 // 질문 카드(티켓 05): 통화 중 줄 아래 맨 앞에. 메뉴·손님 질문·남은 초·버튼 3개(돼요/안 돼요/모르겠어요).
 // 티켓 06: 시간 초과·통화 끝 카드도 남아 답을 받는다. 질문 카드는 접혀 오고, 사장님이 눌러 펼칠 때만
 // 열람을 알린다(리뷰 P4: 화면이 켜져 있는 것만으로는 "사장님이 보고 계세요"를 보내지 않는다).
@@ -15,9 +16,16 @@
 // 티켓 07: 질문 카드에 접힌 자유 입력(손님에게는 번역 문자로만 감). 카드 안에 "손님에게 보낸 문자" 한 줄씩.
 // 티켓 13: 주문 카드 아래 접힌 "손님이 궁금해한 것"(AI가 답 못 한 메뉴 질문, 메뉴별 카드·횟수).
 // 사장님 글 → "번역 보기"(한국어 미리보기, 고칠 수 있음) → "저장"을 눌러야 다음 손님부터 AI가 쓴다.
+// 주문 승인 티켓 02: 주문 카드는 확인 요청 카드다. 확인 대기면 대기 단계·카운트다운·[수락], 수락하면
+// 초록 "수락 · 픽업 시각", 확인 요청 없이 확정된 주문은 "자동 확정(사장님 화면 꺼짐)". 손님이 기다리는
+// 중에 고치거나 취소하면 버튼을 숨긴다.
+// 주문 승인 티켓 03: 통화 뒤 대기는 분:초 카운트다운(요청 연 때부터 5분), 자동 취소 카드는 회색에 버튼 없음.
+// 주문 승인 티켓 05: 확인 대기 카드의 [거절] → 사유 시트(`OrderReject.tsx`), 거절 카드는 회색 "거절 · 사유".
+// 주문 승인 티켓 06: 재료 소진은 주문 메뉴 다중 선택. 품절을 건 카드에 "품절로 바꿨어요 [되돌리기]".
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { CustomerText } from '../customerText.ts'
 import { ALERT_SETTINGS } from './alertSettings.ts'
+import { RejectButton, RejectedResult, SoldOutMark } from './OrderReject.tsx'
 import { OrderAlerts } from './orderAlerts.ts'
 import { OrderChime } from './orderChime.ts'
 import {
@@ -25,19 +33,23 @@ import {
   type CaptionLine,
   type KnowledgeCard,
   type KnowledgePreview,
+  type OrderCard,
   type OrderCardLine,
   type OwnerAnswer,
   type QuestionCard,
   type QuestionClock,
   SeenReports,
   WRITTEN_ANSWER_MAX,
-  canAccept,
+  approvalClock,
+  approvalsWaiting,
   captionLines,
+  effectivePickup,
   followUpCalls,
   initialOwnerState,
   knowledgeCards,
   liveCalls,
   openQuestions,
+  orderOutcome,
   ownerReducer,
   questionClock,
   questionsWaiting,
@@ -46,14 +58,18 @@ import {
   writtenAnswer,
 } from './ownerState.ts'
 import {
+  ACCEPT_DELAYS,
+  type AcceptDelay,
   acceptOrder,
   answerQuestion,
   connectOwnerStream,
   dismissCall,
   ownerKey,
   previewKnowledge,
+  rejectOrder,
   saveKnowledge,
   seeQuestion,
+  undoSoldOut,
   wakeDevice,
 } from './ownerStream.ts'
 import {
@@ -62,6 +78,7 @@ import {
   type OwnerText,
   PAPAGO_URL,
   answerLabel,
+  approvalLeft,
   captionView,
   knowledgeView,
   lineView,
@@ -71,11 +88,91 @@ import {
   sentTextView,
 } from './ownerText.ts'
 import { pickupBand } from './pickupBand.ts'
+import type { RejectBody } from './rejectSheet.ts'
 import { keepScreenAwake } from './screenWakeLock.ts'
 import './owner.css'
 
 /** 질문 카드 버튼. 순서가 화면 순서다. 문구는 `ownerText.ts` */
 const ANSWERS: OwnerAnswer[] = ['yes', 'no', 'unsure']
+
+/**
+ * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). 확인 대기: 대기 단계 + 남은 초 + [수락] [+15분]
+ * [+30분](티켓 04). 수락: 초록 "수락 · 18:30". 늦춘 수락: 초록 "18:45로 수락 (+15분)"(통화 중이면
+ * 손님이 답하는 중 표시). 손님이 늦춘 시각을 거절: 회색. 자동 확정: 그 표시. 손님이 고치는 중·
+ * 취소: 버튼 없이 그 표시
+ */
+function OrderDecision({
+  card,
+  nowMs,
+  lang,
+  text,
+  onAccept,
+  onReject,
+}: {
+  card: OrderCard
+  nowMs: number
+  lang: OwnerLang
+  text: OwnerText
+  onAccept: (delayMin: AcceptDelay) => void
+  /** 거절 사유 시트 보내기 (티켓 05) */
+  onReject: (body: RejectBody) => void
+}) {
+  const outcome = orderOutcome(card)
+  if (outcome === 'waiting') {
+    const clock = approvalClock(card, nowMs)
+    return (
+      <div className="owner-approval">
+        <p className="owner-approval-wait">
+          {card.stage && <span>{text.approvalStage[card.stage]}</span>}{' '}
+          <span className={clock === 'late' ? 'owner-question-late' : 'owner-approval-clock'}>
+            {clock === 'late' ? text.late : approvalLeft(clock, lang)}
+          </span>
+        </p>
+        <button type="button" className="owner-btn owner-btn-accept" onClick={() => onAccept(0)}>
+          {text.accept}
+        </button>
+        {ACCEPT_DELAYS.filter((m) => m > 0).map((minutes) => (
+          <button
+            key={minutes}
+            type="button"
+            className="owner-btn owner-btn-later"
+            onClick={() => onAccept(minutes)}
+          >
+            {text.acceptLater(minutes)}
+          </button>
+        ))}
+        <RejectButton text={text} lang={lang} lines={card.lines} onReject={onReject} />
+      </div>
+    )
+  }
+  if (outcome === 'rejected') return <RejectedResult card={card} lang={lang} />
+  if (outcome === 'delayed') {
+    return (
+      <>
+        <p className="owner-accepted owner-accepted-yes">
+          {text.acceptedLater(card.owner_pickup_label ?? '', card.delay_min ?? 0)}
+        </p>
+        {card.delay_reply === 'asking' && <p className="owner-delay-asking">{text.delayAsking}</p>}
+      </>
+    )
+  }
+  if (outcome === 'declined') {
+    return <p className="owner-withdrawn">{text.delayDeclined(card.owner_pickup_label ?? '')}</p>
+  }
+  if (outcome === 'expired') return <p className="owner-expired">{text.expired}</p>
+  if (outcome === 'changing' || outcome === 'cancelled') {
+    return <p className="owner-withdrawn">{text.withdrawn[outcome === 'changing' ? 'changed' : 'cancelled']}</p>
+  }
+  if (outcome === 'accepted' || outcome === 'auto') {
+    return (
+      <>
+        <p className="owner-accepted owner-accepted-yes">{text.acceptedAt(card.pickup_label)}</p>
+        {outcome === 'auto' && <p className="owner-auto">{text.autoAccepted}</p>}
+      </>
+    )
+  }
+  return null
+}
 
 /** 질문 카드 카운트다운을 다시 그리는 간격 */
 const QUESTION_TICK_MS = 1_000
@@ -92,7 +189,7 @@ export default function OwnerPage() {
   const chime = useRef<OrderChime | null>(null)
   const releaseWake = useRef<(() => void) | null>(null)
   const [sound, setSound] = useState<Sound>('locked')
-  /** 리마인드가 울린 주문 id. 그 카드를 한 번 더 깜빡인다 */
+  /** 반복 알림 때 다시 깜빡일 확인 대기 주문 id (반복마다 비었다 찼다 한다, 주문 승인 티켓 08) */
   const [reminded, setReminded] = useState<ReadonlySet<string>>(new Set())
   const [now, setNow] = useState(() => Date.now())
   const alerts = useRef<OrderAlerts | null>(null)
@@ -101,11 +198,10 @@ export default function OwnerPage() {
 
   useEffect(() => {
     const current = new OrderAlerts({
-      onArrive: () => chime.current?.play(),
-      onRemind: (id) => {
-        chime.current?.play()
-        setReminded((ids) => new Set(ids).add(id))
-      },
+      ring: () => chime.current?.play(),
+      soundOn: () => chime.current !== null,
+      // 반복마다 대기 카드 깜빡임을 다시 튼다(클래스를 켰다 껐다 하면 애니메이션이 처음부터 돈다)
+      onRepeat: (ids) => setReminded((prev) => (prev.size > 0 ? new Set() : new Set(ids))),
     })
     alerts.current = current
     return () => {
@@ -122,8 +218,8 @@ export default function OwnerPage() {
     return () => clearInterval(timer)
   }, [])
 
-  // 통화가 답을 기다리는 질문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
-  const waiting = questionsWaiting(state)
+  // 통화가 답을 기다리는 질문 카드나 확인 대기 주문 카드가 있는 동안만 1초마다 다시 그린다(카운트다운)
+  const waiting = questionsWaiting(state) || approvalsWaiting(state)
   useEffect(() => {
     if (!waiting) return
     const tick = () => setNow(Date.now())
@@ -149,8 +245,12 @@ export default function OwnerPage() {
   }
 
   // 버튼 POST. 바뀐 카드는 SSE로 온다(응답 카드는 넣지 않는다, 리뷰 C8)
-  function accept(id: string) {
-    void acceptOrder(key.current, id)
+  function accept(id: string, delayMin: AcceptDelay = 0) {
+    void acceptOrder(key.current, id, delayMin)
+  }
+
+  function reject(id: string, body: RejectBody) {
+    void rejectOrder(key.current, id, body)
   }
 
   function dismiss(id: string) {
@@ -255,13 +355,15 @@ export default function OwnerPage() {
             className={[
               'owner-card',
               `owner-card-${card.status}`,
-              `owner-band-${pickupBand(card, hubNow)}`,
+              `owner-band-${pickupBand(effectivePickup(card), hubNow)}`,
               reminded.has(card.id) ? 'owner-card-remind' : '',
+              // 손님 취소(티켓 07)·늦춘 시각 거절(티켓 04): 회색
+              ['cancelled', 'declined'].includes(orderOutcome(card)) ? 'owner-card-cancelled' : '',
             ].join(' ')}
           >
             <header className="owner-card-head">
               <span className="owner-pickup">
-                <small className="owner-pickup-label">{text.pickup}</small> {card.pickup_label}
+                <small className="owner-pickup-label">{text.pickup}</small> {effectivePickup(card).pickup_label}
               </span>
               <strong className="owner-total">{card.total_label}</strong>
             </header>
@@ -269,13 +371,21 @@ export default function OwnerPage() {
             <CardLines lines={card.lines} lang={lang} text={text} />
             {card.owner_check && <p className="owner-check">{text.ownerCheck}</p>}
             <SentTexts texts={card.sms} lang={lang} />
-            {canAccept(card) ? (
-              <button type="button" className="owner-btn owner-btn-accept" onClick={() => accept(card.id)}>
-                {text.accept}
-              </button>
-            ) : (
-              <p className="owner-accepted">{text.accepted}</p>
-            )}
+            <OrderDecision
+              card={card}
+              nowMs={hubNow}
+              lang={lang}
+              text={text}
+              onAccept={(delayMin) => accept(card.id, delayMin)}
+              onReject={(body) => reject(card.id, body)}
+            />
+            <SoldOutMark
+              card={card}
+              soldOut={state.soldOut}
+              lang={lang}
+              text={text}
+              onUndo={(menuId) => void undoSoldOut(key.current, menuId)}
+            />
           </article>
         ))}
       </section>

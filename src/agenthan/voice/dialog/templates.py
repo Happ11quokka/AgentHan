@@ -265,8 +265,72 @@ def closing(pickup: datetime, *, owner_pending: bool = False) -> str:
     return f"네, {spoken_time(pickup)}까지 준비해 둘게요.{later} 감사합니다."
 
 
+def approval_hold() -> str:
+    """복창에 "네": 사장님께 주문 확인을 요청했다 (주문 승인 티켓 02). 이 턴의 마지막 말이다."""
+    return "사장님께 주문 확인 중이에요. 잠시만요."
+
+
+def approval_still_waiting() -> str:
+    """확인을 기다린 지 재안내 시간(10초쯤)이 지났다. 요청마다 한 번 (주문 승인 티켓 07)."""
+    return "조금만 더 기다려 주세요."
+
+
+def approval_still_checking() -> str:
+    """확인을 기다리는 중에 손님이 고치지도 취소하지도 않는 말을 했다 (주문 승인 티켓 07)."""
+    return "확인 중이에요, 잠시만요."
+
+
+def approval_timeout() -> str:
+    """통화 중 대기 시간 안에 사장님 결정이 없었다 (주문 승인 spec "엔진"). 통화를 끝낸다."""
+    return ("가게에서 아직 확인 중이에요. 확인되는 대로 문자로 확정 알려 드릴게요. "
+            "확정 문자를 받으시면 주문 완료예요. 감사합니다.")
+
+
+# 사장님이 통화 중에 거절했다 (주문 승인 티켓 05). 사유마다 고정 사과 한 마디로 통화를 끝낸다.
+# 직접 쓰기(free)는 사장님 글을 읽지 않는다(질문 카드 자유 입력과 같다, 글은 문자로만 간다)
+_REJECTED = {
+    "busy": "죄송해요, 지금 가게가 바빠서 주문을 받기 어렵대요. 다음에 다시 주문해 주세요.",
+    "closed": "죄송해요, 지금은 가게 사정으로 주문을 받을 수 없대요.",
+    "free": "사장님이 사정을 문자로 남기셨어요. 죄송해요.",
+}
+
+
+def approval_rejected(reason: str) -> str:
+    """사장님 거절 사과. 모르는 사유는 가게 사정 문장. 재료 소진은 떨어진 메뉴가 장바구니에 있으면
+    `approval_out_of_stock`으로 따로 안내한다(티켓 06)."""
+    return _REJECTED.get(reason, _REJECTED["closed"])
+
+
+def approval_delayed(at: datetime) -> str:
+    """사장님이 시각을 늦춰 수락했다(+15분·+30분, 주문 승인 티켓 04). 받아들일지 손님에게 묻는다."""
+    return f"사장님이 {spoken_time(at)}에 준비 가능하시대요. 괜찮으세요?"
+
+
+def approval_delay_declined() -> str:
+    """늦춘 시각에 "아니요": 주문을 취소하고 통화를 끝낸다(다른 시각 협상은 없다, 티켓 04)."""
+    return "알겠어요, 이번 주문은 취소할게요. 다음에 또 주문해 주세요."
+
+
+def approval_out_of_stock(names: Sequence[str], *, rest: bool) -> str:
+    """사장님이 통화 중에 재료 소진으로 거절했다 (주문 승인 티켓 06). 떨어진 메뉴를 알리고 빼고
+    주문할지 바꿀지 묻는다. 남은 메뉴가 없으면(`rest` 거짓) 다른 메뉴로 주문할지만 묻는다.
+
+    "김치찌개는 지금 재료가 떨어졌대요. 빼고 주문할까요, 다른 메뉴로 바꾸실까요?"
+    여러 개면 "메도빅이랑 블린은 …".
+    """
+    head = " ".join([*(i_rang(n) for n in names[:-1]), eun_neun(names[-1])])
+    question = "빼고 주문할까요, 다른 메뉴로 바꾸실까요?" if rest else "다른 메뉴로 주문하시겠어요?"
+    return f"{head} 지금 재료가 떨어졌대요. {question}"
+
+
+def ask_replacement() -> str:
+    """재료 소진 질문에 "아니요"만 했다. 무엇으로 바꿀지 묻는다 (주문 승인 티켓 06)."""
+    return "어떤 메뉴로 바꿔 드릴까요?"
+
+
 def not_understood() -> str:
     return "죄송해요, 제가 잘 못 알아들었어요."
+
 
 
 # ---------------------------------------------------------------- 픽업 규칙 (티켓 04)

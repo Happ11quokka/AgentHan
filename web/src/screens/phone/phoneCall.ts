@@ -22,7 +22,7 @@ import { CAPTURE_PROCESSOR, FRAME_SAMPLES, WIRE_RATE } from './pcm.ts'
 import { Player } from './player.ts'
 import { micReopenDelayMs } from './schedule.ts'
 import { openTextStream } from './textStream.ts'
-import { ThinkingCue } from './thinkingCue.ts'
+import { ThinkingCue, cueKeeps } from './thinkingCue.ts'
 import { TurnPlayback } from './turnPlayback.ts'
 
 export const WS_PATH = '/api/phone/ws'
@@ -305,7 +305,10 @@ export class PhoneCall {
     }
   }
 
-  /** 생각 중 효과음: `bot.thinking`에 켜고, 그 턴이 목소리 없이 넘어가거나 끝나면 끈다. */
+  /**
+   * 생각 중 효과음: `bot.thinking`에 켜고, 그 턴이 목소리 없이 넘어가거나 끝나면 끈다.
+   * 대기음(주문 승인 티켓 07): `bot.hold`에 같은 소리를 켜고, 그 턴이 듣는 중에서 벗어나면 끈다.
+   */
   private onCueEvent(event: ServerEvent): void {
     const cue = this.cue
     if (!cue) return
@@ -313,8 +316,12 @@ export class PhoneCall {
       if (event.turn !== this.state.turn || this.state.phase !== 'thinking') return
       const at = cue.play(event.turn)
       if (at !== null) this.clock(event.turn).thinking = at
+    } else if (event.type === 'bot.hold') {
+      if (event.turn !== this.state.turn || this.state.phase !== 'listening') return
+      cue.play(event.turn, 'hold', event.max_s)
     } else if (event.type === 'state') {
-      if (event.phase !== 'thinking' || event.turn !== cue.playingTurn) cue.stop()
+      const playing = cue.playing
+      if (playing && !cueKeeps(playing, event)) cue.stop()
     } else if (event.type === 'error') {
       cue.stop()
     }
@@ -479,7 +486,7 @@ export class PhoneCall {
   }
 
   /**
-   * 통화가 끝나면(서버가 끝냄·손님이 끊음·오류) 이 통화 id로 "받은 문자" 스트림을 연다(티켓 07, 최대 2분).
+   * 통화가 끝나면(서버가 끝냄·손님이 끊음·오류) 이 통화 id로 "받은 문자" 스트림을 연다(티켓 07, 최대 6분).
    * 사장님이 늦게 답하면 여기로 온다. 연결되기 전에 끝난 통화(통화 id 없음)는 열지 않는다
    */
   private startTexts(): void {

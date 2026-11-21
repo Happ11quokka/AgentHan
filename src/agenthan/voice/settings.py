@@ -45,6 +45,10 @@
 | `PHONE_ANSWER` | `on`이면 손님 질문에 가게 자료로 답하는 답변기(HCX). NLU가 `hcx`일 때만 | `on` |
 | `PHONE_ANSWER_MODEL` | 답변기 모델 (`nlu/hcx_answer.py`가 읽는다) | `HCX-005` |
 | `PHONE_OWNER_WAIT_S` | 사장님 질문 답 대기(초, 카드 보낸 때부터). 넘으면 문자 약속 | `20.0` |
+| `PHONE_APPROVAL_REPROMPT_S` | 확인 요청 "조금만 더 기다려 주세요"(초). `0`이면 끔 | `10.0` |
+| `PHONE_OWNER_APPROVAL` | `on`이면 확정 전 사장님 수락을 받는다(화면이 없으면 건너뜀) | `on` |
+| `PHONE_APPROVAL_WAIT_S` | 확인 요청 통화 중 대기(초, 카드 보낸 때부터). 넘으면 문자로 | `20.0` |
+| `PHONE_APPROVAL_EXPIRE_MIN` | 확인 요청 자동 취소(분, 요청 연 때부터). 대기보다 길게 | `5` |
 
 6단계 운영 보강 (문지기 `gate.py`). 숫자 상한은 `0`이면 끈다.
 
@@ -91,6 +95,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agenthan.voice.call.barge import BargeSettings
 from agenthan.voice.call.defaults import (
+    APPROVAL_EXPIRE_S,
+    APPROVAL_REPROMPT_S,
+    APPROVAL_WAIT_S,
     CONT_WAIT_S,
     MODEL_HIGH,
     MODEL_LOW,
@@ -174,6 +181,15 @@ class VoiceSettings:
     # 사장님 질문 답 대기 (4단계 티켓 06). 허브 카드 마감과 세션 시간 초과가 같이 쓴다
     owner_wait_s: float = OWNER_WAIT_S
     ask_owner: bool = False  # 통화 중 사장님께 바로 묻기 (5단계 티켓 09). 기본 끔
+    # 확인 요청 재안내 (주문 승인 티켓 07). 카드를 보낸 뒤 이만큼에 "조금만 더 기다려 주세요" 한 번
+    approval_reprompt_s: float = APPROVAL_REPROMPT_S
+    # 주문 승인 (주문 승인 티켓 02). 확정 전 사장님 수락. 사장님 화면이 없으면 건너뛴다
+    owner_approval: bool = True
+    # 확인 요청의 통화 중 대기. 허브 카드 마감과 세션 시간 초과가 같이 쓴다
+    approval_wait_s: float = APPROVAL_WAIT_S
+    # 확인 요청 자동 취소(초, 주문 승인 티켓 03). 허브가 요청을 연 때부터 잰다. env는 분
+    # (`PHONE_APPROVAL_EXPIRE_MIN`)
+    approval_expire_s: float = APPROVAL_EXPIRE_S
     answer: bool = True  # 손님 질문에 가게 자료로 답하는 답변기 (5단계 티켓 11)
     # ---- 6단계 운영 보강: 문지기 (`gate.py`). 숫자 상한은 0이면 끈다
     allowed_origins: tuple[str, ...] = ()  # 비면 Origin을 검사하지 않는다
@@ -288,6 +304,16 @@ class VoiceSettings:
                 "PHONE_VAD_EP_SILENCE_MS는 PHONE_VAD_END_SILENCE_MS 이하여야 해요 "
                 f"(epFlag 먼저, 턴 판정은 그 뒤): {vad.ep_silence_ms} > {vad.end_silence_ms}"
             )
+        approval_wait_s = _number("PHONE_APPROVAL_WAIT_S", get("PHONE_APPROVAL_WAIT_S", ""),
+                                  APPROVAL_WAIT_S)
+        approval_expire_s = 60 * _number("PHONE_APPROVAL_EXPIRE_MIN",
+                                         get("PHONE_APPROVAL_EXPIRE_MIN", ""),
+                                         APPROVAL_EXPIRE_S / 60)
+        if approval_expire_s <= approval_wait_s:
+            raise SettingsError(
+                "PHONE_APPROVAL_EXPIRE_MIN(분)은 PHONE_APPROVAL_WAIT_S(초)보다 길어야 해요 "
+                f"(통화 중 대기가 끝난 뒤 문자로 받는다): {approval_expire_s:g}초 ≤ "
+                f"{approval_wait_s:g}초")
         max_calls = _number("PHONE_MAX_CALLS", get("PHONE_MAX_CALLS", ""), 10)
         if max_calls != int(max_calls):
             raise SettingsError(f"PHONE_MAX_CALLS는 정수여야 해요: {max_calls!r}")
@@ -338,6 +364,12 @@ class VoiceSettings:
             owner_wait_s=_number("PHONE_OWNER_WAIT_S", get("PHONE_OWNER_WAIT_S", ""),
                                  OWNER_WAIT_S),
             ask_owner=get("PHONE_ASK_OWNER", "off") == "on",
+            approval_reprompt_s=_number("PHONE_APPROVAL_REPROMPT_S",
+                                        get("PHONE_APPROVAL_REPROMPT_S", ""),
+                                        APPROVAL_REPROMPT_S, allow_zero=True),
+            owner_approval=_switch("PHONE_OWNER_APPROVAL", get("PHONE_OWNER_APPROVAL", "on")),
+            approval_wait_s=approval_wait_s,
+            approval_expire_s=approval_expire_s,
             answer=get("PHONE_ANSWER", "on") == "on",
             # `*`는 "검사 안 함": compose가 기본값(배포 도메인)을 넣어서 빈 값으로는 못 끈다
             allowed_origins=tuple(o for o in _names(get("PHONE_ALLOWED_ORIGINS", ""))
@@ -384,7 +416,7 @@ _SESSION_FIELDS = ("vad", "max_call_s", "cont_wait_s", "more_no_wait_s", "mic_cl
                    "turn_rewind", "gate_max_s", "ack_first", "smoke_key",
                    "no_input_s", "wait_request_s",
                    "turn_model_low", "turn_model_high", "barge", "owner_wait_s", "ask_owner",
-                   "answer")
+                   "answer", "owner_approval", "approval_wait_s", "approval_reprompt_s")
 
 
 def _barge(get: Callable[[str, str], str]) -> BargeSettings | None:

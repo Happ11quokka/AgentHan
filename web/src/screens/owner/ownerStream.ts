@@ -1,6 +1,7 @@
 // 사장님 화면 ↔ 서버 (서버 `voice/owner/http.py`). SSE 하나로 받고 POST로 보낸다.
 // 모든 경로에 쿼리 `key`(사장님 화면 비밀 토큰)를 붙인다. `EventSource`는 헤더를 못 붙인다.
 import type { KnowledgePreview, OwnerAction, OwnerAnswer } from './ownerState.ts'
+import type { RejectBody } from './rejectSheet.ts'
 
 const BASE = '/api/owner'
 
@@ -47,6 +48,9 @@ export function connectOwnerStream(key: string, dispatch: (a: OwnerAction) => vo
   source.addEventListener('knowledge.update', (e) => {
     dispatch({ type: 'knowledge.update', data: JSON.parse((e as MessageEvent<string>).data) })
   })
+  source.addEventListener('owner.sold_out', (e) => {
+    dispatch({ type: 'owner.sold_out', data: JSON.parse((e as MessageEvent<string>).data) })
+  })
   source.onerror = () => {
     // 200이 아니면(토큰 틀림 401) 브라우저가 다시 붙지 않고 CLOSED가 된다. 그 밖은 스스로 다시 붙는다
     dispatch({ type: source.readyState === EventSource.CLOSED ? 'failed' : 'lost' })
@@ -75,9 +79,30 @@ async function act(key: string, path: string, body?: unknown): Promise<boolean> 
 
 const id = (value: string) => encodeURIComponent(value)
 
-/** 접수 버튼. 실패(없는 카드 404)면 false */
-export function acceptOrder(key: string, orderId: string): Promise<boolean> {
-  return act(key, `orders/${id(orderId)}/accept`)
+/** 사장님이 고를 수 있는 늦춘 분: [수락] 0, [+15분], [+30분] (주문 승인 티켓 04, 서버 `ACCEPT_DELAYS`) */
+export const ACCEPT_DELAYS = [0, 15, 30] as const
+export type AcceptDelay = (typeof ACCEPT_DELAYS)[number]
+
+
+/** 수락 버튼([+15분]·[+30분]이면 늦춘 수락). 실패(없는 카드 404, 이미 결정 409)면 false */
+export function acceptOrder(key: string, orderId: string, delayMin: AcceptDelay = 0): Promise<boolean> {
+  return act(key, `orders/${id(orderId)}/accept`, delayMin ? { delay_min: delayMin } : undefined)
+}
+
+/**
+ * 거절 사유 시트 보내기 (주문 승인 티켓 05). 통화 중이면 손님이 사유별 사과를 듣고, 손님에게 취소
+ * 문자가 간다. 실패(이미 결정함·손님이 고치는 중 409, 빈 글 422 등)면 false
+ */
+export function rejectOrder(key: string, orderId: string, body: RejectBody): Promise<boolean> {
+  return act(key, `orders/${id(orderId)}/reject`, body)
+}
+
+/**
+ * 품절 되돌리기 (주문 승인 티켓 06). 오늘 품절에서 그 메뉴를 빼 다음 통화부터 다시 받는다. 바뀐
+ * 목록은 SSE `owner.sold_out`으로 온다. 실패(없는 메뉴 404 등)면 false
+ */
+export function undoSoldOut(key: string, menuId: string): Promise<boolean> {
+  return act(key, `sold-out/${id(menuId)}/undo`)
 }
 
 /** 닫기 버튼(넘김·미완료 통화 카드). 실패(통화 중·주문됨 409 등)면 false */

@@ -191,6 +191,63 @@
   font-weight: 700;
 }
 
+/* 확인 요청 카드 (주문 승인 티켓 02): 대기 단계·남은 초, 수락 결과, 자동 확정, 손님이 고침·취소 */
+.owner-approval-wait {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--owner-muted);
+}
+
+.owner-approval-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--owner-accent);
+}
+
+.owner-accepted-yes {
+  color: var(--owner-accent);
+}
+
+/* 늦춘 수락 (주문 승인 티켓 04): [수락] 옆 [+15분] [+30분], 통화 중 손님이 답하는 중 표시 */
+.owner-approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.owner-approval-wait {
+  flex: 1 0 100%;
+}
+
+.owner-btn-later {
+  padding: 12px 16px;
+  color: var(--owner-accent);
+  background: transparent;
+  border: 2px solid var(--owner-accent);
+}
+
+.owner-delay-asking {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+
+.owner-auto,
+.owner-withdrawn,
+.owner-expired {
+  margin: 0;
+  color: var(--owner-muted);
+}
+
+/* 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 회색, 버튼 없음 */
+.owner-card-expired {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--owner-muted);
+}
+
 /* 답을 못 받은 손님 질문이 있던 주문 (티켓 06) */
 .owner-check {
   margin: 0;
@@ -269,6 +326,15 @@
     animation: none;
     box-shadow: 0 0 0 4px var(--owner-accent);
   }
+}
+
+/* 기다리는 중에 손님이 취소한 확인 요청 카드 (주문 승인 티켓 07): 확인 대기 강조·깜빡임 없이 회색 */
+.owner-card.owner-card-cancelled {
+  background: rgba(127, 127, 127, 0.12);
+  border-color: var(--owner-line);
+  color: var(--owner-muted);
+  animation: none;
+  box-shadow: none;
 }
 
 /* 통화 카드 (티켓 02). 맨 위 줄: 통화 중. 그 아래: 손님 연락 필요(넘김)·회색 미완료 */
@@ -541,4 +607,130 @@
 
 .owner-knowledge-saved-label {
   font-weight: 700;
+}
+
+/* 거절 (주문 승인 티켓 05): [거절] → 한 단계 아래 사유 시트, 거절한 카드는 회색 + "거절 · 사유" */
+.owner-btn-reject {
+  background: var(--owner-danger);
+}
+
+.owner-btn-reject:disabled,
+.owner-btn-reason:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.owner-reject {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--owner-line);
+}
+
+.owner-reject-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.owner-reject-reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.owner-btn-reason {
+  font-size: 16px;
+  padding: 10px 12px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--owner-line);
+}
+
+.owner-btn-reason.owner-btn-picked {
+  color: #fff;
+  background: var(--owner-danger);
+  border-color: var(--owner-danger);
+}
+
+/* 재료 소진: 떨어진 메뉴 다중 선택 (주문 승인 티켓 06) */
+.owner-stockout-menus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.owner-stockout-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--owner-line);
+  border-radius: 8px;
+}
+
+.owner-stockout-menu input {
+  width: 20px;
+  height: 20px;
+}
+
+/* 카드의 "품절로 바꿨어요 [되돌리기]" (티켓 06) */
+.owner-soldout {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--owner-line);
+}
+
+.owner-soldout-label {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: var(--owner-danger);
+}
+
+.owner-soldout-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.owner-soldout-undone {
+  color: var(--owner-muted);
+}
+
+.owner-reject-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.owner-card-rejected {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--owner-muted);
+}
+
+.owner-rejected p {
+  margin: 0;
+}
+
+.owner-rejected-label {
+  font-weight: 700;
+}
+
+.owner-rejected-ko {
+  font-size: 13px;
+}
+
+.owner-approval {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owner-approval > p,
+.owner-approval > .owner-reject {
+  flex-basis: 100%;
 }

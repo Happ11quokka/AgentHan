@@ -29,6 +29,54 @@ def order_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) 
     return " ".join(parts)
 
 
+def delayed_text(lines: Sequence[tuple[str, int]], total: int, pickup_label: str) -> str:
+    """늦춘 수락 (주문 승인 티켓 04): 확정 문자와 같은 메뉴·합계에 바뀐 픽업 시각과 "어려우시면 전화
+    주세요". 통화 뒤 수락이든, 통화 중 손님이 바뀐 시각에 "네"라고 했든 같은 문장이다.
+
+    `pickup_label`은 늦춘 시각 `18:45`.
+    """
+    confirmed = order_text(lines, total, "")
+    return f"{confirmed} {pickup_label}에 준비돼요. 어려우시면 전화 주세요."
+
+
+def expired_text() -> str:
+
+    """확인 요청 자동 취소 (주문 승인 티켓 03): 사장님이 마감(요청을 연 때부터 5분) 안에 결정하지
+    않았다. 손님은 통화에서 "확정 문자를 받으시면 주문 완료예요"를 들었다."""
+    return "가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요."
+
+
+# 거절 문자 (주문 승인 티켓 05). 통화 중에 거절해 손님이 사과를 들었어도 같은 문자를 남긴다
+_REJECTED = {
+    "busy": ("죄송해요, 가게가 바빠서 주문을 받기 어려워 주문이 취소됐어요. "
+             "다음에 다시 주문해 주세요."),
+    "closed": "죄송해요, 가게 사정으로 주문을 받을 수 없어 주문이 취소됐어요.",
+}
+_REJECTED_FREE = "죄송해요, 가게 사정으로 주문이 취소됐어요."
+
+
+def rejected_text(reason: str, menu_names: Sequence[str] = ()) -> str:
+    """고정 사유 거절: 바쁨(busy)·가게 사정(closed)·재료 소진(out_of_stock, 떨어진 메뉴 이름).
+
+    직접 쓰기(free)는 `rejected_free_text`. 모르는 사유는 가게 사정 문장.
+    """
+    if reason == "out_of_stock" and menu_names:
+        names = ", ".join([*menu_names[:-1], templates.eun_neun(menu_names[-1])])
+        return (f"죄송해요, {names} 지금 재료가 떨어져 주문이 취소됐어요. "
+                "다른 메뉴로 다시 주문해 주세요.")
+    return _REJECTED.get(reason, _REJECTED["closed"])
+
+
+def rejected_free_text(translated: str) -> str:
+    """사장님이 직접 쓴 거절 사정의 한국어 번역. 사장님 말을 옮긴 것이라는 표시를 붙인다."""
+    return f"{_REJECTED_FREE} 사장님 말씀(번역): «{translated}»"
+
+
+def untranslated_rejected_text(original: str) -> str:
+    """직접 쓴 거절 사정을 번역하지 못했다(번역기 없음·실패). 사장님 글 원문을 그대로."""
+    return f"{_REJECTED_FREE} 사장님 말씀(원문, 번역 실패): «{original}»"
+
+
 def late_answer_text(menu_name: str, answer: str, *, subject: str = "") -> str:
     """늦은 버튼 답(시간 초과 뒤·통화 끝 뒤). 통화에서 말했을 문장과 같은 고정 존댓말.
 

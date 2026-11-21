@@ -6,7 +6,8 @@
   (`/assistant/*`, `agenthan.app.server`)를 같은 앱에 붙인다.
   화면은 주소로 갈린다(`web/src/main.tsx`).
 - voice는 core 말고 다른 파트를 import하지 않는 규칙이라, 둘을 묶는 일은 이 파일이 한다.
-- AGENTHAN_DB_URL이 있으면 전화 가게 메뉴를 DB에서 읽고 확정·넘김 주문을 phone_orders 표에 남긴다
+- AGENTHAN_DB_URL이 있으면 전화 가게 메뉴를 DB에서 읽고 확정·넘김 주문과 사장님 결정(수락·거절 …)을
+  phone_orders 표에 남긴다
   (`agenthan.db`). 비서 가게 파일도 쓸 때마다 DB에 한 벌 남는다(tools/dummy_store.py).
 - AGENTHAN_ASSISTANT=off면 비서를 붙이지 않는다(전화만). 대화마다 가게 파일을
   AGENTHAN_SESSIONS_DIR(기본 .agenthan/sessions)에 쓴다.
@@ -33,7 +34,12 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
     store_raw, sinks = phone_db(settings)
     knowledge = phone_knowledge(store_raw, settings)
     app = voice_server.create_app(
-        settings, store_raw=store_raw, order_sinks=sinks, knowledge=knowledge
+        settings,
+        store_raw=store_raw,
+        order_sinks=sinks,
+        knowledge=knowledge,
+        # PgOrderSink는 사장님 결정도 같은 큐로 남긴다(주문 승인 티켓 10)
+        decision_sink=sinks[0] if sinks else None,
     )
     include_assistant(app, settings.env)  # from_env면 os.environ·.env를 합친 값
     return app

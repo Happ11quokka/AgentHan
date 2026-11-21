@@ -12,7 +12,9 @@ import type {
   OrderCardLine,
   OwnerAnswer,
   QuestionCard,
+  RejectReason,
   RequestBadge,
+  SoldOutItem,
 } from './ownerState.ts'
 
 export type OwnerLang = 'ru' | 'ko'
@@ -42,6 +44,37 @@ export interface OwnerText {
   orderedAt: string
   accept: string
   accepted: string
+  /** 확인 요청 카드 (주문 승인 티켓 02): 대기 단계, 수락 결과(픽업 시각), 자동 확정, 손님이 고침·취소 */
+  approvalStage: Record<'in_call' | 'after_call', string>
+  acceptedAt: (pickup: string) => string
+  autoAccepted: string
+  /**
+   * 늦춘 수락 (주문 승인 티켓 04): 버튼 [+15분]·[+30분], 결과 "18:45로 수락 (+15분)", 통화 중 손님이
+   * 바뀐 시각을 듣는 중, 손님이 그 시각을 거절해 취소
+   */
+  acceptLater: (minutes: number) => string
+  acceptedLater: (pickup: string, minutes: number) => string
+  delayAsking: string
+  delayDeclined: (pickup: string) => string
+  withdrawn: Record<'changed' | 'cancelled', string>
+  /** 자동 취소된 확인 요청 카드 (주문 승인 티켓 03): 마감 안에 결정하지 않아 손님에게 취소 문자가 갔다 */
+  expired: string
+  /**
+   * 거절 (주문 승인 티켓 05): [거절] 버튼, 사유 시트 제목·사유 버튼, 아직 안 여는 사유 표시(재료 소진은
+   * 티켓 06), 시트 보내기·돌아가기, 거절 카드 결과 줄 "거절 · 사유". 직접 쓰기 안내는 `writtenHint`
+   */
+  reject: string
+  rejectTitle: string
+  rejectReason: Record<RejectReason, string>
+  /** 재료 소진: 떨어진 메뉴 고르기 안내 (티켓 06) */
+  stockOutPick: string
+  /** 카드의 품절 표시 "품절로 바꿨어요"와 되돌리기 (티켓 06) */
+  soldOutMarked: string
+  soldOutUndo: string
+  soldOutUndone: string
+  rejectSend: string
+  rejectBack: string
+  rejectedAs: (reason: string) => string
   sectionLive: string
   sectionFollowUp: string
   sectionOrders: string
@@ -115,6 +148,32 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     orderedAt: 'Заказ в',
     accept: 'Принять',
     accepted: 'Принят',
+    approvalStage: { in_call: 'Клиент ждёт на линии', after_call: 'Клиент ждёт SMS' },
+    acceptedAt: (pickup) => `Принят · ${pickup}`,
+    autoAccepted: 'Принят автоматически (экран был выключен)',
+    acceptLater: (minutes) => `+${minutes} мин`,
+    acceptedLater: (pickup, minutes) => `Принят на ${pickup} (+${minutes} мин)`,
+    delayAsking: 'Клиент слышит новое время и отвечает',
+    delayDeclined: (pickup) => `Клиенту не подошло ${pickup} · заказ отменён`,
+    withdrawn: { changed: 'Клиент меняет заказ', cancelled: 'Клиент отменил заказ' },
+    expired: 'Автоотмена: заказ не подтверждён вовремя',
+    // 거절 문구 (티켓 05): 러시아어 화자 확인 전 초안 (사람 확인 대상)
+    reject: 'Отказать',
+    rejectTitle: 'Причина отказа',
+    rejectReason: {
+      out_of_stock: 'Закончились продукты',
+      busy: 'Не успеваем',
+      closed: 'Магазин не принимает заказы',
+      free: 'Написать причину',
+    },
+    // 재료 소진·오늘 품절 (티켓 06): 러시아어 화자 확인 전 초안 (사람 확인 대상)
+    stockOutPick: 'Что закончилось? Можно выбрать несколько',
+    soldOutMarked: 'Сегодня нет в наличии',
+    soldOutUndo: 'Вернуть',
+    soldOutUndone: 'Снова в меню',
+    rejectSend: 'Отказать',
+    rejectBack: 'Назад',
+    rejectedAs: (reason) => `Отказано · ${reason}`,
     sectionLive: 'Идут звонки',
     sectionFollowUp: 'Звонки для проверки',
     sectionOrders: 'Заказы',
@@ -133,6 +192,9 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sms: 'SMS клиенту',
     smsKind: {
       order: 'Подтверждение заказа',
+      delayed: 'Заказ принят на другое время',
+      expired: 'Автоотмена заказа',
+      rejected: 'Отказ в заказе',
       late_answer: 'Ваш ответ после звонка',
       free_answer: 'Ваш ответ текстом',
     },
@@ -192,8 +254,32 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     noOrders: '아직 들어온 주문이 없어요.',
     pickup: '픽업',
     orderedAt: '주문',
-    accept: '접수',
-    accepted: '접수함',
+    accept: '수락',
+    accepted: '수락함',
+    approvalStage: { in_call: '손님 통화 중 확인', after_call: '통화 뒤 확인 (문자로 알림)' },
+    acceptedAt: (pickup) => `수락 · ${pickup}`,
+    autoAccepted: '자동 확정(사장님 화면 꺼짐)',
+    acceptLater: (minutes) => `+${minutes}분`,
+    acceptedLater: (pickup, minutes) => `${pickup}로 수락 (+${minutes}분)`,
+    delayAsking: '손님이 바뀐 시각을 듣고 답하는 중',
+    delayDeclined: (pickup) => `손님이 ${pickup}를 거절 · 주문 취소`,
+    withdrawn: { changed: '손님이 주문을 고치는 중', cancelled: '손님이 주문 취소' },
+    expired: '자동 취소 · 시간 안에 확인 못 함',
+    reject: '거절',
+    rejectTitle: '거절 사유',
+    rejectReason: {
+      out_of_stock: '재료 소진',
+      busy: '바빠서 못 맞춤',
+      closed: '영업·가게 사정',
+      free: '직접 쓰기',
+    },
+    stockOutPick: '떨어진 메뉴를 고르세요(여러 개 가능)',
+    soldOutMarked: '품절로 바꿨어요',
+    soldOutUndo: '되돌리기',
+    soldOutUndone: '되돌렸어요',
+    rejectSend: '거절 보내기',
+    rejectBack: '돌아가기',
+    rejectedAs: (reason) => `거절 · ${reason}`,
     sectionLive: '통화 중',
     sectionFollowUp: '확인할 통화',
     sectionOrders: '주문',
@@ -212,6 +298,9 @@ export const OWNER_TEXT: Record<OwnerLang, OwnerText> = {
     sms: '손님에게 보낸 문자',
     smsKind: {
       order: '주문 확정 안내',
+      delayed: '늦춘 시각 확정 안내',
+      expired: '자동 취소 안내',
+      rejected: '거절 안내',
       late_answer: '늦은 답(통화에서 못 전함)',
       free_answer: '글로 남긴 답',
     },
@@ -307,6 +396,15 @@ export function answerLabel(yesNo: boolean | undefined, answer: OwnerAnswer, lan
 }
 
 /**
+ * 확인 대기 카드의 남은 시간 (주문 승인 티켓 03). 통화 중 20초는 `20초`처럼 초로, 통화 뒤 5분은
+ * `4:59`처럼 분:초로 보인다(300초는 읽기 어렵다)
+ */
+export function approvalLeft(seconds: number, lang: OwnerLang): string {
+  if (seconds < 60) return OWNER_TEXT[lang].secondsLeft(seconds)
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+/**
  * 주문 카드의 주문 시각과 손님 이름(성) 한 줄 (이야기 25, 리뷰 P1). 이름이 없으면 시각만,
  * 둘 다 없으면(리뷰 전 서버) 빈 글
  */
@@ -335,6 +433,58 @@ export function captionView(line: CaptionLine, lang: OwnerLang): CaptionView {
   return translated
     ? { who: line.who, main: translated, mainKo: false, original: line.text }
     : { who: line.who, main: line.text, mainKo: true, original: '' }
+}
+
+export interface RejectedView {
+  /** 결과 줄 "거절 · 바빠서 못 맞춤" */
+  label: string
+  /** 직접 쓰기 거절 글(사장님 언어). 없으면 빈 글 */
+  written: string
+  /** 그 글의 한국어 번역(손님 문자에 간 글). 번역 전·실패면 빈 글 */
+  writtenKo: string
+}
+
+/** 거절한 카드의 결과 (주문 승인 티켓 05). 사유는 사전 문구, 모르는 사유는 서버 글 그대로 */
+export function rejectedView(
+  card: Pick<OrderCard, 'reject_reason' | 'reject_text' | 'reject_text_ko'>,
+  lang: OwnerLang,
+): RejectedView {
+  const text = OWNER_TEXT[lang]
+  const reason = card.reject_reason
+  return {
+    label: text.rejectedAs(reason ? (text.rejectReason[reason] ?? reason) : text.reject),
+    written: card.reject_text ?? '',
+    writtenKo: card.reject_text_ko ?? '',
+  }
+}
+
+export interface SoldOutMarkView {
+  /** "품절로 바꿨어요" */
+  label: string
+  /** 그 카드에서 품절로 바꾼 메뉴: 화면 언어 이름, 지금도 품절인지(되돌리기 버튼) */
+  items: { menuId: string; name: string; still: boolean }[]
+}
+
+/**
+ * 카드의 품절 표시 (주문 승인 티켓 06). 그 카드에서 재료 소진으로 바꾼 메뉴가 없으면 null.
+ * 지금도 품절인지는 오늘 품절 목록(`OwnerState.soldOut`)으로 본다(되돌렸거나 날짜가 바뀌면 거짓)
+ */
+export function soldOutMarkView(
+  card: Pick<OrderCard, 'sold_out'>,
+  soldOut: readonly SoldOutItem[],
+  lang: OwnerLang,
+): SoldOutMarkView | null {
+  const marked = card.sold_out ?? []
+  if (marked.length === 0) return null
+  const today = new Set(soldOut.map((item) => item.menu_id))
+  return {
+    label: OWNER_TEXT[lang].soldOutMarked,
+    items: marked.map((item) => ({
+      menuId: item.menu_id,
+      name: lang === 'ko' ? item.name_ko : item.name_owner || item.name_ko,
+      still: today.has(item.menu_id),
+    })),
+  }
 }
 
 export interface SentTextView {

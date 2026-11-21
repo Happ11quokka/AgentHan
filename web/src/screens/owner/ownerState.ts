@@ -3,8 +3,30 @@
 // SSE 이벤트는 카드 전체를 덮어쓴다. `snapshot`이 오면 카드 목록을 통째로 바꾼다.
 import type { CustomerText } from '../customerText.ts'
 
-/** 사장님 처리 상태 (Part A 어휘). 4단계 버튼은 접수 하나 */
-export type OrderStatus = 'new' | 'accepted'
+/**
+ * 사장님 처리 상태 (Part A 어휘 + expired, 주문 승인). new: 확인 대기(확인 요청 카드).
+ * accepted: 수락(자동 확정 포함). rejected·expired는 거절·자동 취소 티켓(03·05)이 보낸다.
+ * cancelled: 늦춰 수락했는데 손님이 바뀐 시각에 "아니요"(티켓 04)
+ */
+export type OrderStatus = 'new' | 'accepted' | 'rejected' | 'expired' | 'cancelled'
+
+/**
+ * 통화 중 늦춘 수락에 손님 답 (티켓 04). asking: 손님이 바뀐 시각을 듣는 중. yes: 받아들임.
+ * no: 거절(주문 취소). 빈 글: 통화 뒤 늦춘 수락이거나 답 없이 통화가 끝남(문자로 알림)
+ */
+export type DelayReply = '' | 'asking' | 'yes' | 'no'
+
+/** 확인 요청 대기 단계 (주문 승인 티켓 02). 자동 확정 카드는 빈 글 */
+export type ApprovalStage = 'in_call' | 'after_call' | ''
+
+/**
+ * 거절 사유 (주문 승인 티켓 05, 서버 `approval.py` `RejectReason`). 재료 소진 · 바빠서 못 맞춤 ·
+ * 영업·가게 사정 · 직접 쓰기. 재료 소진은 티켓 06이 연다
+ */
+export type RejectReason = 'out_of_stock' | 'busy' | 'closed' | 'free'
+
+/** 기다리는 중에 손님이 주문을 고침(changed)·취소함(cancelled). 그 카드는 결정을 안 받는다 */
+export type WithdrawReason = '' | 'changed' | 'cancelled'
 
 /** 손님 요청 배지 (서버 `badges.py`, 한국어 원문 규칙). remove = 빼기, allergy = 알레르기 */
 export type RequestBadge = 'remove' | 'allergy'
@@ -50,6 +72,51 @@ export interface OrderCard {
   owner_check?: boolean
   /** 손님에게 보낸 문자(보낸 순서, 티켓 07). 07 전 서버는 안 보낸다 */
   sms?: CustomerText[]
+  // 확인 요청 (주문 승인 티켓 02). 승인 전 서버는 안 보낸다
+  /** 통화 안 확인 요청 번호(1부터). 자동 확정 카드는 0 */
+  request?: number
+  stage?: ApprovalStage
+  /** 확인 요청을 연 시각과 마감(ISO, 허브 시계). 카운트다운은 마감까지 센다 */
+  requested_at?: string
+  deadline_at?: string
+  /** 사장님이 결정한(자동 확정은 받은) 시각. 결정 전이면 빈 글 */
+  decided_at?: string
+  /** 늦춘 수락의 분 (티켓 04) */
+  delay_min?: number
+  /** 늦춘 수락의 바뀐 픽업 시각 ISO와 고정 표기 `18:45`. 없으면 빈 글 (티켓 04) */
+  owner_pickup_time?: string
+  owner_pickup_label?: string
+  delay_reply?: DelayReply
+  /** 확인 요청 없이 확정됨: 승인 꺼짐·사장님 화면 없음 ("자동 확정(사장님 화면 꺼짐)") */
+  auto_accepted?: boolean
+  withdrawn?: WithdrawReason
+  // 거절 (주문 승인 티켓 05). 거절 전 서버는 안 보낸다
+  /** 거절 사유. 거절 전이면 빈 글 */
+  reject_reason?: RejectReason | ''
+  /** 재료 소진 거절의 떨어진 메뉴 id들 (티켓 06) */
+  reject_menu_ids?: string[]
+  /** 직접 쓰기 거절 글(사장님 언어)과 한국어 번역(번역 전·실패면 빈 글). 손님에게는 문자로만 */
+  reject_text?: string
+  reject_text_ko?: string
+  /**
+   * 이 카드에서 오늘 품절로 바꾼 메뉴 (티켓 06, 재료 소진 거절). 수락으로 바뀌거나(손님이 떨어진
+   * 메뉴만 뺌) 다시 요청한 카드에도 남는다. 지금도 품절인지는 `OwnerState.soldOut`으로 본다
+   */
+  sold_out?: SoldOutItem[]
+}
+
+/** 오늘 품절 메뉴 하나 (주문 승인 티켓 06, 서버 `owner.sold_out`·카드 `sold_out`) */
+export interface SoldOutItem {
+  menu_id: string
+  name_ko: string
+  /** 사장님 원어 이름. 비면 한국어 */
+  name_owner: string
+}
+
+/** 오늘 품절 전체: 가게 시간대 날짜와 건 순서의 메뉴. 날짜가 바뀌면 서버가 비워 다시 보낸다 */
+export interface SoldOutList {
+  date: string
+  items: SoldOutItem[]
 }
 
 /**
@@ -214,6 +281,8 @@ export type OwnerServerEvent =
         knowledge?: KnowledgeCard[]
         /** 허브 시계 지금 시각(ISO 8601). 화면이 기기 시계와의 차이를 잰다 (리뷰 C2) */
         now?: string
+        /** 오늘 품절 (주문 승인 티켓 06부터 온다) */
+        sold_out?: SoldOutList
       }
       /** snapshot을 받은 때의 기기 시각(ms). `now`와의 차이가 허브 시계 보정값이다 */
       receivedAt?: number
@@ -224,6 +293,7 @@ export type OwnerServerEvent =
   | { type: 'owner.question'; data: QuestionCard }
   | { type: 'owner.question.update'; data: QuestionCard }
   | { type: 'knowledge.update'; data: KnowledgeCard }
+  | { type: 'owner.sold_out'; data: SoldOutList }
 
 export type OwnerAction =
   | OwnerServerEvent
@@ -249,6 +319,8 @@ export interface OwnerState {
   captions: Record<string, CaptionLine[]>
   /** "손님이 궁금해한 것" 카드 전부(채운 것 포함). 먼저 생긴 카드가 앞 (티켓 13) */
   knowledge: KnowledgeCard[]
+  /** 오늘 품절 메뉴(건 순서, 티켓 06). 카드의 "품절로 바꿨어요"에 [되돌리기]를 둘지 본다 */
+  soldOut: SoldOutItem[]
   /**
    * 허브 시계 − 기기 시계(ms). 질문 카드 마감·픽업 시각은 허브 시계라 이만큼 보정해 센다
    * (`PHONE_NOW` 시연·시계가 틀린 태블릿, 리뷰 C2). 모르면 0
@@ -263,6 +335,7 @@ export const initialOwnerState: OwnerState = {
   questions: [],
   captions: {},
   knowledge: [],
+  soldOut: [],
   clockOffsetMs: 0,
 }
 
@@ -282,6 +355,7 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
         questions: action.data.questions ?? [],
         captions: Object.fromEntries((action.data.captions ?? []).map((c) => [c.call_id, c.lines])),
         knowledge: action.data.knowledge ?? [],
+        soldOut: action.data.sold_out?.items ?? [],
         clockOffsetMs: clockOffset(action.data.now, action.receivedAt),
       }
     case 'order.update': {
@@ -315,7 +389,14 @@ export function ownerReducer(state: OwnerState, action: OwnerAction): OwnerState
       const knowledge = at < 0 ? [...state.knowledge, card] : state.knowledge.with(at, card)
       return { ...state, knowledge }
     }
+    case 'owner.sold_out':
+      return { ...state, soldOut: action.data.items }
   }
+}
+
+/** 그 메뉴가 지금 오늘 품절이다(되돌리기를 보인다, 티켓 06) */
+export function stillSoldOut(state: Pick<OwnerState, 'soldOut'>, menuId: string): boolean {
+  return state.soldOut.some((item) => item.menu_id === menuId)
 }
 
 function clockOffset(now: string | undefined, receivedAt: number | undefined): number {
@@ -358,8 +439,67 @@ export function canDismiss(card: CallCard): boolean {
   return card.status === 'handoff' || card.status === 'missed'
 }
 
+/** 수락 버튼을 보일 카드: 확인 대기이고 손님이 고치는 중·취소한 요청이 아니다 */
 export function canAccept(card: OrderCard): boolean {
-  return card.status === 'new'
+  return card.status === 'new' && !card.withdrawn
+}
+
+/**
+ * 주문 카드 아래 결과 줄 (주문 승인 티켓 02). waiting: 확인 대기(카운트다운·수락 버튼).
+ * changing·cancelled: 손님이 고치는 중·취소함(버튼 없음). accepted: 수락. auto: 자동 확정.
+ * expired: 자동 취소(회색, 버튼 없음, 티켓 03). delayed: 늦춰 수락(바뀐 시각, 티켓 04).
+ * declined: 늦춘 시각을 손님이 거절해 취소(회색). rejected: 거절(회색 + 사유, 티켓 05).
+ * closed: 그 밖의 처리 상태(뒤 티켓이 더할 값)
+ */
+export type OrderOutcome =
+  | 'waiting'
+  | 'changing'
+  | 'cancelled'
+  | 'accepted'
+  | 'delayed'
+  | 'declined'
+  | 'auto'
+  | 'expired'
+  | 'rejected'
+  | 'closed'
+
+export function orderOutcome(card: OrderCard): OrderOutcome {
+  if (card.status === 'new') {
+    if (card.withdrawn === 'changed') return 'changing'
+    if (card.withdrawn === 'cancelled') return 'cancelled'
+    return 'waiting'
+  }
+  if (card.status === 'accepted') {
+    if (card.auto_accepted) return 'auto'
+    return card.delay_min ? 'delayed' : 'accepted'
+  }
+  if (card.status === 'expired') return 'expired'
+  if (card.status === 'rejected') return 'rejected'
+  if (card.status === 'cancelled' && card.delay_min) return 'declined'
+  return 'closed'
+}
+
+/**
+ * 지금 기준인 픽업 시각 (티켓 04): 늦춰 수락한 카드는 바뀐 시각, 그 밖은 손님이 말한 시각.
+ * 카드 위 픽업 표기와 색(`pickupBand`)이 쓴다
+ */
+export function effectivePickup(card: OrderCard): { pickup_time: string; pickup_label: string } {
+  if (card.status === 'accepted' && card.owner_pickup_time) {
+    return { pickup_time: card.owner_pickup_time, pickup_label: card.owner_pickup_label ?? '' }
+  }
+  return { pickup_time: card.pickup_time, pickup_label: card.pickup_label }
+}
+
+
+/** 사장님 결정을 기다리는 주문 카드가 있다(카운트다운을 다시 그린다) */
+export function approvalsWaiting(state: OwnerState): boolean {
+  return state.orders.some(canAccept)
+}
+
+/** 확인 대기 카드의 남은 초(1 이상). 마감이 지났거나 없으면 'late' */
+export function approvalClock(card: OrderCard, nowMs: number): number | 'late' {
+  const left = card.deadline_at ? secondsLeft({ deadline_at: card.deadline_at }, nowMs) : 0
+  return left > 0 ? left : 'late'
 }
 
 /** 버튼으로 답할 질문 카드 (먼저 온 것이 앞). 시간 초과·통화 끝 카드도 남는다(늦은 답) */
@@ -426,7 +566,7 @@ export function writtenAnswer(draft: string): string | null {
 }
 
 /** 마감까지 남은 초(올림). 지났으면 0. 서버가 보낸 시각부터 센 마감과 같은 시계다 */
-export function secondsLeft(card: QuestionCard, nowMs: number): number {
+export function secondsLeft(card: Pick<QuestionCard, 'deadline_at'>, nowMs: number): number {
   const left = Date.parse(card.deadline_at) - nowMs
   return Number.isNaN(left) || left <= 0 ? 0 : Math.ceil(left / 1000)
 }

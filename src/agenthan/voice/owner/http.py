@@ -3,11 +3,25 @@
     app.include_router(owner_router(hub, key=settings.owner_key))
 
 - `GET /api/owner/stream?key=…`: SSE. 먼저 `snapshot`(`{"orders": [...], "calls": [...],
-  "questions": [...], "captions": [...], "knowledge": [...], "now": 허브 시각}`), 그 뒤
-  `order.update`·`call.update`·`call.caption`·`owner.question`·`owner.question.update`·
-  `knowledge.update`(카드 전체)
-- `POST /api/owner/orders/{id}/accept?key=…`: 접수(new → accepted). 바뀐 카드를 돌려준다.
-  없는 주문은 404
+  "questions": [...], "captions": [...], "knowledge": [...], "sold_out": {...}, "now": 허브
+  시각}`), 그 뒤 `order.update`·`call.update`·`call.caption`·`owner.question`·
+  `owner.question.update`·`knowledge.update`(카드 전체)·`owner.sold_out`(오늘 품절 전체, 티켓 06)
+- `POST /api/owner/orders/{id}/accept?key=…` 본문(선택) `{"delay_min": 0|15|30}`: 확인 대기 주문
+  수락 (new → accepted, 주문 승인 티켓 02). 확정 문자를 보내고 통화 중이면 손님이 마무리를 듣는다.
+  15·30은 늦춘 수락(티켓 04): 통화 중이면 손님이 바뀐 시각을 듣고 답한다(문자는 "네" 뒤), 통화
+  뒤면 늦춘 수락 문자가 바로 간다. 바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나 손님이
+  고치는 중·취소한 요청은 409, 그 밖의 늦춘 분은 422
+- `POST /api/owner/orders/{id}/reject?key=…` 본문 `{"reason": "busy"|"closed"|"free"|"out_of_stock",
+  "menu_ids": [...], "text": "사장님 글"}`: 확인 대기 주문 거절(new → rejected, 주문 승인 티켓 05).
+  사유별 취소 문자를 보내고 통화 중이면 손님이 사유별 사과를 듣고 통화가 끝난다. 직접 쓰기(free)
+  글은 번역해 문자로만 간다. 바뀐 카드를 돌려준다. 없는 주문은 404, 이미 결정했거나(수락·늦춘
+  수락·거절·자동 취소) 손님이 고치는 중·취소한 요청은 409, 모르는 사유·글 없는 직접 쓰기·500자
+  넘는 글은 422. 재료 소진(out_of_stock, 티켓 06)은 `menu_ids`에 주문에 든 떨어진 메뉴를 하나
+  이상 넣는다(없거나 주문에 없는 메뉴면 422). 그 메뉴들은 오늘 품절이 된다. 통화 중이면 손님은
+  품절 안내와 "빼고 주문할까요, 다른 메뉴로 바꾸실까요?"를 듣고, 취소 문자는 손님이 고르지 않고
+  끝났을 때만 간다
+- `POST /api/owner/sold-out/{menu_id}/undo?key=…`: 오늘 품절 되돌리기(티켓 06). 오늘 품절 전체
+  `{"date", "items": [...]}`를 돌려준다. 가게 메뉴에 없는 id는 404, 이미 빠진 메뉴는 그대로 200
 - `POST /api/owner/calls/{id}/dismiss?key=…`: 넘김·미완료 통화 카드 닫기(→ closed, 티켓 02).
   바뀐 카드를 돌려준다. 없는 카드는 404, 통화 중이거나 주문이 된 카드는 409
 - `POST /api/owner/questions/{id}/answer?key=…` 본문 `{"answer": "yes"|"no"|"unsure"}` 또는
@@ -25,7 +39,8 @@
   빈 한국어·500자 넘는 글 422. 다음 통화부터 엔진이 "사장님 말씀으로는 …"으로 답한다
 
 손님 쪽 (`customer_texts_router`, 티켓 07):
-- `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE(최대 2분).
+- `GET /api/phone/calls/{id}/sms`: 손님 통화 화면이 통화가 끝나면 여는 "받은 문자" SSE
+  (최대 6분, 주문 승인 티켓 03).
   토큰 없음(통화 id는 추측할 수 없는 값). 모르는 통화는 404
 
 - 사장님 경로는 모두 쿼리 `key`(비밀 토큰, `PHONE_OWNER_KEY`)를 요구한다. `EventSource`가 헤더를
@@ -40,15 +55,17 @@ import asyncio
 import secrets
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import aclosing, contextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
+from agenthan.voice.dialog.approval import RejectReason
 from agenthan.voice.dialog.owner_question import OwnerPost
 from agenthan.voice.owner.hub import (
     AlreadyAnswered,
+    AlreadyDecided,
     CardBusy,
     OwnerEvent,
     OwnerHub,
@@ -57,8 +74,9 @@ from agenthan.voice.owner.hub import (
 
 OWNER_PREFIX = "/api/owner"
 CUSTOMER_TEXTS_PATH = "/api/phone/calls/{call_id}/sms"
-# 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 시간 (spec "최대 2분")
-TEXTS_WINDOW_S = 120.0
+# 손님 통화 화면이 통화 뒤 문자 스트림을 열어 두는 시간. 4단계 spec "최대 2분"에서 주문 승인
+# 티켓 03이 늘렸다: 통화 뒤 확인 대기(기본 5분, 요청 연 때부터)의 수락·자동 취소 문자까지 받는다
+TEXTS_WINDOW_S = 360.0
 # 사장님 자유 입력 글 최대 길이 (문자 한 통 분량)
 FREE_TEXT_MAX = 500
 
@@ -68,6 +86,7 @@ _STATUS: tuple[tuple[type[Exception], int], ...] = (
     (UnknownCard, 404),  # 그런 카드가 없다
     (CardBusy, 409),  # 지금 닫을 수 없다(통화 중·주문됨)
     (AlreadyAnswered, 409),  # 답은 한 번만
+    (AlreadyDecided, 409),  # 주문 결정은 한 번만 (주문 승인 티켓 02)
     (ValueError, 422),  # 모르는 답·빈 글
 )
 
@@ -98,6 +117,20 @@ class KnowledgeSave(BaseModel):
     text: str = Field("", max_length=FREE_TEXT_MAX)
 
 
+class AcceptBody(BaseModel):
+    """수락 버튼(주문 승인 티켓 02). 늦춘 분 15·30은 [+15분] [+30분] (티켓 04)."""
+
+    delay_min: Literal[0, 15, 30] = 0
+
+
+class RejectBody(BaseModel):
+    """거절 사유 시트(주문 승인 티켓 05). 재료 소진은 떨어진 메뉴 id들(티켓 06), 직접 쓰기는 글."""
+
+    reason: RejectReason
+    menu_ids: list[str] = Field(default_factory=list, max_length=20)
+    text: str = Field("", max_length=FREE_TEXT_MAX)  # 직접 쓰기 글(사장님 언어). 다른 사유면 무시
+
+
 class AnswerBody(BaseModel):
     """질문 카드 답: 버튼(yes·no·unsure) 또는 자유 입력(free + `text`, 티켓 07)."""
 
@@ -122,9 +155,24 @@ def owner_router(hub: OwnerHub, *, key: str) -> APIRouter:
                 yield ServerSentEvent(event=event.name, data=event.data, id=str(event.id))
 
     @router.post("/orders/{order_id}/accept")
-    async def accept(order_id: str) -> dict[str, Any]:
-        with _hub_errors({404: "그런 주문이 없어요"}):
-            return hub.accept(order_id)
+    async def accept(order_id: str, body: AcceptBody | None = None) -> dict[str, Any]:
+        """확인 대기 주문 수락. 본문이 없으면 늦춤 없이 수락한다(예전 접수 경로와 같은 주소)."""
+        delay_min = body.delay_min if body is not None else 0
+        with _hub_errors({404: "그런 주문이 없어요",
+                          409: "이미 결정했거나 손님이 주문을 고치는 중이에요"}):
+            return hub.accept(order_id, delay_min)
+
+    @router.post("/orders/{order_id}/reject")
+    async def reject(order_id: str, body: RejectBody) -> dict[str, Any]:
+        with _hub_errors({404: "그런 주문이 없어요",
+                          409: "이미 결정했거나 손님이 주문을 고치는 중이에요",
+                          422: "거절 사정을 적어 주세요"}):
+            return hub.reject(order_id, body.reason, menu_ids=body.menu_ids, text=body.text)
+
+    @router.post("/sold-out/{menu_id}/undo")
+    async def undo_sold_out(menu_id: str) -> dict[str, Any]:
+        with _hub_errors({404: "그런 메뉴가 없어요"}):
+            return hub.undo_sold_out(menu_id)
 
     @router.post("/calls/{call_id}/dismiss")
     async def dismiss(call_id: str) -> dict[str, Any]:

@@ -136,6 +136,40 @@ def test_the_owner_answer_wait_defaults_to_twenty_seconds_and_reaches_the_sessio
         VoiceSettings.from_env({"PHONE_OWNER_WAIT_S": "0"}, env_file=None)
 
 
+def test_the_approval_reprompt_reaches_the_session_and_zero_turns_it_off() -> None:
+    # 주문 승인 티켓 07: 확인 요청 카드를 보낸 뒤 "조금만 더 기다려 주세요"까지의 초
+    assert VoiceSettings.from_env({}, env_file=None).session_settings().approval_reprompt_s == 10.0
+    for value, expected in (("7.5", 7.5), ("0", 0.0)):
+        s = VoiceSettings.from_env({"PHONE_APPROVAL_REPROMPT_S": value}, env_file=None)
+        assert s.session_settings().approval_reprompt_s == expected
+    with pytest.raises(SettingsError):
+        VoiceSettings.from_env({"PHONE_APPROVAL_REPROMPT_S": "-1"}, env_file=None)
+
+
+def test_owner_approval_is_on_by_default_and_its_wait_reaches_the_session() -> None:
+    # 주문 승인 티켓 02: 확정 전 사장님 수락(화면이 없으면 건너뜀). 대기 초는 허브 카드 마감과 같다
+    default = VoiceSettings.from_env({}, env_file=None)
+    assert (default.owner_approval, default.approval_wait_s) == (True, 20.0)
+    s = VoiceSettings.from_env({"PHONE_OWNER_APPROVAL": "off", "PHONE_APPROVAL_WAIT_S": "12"},
+                               env_file=None)
+    session = s.session_settings()
+    assert (session.owner_approval, session.approval_wait_s) == (False, 12.0)
+    for name, wrong in (("PHONE_OWNER_APPROVAL", "true"), ("PHONE_APPROVAL_WAIT_S", "0")):
+        with pytest.raises(SettingsError):
+            VoiceSettings.from_env({name: wrong}, env_file=None)
+
+
+def test_the_approval_expiry_is_five_minutes_by_default_and_set_in_minutes() -> None:
+    # 주문 승인 티켓 03: 확인 요청 자동 취소. 요청을 연 때부터, 통화 중 대기보다 길어야 한다
+    assert VoiceSettings.from_env({}, env_file=None).approval_expire_s == 300.0
+    s = VoiceSettings.from_env({"PHONE_APPROVAL_EXPIRE_MIN": "2.5"}, env_file=None)
+    assert s.approval_expire_s == 150.0
+    for env in ({"PHONE_APPROVAL_EXPIRE_MIN": "0"}, {"PHONE_APPROVAL_EXPIRE_MIN": "soon"},
+                {"PHONE_APPROVAL_EXPIRE_MIN": "0.25", "PHONE_APPROVAL_WAIT_S": "20"}):
+        with pytest.raises(SettingsError):
+            VoiceSettings.from_env(env, env_file=None)
+
+
 def test_voice_barge_in_is_off_by_default_and_takes_its_thresholds_from_the_env() -> None:
     # 3단계 티켓 06: 기본 꺼짐. shadow는 판정만 기록, on은 실제로 줄이고 멈춘다
     assert VoiceSettings.from_env({}, env_file=None).barge is None

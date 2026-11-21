@@ -2,6 +2,7 @@
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
 // 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 2분 동안 스트림으로 받는다.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
 import { nearBottom } from './follow.ts'
 import { endReasonLabel, pickupLabel } from './format.ts'
@@ -24,8 +25,8 @@ function statusLabel(s: CallState): string {
     case 'live':
       return s.phase ? PHASE_LABEL[s.phase] : '연결됨'
     case 'ended': {
-      // 서버가 끝냈으면 이유를 붙인다(`call.ended`, 리뷰 S13)
-      const why = s.endReason ? endReasonLabel(s.endReason) : null
+      // 서버가 끝냈으면 이유를 붙인다(`call.ended`, 리뷰 S13). 문자로 넘긴 확인 요청은 아직 확정 전이다
+      const why = awaitingText(s) ? '가게 확인 중이에요' : s.endReason ? endReasonLabel(s.endReason) : null
       return why ? `통화가 끝났어요 · ${why}` : '통화가 끝났어요'
     }
     case 'failed':
@@ -55,6 +56,7 @@ export default function PhonePage() {
   const inCall = state.status === 'starting' || state.status === 'live'
   const cart = state.order?.cart ?? state.cart
   const total = state.order?.total ?? state.total
+  const badge = approvalBadge(state)
 
   return (
     <main className="phone">
@@ -102,12 +104,24 @@ export default function PhonePage() {
         ))}
       </section>
 
+      {badge && (
+        // 사장님 확인 요청 상태와 결과 (주문 승인 티켓 09)
+        <section className={`phone-approval phone-approval-${badge.tone}`} aria-label="사장님 확인" role="status">
+          <strong>{badge.label}</strong>
+          {badge.detail && <p>{badge.detail}</p>}
+        </section>
+      )}
+
       {(state.order || cart.length > 0) && (
         <section className={`phone-order ${state.order ? 'phone-order-final' : ''}`} aria-label="주문서">
           <h2>
             {state.order
               ? state.order.order.status === 'confirmed'
-                ? '주문 확정'
+                ? awaitingText(state)
+                  ? '가게 확인 중'
+                  : cancelledByStore(state) // 문자로 넘긴 뒤 거절·자동 취소 (티켓 05)
+                    ? '주문 취소'
+                    : '주문 확정'
                 : '사장님께 넘김'
               : '담은 메뉴'}
           </h2>

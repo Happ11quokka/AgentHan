@@ -25,6 +25,24 @@ export interface OrderJson {
   transcript: string[]
 }
 
+/**
+ * 사장님 확인 요청 상태(주문 승인 티켓 09, 서버 `session.ApprovalView`). waiting: 사장님 확인 중.
+ * 결과: accepted(수락, `delay_min`은 늦춘 분) · timeout(통화 중에 답이 없어 결과는 문자로) ·
+ * withdrawn(손님이 고침·취소, `reason`) · skipped(확인 없이 바로 확정). 늦춘 수락 제안·거절·자동
+ * 취소(티켓 04~07)는 서버가 새 값으로 더한다. 모르는 값은 배지 없이 둔다
+ */
+export type ApprovalStatus = 'waiting' | 'accepted' | 'timeout' | 'withdrawn' | 'skipped'
+
+export interface ApprovalJson {
+  /** `ApprovalStatus` 중 하나. 뒤 티켓이 더할 값도 받도록 넓게 둔다 */
+  status: string
+  /** 통화 안 확인 요청 번호(1부터). 건너뛰었으면 0 */
+  number: number
+  delay_min: number
+  /** withdrawn: changed·cancelled. 거절 사유는 뒤 티켓 */
+  reason: string
+}
+
 export type ServerEvent =
   | {
       type: 'call.ready'
@@ -49,6 +67,8 @@ export type ServerEvent =
       dialog: string | null
       cart: CartLine[]
       total: number
+      /** 사장님 확인 요청 상태(주문 승인 티켓 09). 아직 없으면 null. 낡은 서버는 이 칸이 없다 */
+      approval?: ApprovalJson | null
     }
   /**
    * 서버가 이 손님 턴을 되감았다(6단계 티켓 02): 봇 답의 첫 소리 전에 손님이 말을 이어서, 앞 말과
@@ -59,6 +79,8 @@ export type ServerEvent =
   | { type: 'bot.audio.end'; turn: number; seq: number }
   | { type: 'bot.done'; turn: number; sentences: number; interrupted?: boolean }
   | { type: 'bot.thinking'; turn: number }
+  /** 사장님 확인을 기다리는 중에 듣는 중이 됐다(주문 승인 티켓 07). 대기음을 `max_s`초까지 튼다 */
+  | { type: 'bot.hold'; turn: number; max_s?: number }
   /** 손님 소리가 들려 봇 목소리를 줄인다 / 되돌린다 / 멈춘다 (음성 끼어들기, 티켓 06) */
   | { type: 'bot.duck'; turn: number }
   | { type: 'bot.unduck'; turn: number }
@@ -124,6 +146,8 @@ export interface CallState {
   callId: string | null
   /** 받은 문자(보낸 순서). `call.ended`와 통화 뒤 문자 스트림으로 온다 (티켓 07) */
   texts: CustomerText[]
+  /** 이 통화의 마지막 사장님 확인 요청 상태(`state.approval`, 주문 승인 티켓 09). 없으면 null */
+  approval: ApprovalJson | null
 }
 
 /** 소켓에 이만큼(약 2초 분량) 쌓이면 "회선이 느려요" 안내 (리뷰 1번). 100ms 프레임은 3,200바이트 */
@@ -168,6 +192,7 @@ export const initialCallState: CallState = {
   endReason: null,
   callId: null,
   texts: [],
+  approval: null,
 }
 
 const MIC_MESSAGES: Record<MicFailure, string> = {
@@ -269,6 +294,7 @@ function onServer(state: CallState, event: ServerEvent): CallState {
         cart: event.cart,
         total: event.total,
         interruptible: event.interruptible === true && !cut,
+        approval: event.approval === undefined ? state.approval : event.approval,
       }
       // playback이면 여기서 닫지 않는다. 이 턴의 소리가 실제로 시작할 때(`playback.begun`) 닫는다
       if (event.phase === 'speaking' && !cut && state.micCloseAt === 'state') next.botTalking = true
