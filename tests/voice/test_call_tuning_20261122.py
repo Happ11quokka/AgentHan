@@ -54,6 +54,29 @@ def test_any_time_is_the_same_as_dont_know() -> None:
     assert engine.handle("아무 때나요", NOW).utterances[-1].startswith("가장 빨리 되는 시간은")
 
 
+def test_dont_know_before_opening_hears_the_first_time_after_opening() -> None:
+    """밤 2시에 건 전화(가게는 10시에 연다): 문 연 뒤 준비 시간이 지난 10시 15분을 권한다."""
+    night = datetime(2026, 11, 8, 2, 0, tzinfo=KST)
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), StoreConfig.from_fixture(),
+                          order_id="o-night")
+    engine.start(night)
+    engine.handle("메도빅 하나요", night)
+    engine.handle("그게 다예요", night)
+    r = engine.handle("몰라", night)
+    assert r.utterances == ["가장 빨리 되는 시간은 오전 10시 15분이에요. 그때 오시겠어요?"]
+    assert "10시 15분에 찾으러 오시고" in engine.handle("네", night).utterances[-1]
+
+
+def test_dont_know_after_closing_is_asked_again() -> None:
+    late = datetime(2026, 11, 8, 20, 55, tzinfo=KST)
+    engine = DialogEngine(FakeStoreKnowledge.from_fixture(), FakeNlu(), StoreConfig.from_fixture(),
+                          order_id="o-late")
+    engine.start(late)
+    engine.handle("메도빅 하나요", late)
+    engine.handle("그게 다예요", late)
+    assert not engine.handle("몰라", late).utterances[-1].startswith("가장 빨리")
+
+
 def test_a_real_time_is_still_taken_as_said() -> None:
     engine = _engine()
     engine.handle("메도빅 하나요", NOW)

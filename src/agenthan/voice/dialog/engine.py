@@ -1194,11 +1194,14 @@ class DialogEngine:
         if (self._state is not State.ASK_PICKUP or self._pickup_offer is not None
                 or not _ANY_TIME.search(turn.heard)):
             return False
-        verdict = judge_pickup(PickupParse(turn.now, asap=True), turn.now, self._config)
-        if verdict.kind != "asap" or verdict.at is None:
+        # 문 열기 전(밤에 거는 전화)이면 문 연 뒤 준비 시간이 지난 때가 가장 빠르다
+        opens = today_at(turn.now, self._config.open_time)
+        at = max(earliest_pickup(turn.now, self._config),
+                 opens + timedelta(minutes=self._config.prep_minutes))
+        if at > today_at(turn.now, self._config.close_time):
             return False
         turn.answered = True
-        self._offer_pickup(turn, verdict.at, templates.pickup_suggest_earliest(verdict.at))
+        self._offer_pickup(turn, at, templates.pickup_suggest_earliest(at))
         return True
 
     def _question_again(self, *, short: bool = False) -> str:
