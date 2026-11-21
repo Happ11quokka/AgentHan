@@ -39,11 +39,13 @@ def is_rejected(error: Exception) -> bool:
     return getattr(error, "status_code", None) == 400
 
 
-def make_client():
-    """hcx.make_client() with a sanitized error when the key is missing."""
+def make_client(model: str | None = None):
+    """hcx.make_client() with a sanitized error when the key is missing.
+
+    model picks the key (service-app models use CLOVASTUDIO_SERVICE_API_KEY when set)."""
     if not os.environ.get("CLOVASTUDIO_API_KEY"):
         raise ClovaChatError("CLOVASTUDIO_API_KEY 환경변수를 설정해 주세요.")
-    return hcx.make_client(timeout=REQUEST_TIMEOUT)
+    return hcx.make_client(model=model, timeout=REQUEST_TIMEOUT)
 
 
 def _get(value: object, key: str):
@@ -98,7 +100,7 @@ def chat(
     """One chat completion. Tools are sent only when non-empty.
 
     tool_choice is sent only when given (HCX-DASH-002 accepts a forced function)."""
-    client = client or make_client()
+    client = client or make_client(model)
     kwargs = {"model": model, "messages": messages, "temperature": TEMPERATURE}
     kwargs.update(hcx.tool_call_options(model))
     if tools:

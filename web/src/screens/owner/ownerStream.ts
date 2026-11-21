@@ -4,9 +4,22 @@ import type { KnowledgePreview, OwnerAction, OwnerAnswer } from './ownerState.ts
 
 const BASE = '/api/owner'
 
-/** `/owner?key=…` 주소에서 토큰을 읽는다. 없으면 빈 글(서버가 401) */
+const KEY_STORE = 'agenthan.ownerKey.v1'
+
+/**
+ * 사장님 화면 토큰. 주소(`?key=…`)에 있으면 이 브라우저에 기억해 두고, 없으면 기억해 둔 값을 쓴다.
+ * 그래서 한 번 키 있는 주소(`/?key=…` 또는 `/owner?key=…`)로 열었던 브라우저는 비서 화면의
+ * "전화 주문 카드" 링크나 키 없는 `/owner`로 와도 연결된다. 둘 다 없으면 빈 글(서버가 401)
+ */
 export function ownerKey(search: string): string {
-  return new URLSearchParams(search).get('key') ?? ''
+  const fromUrl = new URLSearchParams(search).get('key') ?? ''
+  try {
+    if (fromUrl) localStorage.setItem(KEY_STORE, fromUrl)
+    else return localStorage.getItem(KEY_STORE) ?? ''
+  } catch {
+    // 사생활 보호 창 등에서 저장소를 못 쓰면 주소의 키만 쓴다
+  }
+  return fromUrl
 }
 
 /** SSE를 열고 이벤트를 리듀서 행동으로 넘긴다. 돌려준 함수로 닫는다. */

@@ -22,6 +22,13 @@
 		Referrer-Policy no-referrer
 		Permissions-Policy "microphone=(self)"
 	}
+	# 화면 HTML은 늘 서버에 다시 물어본다(ETag로 바뀐 게 없으면 304). 안 그러면 브라우저가 옛
+	# index.html을 들고 있다가 재배포로 사라진 /assets/index-*.js를 불러 빈 화면이 된다.
+	# /assets/는 파일 이름에 해시가 붙어 있어 오래 둬도 된다. 앱이 직접 정한 값(SSE 등)은 그대로 둔다
+	@hashed path /assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@unhashed not path /assets/*
+	header @unhashed ?Cache-Control "no-cache"
 	# 접속 로그에서 사장님 토큰을 가린다 (6단계). 앱(uvicorn) 접속 로그는 꺼 두었다
 	log {
 		format filter {

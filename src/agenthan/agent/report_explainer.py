@@ -10,6 +10,7 @@ from pathlib import Path
 
 from agenthan.agent.clova_chat import chat as hcx_chat
 from agenthan.agent.clova_chat import parse_message
+from agenthan.core.llm import punct_polish_enabled
 from agenthan.tools.place_report import DEFAULT_PATH, ReportFacts, load_report, report_facts
 from agenthan.tools.report_insights import Insight, build_insights
 
@@ -357,6 +358,8 @@ def make_card(last: ReportAnswer, *, chat=None, missing_keyword: str | None = No
         }
     )
     try:
+        if not punct_polish_enabled():
+            raise LookupError("문장부호 다듬기 꺼짐")  # 아래 except가 정해진 문장을 쓴다
         response = parse_message(
             (chat or hcx_chat)(
                 [

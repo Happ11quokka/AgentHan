@@ -1,4 +1,5 @@
 import { quickBadgeText, whenText } from "../labels";
+import { ownerKey as rememberedOwnerKey } from "../screens/owner/ownerStream";
 import type { Recent } from "../storage";
 import { Icon, type IconName } from "./Icon";
 import type { Tab } from "./Sidecar";
@@ -29,10 +30,10 @@ export type Quick = (typeof QUICK)[number];
 
 /**
  * 전화 주문(Part C) 화면으로 가는 링크. 사장님 주문 카드 화면은 `?key=`가 있어야 열리므로
- * 지금 주소에 key가 있으면 그대로 넘긴다. 비서 화면은 한국어라 주문 카드도 한국어(`lang=ko`)로 연다.
+ * 지금 주소의 key(없으면 이 브라우저가 기억해 둔 key)를 넘긴다. 비서 화면은 한국어라 주문 카드도 한국어(`lang=ko`)로 연다.
  */
 function phoneLinks(search: string): Array<{ key: string; label: string; hint: string; icon: IconName; href: string }> {
-  const ownerKey = new URLSearchParams(search).get("key");
+  const ownerKey = rememberedOwnerKey(search);
   return [
     { key: "phone", label: "손님으로 전화 걸기", hint: "AI가 받는 전화 주문", icon: "phone", href: "/phone" },
     {
