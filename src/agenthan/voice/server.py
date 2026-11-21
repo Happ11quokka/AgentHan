@@ -154,11 +154,12 @@ def create_app(
         )
     )
     app.include_router(owner_router(hub, key=settings.owner_key))
-    # 손님 "받은 문자" 스트림 (티켓 07). 통화 뒤 확인 대기의 결정·자동 취소 문자까지 받게 그
-    # 마감보다 1분 길게 연다 (주문 승인 티켓 03)
-    app.include_router(customer_texts_router(
-        hub, window_s=max(TEXTS_WINDOW_S, settings.approval_expire_s + 60)))
-    app.include_router(customer_orders_router(hub))  # 손님 주문 현황 (전화 주문 현황 티켓 04)
+    # 손님 화면 스트림("받은 문자" 티켓 07, 주문 현황 전화 주문 현황 티켓 05). 통화 뒤 확인 대기의
+    # 결정·자동 취소까지 받게 그 마감보다 1분 길게 연다 (주문 승인 티켓 03)
+    customer_window_s = max(TEXTS_WINDOW_S, settings.approval_expire_s + 60)
+    app.include_router(customer_texts_router(hub, window_s=customer_window_s))
+    # 손님 주문 현황 조회와 스트림 (전화 주문 현황 티켓 04·05)
+    app.include_router(customer_orders_router(hub, window_s=customer_window_s))
     if not settings.owner_key:
         log.warning("PHONE_OWNER_KEY가 없어 사장님 화면(/api/owner/*)이 잠겨 있음 (모두 401)")
     if (settings.web_dist / "index.html").is_file():

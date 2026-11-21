@@ -1,7 +1,7 @@
 // Part C 전화 주문 통화 화면. 이 폴더(src/screens/phone/)는 Part C 몫이다.
 // WS 클라이언트·마이크 워클릿·재생 스케줄러도 src/api/가 아니라 이 폴더에 둔다.
-// 통화가 끝나면 "받은 문자" 카드(4단계 티켓 07): 확정 안내와 사장님의 늦은 답. 통화 뒤 서버가 알린 창(기본 6분) 동안 스트림으로 받는다.
 // 통화가 확정 주문으로 끝나면 자막·배지·주문서 대신 주문 현황을 보인다(전화 메뉴·주문 현황 티켓 04, `orderStatus.ts`).
+// 예전 "받은 문자" 미리보기는 주문 현황으로 대체했다(티켓 05). 취소된 주문의 [다시 주문하기]는 새 통화를 건다.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { approvalBadge, awaitingText, cancelledByStore } from './approvalBadge.ts'
 import { type CallState, canEndSpeech, canInterrupt } from './callState.ts'
@@ -91,7 +91,7 @@ export default function PhonePage() {
         </div>
       )}
 
-      {placed && <OrderStatusPanel orderId={placed} />}
+      {placed && <OrderStatusPanel key={placed} orderId={placed} onReorder={() => call.dial()} />}
 
       {!placed && (
         <section
@@ -156,22 +156,6 @@ export default function PhonePage() {
               픽업 {pickupLabel(state.order.order.pickup_time)}
             </p>
           )}
-        </section>
-      )}
-
-      {state.texts.length > 0 && (
-        // 통화 끝 안내와 사장님의 늦은 답(티켓 07). 실제 문자는 보내지 않는다
-        <section className="phone-texts" aria-label="받은 문자" aria-live="polite">
-          <h2>받은 문자</h2>
-          <ul>
-            {state.texts.map((t) => (
-              <li key={t.id} className="phone-text">
-                <time dateTime={t.sent_at}>{t.sent_label}</time>
-                <p>{t.text}</p>
-              </li>
-            ))}
-          </ul>
-          <p className="phone-texts-note">시연용 미리보기예요. 실제 문자는 보내지 않아요.</p>
         </section>
       )}
 

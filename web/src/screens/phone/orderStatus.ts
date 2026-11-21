@@ -2,7 +2,9 @@
 // 통화가 확정 주문으로 끝나면 같은 화면이 주문 현황으로 바뀐다. 서버 조회 API(`GET /api/phone/orders/{id}`,
 // `voice/owner/order_status.py`)의 응답을 화면 상태로 들고, 단계 표시(주문 넣음 → 가게 확인 중 → 확정(또는
 // 취소) → 픽업 시각)와 문구를 정한다. 토큰은 없다(주문 번호 = 추측할 수 없는 통화 id). 남은 시간(5분)은
-// 손님에게 보이지 않는다. 이 티켓에서는 [새로 고침]으로 다시 읽는다(스스로 갱신은 다음 티켓).
+// 손님에게 보이지 않는다. 화면은 주문 번호별 스트림(`orderStream.ts`)으로 스스로 바뀌고, 끊기면 조회 API로 다시
+// 읽는다(티켓 05). 상태 문구는 손님 문자 문장(서버 `voice/owner/sms.py`)을 다시 쓴다: 거절 사유 한 줄은 서버가
+// `reason.text`에 그대로 싣고, 확정·늦춘 수락·자동 취소 문장은 여기 `orderHeadline`이 같은 말로 든다.
 import type { CallState } from './callState.ts'
 
 /** 단계(서버 `order_status.OrderStage`와 같은 닫힌 목록). checking: 가게 확인 중 · confirmed: 확정 · cancelled: 주문 취소 */
@@ -18,7 +20,21 @@ export interface OrderStatusLine {
   subtotal: number
 }
 
-/** 조회 API 응답 */
+/**
+ * 결과(서버 `order_status.OrderOutcome`과 같은 닫힌 목록, 티켓 05). 확인 중이면 null. 확정: accepted(제시간
+ * 수락) · delayed(늦춘 수락) · auto(자동 확정). 취소: rejected(거절) · out_of_stock(재료 소진) · expired(5분
+ * 무응답 자동 취소) · customer_cancelled(손님 취소)
+ */
+export type OrderOutcome =
+  'accepted' | 'delayed' | 'auto' | 'rejected' | 'out_of_stock' | 'expired' | 'customer_cancelled'
+
+/** 거절 사유. code: busy · closed · free(직접 쓰기) · out_of_stock. text: 한 줄(직접 쓰기는 사장님 글의 한국어, 번역 중이면 '') */
+export interface OrderReason {
+  code: string
+  text: string
+}
+
+/** 조회 API 응답(스트림 `order.status`도 같은 모양) */
 export interface OrderStatusJson {
   order_id: string
   stage: OrderStage
@@ -34,6 +50,13 @@ export interface OrderStatusJson {
     original_time: string
     original_label: string
   }
+  outcome: OrderOutcome | null
+  /** 거절일 때만 */
+  reason: OrderReason | null
+  /** 재료 소진 거절의 떨어진 메뉴 이름들 */
+  sold_out: string[]
+  /** 손님이 이 화면에서 취소할 수 있다 (티켓 07 전에는 늘 거짓) */
+  can_cancel: boolean
 }
 
 /** loading: 읽는 중 · shown: 받음 · missing: 그런 주문이 없음(404) · failed: 읽지 못함(회선·서버) */
@@ -46,8 +69,27 @@ export interface OrderStatusState {
   order: OrderStatusJson | null
 }
 
+/**
+ * load·loaded·missing·failed: 조회 API. streamed: 스트림(`order.status`)이 보낸 현황(티켓 05). 둘이 엇갈려 늦게 온
+ * 조회 응답이 이미 보인 결정을 "확인 중"으로 되돌리지 않게 단계는 앞으로만 간다(`stageRank`)
+ */
 export type OrderStatusAction =
-  { type: 'load' } | { type: 'loaded'; order: OrderStatusJson } | { type: 'missing' } | { type: 'failed' }
+  | { type: 'load' }
+  | { type: 'loaded'; order: OrderStatusJson }
+  | { type: 'streamed'; order: OrderStatusJson }
+  | { type: 'missing' }
+  | { type: 'failed' }
+
+/** 단계 순서. 확인 중 → 확정 → 취소(늦춘 수락 뒤 손님 취소, 티켓 07). 거꾸로 가지 않는다 */
+const STAGE_RANK: Record<OrderStage, number> = { checking: 0, confirmed: 1, cancelled: 2 }
+
+function shown(state: OrderStatusState, order: OrderStatusJson): OrderStatusState {
+  if (order.order_id !== state.orderId) return state // 다른 주문의 늦은 응답은 버린다
+  if (state.order && STAGE_RANK[order.stage] < STAGE_RANK[state.order.stage]) {
+    return { ...state, phase: 'shown' } // 이미 보인 결정보다 앞선 현황(엇갈린 늦은 응답)
+  }
+  return { ...state, phase: 'shown', order }
+}
 
 export function initialOrderStatus(orderId: string): OrderStatusState {
   return { orderId, phase: 'loading', order: null }
@@ -58,13 +100,29 @@ export function orderStatusReducer(state: OrderStatusState, action: OrderStatusA
     case 'load':
       return { ...state, phase: 'loading' }
     case 'loaded':
-      // 다른 주문의 늦은 응답은 버린다
-      return action.order.order_id === state.orderId ? { ...state, phase: 'shown', order: action.order } : state
+    case 'streamed':
+      return shown(state, action.order)
     case 'missing':
       return { ...state, phase: 'missing', order: null }
     case 'failed':
       return { ...state, phase: 'failed' }
   }
+}
+
+/** 결정이 나서 더 바뀌지 않는 현황. 스트림을 닫는다(손님 취소는 손님 자신의 요청 응답으로 바뀐다, 티켓 07) */
+export function orderSettled(order: OrderStatusJson | null): boolean {
+  return order !== null && order.stage !== 'checking'
+}
+
+/** 취소된 주문에는 [다시 주문하기]가 있다(통화 화면으로) */
+export function canReorder(order: OrderStatusJson): boolean {
+  return order.stage === 'cancelled'
+}
+
+/** 늦춘 수락이면 원래 픽업 시각과 바뀐 시각 */
+export function pickupMoved(order: OrderStatusJson): { from: string; to: string } | null {
+  const { label, original_label: original } = order.pickup
+  return order.stage === 'confirmed' && original && original !== label ? { from: original, to: label } : null
 }
 
 export function orderStatusUrl(orderId: string): string {
@@ -122,29 +180,55 @@ export function orderSteps(order: OrderStatusJson): OrderStep[] {
   }
 }
 
-/** 주문 현황 맨 위 문구. tone은 통화 화면 배지와 같은 뜻(wait·ok·stop) */
+/**
+ * 주문 현황 맨 위 문구. tone은 통화 화면 배지와 같은 뜻(wait·ok·stop). quote: 직접 쓰기 거절의 사장님 글(한국어)
+ */
 export interface OrderHeadline {
   tone: 'wait' | 'ok' | 'stop'
   title: string
   detail: string | null
+  quote: string | null
+}
+
+// 손님 문자 문장(`voice/owner/sms.py`)과 같은 말. 거절 사유 문장은 서버가 `reason.text`로 준다
+const CANCELLED = '주문이 취소됐어요'
+const EXPIRED = '가게에서 확인하지 못해 주문이 취소됐어요. 다시 전화 주세요.' // sms.expired_text
+const REJECTED_FREE = '죄송해요, 가게 사정으로 주문이 취소됐어요.' // sms._REJECTED_FREE
+
+function head(tone: OrderHeadline['tone'], title: string, detail: string | null = null, quote: string | null = null) {
+  return { tone, title, detail, quote }
 }
 
 export function orderHeadline(order: OrderStatusJson): OrderHeadline {
   switch (order.stage) {
     case 'checking':
-      return {
-        tone: 'wait',
-        title: '가게에서 주문을 확인하고 있어요',
-        detail: '확인되면 이 화면에서 알려 드려요.',
+      return head('wait', '가게에서 주문을 확인하고 있어요', '확인되면 이 화면에서 알려 드려요.')
+    case 'confirmed': {
+      const moved = pickupMoved(order)
+      if (moved) {
+        // sms.delayed_text: "… 18:45에 준비돼요. 어려우시면 전화 주세요."
+        return head(
+          'ok',
+          '주문이 확정됐어요',
+          `픽업 시각이 ${moved.from}에서 ${moved.to}로 바뀌었어요. ${moved.to}에 준비돼요. 어려우시면 전화 주세요.`,
+        )
       }
-    case 'confirmed':
-      return {
-        tone: 'ok',
-        title: '주문이 확정됐어요',
-        detail: order.pickup.label ? `${order.pickup.label}에 찾으러 오세요.` : null,
-      }
+      // sms.order_text: "… 18:30에 준비해 둘게요."
+      return head('ok', '주문이 확정됐어요', order.pickup.label ? `${order.pickup.label}에 준비해 둘게요.` : null)
+    }
     case 'cancelled':
-      return { tone: 'stop', title: '주문이 취소됐어요', detail: null }
+      switch (order.outcome) {
+        case 'expired':
+          return head('stop', CANCELLED, EXPIRED)
+        case 'rejected':
+        case 'out_of_stock':
+          if (order.reason?.code === 'free') return head('stop', CANCELLED, REJECTED_FREE, order.reason.text || null)
+          return head('stop', CANCELLED, order.reason?.text || null)
+        case 'customer_cancelled':
+          return head('stop', CANCELLED, '주문을 취소했어요.')
+        default:
+          return head('stop', CANCELLED)
+      }
   }
 }
 
